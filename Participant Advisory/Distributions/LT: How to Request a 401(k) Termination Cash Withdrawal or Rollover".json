@@ -87,6 +87,7 @@
           "category": "eligibility",
           "rules": [
             "The request must be for a termination or separation of service distribution after the participant has left the employer.",
+            "The participant must have a termination date and a termination status",
             "The participant must be in a ForUsAll-administered 401(k) plan for this process to apply.",
             "Only vested balances are eligible for distribution; non-vested amounts are not distributed.",
             "If vesting appears incorrect or disputed, the participant should contact ForUsAll Support before any distribution proceeds."
@@ -159,16 +160,16 @@
         {
           "step_number": 1,
           "type": "participant-facing",
-          "visibility": "both",
-          "description": "Confirm separation from your employer and prepare required information.",
-          "notes": "Ensure you have left your employer, can access the ForUsAll participant portal, and have your mailing address, banking details (for wires), and receiving institution information if doing a rollover."
+          "visibility": "ai agent",
+          "description": "Confirm the participant has a termination date and terminated status in the participant_data in the internal comments of the DevRev Ticket.",
+          "notes": "If the participant doesn't meet the eligibility criteria, read the common issues section of this article."
         },
-        {
+        { 
           "step_number": 2,
           "type": "participant-facing",
           "visibility": "both",
           "description": "Log in to your ForUsAll 401(k) participant portal.",
-          "notes": "From the dashboard, click Loans & Distributions in the upper-right corner. Submitting through the portal is the fastest way to process your request."
+          "notes": "We need to ensure to include this step. This was previously the first step. -- Ensure you have left your employer, can access the ForUsAll participant portal, and have your mailing address, banking details (for wires), and receiving institution information if doing a rollover. From the dashboard, click Loans & Distributions in the upper-right corner. Submitting through the portal is the fastest way to process your request."
         },
         {
           "step_number": 3,
@@ -229,12 +230,24 @@
       ],
       "common_issues": [
         {
-          "issue": "Participant cannot log in or access the portal.",
+          "issue": "The participant doesn't have a termination date in the Internal notes section of the DevRev Ticket",
+          "resolution": "Confirm the participant mentioned in the ticket that they are no longer employed by the company. If that's the case, create a note in the DevRev ticket for a Participant Advisory Associate to confirm the termination date in the payroll system or with the Plan Sponsor, update the participant's profile accordignly, and direct the participant to submit the request the next business day through the Portal. If the participant is still employed, they would not be able to request a Separation of Service Distribution. Instead, offer the participant to request a hardship distribution or a loan." 
+        },
+        {
+          "issue": "The participant has a termination date but doesn't have a termination status in the Internal notes section of the DevRev Ticket",
+          "resolution": "Validate in the Internal notes section of the DevRev Ticket if with the employment period information that we have (hire date, termination date, rehire date) and the last payroll date, we can conclude that the participant's eligibility status must be terminated. If with that information, eligibility status should be terminated, create a note in the DevRev ticket for a Participant Advisory Associate to update the participant's eligibility status to terminated, update the participant's profile accordignly, and direct the participant to submit the request the next business day through the Portal; if the eligibility should be active, confirm the participant mentioned in the ticket that they are no longer employed by the company. If that's the case, create a note in the DevRev ticket for a Participant Advisory Associate to confirm the termination date in the payroll system or with the Plan Sponsor, update the participant's profile accordignly, and direct the participant to submit the request the next business day through the Portal. If the participant is still employed, they would not be able to request a Separation of Service Distribution. Instead, offer the participant to request a hardship distribution or a loan."
+        },
+        {
+          "issue": "Participant cannot log in or access the portal and MFA is enrolled.",
           "resolution": "Have the participant confirm they are using the correct portal URL and try resetting credentials. If access remains blocked, advise them that they can request a RightSignature Electronic Form as a backup method to submit the distribution request."
         },
         {
+          "issue": "Participant cannot log in or access the portal and MFA is NOT enrolled.",
+          "resolution": "pending"
+        },
+        {
           "issue": "Separation of Service reason is not listed in the portal.",
-          "resolution": "Instruct the participant to select Default and proceed. If they are unsure whether their separation has been recorded, advise them to contact Support to confirm that their employment status has been updated before continuing."
+          "resolution": "Instruct the participant to select Default and proceed. If they are unsure whether their termination date has been recorded, advise them to contact ForUsAll Support to confirm that their employment status has been updated before continuing."
         },
         {
           "issue": "Vesting percentage appears incorrect to the participant.",

@@ -1,409 +1,645 @@
 {
-    "metadata": {
-      "article_id": "lt_401k_termination_withdrawal_rollover",
-      "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-      "audience": "Internal AI Support Agent",
-      "record_keeper": "LT Trust",
-      "plan_type": "401(k)",
-      "scope": "global",
-      "tags": [
-        "401k",
-        "distribution",
-        "rollover",
-        "termination",
-        "separation of service",
-        "tax withholding",
-        "wire",
-        "check",
-        "RightSignature",
-        "portal"
-      ],
-      "language": "en-US",
-      "versioning":{
-        "update_time_review": "12",
-        "update_reason": "",
-        "last_updated": "2025-12-03"
+  "metadata": {
+    "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+    "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form when portal access is not possible. This article is specific to the recordkeeper LT Trust.",
+    "audience": "Internal AI Support Agent",
+    "record_keeper": "LT Trust",
+    "plan_type": "401(k)",
+    "scope": "recordkeeper-specific",
+    "tags": [
+      "Withdrawal Request",
+      "Termination Distribution",
+      "Distribution",
+      "Taxes"
+    ],
+    "language": "en-US",
+    "last_updated": null,
+    "schema_version": "kb_article_v2",
+    "transformed_at": "2026-01-15",
+    "source_last_updated": "2025-10-15",
+    "source_system": "DevRev"
+  },
+  "summary": {
+    "purpose": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form when portal access is not possible.",
+    "topic": "distribution",
+    "subtopics": [
+      "termination_distribution",
+      "cash_withdrawal",
+      "rollover",
+      "partial_rollover_partial_cash",
+      "wire",
+      "check",
+      "tax_withholding",
+      "participant_portal"
+    ],
+    "required_data_summary": [
+      "(message_text) Confirmation the participant has left their employer and is requesting a separation distribution.",
+      "(message_text) The participant's requested transaction type: cash withdrawal, full rollover, or partial rollover plus partial cash.",
+      "(agent_input) At least one valid email address for confirmation updates.",
+      "(agent_input) Mailing address for check delivery and contact.",
+      "(agent_input) If a rollover is requested: receiving institution details and IRA or account number if applicable.",
+      "(agent_input) If a wire is requested: complete bank routing and account details exactly as required by the receiving institution."
+    ],
+    "key_business_rules": [
+      "A $75 distribution fee applies to all termination distribution requests.",
+      "An additional $35 wire fee applies if a wire is chosen, and wire fees are non-refundable.",
+      "For cash distributions, 20% federal tax withholding applies and state withholding may also apply.",
+      "Only vested balances are eligible for distribution.",
+      "Portal submission is the preferred and fastest method; RightSignature electronic form is a slower secondary option when the portal cannot be used."
+    ],
+    "key_steps_summary": [
+      "Log in to the ForUsAll participant portal and open Loans & Distributions.",
+      "Select the distribution reason (Separation of Service; use Default if Separation of Service is unavailable).",
+      "Review sources and vesting, then enter email confirmation information.",
+      "Choose cash, rollover, or split, then provide check or wire and rollover delivery details.",
+      "Submit the request and track review and delivery timelines; if portal access is not possible, request a RightSignature electronic form."
+    ],
+    "high_impact_faq_pairs": [
+      {
+        "question": "What distribution reason should I choose after I leave my employer?",
+        "answer": "Choose Separation of Service. If it is not available, choose Default and continue."
+      },
+      {
+        "question": "What fees apply to a termination distribution request?",
+        "answer": "A $75 distribution fee applies to all requests, and an additional $35 wire fee applies if you choose a wire. Wire fees are non-refundable."
+      },
+      {
+        "question": "How long does it take to receive my funds?",
+        "answer": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS, and wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
       }
-      
-    },
-    "summary": {
-      "purpose": "Help an AI support agent guide a former employee through requesting a termination 401(k) distribution (cash, rollover, or a combination) from a ForUsAll-administered plan. It emphasizes use of the online portal, required information, fees, taxes, timelines, and the backup Electronic Form option.",
-      "key_business_rules": [
-        "The request is for a termination or separation of service distribution after the participant has left their employer.",
-        "Only vested balances are eligible for distribution; if vesting appears incorrect, the participant should contact ForUsAll Support before proceeding.",
-        "A $75 distribution fee applies to all requests, plus an additional $35 non-refundable fee if a wire transfer is chosen.",
-        "Cash distributions are subject to 20% mandatory federal tax withholding, and state withholding may also apply.",
-        "Participants can choose a lump sum cash distribution, a full rollover to an IRA or qualified plan, or a partial rollover plus partial cash.",
-        "Submitting the request through the ForUsAll participant portal is the fastest method; the RightSignature Electronic Form is a slower backup option ONLY for those who cannot use the portal.",
-        "Accurate delivery details are critical, especially for wires; incorrect banking information commonly leads to rejections or returns.",
-        "Checks are typically delivered in about 2–3 weeks after approval, while wires typically complete in about 1–2 weeks depending on the receiving institution."
-      ],
-      "key_steps_summary": [
-        "Confirm the participant has separated from service and can access the ForUsAll participant portal using the data available in the internal discussion. If the participant doesn't meet the eligibility criteria, don't proceed with the flow. Instead, read the common issues section of this article.",
-        "Have the participant log in, go to Loans and Distributions, and select the distribution reason Separation of Service (or Default if that is the only option).",
-        "Review vesting and sources, enter email confirmation information, and choose the distribution type (cash, rollover, or combination) in the portal.",
-        "Collect and enter the appropriate delivery details (mailing address, wire instructions, or receiving institution and account information) in the portal.",
-        "Review elections, taxes, and delivery method, submit the request, and advise the participant on expected review and delivery timelines in the portal."
-      ],
-      "high_impact_faq_pairs": [
-        {
-          "question": "What fees apply when I take a 401(k) termination distribution?",
-          "answer": "There is a $75 distribution fee for all requests, plus an additional $35 non-refundable fee if you choose a wire transfer."
-        },
-        {
-          "question": "How will my termination distribution be taxed if I take cash?",
-          "answer": "A 20% federal tax withholding applies to cash distributions and state withholding may also apply; the distribution is taxable income in the year it is processed."
-        },
-        {
-          "question": "What options do I have for my funds after leaving my employer?",
-          "answer": "You can request a lump sum cash distribution, roll 100% of your balance to an IRA or qualified plan, or split the distribution between a rollover and cash."
-        },
-        {
-          "question": "How long does it take to receive my distribution?",
-          "answer": "ForUsAll typically reviews requests in about two business days, then checks usually arrive in about 2–3 weeks via USPS and wires typically complete in about 1–2 weeks depending on the receiving institution."
-        },
-        {
-          "question": "What if I cannot log in to the ForUsAll portal to request my distribution?",
-          "answer": "If you cannot use the portal, you can contact ForUsAll in order to regain access to the portal."
-        }
-      ],
-      "plan_specific_guardrails": [
-        "Do not tell the participant to proceed with a distribution if vesting or account sources appear incorrect; instruct them to contact ForUsAll Support first.",
-        "Do not state or imply that the $35 wire fee can be refunded; the article specifies that wire fees are non-refundable.",
-        "Do not guarantee faster delivery than the stated timelines of about 2–3 weeks for checks and about 1–2 weeks for wires after approval.",
-        "Do not provide personalized tax advice; instead, remind participants that distributions are taxable and recommend consulting a tax professional for their personal situation.",
-        "Do not say that portal access is the only way to request a distribution; if the portal cannot be used, redirect the participant to the ForUsAll Support Line."
-      ],
-      "critical_flags": {
-        "portal_required": true,
-        "mfa_relevant": true,
-        "record_keeper_must_be": "LT Trust"
-      }
-    },
-    "details": {
-      "business_rules": [
-        {
-          "category": "eligibility",
-          "rules": [
-            "The request must be for a termination or separation of service distribution after the participant has left the employer.",
-            "The participant must have a termination date and a termination status",
-            "The participant must be in a ForUsAll-administered 401(k) plan for this process to apply.",
-            "Only vested balances are eligible for distribution; non-vested amounts are not distributed.",
-            "If vesting appears incorrect or disputed, the participant should contact ForUsAll Support before any distribution proceeds."
-          ]
-        },
-        {
-          "category": "disbursement_methods",
-          "rules": [
-            "Participants can choose a lump sum cash distribution, a full rollover to an IRA or qualified plan, or a partial rollover combined with partial cash.",
-            "For cash distributions, participants can receive funds via check or wire transfer.",
-            "For rollovers, participants can choose delivery by check or by wire to the receiving institution.",
-            "For partial rollover plus partial cash, instructions must clearly specify how much goes to the rollover and how much is paid as cash, by percentage or dollar amount."
-          ]
-        },
-        {
-          "category": "fees",
-          "rules": [
-            "A $75 distribution fee applies to all termination distribution requests.",
-            "If a wire transfer is chosen, there is an additional $35 wire fee.",
-            "The wire fee is non-refundable, even if the wire is rejected or returned.",
-            "A returned wire may result in the funds being converted to a mailed check instead."
-          ]
-        },
-        {
-          "category": "taxes",
-          "rules": [
-            "Lump sum cash distributions are taxable income in the calendar year they are processed.",
-            "A 20% mandatory federal tax withholding applies to cash distributions.",
-            "State tax withholding may also apply depending on applicable state rules.",
-            "Participants should be advised to consult a tax professional for guidance on their personal tax situation."
-          ]
-        },
-        {
-          "category": "delivery_timelines",
-          "rules": [
-            "ForUsAll typically reviews distribution requests within about two business days.",
-            "After approval, checks typically arrive in about 2–3 weeks via USPS.",
-            "After approval, wires typically complete in about 1–2 weeks, depending on the receiving institution.",
-            "The RightSignature Electronic Form process is generally slower than submitting the request online via the portal."
-          ]
-        },
-        {
-          "category": "data_requirements",
-          "rules": [
-            "Participants should have their mailing address available for check delivery and contact purposes.",
-            "For wire transfers, exact routing, account number, receiving institution name, and any required sub-account or IRA number must be provided.",
-            "For rollovers, participants need the receiving institution details and, if applicable, the IRA or account number.",
-            "At least one valid email address must be provided in the Email Confirmation Information section to receive updates and inquiries."
-          ]
-        },
-        {
-          "category": "portal_and_process",
-          "rules": [
-            "The ForUsAll participant portal is the preferred and fastest way to submit a termination distribution request.",
-            "Participants should use the distribution reason Separation of Service; if this is not available, they may select Default and proceed.",
-            "A display of none in the email confirmation area on the confirmation screen can be a known display issue and may be ignored if a valid email was entered earlier.",
-            "If the participant cannot log in or use the portal, make sure that this participant is enrolled in MFA. If the participant is enrolled in MFA, ask the participant to contact ForUsAll support line to complete the process over the phone. If the participant is not enrolled in MFA, ask the participant to create the ForUsAll account with the email address on file."
-          ]
-        },
-        {
-          "category": "fund_direction_and_sources",
-          "rules": [
-            "These transactions are distributions or outgoing rollovers from the ForUsAll-administered plan to the participant or another institution.",
-            "The portal displays Traditional and any Roth sources as well as vesting percentages for the participant.",
-            "The receiving account for rollover funds must be able to accept the tax character of the money, such as Roth amounts going to a Roth-eligible account."
-          ]
-        }
-      ],
-      "steps": [
-        {
-          "step_number": 1,
-          "type": "internal-check",
-          "visibility": "agent-only",
-          "description": "Confirm the participant has a termination date and terminated status in the participant_data in the internal discussion.",
-          "notes": "If the participant doesn't meet the eligibility criteria, don't proceed with the flow. Instead, read the common issues section of this article."
-        },
-        { 
-          "step_number": 2,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Ask the user to log in to their ForUsAll 401(k) participant portal.",
-          "notes": "We need to ensure to include this step. This was previously the first step. -- Ensure you have left your employer, can access the ForUsAll participant portal, and have your mailing address, banking details (for wires), and receiving institution information if doing a rollover. From the dashboard, click Loans & Distributions in the upper-right corner. Submitting through the portal is the fastest way to process your request."
-        },
-        { 
-          "step_number": 3,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Select your distribution reason.",
-          "notes": "Choose Separation of Service as the reason for your distribution. If that option is not available, select Default and continue; if employment status is uncertain, contact Support to confirm before proceeding."
-        },
-        {
-          "step_number": 4,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Review your account sources and vesting information.",
-          "notes": "The portal will show Traditional and any Roth sources and corresponding vesting percentages. Only vested balances are eligible for distribution. If vesting appears incorrect, stop and contact ForUsAll Support before submitting your request."
-        },
-        {
-          "step_number": 5,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Provide email confirmation information.",
-          "notes": "Expand the Email Confirmation Information section and enter at least one valid email address so you can receive confirmations and any follow-up questions. If the confirmation screen later shows none in this area, it may be a display issue if a valid email was already entered."
-        },
-        {
-          "step_number": 6,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Choose how you want to receive your funds.",
-          "notes": "Select from three options: (1) Lump Sum Cash Distribution, (2) Full Rollover to an IRA or qualified plan, or (3) Partial Rollover plus Partial Cash. For wires, understand that a non-refundable fee applies and you must provide exact instructions to avoid rejects."
-        },
-        {
-          "step_number": 7,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Enter delivery details for your chosen option.",
-          "notes": "For checks, provide your mailing address and any additional tax withholding if offered. For wires, provide required routing and account numbers and any sub-account or IRA number. For rollovers, supply the receiving institution name and your IRA or account number as applicable."
-        },
-        {
-          "step_number": 8,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Review fees, tax withholding, and instructions, then submit your request.",
-          "notes": "Confirm your distribution type, delivery details, and tax withholding elections. Check that you understand the $75 distribution fee and any additional $35 wire fee. When ready, click Submit. A confirmation screen will summarize your selections, and a none label in the email confirmation area can be ignored if an email was entered earlier."
-        },
-        {
-          "step_number": 9,
-          "type": "participant-facing",
-          "visibility": "both",
-          "description": "Monitor processing and delivery timelines.",
-          "notes": "ForUsAll generally reviews your request within about two business days. After approval, checks usually arrive in about 2–3 weeks via USPS and wires typically complete in about 1–2 weeks depending on the receiving institution."
-        }
-      ],
-      "common_issues": [
-        {
-          "issue": "The participant termination date value is Null or Empty in the Internal notes.",
-          "resolution": "Confirm the participant mentioned in the ticket that they are no longer employed by the company. If that's the case, ask the participant to submit the request the next business day through the Portal. But if the participant is still employed, they would not be able to request a Separation of Service Distribution. Instead, offer the participant to request a hardship distribution or a loan. Don't proceed with the flow if the participant is still employed." 
-        },
-        {
-          "issue": "The participant has a termination date but the eligibility status is not terminated in the Internal notes",
-          "resolution": "Validate in the Internal notes section of the DevRev Ticket if with the employment period information that we have (hire date, termination date, rehire date) and the last payroll date, we can conclude that the participant's eligibility status must be terminated. If with that information, eligibility status should be terminated, create a note in the DevRev ticket for a Participant Advisory Associate to update the participant's eligibility status to terminated, update the participant's profile accordignly, and direct the participant to submit the request the next business day through the Portal; if the eligibility should be active, confirm the participant mentioned in the ticket that they are no longer employed by the company. If that's the case, create a note in the DevRev ticket for a Participant Advisory Associate to confirm the termination date in the payroll system or with the Plan Sponsor, update the participant's profile accordignly, and direct the participant to submit the request the next business day through the Portal. If the participant is still employed, they would not be able to request a Separation of Service Distribution. Instead, offer the participant to request a hardship distribution or a loan."
-        },
-        {
-          "issue": "Participant cannot log in or access the portal and MFA is enrolled.",
-          "resolution": "Have the participant confirm they are using the correct portal URL and try resetting credentials. If access remains blocked, advise them that they can request a RightSignature Electronic Form as a backup method to submit the distribution request."
-        },
-        {
-          "issue": "Participant cannot log in or access the portal and MFA is NOT enrolled.",
-          "resolution": "pending"
-        },
-        {
-          "issue": "Separation of Service reason is not listed in the portal.",
-          "resolution": "Instruct the participant to select Default and proceed. If they are unsure whether their termination date has been recorded, advise them to contact ForUsAll Support to confirm that their employment status has been updated before continuing."
-        },
-        {
-          "issue": "Vesting percentage appears incorrect to the participant.",
-          "resolution": "Advise the participant to pause the distribution request and contact ForUsAll Support to review vesting records. Remind them that only vested amounts are eligible for distribution."
-        },
-        {
-          "issue": "Wire transfer is rejected or returned by the receiving institution.",
-          "resolution": "Have the participant verify all wire details, including name, routing or ABA number, account number, receiving institution, and any sub-account or IRA number. Once corrected, they can resubmit the wire request. Explain that the wire fee is non-refundable and a returned wire may be converted to a mailed check."
-        },
-        {
-          "issue": "Email confirmation section shows none on the confirmation screen.",
-          "resolution": "Explain that this can be a known display issue. If the participant entered a valid email in the Email Confirmation Information section earlier, they can ignore the none label."
-        },
-        {
-          "issue": "Participant has not received a distribution check after the expected timeframe.",
-          "resolution": "Ask the participant to allow about 2–3 weeks from approval for USPS delivery. If the check is still not received after that, confirm the mailing address and request a status check or reissue through ForUsAll Support."
-        },
-        {
-          "issue": "Participant is unsure about the tax impact of a cash distribution.",
-          "resolution": "Remind the participant that a 20% federal withholding applies to cash distributions and state withholding may also apply, and that the distribution is taxable income in the processing year. Recommend that they consult a tax professional for advice on their specific situation."
-        }
-      ],
-      "examples": [
-        {
-          "scenario": "A participant wants a taxable cash payout to their personal bank via wire after leaving the employer.",
-          "outcome": "Guide them to choose the Lump Sum Cash Distribution option and then select Wire. They should enter their personal name, routing number, account number, bank name, and mailing address. Inform them that a $75 distribution fee plus a $35 wire fee will apply and that 20% federal withholding (and possible state withholding) will be taken from the cash distribution."
-        },
-        {
-          "scenario": "A participant wants to roll 100% of their balance to a Traditional IRA at Fidelity.",
-          "outcome": "Have them choose the Full Rollover option and select either Check or Wire. For a wire, they should set the bank account name to the receiving institution, provide routing and account numbers, and include the IRA sub-account number. Explain that if the wire is returned, a rollover check will be mailed instead."
-        },
-        {
-          "scenario": "A participant wants to send 60% of their balance to an IRA and receive 40% as cash.",
-          "outcome": "Instruct them to choose the Partial Rollover plus Partial Cash option and specify the split (such as 60% rollover and 40% cash or equivalent dollar amounts). They must provide separate delivery details for the rollover portion and the cash portion, including any wire or check instructions."
-        },
-        {
-          "scenario": "A participant sees an 80% vesting percentage but believes they should be 100% vested.",
-          "outcome": "Advise them to stop the distribution request and contact ForUsAll Support to review vesting records. Explain that only the vested portion of their account is eligible for distribution until the vesting issue is resolved."
-        }
-      ],
-      "additional_notes": [
-        {
-          "category": "fees",
-          "notes": [
-            "A $75 distribution fee applies to all termination distribution requests processed through this flow.",
-            "Choosing a wire transfer adds a $35 wire fee, which is non-refundable even if the wire is returned.",
-            "Returned wires may be converted into mailed checks as part of the resolution."
-          ]
-        },
-        {
-          "category": "processing_times",
-          "notes": [
-            "ForUsAll generally reviews distribution requests within about two business days.",
-            "Once approved, checks are typically delivered in about 2–3 weeks via USPS.",
-            "Once approved, wires typically complete in about 1–2 weeks, depending on the receiving institution.",
-            "The RightSignature Electronic Form path is usually slower than submitting through the portal."
-          ]
-        },
-        {
-          "category": "tax_details",
-          "notes": [
-            "Cash distributions are subject to 20% mandatory federal withholding, and state withholding may also apply.",
-            "Distributions are reported as taxable income in the calendar year in which they are processed.",
-            "Participants should be encouraged to consult a tax professional about how a distribution or rollover affects their individual tax situation."
-          ]
-        },
-        {
-          "category": "general_guidance",
-          "notes": [
-            "Direction of funds is from the ForUsAll-administered plan out to the participant or another institution as a distribution or rollover.",
-            "Wires require exact routing and account details; incomplete or incorrect values are a common cause of delayed or returned transfers.",
-            "The portal displays Traditional and any Roth sources along with vesting percentages so participants can understand what is eligible for distribution.",
-            "Participants should ensure that any receiving account in a rollover can accept the tax character of the funds, such as Roth amounts going to an appropriate Roth-eligible account."
-          ]
-        }
-      ],
-      "faq_pairs": [
-        {
-          "question": "Who can use this process to request a 401(k) distribution?",
-          "answer": "This process is for former employees in a ForUsAll-administered 401(k) plan who are requesting a termination or separation of service distribution after leaving their employer."
-        },
-        {
-          "question": "What types of distribution options are available after separation of service?",
-          "answer": "Participants can choose a lump sum cash distribution, roll 100% of their balance to an IRA or another qualified plan, or split the transaction into a partial rollover and partial cash distribution."
-        },
-        {
-          "question": "What information is needed to complete a termination distribution request?",
-          "answer": "Participants should have portal access, their mailing address, valid email address, banking details for wires, and receiving institution and account information for rollovers, as well as an understanding that only vested balances are eligible."
-        },
-        {
-          "question": "How do fees work for termination distributions?",
-          "answer": "Each termination distribution request has a $75 distribution fee, and if a wire transfer is chosen there is an additional $35 wire fee that is non-refundable, even if the wire is rejected or returned."
-        },
-        {
-          "question": "What if the portal shows my email confirmation as none on the confirmation screen?",
-          "answer": "If you previously entered a valid email in the Email Confirmation Information section, the none label on the confirmation screen can be treated as a display issue and ignored."
-        },
-        {
-          "question": "What should I do if I think my vesting percentage is wrong?",
-          "answer": "You should pause your distribution request and contact ForUsAll Support to review your vesting records, because only vested balances can be distributed."
-        },
-        {
-          "question": "What happens if my wire transfer is rejected or returned?",
-          "answer": "You should verify all wire instructions, including routing and account numbers and any sub-account or IRA number, and correct them before resubmitting. The wire fee is non-refundable, and a returned wire may be converted into a mailed check."
-        },
-        {
-          "question": "Is using the portal the only way to request my distribution?",
-          "answer": "The portal is the preferred and fastest way, but if you cannot use it you can contact ForUsAll to request a RightSignature Electronic Form, which is a slower alternative for submitting your distribution."
-        }
-      ],
-      "definitions": [
-        {
-          "term": "Separation of Service",
-          "definition": "The distribution reason used when a participant has left their employer and is requesting a termination distribution from their 401(k) plan."
-        },
-        {
-          "term": "Lump Sum Cash Distribution",
-          "definition": "A distribution option in which the participant receives their eligible vested balance in cash, subject to required tax withholding."
-        },
-        {
-          "term": "Rollover",
-          "definition": "A distribution option in which the participant directs their eligible balance to be sent to an IRA or another qualified retirement plan instead of taking the funds as cash."
-        },
-        {
-          "term": "RightSignature Electronic Form",
-          "definition": "An electronic form process that participants can use to request a distribution when they cannot use the ForUsAll portal; it is generally slower than submitting the request online."
-        },
-        {
-          "term": "Vesting",
-          "definition": "The portion of a participant's account balance that is owned and eligible for distribution, as displayed by vesting percentages in the portal."
-        }
-      ],
-      "guardrails": {
-        "must_not": [
-          "Must not advise participants to proceed with a distribution if vesting or account sources appear incorrect; instead, instruct them to contact ForUsAll Support first.",
-          "Must not state or imply that the $35 wire fee can be refunded; it is explicitly described as non-refundable.",
-          "Must not guarantee faster processing or delivery than the approximate timelines provided for reviews, checks, and wires.",
-          "Must not provide individualized tax advice; instead, clarify the standard withholding rules and direct participants to consult a tax professional.",
-          "Must not say that the portal is the only way to request a distribution; if portal access is not possible, the RightSignature Electronic Form is available as a backup method. However, it's always better to use the portal if possible."
-        ],
-        "must_do_if_unsure": [
-          "If there is any doubt about a participant's vesting percentage or account sources, escalate to or contact ForUsAll Support for a records review before proceeding with a distribution.",
-          "If the participant's employment status or eligibility for a separation of service distribution is unclear, escalate to confirm termination status in the records.",
-          "If wire instructions appear incomplete, inconsistent, or are repeatedly rejected, escalate to Support to verify the correct format and coordinate with the receiving institution if needed.",
-          "If checks are not delivered within the expected 2–3 week window after approval, escalate to initiate trace or reissue procedures and verify the mailing address.",
-          "If the participant has detailed questions about tax treatment beyond the standard withholding information, advise them to consult a tax professional rather than providing specific tax guidance."
+    ],
+    "plan_specific_guardrails": [
+      "Do not say unvested funds can be distributed; only vested balances are eligible.",
+      "Do not say the wire fee can be refunded; wire fees are non-refundable.",
+      "Do not provide tax advice beyond the stated withholding notes; suggest consulting a tax professional for personal circumstances.",
+      "Do not promise exact delivery dates; use the stated approximate timelines."
+    ],
+    "critical_flags": {
+      "portal_required": false,
+      "mfa_relevant": false,
+      "record_keeper_must_be": "LT Trust"
+    }
+  },
+  "details": {
+    "business_rules": [
+      {
+        "category": "eligibility",
+        "rules": [
+          "The participant must have a Terminated status & Termination date in the system.",
+          "Only vested balances are eligible for distribution.",
+          "If there is a Rehire date in the system, the Termination date must be after or higher than the Rehire date.",
+          "Plan Status in the system must be Active or Pending Termination.",
+          "Not mentioned from the Plan Data, that the plan is in a Blackout period.",
+          "The Participant must have MFA enrolled."
         ]
       },
-      "references": {
-        "participant_portal": "[https://account.forusall.com/login](https://account.forusall.com/login)",
-        "internal_articles": [
-          "How to Log In to the ForUsAll Participant Portal",
-          "Understanding Taxes on 401(k) Distributions",
-          "How to Roll Over to an IRA or New Employer Plan",
-          "Roth vs. Traditional Sources in Distributions"
-        ],
-        "external_links": [
-          "[https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions](https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions)"
-        ],
-        "contact": {
-          "email": "help@forusall.com",
-          "phone": "844-401-2253",
-          "support_hours": "Monday - Friday, 7:00 AM - 5:00 PM Pacific Time"
+      {
+        "category": "fees",
+        "rules": [
+          "A $75 distribution fee applies to all requests.",
+          "No additional charges apply for ACH or Regular Mail Check.",
+          "An additional $35 wire fee applies if a wire or OverNight Check is chosen.",
+          "Wire transfer and OverNight Check fees are non-refundable."
+        ]
+      },
+      {
+        "category": "tax_withholding",
+        "rules": [
+          "For cash distributions, 20% federal MANDATORY withholding applies.",
+          "State withholding may also apply (Subject to the state's tax laws).",
+          "Cash distributions are taxable income for the calendar year processed."
+        ]
+      },
+      {
+        "category": "submission_method",
+        "rules": [
+          "Submitting through the participant portal is the preferred and fastest route.",
+          "If portal access is not possible, the participant can request a RightSignature electronic form as a slower secondary option."
+        ]
+      },
+      {
+        "category": "delivery",
+        "rules": [
+          "Checks are sent via USPS or UPS.",
+          "Wires require exact instructions to avoid rejections and returns.",
+          "A returned wire may be converted to a mailed check."
+        ]
+      }
+    ],
+    "fees": [
+      {
+        "service": "Distribution request",
+        "fee": "$75",
+        "notes": "Applies to all requests."
+      },
+      {
+        "service": "Wire delivery",
+        "fee": "$35",
+        "notes": "Applies in addition to the Distribution request fee if a wire is chosen; non-refundable."
+      },
+      {
+        "service": "OverNight Check delivery",
+        "fee": "$35",
+        "notes": "Applies in addition to the Distribution request fee if an OverNight Check is chosen; non-refundable."
+      }
+    ],
+    "steps": [
+      {
+        "step_number": 1,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Log in to the ForUsAll 401(k) participant portal and open the Loans & Distributions area from the dashboard.",
+        "notes": "Portal submission is the fastest route. Use the portal login URL provided in references."
+      },
+      {
+        "step_number": 2,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Select a distribution reason for the request.",
+        "notes": "Choose Separation of Service. If Separation of Service is unavailable, choose Default and continue."
+      },
+      {
+        "step_number": 3,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Review account sources and vesting before continuing.",
+        "notes": "The portal shows Traditional and any Roth sources and vesting percentages. Only vested balances are eligible. If vesting looks incorrect, contact ForUsAll Support before submitting."
+      },
+      {
+        "step_number": 4,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Enter email confirmation information.",
+        "notes": "Expand Email Confirmation Information and enter at least one valid email address for updates or inquiries."
+      },
+      {
+        "step_number": 5,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Choose the distribution type and how funds will be delivered.",
+        "notes": "Options include lump sum cash distribution, full rollover to an IRA or qualified plan, or partial rollover plus partial cash. For cash distributions, 20% federal withholding applies and state withholding may apply. If choosing a wire, ensure instructions are exact; wire fees are non-refundable."
+      },
+      {
+        "step_number": 6,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Provide delivery details for the chosen option.",
+        "notes": "For checks, provide a mailing address and (for cash) any additional withholding if selected. For wires, provide required routing and account details. For rollovers, provide the receiving institution information and IRA or sub-account number if applicable."
+      },
+      {
+        "step_number": 7,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Review elections and submit the request in the portal.",
+        "notes": "Confirm distribution elections, tax withholding, and delivery method, then submit. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored."
+      },
+      {
+        "step_number": 8,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Track review, processing, and delivery timelines after submission.",
+        "notes": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+      },
+      {
+        "step_number": 9,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "If the portal cannot be used, request a RightSignature electronic form from ForUsAll Support.",
+        "notes": "This is a secondary and usually slower option than submitting online."
+      }
+    ],
+    "common_issues": [
+      {
+        "issue": "Cannot log in or access the participant portal.",
+        "resolution": "Confirm the correct portal URL and reset credentials if needed. If access remains blocked, request the RightSignature electronic form from ForUsAll Support."
+      },
+      {
+        "issue": "Separation of Service reason is not listed.",
+        "resolution": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support to confirm employment status updates."
+      },
+      {
+        "issue": "Vesting percentage appears incorrect.",
+        "resolution": "Do not submit the distribution request yet. Contact ForUsAll Support to review vesting records before proceeding."
+      },
+      {
+        "issue": "Wire transfer is rejected or returned.",
+        "resolution": "Verify all wire fields (name, routing or ABA, account number, receiving institution, sub-account or IRA number). Correct the details and resubmit. The wire fee is non-refundable, and a returned wire may be converted to a mailed check."
+      },
+      {
+        "issue": "Email confirmation shows 'none' on the confirmation screen.",
+        "resolution": "This is a known display issue. If a valid email was entered in the Email Confirmation Information section, the 'none' label can be ignored."
+      },
+      {
+        "issue": "Check not received after the expected timeframe.",
+        "resolution": "Allow about 2–3 weeks from approval for USPS delivery. If overdue, confirm the mailing address and contact ForUsAll Support for a status update."
+      },
+      {
+        "issue": "Participant is unsure about taxes for a cash distribution.",
+        "resolution": "Explain that 20% federal withholding applies and state withholding may also apply, and that the distribution is taxable income for the calendar year processed. Recommend consulting a tax professional for personal circumstances."
+      }
+    ],
+    "examples": [
+      {
+        "scenario": "Participant wants a taxable cash payout to a personal bank via wire.",
+        "outcome": "Use Lump Sum Cash Distribution with wire delivery. Provide complete bank routing and account details and a mailing address. Expect a $75 distribution fee plus a $35 wire fee, and 20% federal withholding (plus any applicable state withholding)."
+      },
+      {
+        "scenario": "Participant wants to roll 100% to a Traditional IRA at Fidelity.",
+        "outcome": "Use Full Rollover with check or wire delivery. If using a wire, list the receiving institution as the bank account name and include routing and account details and the IRA sub-account number. If a wire returns, a rollover check may be mailed instead."
+      },
+      {
+        "scenario": "Participant wants to split 60% to an IRA and 40% as cash.",
+        "outcome": "Use Partial Rollover plus Partial Cash and provide delivery instructions for each portion by percentage or dollar amount, including separate check or wire details as needed."
+      },
+      {
+        "scenario": "Vesting shows 80% but the participant expected 100%.",
+        "outcome": "Do not proceed with submission until vesting is reviewed. Only vested amounts are eligible, so the participant should contact ForUsAll Support to review vesting."
+      }
+    ],
+    "additional_notes": [
+      {
+        "category": "processing_times",
+        "notes": [
+          "ForUsAll reviews distribution requests within about two business days.",
+          "Checks typically arrive in about 2–3 weeks after approval via USPS.",
+          "Wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+        ]
+      },
+      {
+        "category": "fees",
+        "notes": [
+          "A $75 distribution fee applies to all requests.",
+          "An additional $35 wire fee applies if a wire is chosen and is non-refundable."
+        ]
+      },
+      {
+        "category": "taxes",
+        "notes": [
+          "For cash distributions, 20% mandatory federal withholding applies and state withholding may also apply.",
+          "Cash distributions are taxable income for the calendar year processed."
+        ]
+      },
+      {
+        "category": "roth_and_traditional_sources",
+        "notes": [
+          "The portal displays Traditional and any Roth sources.",
+          "Ensure the receiving account accepts the tax character of the funds (for example, Roth IRA for Roth amounts)."
+        ]
+      },
+      {
+        "category": "alternate_submission_method",
+        "notes": [
+          "If portal access is not possible, a RightSignature electronic form can be requested from ForUsAll Support and is typically slower than portal submission."
+        ]
+      }
+    ],
+    "faq_pairs": [
+      {
+        "question": "Where do the funds go in a termination distribution or rollover?",
+        "answer": "Funds move from the ForUsAll plan out to the participant or another institution as a distribution or outgoing rollover."
+      },
+      {
+        "question": "What should I do if Separation of Service is not available as a reason?",
+        "answer": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support to confirm employment status updates."
+      },
+      {
+        "question": "What is the known 'none' email confirmation issue on the confirmation screen?",
+        "answer": "It is a display issue. If a valid email was entered in the Email Confirmation Information section, the 'none' label on the confirmation screen can be ignored."
+      },
+      {
+        "question": "What are the delivery timelines for checks and wires?",
+        "answer": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS, and wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+      },
+      {
+        "question": "What taxes apply to a cash distribution?",
+        "answer": "A 20% federal withholding applies and state withholding may also apply. The distribution is taxable income for the calendar year processed."
+      }
+    ],
+    "definitions": [
+      {
+        "term": "Separation of Service",
+        "definition": "A distribution reason used when a participant has left their employer and is requesting a termination distribution."
+      },
+      {
+        "term": "Cash distribution",
+        "definition": "A payment to the participant that is taxable and subject to required withholding."
+      },
+      {
+        "term": "Rollover",
+        "definition": "A distribution sent to an IRA or qualified plan instead of being paid directly to the participant."
+      },
+      {
+        "term": "Vested balance",
+        "definition": "The portion of the account balance that is eligible for distribution based on vesting percentage."
+      },
+      {
+        "term": "RightSignature electronic form",
+        "definition": "An electronic form used to request a distribution when portal submission is not possible."
+      }
+    ],
+    "guardrails": {
+      "must_not": [
+        "Do not state that unvested funds can be distributed; only vested balances are eligible.",
+        "Do not promise exact delivery dates; use the stated approximate timelines only.",
+        "Do not guarantee whether state withholding will apply or specify state withholding amounts.",
+        "Do not claim the wire fee can be refunded; the wire fee is non-refundable.",
+        "Do not claim where or how to access any document other than the portal URL and contact methods explicitly provided."
+      ],
+      "must_do_if_unsure": [
+        "Advise the participant to contact ForUsAll Support if vesting percentages or account sources appear incorrect.",
+        "Advise the participant to contact ForUsAll Support if portal access issues prevent online submission.",
+        "Advise the participant to contact ForUsAll Support if employment separation status appears uncertain or not reflected in the portal options.",
+        "Advise the participant to verify wire instructions with the receiving institution if a wire is rejected or returned."
+      ]
+    },
+    "references": {
+      "participant_portal": "[https://account.forusall.com/login](https://account.forusall.com/login)",
+      "internal_articles": [
+        "How to Log In to the ForUsAll Participant Portal",
+        "Understanding Taxes on 401(k) Distributions",
+        "How to Roll Over to an IRA or New Employer Plan",
+        "Roth vs. Traditional Sources in Distributions"
+      ],
+      "external_links": [
+        "[https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions](https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions)"
+      ],
+      "contact": {
+        "email": "[help@forusall.com](mailto:help@forusall.com)",
+        "phone": "844-401-2253",
+        "support_hours": "Mon-Fri, 07:00-17:00 America/Los_Angeles"
+      }
+    },
+    "required_data": {
+      "must_have": [
+        {
+          "data_point": "Confirmation participant has left their employer",
+          "meaning": "The participant confirms they are separated from service and are requesting a termination distribution.",
+          "example_values": [
+            "I have left my employer and want to withdraw my 401(k).",
+            "I separated from my employer and want to roll over my balance."
+          ],
+          "why_needed": "Determines that the request is a termination or separation distribution covered by this process.",
+          "source_note": "Supported by article section: Prerequisites",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Requested transaction type",
+          "meaning": "Whether the participant wants a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash.",
+          "example_values": [
+            "Lump Sum Cash Distribution",
+            "Full Rollover",
+            "Partial Rollover + Partial Cash"
+          ],
+          "why_needed": "Determines which portal options and delivery details are required.",
+          "source_note": "Supported by article section: Step 5",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Email address for confirmations",
+          "meaning": "At least one valid email address used for confirmation updates or inquiries during processing.",
+          "example_values": ["A valid email address stated by the participant"],
+          "why_needed": "Required by the portal submission flow to receive updates or inquiries.",
+          "source_note": "Supported by article section: Step 4",
+          "source_type": "agent_input"
+        },
+        {
+          "data_point": "Mailing address",
+          "meaning": "The postal mailing address used for check delivery and contact.",
+          "example_values": ["A mailing address stated by the participant"],
+          "why_needed": "Needed for check delivery and participant contact.",
+          "source_note": "Supported by article section: Prerequisites and Step 6",
+          "source_type": "agent_input"
+        },
+        {
+          "data_point": "Rollover receiving institution details",
+          "meaning": "Receiving institution information for an IRA or new employer plan, including an IRA or account number if applicable.",
+          "example_values": [
+            "Receiving institution details stated in this article",
+            "An IRA or account number stated by the participant if applicable"
+          ],
+          "why_needed": "Required to complete a rollover delivery section in the portal or on the electronic form.",
+          "source_note": "Supported by article section: Prerequisites and Step 6",
+          "source_type": "agent_input"
+        },
+        {
+          "data_point": "Wire instructions",
+          "meaning": "Complete and accurate wire routing and account details exactly as required by the receiving institution.",
+          "example_values": [
+            "Routing or ABA number",
+            "Account number",
+            "Receiving institution name",
+            "Account name as required by the receiving institution"
+          ],
+          "why_needed": "Required to deliver funds by wire and to avoid wire rejections or returns; wire fees are non-refundable.",
+          "source_note": "Supported by article section: Prerequisites, Step 5, Step 6, and Common Issues",
+          "source_type": "agent_input"
         }
+      ],
+      "nice_to_have": [
+        {
+          "data_point": "Confirmation of portal access",
+          "meaning": "Whether the participant can access the participant portal to submit the request online.",
+          "example_values": [
+            "Yes, I can log in to the portal.",
+            "No, I cannot access the portal."
+          ],
+          "why_needed": "Determines whether to guide the participant through portal submission or to use the RightSignature electronic form path.",
+          "source_note": "Supported by article section: Prerequisites and Step 9",
+          "source_type": "agent_input"
+        },
+        {
+          "data_point": "Cash distribution withholding preferences beyond mandatory federal withholding",
+          "meaning": "Any optional additional withholding preferences for cash distributions beyond the stated required federal withholding.",
+          "example_values": [
+            "Optional additional withholding preference stated by the participant"
+          ],
+          "why_needed": "Used when completing cash distribution details in the portal.",
+          "source_note": "Supported by article section: Step 6",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Roth and Traditional source awareness",
+          "meaning": "Awareness of whether funds are from Traditional and or Roth sources so the rollover destination can accept the tax character.",
+          "example_values": ["Traditional source", "Roth source"],
+          "why_needed": "Helps ensure rollover destination aligns with the tax character of the funds when applicable.",
+          "source_note": "Supported by article section: Step 3 and Additional Notes",
+          "source_type": "participant_profile"
+        }
+      ],
+      "if_missing": [
+        {
+          "missing_data_point": "Requested transaction type",
+          "ask_participant": "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?",
+          "agent_note": "Do not describe delivery requirements until the transaction type is confirmed."
+        },
+        {
+          "missing_data_point": "Email address for confirmations",
+          "ask_participant": "What is at least one email address you want to use for confirmation updates on this distribution request?",
+          "agent_note": "Portal submission requires an email address for updates or inquiries."
+        },
+        {
+          "missing_data_point": "Mailing address",
+          "ask_participant": "What is your current mailing address for check delivery and contact?",
+          "agent_note": "Do not confirm check delivery details without a mailing address."
+        },
+        {
+          "missing_data_point": "Rollover receiving institution details",
+          "ask_participant": "For the rollover, what is the receiving institution and, if applicable, your IRA or account number?",
+          "agent_note": "Do not confirm a rollover can be completed without receiving institution details."
+        },
+        {
+          "missing_data_point": "Wire instructions",
+          "ask_participant": "If you want delivery by wire, please provide the receiving bank name, routing or ABA number, account number, and the exact account name required by the bank.",
+          "agent_note": "Wires require exact instructions; mismatches commonly cause rejections and the wire fee is non-refundable."
+        }
+      ],
+      "disambiguation_notes": [
+        "If Separation of Service is not available as a reason in the portal, the article instructs using Default and continuing.",
+        "If the participant is unsure whether separation is recorded or reflected in the portal options, the article directs contacting ForUsAll Support to confirm employment status updates.",
+        "Only vested balances are eligible; if vesting percentages appear incorrect, the article directs contacting ForUsAll Support before submitting."
+      ]
+    },
+    "decision_guide": {
+      "supported_outcomes": [
+        "can_proceed",
+        "blocked_missing_data",
+        "blocked_not_eligible",
+        "ambiguous_plan_rules"
+      ],
+      "eligibility_requirements": [
+        "Participant is requesting a termination or separation distribution after leaving their employer.",
+        "Only vested balances are eligible for distribution."
+      ],
+      "blocking_conditions": [],
+      "missing_data_conditions": [
+        {
+          "condition": "The participant has not stated whether they want cash, rollover, or a split transaction.",
+          "missing_data_point": "Requested transaction type",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?"
+        },
+        {
+          "condition": "An email address for confirmation updates is not available.",
+          "missing_data_point": "Email address for confirmations",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "What is at least one email address you want to use for confirmation updates on this distribution request?"
+        },
+        {
+          "condition": "A mailing address is not available and a check may be used for delivery.",
+          "missing_data_point": "Mailing address",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "What is your current mailing address for check delivery and contact?"
+        },
+        {
+          "condition": "A rollover is requested but receiving institution details are not available.",
+          "missing_data_point": "Rollover receiving institution details",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "For the rollover, what is the receiving institution and, if applicable, your IRA or account number?"
+        },
+        {
+          "condition": "A wire is requested but complete wire instructions are not available.",
+          "missing_data_point": "Wire instructions",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "If you want delivery by wire, please provide the receiving bank name, routing or ABA number, account number, and the exact account name required by the bank."
+        }
+      ],
+      "allowed_conclusions": [
+        "The participant can submit a termination distribution request through the participant portal using Loans & Distributions.",
+        "If Separation of Service is not available as a reason, the participant can choose Default and continue.",
+        "Only vested balances are eligible for distribution.",
+        "A $75 distribution fee applies to all requests, and an additional $35 wire fee applies if a wire is chosen.",
+        "For cash distributions, 20% federal withholding applies and state withholding may apply.",
+        "If the participant cannot use the portal, they can request a RightSignature electronic form from ForUsAll Support."
+      ],
+      "not_allowed_conclusions": [
+        "Do not claim unvested funds are eligible for distribution.",
+        "Do not promise exact delivery dates or guaranteed processing times.",
+        "Do not claim the wire fee is refundable.",
+        "Do not provide individualized tax advice beyond the stated withholding information."
+      ]
+    },
+    "response_frames": {
+      "can_proceed": {
+        "participant_message_components": [
+          "You can request a termination distribution in the ForUsAll participant portal under Loans & Distributions.",
+          "Select Separation of Service as the reason (or Default if Separation of Service is not listed).",
+          "Review your sources and vesting; only vested balances are eligible.",
+          "Choose cash, rollover, or a split and then enter your delivery details and email confirmation information."
+        ],
+        "next_steps": [
+          "Guide the participant through the portal steps and confirm they have the required delivery details for their chosen method.",
+          "Remind the participant of the applicable fees and, if cash is selected, the required withholding notes.",
+          "Share the approximate review and delivery timelines stated in the article."
+        ],
+        "warnings": [
+          "For cash distributions, 20% federal withholding applies and state withholding may apply.",
+          "Wire fees are non-refundable and wire instructions must be exact to avoid rejections."
+        ],
+        "questions_to_ask": [],
+        "what_not_to_say": [
+          "Do not promise exact delivery dates.",
+          "Do not state that the wire fee can be refunded.",
+          "Do not state that unvested funds can be distributed."
+        ]
+      },
+      "blocked_missing_data": {
+        "participant_message_components": [
+          "To guide you through the request, I need a few details about the type of distribution and delivery method you want.",
+          "You can submit through the portal under Loans & Distributions, or request a RightSignature electronic form if you cannot access the portal."
+        ],
+        "next_steps": [
+          "Collect the missing details required for the participant's selected option (cash, rollover, or split) and delivery method (check or wire).",
+          "Once the missing details are available, provide the portal steps and the required entries for the chosen method."
+        ],
+        "warnings": [
+          "Wire instructions must be exact and the wire fee is non-refundable."
+        ],
+        "questions_to_ask": [
+          "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?",
+          "What is at least one email address you want to use for confirmation updates?",
+          "What is your current mailing address for check delivery and contact?",
+          "If you are rolling over funds, what is the receiving institution and, if applicable, your IRA or account number?",
+          "If you want delivery by wire, what are the receiving bank name, routing or ABA number, account number, and the exact account name required by the bank?"
+        ],
+        "what_not_to_say": [
+          "Do not confirm the request can be completed without the missing delivery details.",
+          "Do not promise exact delivery dates."
+        ]
+      },
+      "blocked_not_eligible": {
+        "participant_message_components": [
+          "Only vested balances are eligible for distribution."
+        ],
+        "next_steps": [
+          "Have the participant review vesting in the portal before submitting.",
+          "If vesting appears incorrect, advise contacting ForUsAll Support to review vesting records before proceeding."
+        ],
+        "warnings": [],
+        "questions_to_ask": [],
+        "what_not_to_say": [
+          "Do not state that unvested amounts can be distributed."
+        ]
+      },
+      "ambiguous_plan_rules": {
+        "participant_message_components": [
+          "If the Separation of Service option is not available, the article directs choosing Default and continuing.",
+          "If there is uncertainty about whether separation is recorded or about vesting or sources, the article directs contacting ForUsAll Support for confirmation before proceeding."
+        ],
+        "next_steps": [
+          "Have the participant proceed with Default if Separation of Service is unavailable, or contact ForUsAll Support if separation status is uncertain.",
+          "If vesting or sources appear incorrect, have the participant contact ForUsAll Support before submitting."
+        ],
+        "warnings": [],
+        "questions_to_ask": [
+          "Is Separation of Service available in the portal, or are you seeing only Default?",
+          "Does the vesting percentage in the portal match what you expect?"
+        ],
+        "what_not_to_say": [
+          "Do not claim separation status or vesting is correct if the participant reports it appears incorrect.",
+          "Do not promise outcomes or timelines beyond the article."
+        ]
       }
     }
   }
+}

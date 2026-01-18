@@ -1,0 +1,19 @@
+{
+  "inquiry": "How do I complete a rollover of my remaining balance?",
+  "record_keeper": "LT Trust",
+  "plan_type": "401(k)",
+  "topic": "rollover",
+  "collected_data": {
+    "participant_data": {
+      "current_balance": "$1,993.84",
+      "employment_status": "Terminated",
+      "receiving_institution": "Fidelity"
+    },
+    "plan_data": {
+      "rollover_method": "Direct rollover available",
+      "processing_time": "7-10 business days"
+    }
+  },
+  "max_response_tokens": 1500,
+  "total_inquiries_in_ticket": 2
+}

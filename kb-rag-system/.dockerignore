@@ -1,0 +1,52 @@
+# Git
+.git
+.gitignore
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.so
+*.egg
+*.egg-info
+dist
+build
+venv/
+env/
+.venv
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+
+# Testing
+.pytest_cache
+.coverage
+htmlcov/
+*.log
+
+# Documentation
+*.md
+docs/
+
+# Development
+Makefile
+docker-compose.yml
+
+# Data files
+*.json
+!package.json
+
+# OS
+.DS_Store
+Thumbs.db

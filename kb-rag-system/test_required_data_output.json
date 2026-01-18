@@ -1,0 +1,89 @@
+{
+  "article_reference": {
+    "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+    "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+    "confidence": 0.343
+  },
+  "required_fields": {
+    "participant_data": [
+      {
+        "field": "Confirmation participant has left their employer",
+        "description": "The participant confirms they are separated from service and are requesting a termination distribution.",
+        "why_needed": "Determines that the request is a termination or separation distribution covered by this process.",
+        "data_type": "text",
+        "required": true
+      },
+      {
+        "field": "Requested transaction type",
+        "description": "Whether the participant wants a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash.",
+        "why_needed": "Determines which portal options and delivery details are required.",
+        "data_type": "text",
+        "required": true
+      },
+      {
+        "field": "Email address for confirmations",
+        "description": "At least one valid email address used for confirmation updates or inquiries during processing.",
+        "why_needed": "Required by the portal submission flow to receive updates or inquiries.",
+        "data_type": "text",
+        "required": true
+      },
+      {
+        "field": "Mailing address",
+        "description": "The postal mailing address used for check delivery and contact.",
+        "why_needed": "Needed for check delivery and participant contact.",
+        "data_type": "text",
+        "required": true
+      },
+      {
+        "field": "Rollover receiving institution details",
+        "description": "Receiving institution information for an IRA or new employer plan, including an IRA or account number if applicable.",
+        "why_needed": "Required to complete a rollover delivery section in the portal or on the electronic form.",
+        "data_type": "text",
+        "required": true
+      }
+    ],
+    "plan_data": [
+      {
+        "field": "Plan Status",
+        "description": "The current status of the plan, which must be Active or Pending Termination.",
+        "why_needed": "To ensure the plan is eligible for distribution.",
+        "data_type": "text",
+        "required": true
+      },
+      {
+        "field": "Participant Termination status",
+        "description": "The employment status of the participant, which must be Terminated.",
+        "why_needed": "To confirm eligibility for distribution.",
+        "data_type": "boolean",
+        "required": true
+      },
+      {
+        "field": "Participant Termination date",
+        "description": "The date the participant's employment was terminated.",
+        "why_needed": "To verify eligibility based on termination date.",
+        "data_type": "date",
+        "required": true
+      },
+      {
+        "field": "Participant Rehire date",
+        "description": "The date the participant was rehired, if applicable.",
+        "why_needed": "To ensure the termination date is after the rehire date for eligibility.",
+        "data_type": "date",
+        "required": false
+      },
+      {
+        "field": "Participant MFA enrollment",
+        "description": "Whether the participant is enrolled in Multi-Factor Authentication.",
+        "why_needed": "To confirm security requirements for processing the request.",
+        "data_type": "boolean",
+        "required": true
+      }
+    ]
+  },
+  "confidence": 0.343,
+  "metadata": {
+    "chunks_used": 7,
+    "tokens_used": 1312,
+    "model": "gpt-4o-mini"
+  }
+}

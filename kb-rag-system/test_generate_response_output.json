@@ -1,0 +1,62 @@
+{
+  "decision": "uncertain",
+  "confidence": 0.531,
+  "response": {
+    "sections": [
+      {
+        "topic": "rollover_process",
+        "answer_components": [
+          "Confirm your separation from your employer.",
+          "Provide the necessary details for the rollover."
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "action": "Confirm your separation from your employer and specify the rollover type.",
+            "note": "You have already confirmed your employment status as terminated."
+          },
+          {
+            "step_number": 2,
+            "action": "Provide your receiving institution details.",
+            "note": "You mentioned Fidelity as your receiving institution."
+          },
+          {
+            "step_number": 3,
+            "action": "Submit your rollover request through the participant portal or via the RightSignature electronic form.",
+            "note": "Ensure you have access to the portal or follow the electronic form process."
+          }
+        ],
+        "warnings": [
+          "Ensure all information provided is accurate to avoid delays.",
+          "If you choose a wire transfer, incorrect bank details may result in non-refundable wire fees."
+        ],
+        "outcomes": [
+          "Your rollover request will be processed within 7-10 business days.",
+          "You will receive confirmation updates via email once your request is submitted."
+        ]
+      }
+    ],
+    "guardrails_applied": [
+      "Avoided providing specific financial advice.",
+      "Did not assume any additional information beyond what was provided."
+    ],
+    "data_gaps": [
+      "Missing email address for confirmations.",
+      "Missing mailing address for check delivery and contact."
+    ]
+  },
+  "guardrails": {
+    "must_not_say": [
+      "Avoided providing specific financial advice.",
+      "Did not assume any additional information beyond what was provided."
+    ],
+    "must_verify": []
+  },
+  "metadata": {
+    "chunks_used": 1,
+    "context_tokens": 890,
+    "response_tokens": 334,
+    "model": "gpt-4o-mini",
+    "total_inquiries": 2
+  }
+}

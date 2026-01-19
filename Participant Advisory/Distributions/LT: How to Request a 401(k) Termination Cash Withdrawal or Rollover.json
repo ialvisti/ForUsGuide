@@ -149,94 +149,103 @@
         "step_number": 1,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Log in to the ForUsAll 401(k) participant portal and open the Loans & Distributions area from the dashboard.",
-        "notes": "Portal submission is the fastest route. Use the portal login URL provided in references."
+        "description": "The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.",
+        "notes": "Portal submission is the fastest route. The participant must use the portal login URL provided in references."
       },
       {
         "step_number": 2,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Select a distribution reason for the request.",
-        "notes": "Choose Separation of Service. If Separation of Service is unavailable, choose Default and continue."
+        "description": "The participant must select a distribution reason for the request.",
+        "notes": "The participant must choose Separation of Service. If Separation of Service is unavailable, the participant must choose Default and continue."
       },
       {
         "step_number": 3,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Review account sources and vesting before continuing.",
-        "notes": "The portal shows Traditional and any Roth sources and vesting percentages. Only vested balances are eligible. If vesting looks incorrect, contact ForUsAll Support before submitting."
+        "description": "The participant must review account sources and vesting before continuing.",
+        "notes": "The portal shows Traditional and any Roth sources and vesting percentages. Only vested balances are eligible. If vesting looks incorrect, the participant must contact ForUsAll Support before submitting."
       },
       {
         "step_number": 4,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Enter email confirmation information.",
-        "notes": "Expand Email Confirmation Information and enter at least one valid email address for updates or inquiries."
+        "description": "The participant must enter email confirmation information.",
+        "notes": "The participant must expand Email Confirmation Information and enter at least one valid email address for updates or inquiries."
       },
       {
         "step_number": 5,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Choose the distribution type and how funds will be delivered.",
-        "notes": "Options include lump sum cash distribution, full rollover to an IRA or qualified plan, or partial rollover plus partial cash. For cash distributions, 20% federal withholding applies and state withholding may apply. If choosing a wire, ensure instructions are exact; wire fees are non-refundable."
+        "description": "The participant must choose the distribution type and how funds will be delivered.",
+        "notes": "The participant must choose from the following options: lump sum cash distribution, full rollover to an IRA or qualified plan, or partial rollover plus partial cash."
       },
       {
         "step_number": 6,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Provide delivery details for the chosen option.",
-        "notes": "For checks, provide a mailing address and (for cash) any additional withholding if selected. For wires, provide required routing and account details. For rollovers, provide the receiving institution information and IRA or sub-account number if applicable."
+        "description": "The participant must provide delivery details for the chosen option.",
+        "notes": "For checks, the participant must provide a mailing address and (for cash) any additional withholding if selected. For wires, the participant must provide required routing and account details. For rollovers, the participant must provide the receiving institution information and IRA or sub-account number if applicable."
       },
       {
         "step_number": 7,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Review elections and submit the request in the portal.",
-        "notes": "Confirm distribution elections, tax withholding, and delivery method, then submit. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored."
+        "description": "The participant must review elections and submit the request in the portal.",
+        "notes": "The participant must confirm distribution elections, tax withholding, and delivery method, then submit. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored."
       },
       {
         "step_number": 8,
         "type": "participant-facing",
         "visibility": "both",
-        "description": "Track review, processing, and delivery timelines after submission.",
+        "description": "The participant must track review, processing, and delivery timelines after submission.",
         "notes": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
-      },
-      {
-        "step_number": 9,
-        "type": "participant-facing",
-        "visibility": "both",
-        "description": "If the portal cannot be used, request a RightSignature electronic form from ForUsAll Support.",
-        "notes": "This is a secondary and usually slower option than submitting online."
       }
     ],
     "common_issues": [
       {
-        "issue": "Cannot log in or access the participant portal.",
-        "resolution": "Confirm the correct portal URL and reset credentials if needed. If access remains blocked, request the RightSignature electronic form from ForUsAll Support."
+        "issue": "Cannot log in or access the participant portal due to Participant data 'MFA' is 'not enrolled'.",
+        "resolution": "The participant must enroll MFA in the participant portal. The participant must use the portal login URL provided in references, click on 'New here? Create an Account' and follow the instructions to create an account. The participant must be advised that they must use the email on file to correctly create an account."
       },
       {
-        "issue": "Separation of Service reason is not listed.",
-        "resolution": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support to confirm employment status updates."
+        "issue": "The participant cannot log in or access the participant portal and Participant data 'MFA' is 'enrolled' (Participant doesn't mention they have forgotten their password).",
+        "resolution": "The participant must call the Participant Support team at '844-401-2253' to reset their MFA."
       },
       {
-        "issue": "Vesting percentage appears incorrect.",
+        "issue": "The participant cannot log in or access the participant portal due to Participant have forgotten their password.",
+        "resolution": "The participant must use the portal login URL provided in references, click on 'Forgot your password?' and follow the instructions to reset their password. The participant must be advised that they must use the email on file to correctly reset their password."
+      },
+      {
+        "issue": "The participant cannot log in or access the participant portal due to error '10051'.",
+        "resolution": "Advise the participant to contact ForUsAll Support to confirm their account information."
+      },
+      {
+        "issue": "The Participant mentions that the Separation of Service reason is not listed.",
+        "resolution": "The participant must select Default and proceed. If unsure whether separation is recorded, the Participant must contact ForUsAll Support."
+      },
+      {
+        "issue": "The Participant mentions that the Account Balance is 0.",
+        "resolution": "The Participant must contact ForUsAll Support"
+      },
+      {
+        "issue": "The Participant mentions that the Vesting percentage appears incorrect.",
         "resolution": "Do not submit the distribution request yet. Contact ForUsAll Support to review vesting records before proceeding."
-      },
-      {
-        "issue": "Wire transfer is rejected or returned.",
-        "resolution": "Verify all wire fields (name, routing or ABA, account number, receiving institution, sub-account or IRA number). Correct the details and resubmit. The wire fee is non-refundable, and a returned wire may be converted to a mailed check."
       },
       {
         "issue": "Email confirmation shows 'none' on the confirmation screen.",
         "resolution": "This is a known display issue. If a valid email was entered in the Email Confirmation Information section, the 'none' label can be ignored."
       },
       {
-        "issue": "Check not received after the expected timeframe.",
-        "resolution": "Allow about 2–3 weeks from approval for USPS delivery. If overdue, confirm the mailing address and contact ForUsAll Support for a status update."
+        "issue": "Check or Wirenot received after the expected timeframe.",
+        "resolution": "Allow about 2–3 weeks from approval for processing and delivery times. If overdue, the Participant must contact ForUsAll Support."
       },
       {
-        "issue": "Participant is unsure about taxes for a cash distribution.",
+        "issue": "The Participant is unsure about taxes for a cash distribution.",
         "resolution": "Explain that 20% federal withholding applies and state withholding may also apply, and that the distribution is taxable income for the calendar year processed. Recommend consulting a tax professional for personal circumstances."
+      },
+      {
+        "issue": "The participant has already tried the common troubleshooting steps and is still experiencing issues or the issue mentioned is not listed in the common issues.",
+        "resolution": "Advise the participant to contact ForUsAll Support to resolve the issue."
       }
     ],
     "examples": [
@@ -270,7 +279,7 @@
         "category": "fees",
         "notes": [
           "A $75 distribution fee applies to all requests.",
-          "An additional $35 wire fee applies if a wire is chosen and is non-refundable."
+          "An additional $35 fee applies if a wire or overnight check is chosen and is non-refundable."
         ]
       },
       {
@@ -278,6 +287,12 @@
         "notes": [
           "For cash distributions, 20% mandatory federal withholding applies and state withholding may also apply.",
           "Cash distributions are taxable income for the calendar year processed."
+        ]
+      },
+      {
+        "category": "penalties",
+        "notes": [
+          "An additional 10% early withdrawal penalty applies if the participant is under 59 1/2 years old."
         ]
       },
       {
@@ -301,11 +316,7 @@
       },
       {
         "question": "What should I do if Separation of Service is not available as a reason?",
-        "answer": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support to confirm employment status updates."
-      },
-      {
-        "question": "What is the known 'none' email confirmation issue on the confirmation screen?",
-        "answer": "It is a display issue. If a valid email was entered in the Email Confirmation Information section, the 'none' label on the confirmation screen can be ignored."
+        "answer": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support."
       },
       {
         "question": "What are the delivery timelines for checks and wires?",
@@ -314,6 +325,10 @@
       {
         "question": "What taxes apply to a cash distribution?",
         "answer": "A 20% federal withholding applies and state withholding may also apply. The distribution is taxable income for the calendar year processed."
+      },
+      {
+        "question": "Will ForUsAll help complete all required fields on this form?",
+        "answer": "No. While this is a ForUsAll form, certain required fields must be completed using information provided directly by the other financial institution. ForUsAll is unable to supply or verify information that must come from an external company. If you’re unsure what information is needed, we recommend contacting the advisor or representative at the other institution so they can provide the correct details for you to enter on the form or request."
       }
     ],
     "definitions": [
@@ -336,6 +351,14 @@
       {
         "term": "RightSignature electronic form",
         "definition": "An electronic form used to request a distribution when portal submission is not possible."
+      },
+      {
+        "term": "Tax withholding",
+        "definition": "The amount of tax that is withheld from a cash distribution to the participant."
+      },
+      {
+        "term": "Early withdrawal penalty",
+        "definition": "A penalty that is applied to a distribution if the participant is under 59 1/2 years old."
       }
     ],
     "guardrails": {
@@ -344,87 +367,96 @@
         "Do not promise exact delivery dates; use the stated approximate timelines only.",
         "Do not guarantee whether state withholding will apply or specify state withholding amounts.",
         "Do not claim the wire fee can be refunded; the wire fee is non-refundable.",
-        "Do not claim where or how to access any document other than the portal URL and contact methods explicitly provided."
+        "Do not claim where or how to access any document other than the portal URL and contact methods explicitly provided.",
+        "Do not claim that ForUsAll will help complete all required fields on this form.",
+        "Do not disclose account balances or vesting percentages, or any other sensitive information."
       ],
       "must_do_if_unsure": [
         "Advise the participant to contact ForUsAll Support if vesting percentages or account sources appear incorrect.",
         "Advise the participant to contact ForUsAll Support if portal access issues prevent online submission.",
         "Advise the participant to contact ForUsAll Support if employment separation status appears uncertain or not reflected in the portal options.",
-        "Advise the participant to verify wire instructions with the receiving institution if a wire is rejected or returned."
+        "Advise the participant to contact ForUsAll Support if they are unsure about the information needed to complete the form."
       ]
     },
     "references": {
-      "participant_portal": "[https://account.forusall.com/login](https://account.forusall.com/login)",
+      "participant_portal": "https://account.forusall.com/login",
       "internal_articles": [
-        "How to Log In to the ForUsAll Participant Portal",
-        "Understanding Taxes on 401(k) Distributions",
-        "How to Roll Over to an IRA or New Employer Plan",
-        "Roth vs. Traditional Sources in Distributions"
+        "LT Trust: Understanding Login Error Codes",
+        "LT: Completing Your Rollover Online – Best Practices",
+        "LT: When will I receive my wire transfer, ACH transfer, or check?",
+        "LT: How do I roll over my 401(k) to another retirement account?",
+        "LT: How to Request a Rollover Source Withdrawal from Your 401(k)",
+        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "Distribution Requests for Small Account Balances",
+        "Can I roll over Roth 401(k) funds separately from pre-tax funds?",
+        "What Are the Tax Implications of a Cash Distribution vs a Rollover Distribution?",
+        "Can I take a distribution while employed?",
+        "Can I Split My 401(k) Rollover Between Multiple Providers?",
+        "Can I take a distribution while employed?",
+        "When Will I Receive My 401(k) Withdrawal or Rollover?"
       ],
       "external_links": [
-        "[https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions](https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions)"
+        "https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions"
       ],
       "contact": {
-        "email": "[help@forusall.com](mailto:help@forusall.com)",
+        "email": "help@forusall.com",
         "phone": "844-401-2253",
-        "support_hours": "Mon-Fri, 07:00-17:00 America/Los_Angeles"
+        "support_hours": "Mon-Fri, 07:00-17:00 PST"
       }
     },
     "required_data": {
       "must_have": [
         {
-          "data_point": "Confirmation participant has left their employer",
-          "meaning": "The participant confirms they are separated from service and are requesting a termination distribution.",
+          "data_point": "Termination date",
+          "meaning": "The date the participant terminated their employment.",
           "example_values": [
-            "I have left my employer and want to withdraw my 401(k).",
-            "I separated from my employer and want to roll over my balance."
+            "1700-01-09",
+            "2026-01-09",
+            null
           ],
-          "why_needed": "Determines that the request is a termination or separation distribution covered by this process.",
+          "why_needed": "To verify eligibility for distribution, without a termination date, the participant cannot proceed with the request.",
           "source_note": "Supported by article section: Prerequisites",
-          "source_type": "message_text"
-        },
+          "source_type": "participant_profile"
+        },        
         {
-          "data_point": "Requested transaction type",
-          "meaning": "Whether the participant wants a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash.",
+          "data_point": "Rehire date",
+          "meaning": "The date the participant was rehired.",
           "example_values": [
-            "Lump Sum Cash Distribution",
-            "Full Rollover",
-            "Partial Rollover + Partial Cash"
+            "1700-01-09",
+            "2026-01-09",
+            null
           ],
-          "why_needed": "Determines which portal options and delivery details are required.",
-          "source_note": "Supported by article section: Step 5",
-          "source_type": "message_text"
+          "why_needed": "To verify eligibility for distribution, to be eligible, rehire date must be before to the termination date.",
+          "source_note": "Supported by article section: Prerequisites",
+          "source_type": "participant_profile"
         },
         {
-          "data_point": "Email address for confirmations",
-          "meaning": "At least one valid email address used for confirmation updates or inquiries during processing.",
-          "example_values": ["A valid email address stated by the participant"],
-          "why_needed": "Required by the portal submission flow to receive updates or inquiries.",
-          "source_note": "Supported by article section: Step 4",
-          "source_type": "agent_input"
-        },
-        {
-          "data_point": "Mailing address",
-          "meaning": "The postal mailing address used for check delivery and contact.",
-          "example_values": ["A mailing address stated by the participant"],
-          "why_needed": "Needed for check delivery and participant contact.",
-          "source_note": "Supported by article section: Prerequisites and Step 6",
-          "source_type": "agent_input"
-        },
-        {
-          "data_point": "Rollover receiving institution details",
-          "meaning": "Receiving institution information for an IRA or new employer plan, including an IRA or account number if applicable.",
+          "data_point": "MFA status",
+          "meaning": "The status of the participant's MFA enrollment.",
           "example_values": [
-            "Receiving institution details stated in this article",
-            "An IRA or account number stated by the participant if applicable"
+            "enrolled",
+            "not enrolled"
           ],
-          "why_needed": "Required to complete a rollover delivery section in the portal or on the electronic form.",
-          "source_note": "Supported by article section: Prerequisites and Step 6",
-          "source_type": "agent_input"
+          "why_needed": "To verify access to the participant portal, without a MFA enrollment, the participant cannot proceed with the request since they cannot log in to the portal.",
+          "source_note": "Supported by article section: Prerequisites",
+          "source_type": "participant_profile"
         },
         {
-          "data_point": "Wire instructions",
-          "meaning": "Complete and accurate wire routing and account details exactly as required by the receiving institution.",
+          "data_point": "Account balance",
+          "meaning": "The total balance of the participant's account.",
+          "example_values": [
+            10000.00,
+            0.00,
+            95.23,
+            null
+          ],
+          "why_needed": "To verify eligibility for distribution, the account balance must be greater than 75.00. If the account balance is less than 75.00, the participant cannot proceed with the request since they cannot afford the distribution fee.",
+          "source_note": "Supported by article section: Prerequisites",
+          "source_type": "participant_profile"
+        },
+        {
+          "data_point": "Last Payroll date",
+          "meaning": "The date of the participant's last payroll.",
           "example_values": [
             "Routing or ABA number",
             "Account number",

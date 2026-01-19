@@ -1,0 +1,202 @@
+{
+  "examples": [
+    {
+      "name": "Rollover Request",
+      "description": "Participante quiere hacer rollover a Fidelity",
+      "required_data": {
+        "inquiry": "I want to rollover my 401k to Fidelity",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "rollover"
+      },
+      "generate_response": {
+        "inquiry": "How do I complete a direct rollover to Fidelity?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "rollover",
+        "collected_data": {
+          "participant_data": {
+            "current_balance": "$1,993.84",
+            "employment_status": "Terminated",
+            "receiving_institution": "Fidelity",
+            "email_address": "participant@email.com",
+            "mailing_address": "123 Main St, City, ST 12345"
+          },
+          "plan_data": {
+            "plan_status": "Active",
+            "termination_status": "Terminated",
+            "termination_date": "2024-12-15",
+            "rollover_method": "Direct rollover available",
+            "processing_time": "7-10 business days",
+            "mfa_enrolled": true
+          }
+        },
+        "max_response_tokens": 1500,
+        "total_inquiries_in_ticket": 2
+      }
+    },
+    {
+      "name": "Hardship Withdrawal",
+      "description": "Participante necesita retiro por dificultades financieras",
+      "required_data": {
+        "inquiry": "I need to withdraw money for medical expenses",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "hardship"
+      },
+      "generate_response": {
+        "inquiry": "What documents do I need for a hardship withdrawal?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "hardship",
+        "collected_data": {
+          "participant_data": {
+            "age": 45,
+            "employment_status": "Active",
+            "current_balance": "$25,000.00",
+            "requested_amount": "$5,000.00",
+            "hardship_reason": "Medical expenses"
+          },
+          "plan_data": {
+            "hardship_withdrawal_allowed": true,
+            "required_documentation": ["Medical bills", "Proof of payment"],
+            "processing_time": "5-7 business days"
+          }
+        },
+        "max_response_tokens": 1500,
+        "total_inquiries_in_ticket": 1
+      }
+    },
+    {
+      "name": "Loan Request",
+      "description": "Participante quiere solicitar un préstamo",
+      "required_data": {
+        "inquiry": "Can I take a loan from my 401k?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "loan"
+      },
+      "generate_response": {
+        "inquiry": "How much can I borrow and what are the terms?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "loan",
+        "collected_data": {
+          "participant_data": {
+            "current_balance": "$50,000.00",
+            "employment_status": "Active",
+            "outstanding_loans": 0,
+            "requested_loan_amount": "$10,000.00"
+          },
+          "plan_data": {
+            "loans_allowed": true,
+            "max_loan_amount": "$25,000.00",
+            "max_percentage": "50%",
+            "interest_rate": "Prime + 1%",
+            "repayment_period": "Up to 5 years"
+          }
+        },
+        "max_response_tokens": 1500,
+        "total_inquiries_in_ticket": 1
+      }
+    },
+    {
+      "name": "Distribution at Retirement",
+      "description": "Participante está retirado y quiere distribución",
+      "required_data": {
+        "inquiry": "I'm retired and want to start taking distributions",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "distribution"
+      },
+      "generate_response": {
+        "inquiry": "What distribution options are available to me?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "distribution",
+        "collected_data": {
+          "participant_data": {
+            "age": 68,
+            "employment_status": "Retired",
+            "current_balance": "$100,000.00",
+            "retirement_date": "2023-06-30"
+          },
+          "plan_data": {
+            "distribution_options": ["Lump sum", "Installments", "Annuity"],
+            "rmd_required": true,
+            "processing_time": "7-10 business days"
+          }
+        },
+        "max_response_tokens": 1500,
+        "total_inquiries_in_ticket": 1
+      }
+    },
+    {
+      "name": "Account Balance Inquiry",
+      "description": "Participante quiere saber su balance actual",
+      "required_data": {
+        "inquiry": "What is my current 401k balance?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "balance"
+      },
+      "generate_response": {
+        "inquiry": "Can you provide a breakdown of my account?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "balance",
+        "collected_data": {
+          "participant_data": {
+            "employment_status": "Active"
+          },
+          "plan_data": {
+            "total_balance": "$45,320.50",
+            "employee_contributions": "$30,000.00",
+            "employer_contributions": "$12,000.00",
+            "investment_earnings": "$3,320.50",
+            "vested_percentage": "80%"
+          }
+        },
+        "max_response_tokens": 1000,
+        "total_inquiries_in_ticket": 1
+      }
+    },
+    {
+      "name": "Multiple Inquiries",
+      "description": "Ticket con múltiples preguntas (ejemplo 2 inquiries)",
+      "required_data": {
+        "inquiry": "Can I rollover and also take a loan?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "multiple"
+      },
+      "generate_response": {
+        "inquiry": "What are my options for accessing my funds?",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "topic": "multiple",
+        "collected_data": {
+          "participant_data": {
+            "employment_status": "Active",
+            "current_balance": "$60,000.00",
+            "age": 50
+          },
+          "plan_data": {
+            "loans_allowed": true,
+            "in_service_withdrawals_allowed": false,
+            "rollover_while_employed": false
+          }
+        },
+        "max_response_tokens": 1500,
+        "total_inquiries_in_ticket": 2
+      }
+    }
+  ],
+  "tips": [
+    "Ajusta el 'record_keeper' según el cliente",
+    "El 'topic' ayuda a filtrar artículos relevantes",
+    "Usa 'max_response_tokens' más bajo si hay múltiples inquiries",
+    "El 'total_inquiries_in_ticket' ajusta el token budget automáticamente",
+    "Los campos en 'collected_data' deben coincidir con los 'required_fields' del primer endpoint"
+  ]
+}

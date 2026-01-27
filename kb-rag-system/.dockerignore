@@ -46,6 +46,7 @@ docker-compose.yml
 # Data files
 *.json
 !package.json
+!ui/*.json
 
 # OS
 .DS_Store

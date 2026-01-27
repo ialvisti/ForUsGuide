@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY data_pipeline/ ./data_pipeline/
 COPY api/ ./api/
 COPY scripts/ ./scripts/
+COPY ui/ ./ui/
 
 # Create non-root user
 RUN useradd -m -u 1000 appuser && \

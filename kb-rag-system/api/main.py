@@ -74,7 +74,8 @@ async def lifespan(app: FastAPI):
         rag_engine = RAGEngine(
             openai_api_key=settings.OPENAI_API_KEY,
             model=settings.OPENAI_MODEL,
-            temperature=settings.OPENAI_TEMPERATURE
+            temperature=settings.OPENAI_TEMPERATURE,
+            reasoning_effort=settings.OPENAI_REASONING_EFFORT if "gpt-5" in settings.OPENAI_MODEL.lower() else None
         )
         logger.info("✅ RAG Engine initialized")
         

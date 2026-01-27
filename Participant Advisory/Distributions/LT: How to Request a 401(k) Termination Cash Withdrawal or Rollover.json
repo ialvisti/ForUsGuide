@@ -21,63 +21,74 @@
     "source_system": "DevRev"
   },
   "summary": {
-    "purpose": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form when portal access is not possible.",
-    "topic": "distribution",
+    "purpose": "Help an agent determine eligibility and guide a terminated participant through requesting a 401(k) termination distribution (cash, rollover, or split) using the ForUsAll participant portal, with a RightSignature electronic form as a fallback when portal access is not possible due to MFA access issues.",
+    "topic": "termination_distribution_request",
     "subtopics": [
-      "termination_distribution",
-      "cash_withdrawal",
-      "rollover",
-      "partial_rollover_partial_cash",
-      "wire",
-      "check",
+      "eligibility_prerequisites",
+      "fees",
       "tax_withholding",
-      "participant_portal"
+      "delivery_methods_check_wire_overnight",
+      "mfa_and_portal_access",
+      "processing_and_delivery_timelines"
     ],
     "required_data_summary": [
-      "(message_text) Confirmation the participant has left their employer and is requesting a separation distribution.",
-      "(message_text) The participant's requested transaction type: cash withdrawal, full rollover, or partial rollover plus partial cash.",
-      "(agent_input) At least one valid email address for confirmation updates.",
-      "(agent_input) Mailing address for check delivery and contact.",
-      "(agent_input) If a rollover is requested: receiving institution details and IRA or account number if applicable.",
-      "(agent_input) If a wire is requested: complete bank routing and account details exactly as required by the receiving institution."
+      "(participant_profile) Termination date",
+      "(participant_profile) Participant Status",
+      "(participant_profile) Account balance",
+      "(participant_profile) MFA status",
+      "(participant_profile) Rehire date",
+      "(agent_input) Last Payroll date",
+      "(participant_profile) Participant's name"
     ],
     "key_business_rules": [
-      "A $75 distribution fee applies to all termination distribution requests.",
-      "An additional $35 wire fee applies if a wire is chosen, and wire fees are non-refundable.",
-      "For cash distributions, 20% federal tax withholding applies and state withholding may also apply.",
+      "Participant must have Terminated status and a termination date; if a rehire date exists, termination date must be after the rehire date.",
       "Only vested balances are eligible for distribution.",
-      "Portal submission is the preferred and fastest method; RightSignature electronic form is a slower secondary option when the portal cannot be used."
+      "Participant must have MFA enrolled to access the participant portal; if portal access is not possible due to MFA access issues, a RightSignature electronic form can be requested as a slower option.",
+      "Account balance must be greater than 75.00 to proceed; if balance is less than or equal to 75.00, the $75 distribution fee may reduce the distribution to 0.00.",
+      "A $75 distribution fee applies to all requests; no additional charges apply for ACH or regular mail check.",
+      "An additional $35 fee applies for wire or overnight check delivery, and wire transfer and overnight check fees are non-refundable.",
+      "For cash distributions, 20% mandatory federal withholding applies and state withholding may also apply; cash distributions are taxable income for the calendar year processed.",
+      "Wires require exact instructions to avoid rejections and returns; a returned wire may be converted to a mailed check."
     ],
     "key_steps_summary": [
       "Log in to the ForUsAll participant portal and open Loans & Distributions.",
-      "Select the distribution reason (Separation of Service; use Default if Separation of Service is unavailable).",
+      "Select the distribution reason (Separation of Service; if unavailable select Default).",
       "Review sources and vesting, then enter email confirmation information.",
-      "Choose cash, rollover, or split, then provide check or wire and rollover delivery details.",
-      "Submit the request and track review and delivery timelines; if portal access is not possible, request a RightSignature electronic form."
+      "Choose distribution type (cash, rollover, or split) and delivery method, then provide the required delivery and receiving institution details.",
+      "Review elections (including withholding) and submit the request, then track review, processing, and delivery timelines; if portal access is not possible due to MFA access issues, request a RightSignature electronic form from ForUsAll Support."
     ],
     "high_impact_faq_pairs": [
       {
-        "question": "What distribution reason should I choose after I leave my employer?",
-        "answer": "Choose Separation of Service. If it is not available, choose Default and continue."
+        "question": "What should I do if Separation of Service is not available as a reason?",
+        "answer": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support."
       },
       {
         "question": "What fees apply to a termination distribution request?",
-        "answer": "A $75 distribution fee applies to all requests, and an additional $35 wire fee applies if you choose a wire. Wire fees are non-refundable."
+        "answer": "A $75 distribution fee applies to all requests. An additional $35 fee applies if you choose wire delivery or an overnight check, and those fees are non-refundable."
       },
       {
-        "question": "How long does it take to receive my funds?",
+        "question": "What are the delivery timelines for checks and wires?",
         "answer": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS, and wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+      },
+      {
+        "question": "What taxes apply to a cash distribution?",
+        "answer": "A 20% federal withholding applies and state withholding may also apply. The distribution is taxable income for the calendar year processed."
+      },
+      {
+        "question": "Can I request a distribution before my termination date is in the system?",
+        "answer": "No. You must have a termination date in the system to request a distribution."
       }
     ],
     "plan_specific_guardrails": [
-      "Do not say unvested funds can be distributed; only vested balances are eligible.",
-      "Do not say the wire fee can be refunded; wire fees are non-refundable.",
-      "Do not provide tax advice beyond the stated withholding notes; suggest consulting a tax professional for personal circumstances.",
-      "Do not promise exact delivery dates; use the stated approximate timelines."
+      "Do not claim a participant can request a termination distribution without a termination date and Terminated status.",
+      "Do not state that unvested funds can be distributed; only vested balances are eligible.",
+      "Do not claim the wire or overnight check fee can be refunded; these fees are non-refundable.",
+      "Do not guarantee whether state withholding will apply or specify state withholding amounts; only state that it may apply.",
+      "Do not promise exact delivery dates; use only the stated approximate timelines."
     ],
     "critical_flags": {
-      "portal_required": false,
-      "mfa_relevant": false,
+      "portal_required": true,
+      "mfa_relevant": true,
       "record_keeper_must_be": "LT Trust"
     }
   },
@@ -89,9 +100,8 @@
           "The participant must have a Terminated status & Termination date in the system.",
           "Only vested balances are eligible for distribution.",
           "If there is a Rehire date in the system, the Termination date must be after or higher than the Rehire date.",
-          "Plan Status in the system must be Active or Pending Termination.",
           "Not mentioned from the Plan Data, that the plan is in a Blackout period.",
-          "The Participant must have MFA enrolled."
+          "The Participant must have MFA enrolled for participant portal access."
         ]
       },
       {
@@ -115,7 +125,7 @@
         "category": "submission_method",
         "rules": [
           "Submitting through the participant portal is the preferred and fastest route.",
-          "If portal access is not possible, the participant can request a RightSignature electronic form as a slower secondary option."
+          "If portal access is not possible due to MFA access issues, the participant can request a RightSignature electronic form as a slower secondary option."
         ]
       },
       {
@@ -199,7 +209,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must track review, processing, and delivery timelines after submission.",
-        "notes": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+        "notes": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution. OverNight Check timelines should be treated the same as regular checks."
       }
     ],
     "common_issues": [
@@ -329,6 +339,14 @@
       {
         "question": "Will ForUsAll help complete all required fields on this form?",
         "answer": "No. While this is a ForUsAll form, certain required fields must be completed using information provided directly by the other financial institution. ForUsAll is unable to supply or verify information that must come from an external company. If you’re unsure what information is needed, we recommend contacting the advisor or representative at the other institution so they can provide the correct details for you to enter on the form or request."
+      },
+      {
+        "question": "Im gonna left my employer in a future date, can I request a distribution now?",
+        "answer": "No, you can't request a distribution now. You must have a termination date in our system to request a distribution."
+      },
+      {
+        "question": "Im gonna left my employer in a future date, what options do I have?",
+        "answer": "Once you have a termination date, you can: request a full cash distribution, request a full rollover, or request a partial rollover plus partial cash."
       }
     ],
     "definitions": [
@@ -417,7 +435,7 @@
           "why_needed": "To verify eligibility for distribution, without a termination date, the participant cannot proceed with the request.",
           "source_note": "Supported by article section: Prerequisites",
           "source_type": "participant_profile"
-        },        
+        },
         {
           "data_point": "Rehire date",
           "meaning": "The date the participant was rehired.",
@@ -445,12 +463,12 @@
           "data_point": "Account balance",
           "meaning": "The total balance of the participant's account.",
           "example_values": [
-            10000.00,
-            0.00,
+            10000.0,
+            0.0,
             95.23,
             null
           ],
-          "why_needed": "To verify eligibility for distribution, the account balance must be greater than 75.00. If the account balance is less than 75.00, the participant cannot proceed with the request since they cannot afford the distribution fee.",
+          "why_needed": "To verify eligibility for distribution, the account balance must be greater than 75.00. If the account balance is less than or equal to 75.00, the distribution fee may reduce the account to 0.00 and no funds may be distributed to the participant.",
           "source_note": "Supported by article section: Prerequisites",
           "source_type": "participant_profile"
         },
@@ -458,78 +476,97 @@
           "data_point": "Last Payroll date",
           "meaning": "The date of the participant's last payroll.",
           "example_values": [
-            "Routing or ABA number",
-            "Account number",
-            "Receiving institution name",
-            "Account name as required by the receiving institution"
+            "1700-01-09",
+            "2026-01-09",
+            null
           ],
-          "why_needed": "Required to deliver funds by wire and to avoid wire rejections or returns; wire fees are non-refundable.",
+          "why_needed": "Used to confirm there are no pending contributions; it is better if the last payroll date is more than 1 week before the distribution request so all participant funds are available.",
           "source_note": "Supported by article section: Prerequisites, Step 5, Step 6, and Common Issues",
           "source_type": "agent_input"
+        },
+        {
+          "data_point": "Participant's name",
+          "meaning": "The name of the participant.",
+          "example_values": [
+            "John Doe",
+            "Jane Doe",
+            "Oscar Santiago Garcia "
+          ],
+          "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+          "source_note": "Supported by article section: Prerequisites",
+          "source_type": "participant_profile"
+        },
+        {
+          "data_point": "Participant Status",
+          "meaning": "The status of the participant in the system.",
+          "example_values": [
+            "Active",
+            "Terminated",
+            "Ineligible",
+            "Deceased",
+            "Unknown"
+          ],
+          "why_needed": "Required to confirm that the participant has already left their employer in order to request a distribution.",
+          "source_note": "Supported by article section: Prerequisites",
+          "source_type": "participant_profile"
         }
       ],
       "nice_to_have": [
         {
-          "data_point": "Confirmation of portal access",
-          "meaning": "Whether the participant can access the participant portal to submit the request online.",
+          "data_point": "Type of distribution requested",
+          "meaning": "The type of distribution requested by the participant.",
           "example_values": [
-            "Yes, I can log in to the portal.",
-            "No, I cannot access the portal."
+            "Lump Sum Cash",
+            "Full Rollover",
+            "Partial Rollover + Partial Cash",
+            null
           ],
-          "why_needed": "Determines whether to guide the participant through portal submission or to use the RightSignature electronic form path.",
-          "source_note": "Supported by article section: Prerequisites and Step 9",
-          "source_type": "agent_input"
-        },
-        {
-          "data_point": "Cash distribution withholding preferences beyond mandatory federal withholding",
-          "meaning": "Any optional additional withholding preferences for cash distributions beyond the stated required federal withholding.",
-          "example_values": [
-            "Optional additional withholding preference stated by the participant"
-          ],
-          "why_needed": "Used when completing cash distribution details in the portal.",
-          "source_note": "Supported by article section: Step 6",
+          "why_needed": "Determines the type of distribution requested by the participant.",
+          "source_note": "Supported by article section: Prerequisites and Step 5",
           "source_type": "message_text"
-        },
-        {
-          "data_point": "Roth and Traditional source awareness",
-          "meaning": "Awareness of whether funds are from Traditional and or Roth sources so the rollover destination can accept the tax character.",
-          "example_values": ["Traditional source", "Roth source"],
-          "why_needed": "Helps ensure rollover destination aligns with the tax character of the funds when applicable.",
-          "source_note": "Supported by article section: Step 3 and Additional Notes",
-          "source_type": "participant_profile"
         }
       ],
       "if_missing": [
         {
-          "missing_data_point": "Requested transaction type",
-          "ask_participant": "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?",
-          "agent_note": "Do not describe delivery requirements until the transaction type is confirmed."
+          "missing_data_point": "Termination date",
+          "ask_participant": "Have you already left your employer and what was your last day of employment?",
+          "agent_note": "If the participant has not left their employer, they cannot proceed with the request."
         },
         {
-          "missing_data_point": "Email address for confirmations",
-          "ask_participant": "What is at least one email address you want to use for confirmation updates on this distribution request?",
-          "agent_note": "Portal submission requires an email address for updates or inquiries."
+          "missing_data_point": "Rehire date",
+          "ask_participant": "Were you rehired after leaving this employer? If yes, what was your rehire date?",
+          "agent_note": "If a rehire date exists, the termination date must be after the rehire date to be eligible."
         },
         {
-          "missing_data_point": "Mailing address",
-          "ask_participant": "What is your current mailing address for check delivery and contact?",
-          "agent_note": "Do not confirm check delivery details without a mailing address."
+          "missing_data_point": "MFA status",
+          "ask_participant": "Have you enrolled MFA in the participant portal?",
+          "agent_note": "MFA is required for participant portal access. If the participant cannot enroll MFA and cannot access the portal, advise requesting a RightSignature electronic form from ForUsAll Support."
         },
         {
-          "missing_data_point": "Rollover receiving institution details",
-          "ask_participant": "For the rollover, what is the receiving institution and, if applicable, your IRA or account number?",
-          "agent_note": "Do not confirm a rollover can be completed without receiving institution details."
+          "missing_data_point": "Account balance",
+          "ask_participant": "Is your 401(k) account balance greater than 75.00?",
+          "agent_note": "If the balance is less than or equal to 75.00, the distribution fee may reduce the account to 0.00 and no funds may be distributed to the participant."
         },
         {
-          "missing_data_point": "Wire instructions",
-          "ask_participant": "If you want delivery by wire, please provide the receiving bank name, routing or ABA number, account number, and the exact account name required by the bank.",
-          "agent_note": "Wires require exact instructions; mismatches commonly cause rejections and the wire fee is non-refundable."
+          "missing_data_point": "Last Payroll date",
+          "ask_participant": "What was the date of your last payroll?",
+          "agent_note": "This helps confirm there are no pending contributions; it is better if the last payroll date is more than 1 week before the distribution request so all participant funds are available."
+        },
+        {
+          "missing_data_point": "Participant's name",
+          "ask_participant": "Please provide your full name, the email address associated with your account, and the name of your company.",
+          "agent_note": "If this field is missing, it means that we couldn't find a user related to the participant in our system, this means that we cannot determine if the participant is eligible for a distribution."
+        },
+        {
+          "missing_data_point": "Participant Status",
+          "ask_participant": "Are you currently marked as Terminated in your employer's records for the plan?",
+          "agent_note": "If the participant status and termination date are not consistent or are not up to date, advise contacting ForUsAll Support to confirm the information."
         }
       ],
       "disambiguation_notes": [
-        "If Separation of Service is not available as a reason in the portal, the article instructs using Default and continuing.",
-        "If the participant is unsure whether separation is recorded or reflected in the portal options, the article directs contacting ForUsAll Support to confirm employment status updates.",
-        "Only vested balances are eligible; if vesting percentages appear incorrect, the article directs contacting ForUsAll Support before submitting."
+        "If the participant's name is not found in our system, it means that we cannot determine if the participant is eligible for a distribution since, we won't be able to retrieve any of the must have data points.",
+        "If there's no termination date, it means that the participant is not eligible for a distribution since we need to know when the participant left their employer.",
+        "If there's a rehire date, previous to the termination date. Otherwise, if rehire date is greater than the termination date, it means that the participant is not eligible for a distribution since they are still employed."
       ]
     },
     "decision_guide": {
@@ -540,79 +577,69 @@
         "ambiguous_plan_rules"
       ],
       "eligibility_requirements": [
-        "Participant is requesting a termination or separation distribution after leaving their employer.",
-        "Only vested balances are eligible for distribution."
+        "Participant must have a termination date",
+        "Participant must have an Account balance greater than 75.00",
+        "If Rehire date is not null, it must be before the termination date",
+        "Participant must have a MFA status of 'enrolled' for participant portal access",
+        "Participant must have a status of 'Terminated'"
       ],
-      "blocking_conditions": [],
+      "blocking_conditions": [
+        "Participant doesn't have a termination date",
+        "Participant doesn't have an Account balance greater than 75.00",
+        "If Rehire date is not null, it is after the termination date",
+        "Participant have a MFA status of 'not enrolled' or is null for participant portal access",
+        "Participant status is not 'Terminated'"
+      ],
       "missing_data_conditions": [
         {
-          "condition": "The participant has not stated whether they want cash, rollover, or a split transaction.",
-          "missing_data_point": "Requested transaction type",
+          "condition": "There is no name provided for the participant",
+          "missing_data_point": "Participant's name",
           "resulting_outcome": "blocked_missing_data",
-          "ask_participant": "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?"
+          "ask_participant": "Please provide your full name, the email address associated with your account, and the name of your company."
         },
         {
-          "condition": "An email address for confirmation updates is not available.",
-          "missing_data_point": "Email address for confirmations",
+          "condition": "Termination date is not present",
+          "missing_data_point": "Termination date",
           "resulting_outcome": "blocked_missing_data",
-          "ask_participant": "What is at least one email address you want to use for confirmation updates on this distribution request?"
-        },
-        {
-          "condition": "A mailing address is not available and a check may be used for delivery.",
-          "missing_data_point": "Mailing address",
-          "resulting_outcome": "blocked_missing_data",
-          "ask_participant": "What is your current mailing address for check delivery and contact?"
-        },
-        {
-          "condition": "A rollover is requested but receiving institution details are not available.",
-          "missing_data_point": "Rollover receiving institution details",
-          "resulting_outcome": "blocked_missing_data",
-          "ask_participant": "For the rollover, what is the receiving institution and, if applicable, your IRA or account number?"
-        },
-        {
-          "condition": "A wire is requested but complete wire instructions are not available.",
-          "missing_data_point": "Wire instructions",
-          "resulting_outcome": "blocked_missing_data",
-          "ask_participant": "If you want delivery by wire, please provide the receiving bank name, routing or ABA number, account number, and the exact account name required by the bank."
+          "ask_participant": "What was your last day of employment?"
         }
       ],
       "allowed_conclusions": [
-        "The participant can submit a termination distribution request through the participant portal using Loans & Distributions.",
-        "If Separation of Service is not available as a reason, the participant can choose Default and continue.",
-        "Only vested balances are eligible for distribution.",
-        "A $75 distribution fee applies to all requests, and an additional $35 wire fee applies if a wire is chosen.",
-        "For cash distributions, 20% federal withholding applies and state withholding may apply.",
-        "If the participant cannot use the portal, they can request a RightSignature electronic form from ForUsAll Support."
+        "If a rehire date is present and it's after the termination date, the participant is not eligible for a distribution.",
+        "If the participant is eligible for a distribution, they can request a rollover or a cash distribution or a partial rollover or partial cash withdrawal."
       ],
       "not_allowed_conclusions": [
-        "Do not claim unvested funds are eligible for distribution.",
-        "Do not promise exact delivery dates or guaranteed processing times.",
-        "Do not claim the wire fee is refundable.",
-        "Do not provide individualized tax advice beyond the stated withholding information."
+        "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant.",
+        "Do not claim unvested funds are eligible for distribution. Only vested balances are eligible for distribution.",
+        "If the participant has a Termination date, but is status is NOT 'Terminated', this indicates that the information is not up to date and the participant is not eligible to proceed until they contact ForUsAll Support to confirm the information.",
+        "If the participant status is 'Terminated', but doesn't have a Termination date, this indicates that the information is not up to date and the participant is not eligible to proceed until they contact ForUsAll Support to confirm the information."
       ]
     },
     "response_frames": {
       "can_proceed": {
         "participant_message_components": [
-          "You can request a termination distribution in the ForUsAll participant portal under Loans & Distributions.",
-          "Select Separation of Service as the reason (or Default if Separation of Service is not listed).",
-          "Review your sources and vesting; only vested balances are eligible.",
-          "Choose cash, rollover, or a split and then enter your delivery details and email confirmation information."
+          "We confirmed you are eligible since you already have a termination date.",
+          "You can request a termination distribution in the ForUsAll participant portal under Loans & Distributions at the top right corner",
+          "Please follow the steps outlined in the article to request a distribution."
         ],
         "next_steps": [
-          "Guide the participant through the portal steps and confirm they have the required delivery details for their chosen method.",
-          "Remind the participant of the applicable fees and, if cash is selected, the required withholding notes.",
-          "Share the approximate review and delivery timelines stated in the article."
+          "Guide the participant through the portal steps in order to request a distribution.",
+          "If the participant mentions the type of distribution they want to request, be specific about the steps they need to follow."
         ],
         "warnings": [
           "For cash distributions, 20% federal withholding applies and state withholding may apply.",
-          "Wire fees are non-refundable and wire instructions must be exact to avoid rejections."
+          "For cash distrobution be advised a possible 10% early withdrawal penalty may apply if you are under 59 1/2 years old.",
+          "For wire distribution be advised a possible additional fee will apply and this fee is non-refundable.",
+          "For overnight check distribution be advised a possible additional fee will apply and this fee is non-refundable.",
+          "Be advised the processing time for a wire is 1 to 2 weeks and checks are typically delivered in 2 to 3 weeks."
         ],
         "questions_to_ask": [],
         "what_not_to_say": [
           "Do not promise exact delivery dates.",
-          "Do not state that the wire fee can be refunded.",
-          "Do not state that unvested funds can be distributed."
+          "Do not state that the wire and overnight check fees can be refunded.",
+          "Do not state that unvested funds can be distributed.",
+          "Do not promise they can avoid the early withdrawal penalty",
+          "Do not specify additional state tax withholding amounts"
         ]
       },
       "blocked_missing_data": {
@@ -654,23 +681,11 @@
         ]
       },
       "ambiguous_plan_rules": {
-        "participant_message_components": [
-          "If the Separation of Service option is not available, the article directs choosing Default and continuing.",
-          "If there is uncertainty about whether separation is recorded or about vesting or sources, the article directs contacting ForUsAll Support for confirmation before proceeding."
-        ],
-        "next_steps": [
-          "Have the participant proceed with Default if Separation of Service is unavailable, or contact ForUsAll Support if separation status is uncertain.",
-          "If vesting or sources appear incorrect, have the participant contact ForUsAll Support before submitting."
-        ],
+        "participant_message_components": [],
+        "next_steps": [],
         "warnings": [],
-        "questions_to_ask": [
-          "Is Separation of Service available in the portal, or are you seeing only Default?",
-          "Does the vesting percentage in the portal match what you expect?"
-        ],
-        "what_not_to_say": [
-          "Do not claim separation status or vesting is correct if the participant reports it appears incorrect.",
-          "Do not promise outcomes or timelines beyond the article."
-        ]
+        "questions_to_ask": [],
+        "what_not_to_say": []
       }
     }
   }

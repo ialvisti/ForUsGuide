@@ -89,7 +89,8 @@ class RAGEngine:
         self,
         openai_api_key: Optional[str] = None,
         model: str = "gpt-4o-mini",
-        temperature: float = 0.1
+        temperature: float = 0.1,
+        reasoning_effort: Optional[str] = None
     ):
         """
         Inicializa el RAG engine.
@@ -98,6 +99,7 @@ class RAGEngine:
             openai_api_key: API key de OpenAI (usa .env si no se provee)
             model: Modelo de OpenAI a usar (default: gpt-4o-mini)
             temperature: Temperature para generación (default: 0.1)
+            reasoning_effort: Esfuerzo de razonamiento para GPT-5.2 (none, low, medium, high, xhigh)
         """
         # OpenAI client
         api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
@@ -107,6 +109,10 @@ class RAGEngine:
         self.openai_client = OpenAI(api_key=api_key)
         self.model = model
         self.temperature = temperature
+        self.reasoning_effort = reasoning_effort
+        
+        # Detectar si es modelo GPT-5.2
+        self.is_gpt5 = "gpt-5" in model.lower()
         
         # Pinecone uploader para búsquedas
         self.pinecone = PineconeUploader()
@@ -115,6 +121,8 @@ class RAGEngine:
         self.token_manager = TokenManager(model="gpt-4")
         
         logger.info(f"RAG Engine inicializado con modelo: {model}")
+        if self.is_gpt5 and reasoning_effort:
+            logger.info(f"  - Reasoning effort: {reasoning_effort}")
     
     # ========================================================================
     # ENDPOINT 1: Get Required Data
@@ -527,16 +535,29 @@ class RAGEngine:
             Respuesta del LLM (string)
         """
         try:
-            response = self.openai_client.chat.completions.create(
-                model=self.model,
-                messages=[
+            # Preparar parámetros base
+            params = {
+                "model": self.model,
+                "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                temperature=self.temperature,
-                max_tokens=max_tokens,
-                response_format={"type": "json_object"}  # Forzar JSON
-            )
+                "max_tokens": max_tokens,
+                "response_format": {"type": "json_object"}  # Todos los modelos soportan esto
+            }
+            
+            # Configuración específica por modelo
+            if self.is_gpt5:
+                # GPT-5.2: Ya hace razonamiento automáticamente
+                # El parámetro 'reasoning' solo funciona con Responses API, no Chat Completions
+                # Por ahora, solo usamos el modelo sin parámetros extra
+                logger.debug(f"Llamando GPT-5.2 (razonamiento automático)")
+            else:
+                # GPT-4.x: Usar temperature
+                params["temperature"] = self.temperature
+            
+            # Llamar API
+            response = self.openai_client.chat.completions.create(**params)
             
             content = response.choices[0].message.content
             logger.debug(f"LLM response: {len(content)} characters")

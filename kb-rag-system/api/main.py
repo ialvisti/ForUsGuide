@@ -13,7 +13,8 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 import sys
 from pathlib import Path
 
@@ -129,6 +130,11 @@ app.middleware("http")(add_request_id)
 app.middleware("http")(log_requests)
 app.middleware("http")(handle_errors)
 
+# Mount UI static files
+UI_DIR = Path(__file__).parent.parent / "ui"
+if UI_DIR.exists():
+    app.mount("/ui/static", StaticFiles(directory=UI_DIR), name="ui-static")
+
 
 # ============================================================================
 # Dependency Functions
@@ -170,8 +176,22 @@ async def root():
         "name": settings.API_TITLE,
         "version": settings.API_VERSION,
         "status": "online",
-        "docs": "/docs"
+        "docs": "/docs",
+        "ui": "/ui"
     }
+
+
+@app.get("/ui")
+async def ui():
+    """Serve the UI interface."""
+    ui_file = Path(__file__).parent.parent / "ui" / "index.html"
+    if ui_file.exists():
+        return FileResponse(ui_file)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="UI not found"
+        )
 
 
 @app.get("/health", response_model=HealthResponse)

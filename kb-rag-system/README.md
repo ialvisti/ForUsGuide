@@ -7,19 +7,20 @@ Sistema RAG (Retrieval-Augmented Generation) para búsqueda y consulta de artíc
 ### 1. Iniciar el Sistema Completo
 
 ```bash
-# Terminal 1: Iniciar API
+# Iniciar API (incluye UI integrada)
 cd kb-rag-system
 source venv/bin/activate
 bash scripts/start_api.sh
-
-# Terminal 2: Iniciar UI
-cd kb-rag-system/ui
-bash start_ui.sh
 ```
 
 Luego abre en tu navegador:
-- **UI:** http://localhost:3000
+- **UI:** http://localhost:8000/ui
 - **API Docs:** http://localhost:8000/docs
+- **Health Check:** http://localhost:8000/health
+
+### Producción (Render)
+- **UI:** https://forusguide.onrender.com/ui
+- **API Docs:** https://forusguide.onrender.com/docs
 
 ---
 

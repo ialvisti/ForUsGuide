@@ -16,7 +16,23 @@ Interfaz web minimalista y moderna para interactuar con los endpoints del KB RAG
 
 ## 🚀 Uso Rápido
 
-### Opción 1: Abrir directamente el archivo HTML
+### Opción 1: Acceder a través de la API (Recomendado)
+
+Si tu API está corriendo, la UI está disponible automáticamente en:
+
+**Local:**
+```
+http://localhost:8000/ui
+```
+
+**Producción (Render):**
+```
+https://forusguide.onrender.com/ui
+```
+
+La API Key se configurará automáticamente según tu entorno.
+
+### Opción 2: Abrir directamente el archivo HTML
 
 Simplemente abre el archivo `index.html` en tu navegador:
 
@@ -31,7 +47,7 @@ xdg-open index.html
 start index.html
 ```
 
-### Opción 2: Servidor HTTP local (Recomendado)
+### Opción 3: Servidor HTTP local
 
 Para evitar problemas de CORS, usa un servidor HTTP:
 

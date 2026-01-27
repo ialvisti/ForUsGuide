@@ -629,6 +629,13 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
+            // Auto-detect API URL if served from same origin
+            const apiUrlInput = document.getElementById('apiUrl');
+            if (window.location.hostname !== '' && window.location.hostname !== 'localhost') {
+                // We're on a real server, use current origin
+                apiUrlInput.value = window.location.origin;
+            }
+            
             checkHealth();
             renderForm();
             setupEventListeners();

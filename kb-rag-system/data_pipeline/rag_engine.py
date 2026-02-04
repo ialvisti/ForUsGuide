@@ -542,19 +542,24 @@ class RAGEngine:
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                "max_tokens": max_tokens,
                 "response_format": {"type": "json_object"}  # Todos los modelos soportan esto
             }
             
             # Configuración específica por modelo
             if self.is_gpt5:
-                # GPT-5.2: Ya hace razonamiento automáticamente
-                # El parámetro 'reasoning' solo funciona con Responses API, no Chat Completions
-                # Por ahora, solo usamos el modelo sin parámetros extra
-                logger.debug(f"Llamando GPT-5.2 (razonamiento automático)")
+                # GPT-5.2: Usa max_completion_tokens en lugar de max_tokens
+                params["max_completion_tokens"] = max_tokens
+                logger.debug(f"Llamando GPT-5.2 con max_completion_tokens={max_tokens}")
+                
+                # Agregar reasoning_effort si está configurado
+                if self.reasoning_effort:
+                    params["reasoning_effort"] = self.reasoning_effort
+                    logger.debug(f"Reasoning effort: {self.reasoning_effort}")
             else:
-                # GPT-4.x: Usar temperature
+                # GPT-4.x: Usa max_tokens y temperature
+                params["max_tokens"] = max_tokens
                 params["temperature"] = self.temperature
+                logger.debug(f"Llamando GPT-4 con max_tokens={max_tokens}, temperature={self.temperature}")
             
             # Llamar API
             response = self.openai_client.chat.completions.create(**params)

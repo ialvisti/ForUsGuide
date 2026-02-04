@@ -235,6 +235,13 @@
             font-family: monospace;
         }
 
+        .form-group input[readonly] {
+            background: var(--bg-secondary);
+            color: var(--text-secondary);
+            cursor: not-allowed;
+            opacity: 0.7;
+        }
+
         .code-preview {
             background: var(--bg-code);
             border-radius: 6px;
@@ -453,7 +460,7 @@
             <div class="config-grid">
                 <div class="form-group">
                     <label for="apiUrl">API URL</label>
-                    <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000">
+                    <input type="text" id="apiUrl" value="http://localhost:8000" placeholder="http://localhost:8000" readonly>
                 </div>
                 <div class="form-group">
                     <label for="apiKey">API Key</label>
@@ -548,6 +555,7 @@
                     type: 'select',
                     description: 'Type of retirement plan',
                     options: ['401(k)', '403(b)', '457'],
+                    value: '401(k)',
                     required: true
                 },
                 {
@@ -582,6 +590,7 @@
                     type: 'select',
                     description: 'Type of retirement plan',
                     options: ['401(k)', '403(b)', '457'],
+                    value: '401(k)',
                     required: true
                 },
                 {
@@ -597,7 +606,7 @@
                     label: 'Collected Data',
                     type: 'textarea',
                     description: 'JSON object with participant and plan data',
-                    placeholder: '{\n  "participant_data": {},\n  "plan_data": {}\n}',
+                    value: '{\n  "participant_data": {\n    "termination_date": "2024-11-01",\n    "rehire_date": null,\n    "balance": 2000.00,\n    "status": "Terminated",\n    "last_payroll_date": "2024-11-15"\n  },\n  "plan_data": {}\n}',
                     required: true,
                     isJson: true
                 },
@@ -629,10 +638,10 @@
 
         // Initialize
         document.addEventListener('DOMContentLoaded', () => {
-            // Auto-detect API URL if served from same origin
+            // Auto-detect API URL - always use current origin if served from a server
             const apiUrlInput = document.getElementById('apiUrl');
-            if (window.location.hostname !== '' && window.location.hostname !== 'localhost') {
-                // We're on a real server, use current origin
+            if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+                // Served from a web server, use current origin
                 apiUrlInput.value = window.location.origin;
             }
             
@@ -658,9 +667,6 @@
 
             // Form submission
             document.getElementById('dynamicForm').addEventListener('submit', handleSubmit);
-
-            // API config changes
-            document.getElementById('apiUrl').addEventListener('change', checkHealth);
         }
 
         // Render form based on selected endpoint
@@ -690,12 +696,18 @@
                     input = document.createElement('textarea');
                     input.placeholder = field.placeholder || '';
                     input.rows = field.isJson ? 8 : 3;
+                    if (field.value) {
+                        input.value = field.value;
+                    }
                 } else if (field.type === 'select') {
                     input = document.createElement('select');
                     field.options.forEach(option => {
                         const opt = document.createElement('option');
                         opt.value = option;
                         opt.textContent = option;
+                        if (field.value && option === field.value) {
+                            opt.selected = true;
+                        }
                         input.appendChild(opt);
                     });
                 } else {
@@ -726,19 +738,24 @@
                 
                 // Initialize form data
                 if (field.value) {
-                    updateFormData(field.name, field.value);
+                    updateFormData(field.name, field.value, field.isJson);
                 }
             });
         }
 
         // Update form data and payload preview
         function updateFormData(fieldName, value, isJson = false) {
-            if (isJson && value.trim()) {
-                try {
-                    formData[fieldName] = JSON.parse(value);
-                } catch (e) {
-                    // Invalid JSON, store as string
-                    formData[fieldName] = value;
+            if (isJson) {
+                if (value.trim()) {
+                    try {
+                        formData[fieldName] = JSON.parse(value);
+                    } catch (e) {
+                        // Invalid JSON, store as string
+                        formData[fieldName] = value;
+                    }
+                } else {
+                    // For JSON fields, use empty object if value is empty
+                    formData[fieldName] = {};
                 }
             } else if (value.trim()) {
                 // Try to parse as number if it looks like one

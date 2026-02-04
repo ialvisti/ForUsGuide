@@ -222,9 +222,13 @@ class KBChunker:
                 if field.get('example_values'):
                     examples = field['example_values']
                     if isinstance(examples, list):
-                        lines.append(f"**Examples:** {', '.join(examples)}")
+                        # Filtrar None y convertir todo a string
+                        valid_examples = [str(ex) for ex in examples if ex is not None]
+                        if valid_examples:
+                            lines.append(f"**Examples:** {', '.join(valid_examples)}")
                     else:
-                        lines.append(f"**Example:** {examples}")
+                        if examples is not None:
+                            lines.append(f"**Example:** {examples}")
         
         # Nice to have fields
         nice_to_have = required_data.get("nice_to_have", [])

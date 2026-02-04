@@ -1,0 +1,477 @@
+{
+    "metadata": {
+        "article_id": "lt_completing_your_rollover_online_best_practices",
+        "title": "LT: Completing Your Rollover Online – Best Practices",
+        "description": "This article helps an agent guide a participant through completing a rollover online in their ForUsAll account and avoiding common errors that delay processing, this is for educational purpose of the participant.",
+        "audience": "Internal AI Support Agent",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "scope": "recordkeeper-specific",
+        "tags": [
+            "Distribution",
+            "Participant Advisory"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-01-22",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "summary": {
+        "purpose": "Enables an agent to guide an LT Trust 401(k) participant through completing a full rollover online in their ForUsAll account, including choosing Separation of Service (or Default if shown) and entering correct delivery details. Focuses on preventing common portal and data-entry errors that can delay processing or cause wire rejection and reissue by check.",
+        "topic": "rollover_online_flow",
+        "subtopics": [
+            "portal_navigation",
+            "eligibility_separation_of_service_vs_default",
+            "required_wire_vs_check_details",
+            "fees_distribution_wire_overnight_check",
+            "processing_times_and_review_timeline",
+            "common_data_entry_errors_character_limits_fbo"
+        ],
+        "required_data_summary": [],
+        "key_business_rules": [
+            "Participant starts at forusall.com/login and accesses the flow via Loans & Distributions.",
+            "Select Separation of Service only if the participant has left their employer; if the portal shows Default instead due to a known issue, select Default and continue because it is the same option.",
+            "If the participant is still employed and wants to roll over eligible funds (such as rollover source balances), they must contact ForUsAll Support to confirm eligibility.",
+            "For rollovers, the participant must choose full direct rollover to an IRA or qualified plan and select a delivery method (check or wire) based on the receiving provider’s preference.",
+            "Wire transfers require wire-specific instructions; do not use ACH details for a wire. Incorrect wire instructions can cause rejection and reissue by check, adding delays, and the wire fee is non-refundable.",
+            "For check rollovers, participant must provide receiving institution and a mailing address; must also choose rollover destination type (IRA, Qualified Plan, Roth IRA, Roth Qualified Plan). If IRA or Roth IRA is selected, the IRA account number is required.",
+            "Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork.",
+            "Traditional funds can be rolled into a Traditional or Roth type account (Roth conversion may have tax implications); Roth funds must be rolled into a Roth type account.",
+            "Fees: a $75 distribution fee applies to all requests; additional $35 applies if wire or overnight check is chosen (non-refundable)."
+        ],
+        "key_steps_summary": [
+            "Log in at forusall.com/login on a computer/laptop using an up-to-date browser, then open Loans & Distributions.",
+            "Select the distribution reason: Separation of Service (or Default if shown due to a known portal issue) and proceed.",
+            "Review account sources/vesting and enter at least one valid email in Email Confirmation Information.",
+            "Choose full direct rollover to an IRA or qualified plan and select delivery method (check or wire) based on receiving provider preference.",
+            "Enter delivery details: for wire, provide wire-specific bank and subaccount information; for check, provide receiving institution, mailing address, and destination type (include IRA account number when applicable).",
+            "Review elections (including Traditional/Roth destination rules), tax withholding, and delivery method; submit and use the confirmation screen for review.",
+            "After submission, expect ForUsAll review in about two business days, then delivery based on method (checks typically 2–3 weeks via USPS after approval; wires typically 1–2 weeks after approval; overnight checks typically 1–2 weeks after approval)."
+        ],
+        "high_impact_faq_pairs": [
+            {
+                "question": "Where does the participant start the rollover process online?",
+                "answer": "Log in at forusall.com/login, select Loans & Distributions from the dashboard, and choose Separation of Service under Termination Distribution."
+            },
+            {
+                "question": "What should a participant do if they are still employed but want to roll over eligible funds?",
+                "answer": "They must contact ForUsAll Support to confirm eligibility."
+            },
+            {
+                "question": "What information is required for rollovers by wire?",
+                "answer": "Bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider, using wire-specific instructions from the receiving institution."
+            },
+            {
+                "question": "What information is required for rollovers by check?",
+                "answer": "Receiving financial institution, a mailing address, and the rollover destination type (IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan). If IRA or Roth IRA is selected, the IRA account number must be included."
+            },
+            {
+                "question": "What should the participant do if the confirmation screen shows 'none' for email confirmation after entering an email?",
+                "answer": "This is a known display issue and can be ignored."
+            }
+        ],
+        "plan_specific_guardrails": [
+            "Do not guarantee that an employed participant is eligible to roll over funds through this flow; direct them to ForUsAll Support to confirm eligibility.",
+            "Do not promise processing or delivery timelines other than the typical ranges stated (ForUsAll review about two business days; checks 2–3 weeks after approval via USPS; wires 1–2 weeks after approval; overnight checks 1–2 weeks after approval).",
+            "Do not claim that wire and check instructions are the same; wire requires wire-specific details.",
+            "Do not promise ForUsAll will complete the rollover for the participant; the participant must enter required information in the portal.",
+            "Do not provide tax advice; only note where the article indicates potential tax implications (e.g., Roth conversion may have tax implications)."
+        ],
+        "critical_flags": {
+            "portal_required": true,
+            "mfa_relevant": false,
+            "record_keeper_must_be": "LT Trust"
+        }
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "accessing_the_flow",
+                "rules": [
+                    "Participants must go to forusall.com/login and use their credentials to log in.",
+                    "Participants access the rollover flow by selecting Loans & Distributions from the dashboard."
+                ]
+            },
+            {
+                "category": "eligibility",
+                "rules": [
+                    "Select Separation of Service if the participant has already left their employer, then click 'Get Started'. If the portal shows 'Default' instead of Separation of Service due to a website issue, the participant should select Default and continue because it is the same option.",
+                    "If the participant is still employed and wants to roll over eligible funds (such as rollover source balances), they must contact ForUsAll Support first to confirm eligibility."
+                ]
+            },
+            {
+                "category": "Initial_Information",
+                "rules": [
+                    "Confirm your balances",
+                    "Introduce your email information and select one to receive the confirmation"
+                ]
+            },
+            {
+                "category": "distribution_options",
+                "rules": [
+                    "Distribution type options include Lump sum cash distribution, Full direct rollover to an IRA or qualified plan, and A partial direct rollover to an IRA or qualified plan and remaining balance as a cash distribution.",
+                    "Select Full direct rollover to an IRA or qualified plan."
+                ]
+            },
+            {
+                "category": "Payment_method",
+                "rules": [
+                    "select your payment method, it can be by check or by wire",
+                    "confirm with your receiving provider how they prefer to receive rollovers (check or wire) before submitting."
+                ]
+            },
+            {
+                "category": "wire_rules",
+                "rules": [
+                    "Many financial institutions have different instructions for wires versus ACH; participants must use wire-specific details when selecting a wire transfer.",
+                    "Incorrect wire instructions may cause funds to be rejected and reissued by check, adding delays.",
+                    "Participants should verify wire details directly with the receiving institution before submitting.",
+                    "Wire transfers are subject to an extra $35 fee charged by American Trust."
+                ]
+            },
+            {
+                "category": "check_rules",
+                "rules": [
+                    "For check rollovers, participants must provide the receiving institution and a mailing address (either the receiving institution address or the participant address if they want the check mailed to them directly).",
+                    "Rollover destination options include IRA, Qualified Plan, Roth IRA, and Roth Qualified Plan.",
+                    "If the participant selects IRA or Roth IRA, they must include the account number for that IRA.",
+                    "Traditional funds can be rolled over into a Traditional type account or a Roth type account (Roth conversion may have tax implications), and Roth funds must be rolled over into a Roth type account."
+                ]
+            },
+            {
+                "category": "data_entry_best_practices",
+                "rules": [
+                    "Some fields (such as financial institution name or address) have system-imposed character limits; participants may need abbreviated names or addresses to avoid rejections or manual corrections.",
+                    "Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork.",
+                    "If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan.",
+                    "If your provider accepts rollovers via wire, confirm you’re using their wire-specific routing and account numbers"
+                ]
+            },
+            {
+                "category": "processing_times",
+                "rules": [
+                    "Wire transfers are typically completed within 1–2 weeks.",
+                    "Overnight check transfers are typically completed within 1–2 weeks.",
+                    "Standard checks usually arrive within 2–3 weeks via USPS."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "Distribution request",
+                "fee": "$75",
+                "notes": "Applies to all requests."
+            },
+            {
+                "service": "Wire delivery",
+                "fee": "$35",
+                "notes": "Applies in addition to the Distribution request fee if a wire is chosen; charged by American Trust; non-refundable."
+            },
+            {
+                "service": "Overnight check delivery",
+                "fee": "$35",
+                "notes": "Applies in addition to the Distribution request fee if an Overnight check is chosen; non-refundable."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Log in to the ForUsAll account at forusall.com/login using the participant's credentials.",
+                "notes": "Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended)."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must select a distribution reason for the request.",
+                "notes": "The participant must choose Separation of Service. If the portal shows Default instead of Separation of Service due to a website issue, the participant must choose Default and continue because it is the same option."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must review account sources and vesting before continuing.",
+                "notes": "The portal shows Traditional and any Roth sources and vesting percentages. Only vested balances are eligible. If vesting looks incorrect, the participant must contact ForUsAll Support before submitting."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must enter email confirmation information.",
+                "notes": "The participant must expand Email Confirmation Information and enter at least one valid email address for updates or inquiries."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must choose the distribution type as a rollover and how funds will be delivered.",
+                "notes": "The participant must choose full rollover to an IRA or qualified plan."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must provide delivery details for the chosen option.",
+                "notes": "For rollovers checks, the participant must provide the receiving institution information and IRA or sub-account number if applicable. For wires, the participant must provide Bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must review elections and submit the request in the portal.",
+                "notes": "The participant must confirm distribution elections (Traditional funds can go into a Traditional type account or a Roth type account as a Roth conversion which may have tax implications, and Roth funds must go into a Roth type account), tax withholding, and delivery method, then submit. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored."
+            },
+            {
+                "step_number": 8,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must track review, processing, and delivery timelines after submission.",
+                "notes": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Loans & Distributions section does not load.",
+                "resolution": "Have the participant refresh the browser or clear the cache before retrying."
+            },
+            {
+                "issue": "Participant may be in the wrong plan if they have multiple 401(k) accounts through ForUsAll.",
+                "resolution": "Ask the participant to double-check they are accessing the correct plan before continuing."
+            },
+            {
+                "issue": "Receiving institution name or address exceeds system character limits.",
+                "resolution": "Advise the participant to confirm with the receiving provider whether abbreviations are acceptable for long names or addresses."
+            },
+            {
+                "issue": "Incorrect wire routing or account numbers entered (using ACH details instead of wire details).",
+                "resolution": "Advise the participant to obtain and use wire-specific routing and account numbers from the receiving provider and verify accuracy before submitting."
+            },
+            {
+                "issue": "Wire rejected by receiving institution and reissued by check.",
+                "resolution": "Explain that incorrect wire instructions caused rejection and reissue by check. The extra wire fee is non-refundable, so the participant should confirm all wire details with the receiving institution before submitting."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "Participant is wiring funds to a Fidelity (Receiving institution) IRA and is unsure which bank details to use.",
+                "outcome": "Advise the participant to obtain wire-specific routing and account details from Fidelity (Receiving institution), including any intermediary bank details (such as JP Morgan Chase) if provided, and verify the details directly with the receiving institution before submitting."
+            },
+            {
+                "scenario": "Participant selected check as payment method and wants the funds to be sent inmediately to their Fidelity (Receiving institution) IRA.",
+                "outcome": "Advise the participant to wait the standard 2–3 weeks for USPS delivery after approval, as the processing time by the custodian cannot be modified."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "processing_times",
+                "notes": [
+                    "ForUsAll reviews distribution requests within about two business days.",
+                    "Checks typically arrive in about 2–3 weeks after approval via USPS.",
+                    "Wires typically complete in about 1–2 weeks after approval depending on the receiving institution.",
+                    "Overnight checks typically complete in about 1–2 weeks after approval depending on the receiving institution."
+                ]
+            },
+            {
+                "category": "fees",
+                "notes": [
+                    "A $75 distribution fee applies to all requests.",
+                    "An additional $35 fee applies if a wire or overnight check is chosen and is non-refundable."
+                ]
+            },
+            {
+                "category": "alternate_submission_method",
+                "notes": [
+                    "If portal access is not possible, a RightSignature electronic form can be requested from ForUsAll Support and is typically slower than portal submission."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "Where does the participant start the rollover process online?",
+                "answer": "The participant logs in at forusall.com/login, then selects Loans & Distributions from the dashboard and chooses Separation of Service under Termination Distribution."
+            },
+            {
+                "question": "What should a participant do if they are still employed but want to roll over eligible funds?",
+                "answer": "Contact ForUsAll Support to confirm eligibility."
+            },
+            {
+                "question": "What information is required for rollovers by wire?",
+                "answer": "Bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider."
+            },
+            {
+                "question": "What information is required for rollovers by check?",
+                "answer": "Financial institution, mailing address, and rollover destination type (IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan). If IRA or Roth IRA is selected, the participant must include the IRA account number."
+            },
+            {
+                "question": "Will ForUsAll help complete all required fields on this form?",
+                "answer": "No. While this is a ForUsAll form, certain required fields must be completed using information provided directly by the other financial institution. ForUsAll is unable to supply or verify information that must come from an external company. If you’re unsure what information is needed, we recommend contacting the advisor or representative at the other institution so they can provide the correct details for you to enter on the form or request."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Separation of Service",
+                "definition": "An option under Termination Distribution used when the participant has left their employer."
+            },
+            {
+                "term": "Rollover",
+                "definition": "A distribution type where funds are transferred to another qualified retirement account, such as an IRA or a new employer's 401(k)."
+            },
+            {
+                "term": "Full Rollover",
+                "definition": "Transfers the participant's entire account balance."
+            },
+            {
+                "term": "Partial Rollover",
+                "definition": "Transfers part of the participant's balance and leaves the rest in the 401(k)."
+            },
+            {
+                "term": "FBO",
+                "definition": "For the benefit of; text that will automatically appear in paperwork and should not be manually entered in the Financial Institution field."
+            },
+            {
+                "term": "ABA Routing Number",
+                "definition": "A routing number used for wire transfers to identify the receiving institution."
+            },
+            {
+                "term": "Subaccount Number",
+                "definition": "An account number for the participant's IRA or Roth IRA that must be entered correctly for wire rollovers."
+            },
+            {
+                "term": "Vested balance",
+                "definition": "The portion of the account balance that is eligible for distribution based on vesting percentage."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not promise processing or delivery timelines other than the stated typical ranges (2–3 weeks via USPS for checks).",
+                "Do not claim that wire and check instructions are the same.",
+                "Do not promise that we are going to do the rollover faster than the stated timelines.",
+                "Do not promise that we are going to do the process for the participant; they must enter the information themselves in the portal."
+            ],
+            "must_do_if_unsure": [
+                "Direct the participant to contact ForUsAll Support at help@forusall.com or 844-401-2253 if they are unsure which distribution type to select or need help confirming any process.",
+                "Instruct the participant to verify wire or check details directly with the receiving institution when the participant is uncertain about routing numbers, account numbers, subaccount numbers, or intermediary bank information."
+            ]
+        },
+        "references": {
+            "participant_portal": "https://forusall.com/login",
+            "internal_articles": [
+                "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+                "LT: When will I receive my wire transfer, ACH transfer, or check?",
+                "LT: How do I roll over my 401(k) to another retirement account?",
+                "Distribution Requests for Small Account Balances",
+                "How Do I Cancel or Change a Pending Distribution Request?",
+                "Can I roll over Roth 401(k) funds separately from pre-tax funds?",
+                "What You Need to Know About Your 401(k) When Leaving Your Employer",
+                "Can I take a distribution while employed?",
+                "When Will I Receive My 401(k) Withdrawal or Rollover?"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Mon-Fri, 07:00-17:00 PST"
+            }
+        },
+        "required_data": {
+            "must_have": [],
+            "nice_to_have": [
+                {
+                    "data_point": "Verification of the financial institution's information",
+                    "meaning": "The participant needs to confirm the receiving institution's information is accurate for the rollover.",
+                    "example_values": [
+                        "Fidelity Investments",
+                        "Vanguard",
+                        "Charles Schwab"
+                    ],
+                    "why_needed": "This determines the correct receiving institution information for the rollover.",
+                    "source_note": "Supported by article section: Step 6.",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Rollover destination type",
+                    "meaning": "The destination category selected in the check flow: IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan.",
+                    "example_values": [
+                        "IRA",
+                        "Qualified Plan",
+                        "Roth IRA",
+                        "Roth Qualified Plan"
+                    ],
+                    "why_needed": "Determines the destination selection and enforces the article's rule that traditional and Roth funds must roll into matching account types.",
+                    "source_note": "Supported by article section: distribution_options",
+                    "source_type": "message_text"
+                }
+            ],
+            "if_missing": [],
+            "disambiguation_notes": [
+                "If the participant states he can not find the 'Loans & Distributions' section, ask them to use a computer or laptop (not mobile) and an up-to-date browser (Chrome or Edge recommended).",
+                "If the participant states the system shows a $0 balance ask them to contact ForUsAll Support."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "To select Separation of Service under Termination Distribution, the participant must being eligible based on article 'LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover'"
+            ],
+            "blocking_conditions": [],
+            "missing_data_conditions": [],
+            "allowed_conclusions": [
+                "the participant can complete the rollover online by following the steps in the article."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee that an employed participant is eligible to roll over funds through this flow.",
+                "Do not promise that a rollover will complete faster than the typical timelines stated in the article."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "You can complete your rollover online by logging in at forusall.com/login and selecting Loans & Distributions."
+                ],
+                "next_steps": [
+                    "Under Termination Distribution, select Separation of Service and click Get Started.",
+                    "Before submitting, confirm with your receiving provider all of the information provided."
+                ],
+                "warnings": [
+                    "Incorrect wire instructions may cause rejection and reissue by check, adding delays."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not promise a specific completion date beyond the stated typical timelines.",
+                    "Do not provide tax advice.",
+                    "Do not provide information to fill in required fields; the participant must enter this information themselves."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [],
+                "next_steps": [],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": []
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [],
+                "next_steps": [],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": []
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [],
+                "next_steps": [],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": []
+            }
+        }
+    }
+}

@@ -483,7 +483,10 @@
     </div>
 
     <script>
-        const API_URL = 'http://localhost:8000';
+        // Auto-detect API URL - use current origin when served from a web server
+        const API_URL = (window.location.protocol === 'http:' || window.location.protocol === 'https:')
+            ? window.location.origin
+            : 'http://localhost:8000';
 
         // Load stats on page load
         async function loadStats() {

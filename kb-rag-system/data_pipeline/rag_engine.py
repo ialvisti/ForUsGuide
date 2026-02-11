@@ -372,6 +372,11 @@ class RAGEngine:
     # Helper Methods - Búsqueda
     # ========================================================================
     
+    # Umbral mínimo para considerar que una búsqueda con filtro de topic
+    # tuvo resultados suficientes. Si no se alcanza, se hace fallback sin topic.
+    TOPIC_FILTER_MIN_CHUNKS = 3
+    TOPIC_FILTER_MIN_SCORE = 0.20
+    
     def _search_for_required_data(
         self,
         inquiry: str,
@@ -380,21 +385,36 @@ class RAGEngine:
         topic: str
     ) -> List[Dict[str, Any]]:
         """Busca chunks relevantes para required_data endpoint."""
-        # Filtros específicos para required_data
-        filters = {
+        # Filtros base (obligatorios)
+        base_filters = {
             "record_keeper": {"$eq": record_keeper},
             "plan_type": {"$eq": plan_type},
             "chunk_type": {"$in": ["required_data", "eligibility", "business_rules"]}
         }
         
-        # Buscar top 10 chunks
+        # Intentar primero con filtro de topic para mayor precisión
+        if topic:
+            topic_filters = {**base_filters, "topic": {"$eq": topic}}
+            chunks = self.pinecone.query_chunks(
+                query_text=inquiry,
+                top_k=10,
+                filter_dict=topic_filters
+            )
+            
+            if self._topic_results_sufficient(chunks):
+                logger.info(f"Found {len(chunks)} chunks for required_data (with topic filter: {topic})")
+                return chunks
+            
+            logger.info(f"Topic filter '{topic}' returned insufficient results ({len(chunks)} chunks), falling back without topic")
+        
+        # Fallback: buscar sin filtro de topic
         chunks = self.pinecone.query_chunks(
             query_text=inquiry,
             top_k=10,
-            filter_dict=filters
+            filter_dict=base_filters
         )
         
-        logger.info(f"Found {len(chunks)} chunks for required_data")
+        logger.info(f"Found {len(chunks)} chunks for required_data (without topic filter)")
         return chunks
     
     def _search_for_response(
@@ -417,21 +437,52 @@ class RAGEngine:
         
         enriched_query = " ".join(query_parts)
         
-        # Filtros por recordkeeper y plan type (MANDATORY)
-        filters = {
+        # Filtros base (obligatorios)
+        base_filters = {
             "record_keeper": {"$eq": record_keeper},
             "plan_type": {"$eq": plan_type}
         }
         
-        # Buscar más chunks para este endpoint (top 30)
+        # Intentar primero con filtro de topic para mayor precisión
+        if topic:
+            topic_filters = {**base_filters, "topic": {"$eq": topic}}
+            chunks = self.pinecone.query_chunks(
+                query_text=enriched_query,
+                top_k=30,
+                filter_dict=topic_filters
+            )
+            
+            if self._topic_results_sufficient(chunks):
+                logger.info(f"Found {len(chunks)} chunks for generate_response (with topic filter: {topic})")
+                return chunks
+            
+            logger.info(f"Topic filter '{topic}' returned insufficient results ({len(chunks)} chunks), falling back without topic")
+        
+        # Fallback: buscar sin filtro de topic
         chunks = self.pinecone.query_chunks(
             query_text=enriched_query,
             top_k=30,
-            filter_dict=filters
+            filter_dict=base_filters
         )
         
-        logger.info(f"Found {len(chunks)} chunks for generate_response")
+        logger.info(f"Found {len(chunks)} chunks for generate_response (without topic filter)")
         return chunks
+    
+    def _topic_results_sufficient(self, chunks: List[Dict[str, Any]]) -> bool:
+        """
+        Evalúa si los resultados filtrados por topic son suficientes.
+        
+        Retorna False (trigger fallback) si:
+        - Hay menos de TOPIC_FILTER_MIN_CHUNKS resultados
+        - El mejor score está por debajo de TOPIC_FILTER_MIN_SCORE
+        """
+        if len(chunks) < self.TOPIC_FILTER_MIN_CHUNKS:
+            return False
+        
+        if chunks and chunks[0].get('score', 0) < self.TOPIC_FILTER_MIN_SCORE:
+            return False
+        
+        return True
     
     # ========================================================================
     # Helper Methods - Contexto

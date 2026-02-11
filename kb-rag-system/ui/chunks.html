@@ -391,6 +391,43 @@
             background: linear-gradient(transparent, var(--bg-tertiary));
         }
 
+        .chunk-description {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            font-style: italic;
+            margin-bottom: 1rem;
+            padding: 0.625rem 0.875rem;
+            background: var(--primary-light);
+            border-radius: 4px;
+            line-height: 1.5;
+        }
+
+        .chunk-meta-footer {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .chunk-meta-footer span {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+        }
+
+        .subtopic-tag {
+            padding: 0.2rem 0.6rem;
+            background: #dbeafe;
+            color: #1e40af;
+            border-radius: 4px;
+            font-size: 0.7rem;
+        }
+
         .error-message {
             padding: 1rem;
             background: var(--error-light);
@@ -584,20 +621,33 @@
             const tierBadgeClass = `badge-${chunk.metadata.chunk_tier}`;
             const specificTopics = chunk.metadata.specific_topics || [];
             const tags = chunk.metadata.tags || [];
+            const subtopics = chunk.metadata.subtopics || [];
+            const description = chunk.metadata.description || '';
+            const scope = chunk.metadata.scope || '';
+            const chunkIndex = chunk.metadata.chunk_index;
+            const sourceLastUpdated = chunk.metadata.source_last_updated || '';
+            const transformedAt = chunk.metadata.transformed_at || '';
             
             return `
                 <div class="chunk-card">
                     <div class="chunk-header">
                         <div style="flex: 1;">
-                            <div class="chunk-id">${chunk.id}</div>
+                            <div class="chunk-id">${chunk.id}${chunkIndex != null ? ` &nbsp;·&nbsp; Chunk #${chunkIndex}` : ''}</div>
                             <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
                                 Score: ${chunk.score.toFixed(4)}
                             </div>
                         </div>
                         <div class="chunk-badges">
+                            ${scope ? `<span class="badge" style="background: var(--bg-tertiary); color: var(--text-secondary);">${scope}</span>` : ''}
                             <span class="badge ${tierBadgeClass}">${chunk.metadata.chunk_tier}</span>
                         </div>
                     </div>
+                    
+                    ${description ? `
+                    <div class="chunk-description">
+                        ${escapeHtml(description)}
+                    </div>
+                    ` : ''}
                     
                     <div class="chunk-metadata">
                         <div class="metadata-item">
@@ -638,6 +688,12 @@
                     </div>
                     ` : ''}
                     
+                    ${subtopics.length > 0 ? `
+                    <div class="chunk-tags">
+                        ${subtopics.map(st => `<span class="subtopic-tag">${st}</span>`).join('')}
+                    </div>
+                    ` : ''}
+                    
                     <div id="content-${index}" class="chunk-content ${chunk.metadata.content.length > 500 ? 'collapsed' : ''}">
                         ${escapeHtml(chunk.metadata.content)}
                     </div>
@@ -646,6 +702,13 @@
                     <button class="expand-btn" onclick="toggleContent(${index})">
                         Show More
                     </button>
+                    ` : ''}
+                    
+                    ${(sourceLastUpdated || transformedAt) ? `
+                    <div class="chunk-meta-footer">
+                        ${sourceLastUpdated ? `<span>📅 Source updated: ${sourceLastUpdated}</span>` : ''}
+                        ${transformedAt ? `<span>⚙️ Processed: ${transformedAt}</span>` : ''}
+                    </div>
                     ` : ''}
                 </div>
             `;

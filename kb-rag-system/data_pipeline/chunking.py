@@ -113,6 +113,7 @@ class KBChunker:
                 # Metadata del artículo
                 "article_id": base_metadata["article_id"],
                 "article_title": base_metadata["title"],
+                "description": base_metadata.get("description", ""),
                 "record_keeper": base_metadata["record_keeper"],
                 "plan_type": base_metadata["plan_type"],
                 "scope": base_metadata["scope"],

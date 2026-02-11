@@ -284,19 +284,30 @@ class ErrorResponse(BaseModel):
 class ChunkMetadata(BaseModel):
     """Metadata de un chunk."""
     
+    # Metadata del artículo
     article_id: str
     article_title: str
+    description: Optional[str] = None
     record_keeper: str
     plan_type: str
+    scope: Optional[str] = None
+    tags: Optional[List[str]] = None
+    
+    # Topics
     topic: str
+    subtopics: Optional[List[str]] = None
+    
+    # Metadata del chunk
     chunk_tier: str
     chunk_type: str
     chunk_category: str
+    chunk_index: Optional[int] = None
     content: str
     specific_topics: Optional[List[str]] = None
-    tags: Optional[List[str]] = None
-    subtopics: Optional[List[str]] = None
-    scope: Optional[str] = None
+    
+    # Fechas (disponibles cuando el artículo las incluye)
+    source_last_updated: Optional[str] = None
+    transformed_at: Optional[str] = None
 
 
 class Chunk(BaseModel):

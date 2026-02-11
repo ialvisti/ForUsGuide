@@ -116,8 +116,12 @@ def process_article(
             print("\n" + "="*80)
             print("✅ PROCESAMIENTO COMPLETADO")
             print("="*80 + "\n")
+            print("ℹ️  NOTA: Pinecone usa consistencia eventual. Los vectores estarán disponibles")
+            print("   para búsquedas en ~10-15 segundos.")
+            print()
             print("Próximos pasos:")
-            print(f'  Verificar: python scripts/verify_article.py "{article["metadata"]["article_id"]}"')
+            print(f'  Verificar: python kb-rag-system/scripts/verify_article.py "{article["metadata"]["article_id"]}"')
+            print("  (El script esperará automáticamente si los vectores aún no están indexados)")
             print()
             return True
         

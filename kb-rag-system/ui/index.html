@@ -445,9 +445,14 @@
     <header class="header">
         <div class="header-content">
             <h1>KB RAG System</h1>
-            <div id="statusBadge" class="status-badge unhealthy">
-                <div class="status-dot"></div>
-                <span>Checking...</span>
+            <div style="display: flex; gap: 1rem; align-items: center;">
+                <button onclick="window.location.href='/ui/chunks'" style="text-decoration: none; color: var(--primary); font-weight: 500; padding: 0.5rem 1rem; border-radius: 6px; background: var(--primary-light); transition: all 0.2s; border: none; cursor: pointer; font-family: inherit; font-size: inherit;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='var(--primary-light)'; this.style.color='var(--primary)';">
+                    📦 View Chunks
+                </button>
+                <div id="statusBadge" class="status-badge unhealthy">
+                    <div class="status-dot"></div>
+                    <span>Checking...</span>
+                </div>
             </div>
         </div>
     </header>

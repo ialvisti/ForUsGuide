@@ -275,3 +275,74 @@ class ErrorResponse(BaseModel):
     message: str = Field(..., description="Mensaje de error")
     detail: Optional[str] = Field(None, description="Detalles adicionales")
     request_id: Optional[str] = Field(None, description="ID de la request para tracking")
+
+
+# ============================================================================
+# Chunks Models
+# ============================================================================
+
+class ChunkMetadata(BaseModel):
+    """Metadata de un chunk."""
+    
+    article_id: str
+    article_title: str
+    record_keeper: str
+    plan_type: str
+    topic: str
+    chunk_tier: str
+    chunk_type: str
+    chunk_category: str
+    content: str
+    specific_topics: Optional[List[str]] = None
+    tags: Optional[List[str]] = None
+    subtopics: Optional[List[str]] = None
+    scope: Optional[str] = None
+
+
+class Chunk(BaseModel):
+    """Modelo de un chunk."""
+    
+    id: str
+    score: float
+    metadata: ChunkMetadata
+
+
+class ListChunksRequest(BaseModel):
+    """Request para listar chunks."""
+    
+    article_id: Optional[str] = Field(
+        None,
+        description="Filtrar por article_id específico"
+    )
+    
+    tier: Optional[str] = Field(
+        None,
+        description="Filtrar por tier: critical, high, medium, low"
+    )
+    
+    chunk_type: Optional[str] = Field(
+        None,
+        description="Filtrar por tipo de chunk"
+    )
+    
+    limit: Optional[int] = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="Máximo número de chunks a retornar"
+    )
+
+
+class ListChunksResponse(BaseModel):
+    """Response del endpoint /chunks."""
+    
+    chunks: List[Chunk] = Field(..., description="Lista de chunks encontrados")
+    total: int = Field(..., description="Total de chunks retornados")
+    filters_applied: Dict[str, Any] = Field(..., description="Filtros aplicados")
+
+
+class IndexStatsResponse(BaseModel):
+    """Response de estadísticas del índice."""
+    
+    total_vectors: int = Field(..., description="Total de vectores en el índice")
+    namespaces: Dict[str, Any] = Field(..., description="Información de namespaces")

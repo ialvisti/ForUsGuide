@@ -62,7 +62,6 @@ class KBChunker:
     def _extract_base_metadata(self, article: Dict[str, Any]) -> Dict[str, Any]:
         """Extrae metadata base del artículo para todos los chunks."""
         metadata = article.get("metadata", {})
-        summary = article.get("summary", {})
         
         return {
             "article_id": metadata.get("article_id"),
@@ -72,8 +71,8 @@ class KBChunker:
             "plan_type": metadata.get("plan_type"),
             "scope": metadata.get("scope"),
             "tags": metadata.get("tags", []),
-            "topic": summary.get("topic"),
-            "subtopics": summary.get("subtopics", [])
+            "topic": metadata.get("topic"),
+            "subtopics": metadata.get("subtopics", [])
         }
     
     def _create_chunk(
@@ -147,12 +146,11 @@ class KBChunker:
         """Crea chunks para el modo required_data."""
         chunks = []
         details = article.get("details", {})
-        summary = article.get("summary", {})
         
         # Chunk 1: Required Data Complete
         required_data = details.get("required_data", {})
         if required_data:
-            content = self._format_required_data(required_data, summary)
+            content = self._format_required_data(required_data)
             chunks.append(self._create_chunk(
                 content=content,
                 base_metadata=base_metadata,
@@ -180,7 +178,7 @@ class KBChunker:
             ))
         
         # Chunk 3: Critical Flags
-        critical_flags = summary.get("critical_flags", {})
+        critical_flags = details.get("critical_flags", {})
         if critical_flags:
             content = self._format_critical_flags(critical_flags)
             chunks.append(self._create_chunk(
@@ -196,19 +194,10 @@ class KBChunker:
     
     def _format_required_data(
         self,
-        required_data: Dict[str, Any],
-        summary: Dict[str, Any]
+        required_data: Dict[str, Any]
     ) -> str:
         """Formatea required_data para el chunk."""
         lines = ["# Required Data for This Process\n"]
-        
-        # Agregar resumen de data requerida
-        required_summary = summary.get("required_data_summary", [])
-        if required_summary:
-            lines.append("## Summary:")
-            for item in required_summary:
-                lines.append(f"- {item}")
-            lines.append("")
         
         # Must have fields
         must_have = required_data.get("must_have", [])
@@ -270,7 +259,6 @@ class KBChunker:
         """Crea chunks Tier 1 (CRÍTICOS) para generate_response."""
         chunks = []
         details = article.get("details", {})
-        summary = article.get("summary", {})
         
         # Chunk: Decision Guide Complete
         decision_guide = details.get("decision_guide", {})
@@ -301,7 +289,7 @@ class KBChunker:
         # Chunk: Guardrails Complete
         guardrails = details.get("guardrails", {})
         if guardrails:
-            content = self._format_guardrails(guardrails, summary)
+            content = self._format_guardrails(guardrails)
             chunks.append(self._create_chunk(
                 content=content,
                 base_metadata=base_metadata,
@@ -431,19 +419,10 @@ class KBChunker:
     
     def _format_guardrails(
         self,
-        guardrails: Dict[str, Any],
-        summary: Dict[str, Any]
+        guardrails: Dict[str, Any]
     ) -> str:
         """Formatea guardrails."""
         lines = ["# Guardrails and Safety Rules\n"]
-        
-        # Plan specific guardrails from summary
-        plan_guardrails = summary.get("plan_specific_guardrails", [])
-        if plan_guardrails:
-            lines.append("## Plan-Specific Guardrails:")
-            for item in plan_guardrails:
-                lines.append(f"- {item}")
-            lines.append("")
         
         # Must not
         must_not = guardrails.get("must_not", [])
@@ -494,7 +473,6 @@ class KBChunker:
         """Crea chunks Tier 2 (IMPORTANTES) para generate_response."""
         chunks = []
         details = article.get("details", {})
-        summary = article.get("summary", {})
         
         # Chunk: Steps (agrupados)
         steps = details.get("steps", [])
@@ -514,19 +492,6 @@ class KBChunker:
                     tier="high",
                     topics=["procedure", "steps", "process"]
                 ))
-        
-        # Chunk: Key Steps Summary
-        key_steps_summary = summary.get("key_steps_summary", [])
-        if key_steps_summary:
-            content = "# Key Steps Summary\n\n" + "\n".join([f"{i+1}. {step}" for i, step in enumerate(key_steps_summary)])
-            chunks.append(self._create_chunk(
-                content=content,
-                base_metadata=base_metadata,
-                chunk_type="steps_summary",
-                chunk_category="overview",
-                tier="high",
-                topics=["summary", "steps", "overview"]
-            ))
         
         # Chunks: Common Issues
         common_issues = details.get("common_issues", [])
@@ -560,7 +525,7 @@ class KBChunker:
         # Chunk: Fees Details
         fees = details.get("fees", [])
         if fees:
-            content = self._format_fees(fees, summary.get("key_business_rules", []))
+            content = self._format_fees(fees)
             chunks.append(self._create_chunk(
                 content=content,
                 base_metadata=base_metadata,
@@ -640,17 +605,9 @@ class KBChunker:
         
         return f"# Example Scenario\n\n**Scenario:** {scenario}\n\n**Outcome:** {outcome}"
     
-    def _format_fees(self, fees: List[Dict[str, Any]], business_rules: List[str]) -> str:
+    def _format_fees(self, fees: List[Dict[str, Any]]) -> str:
         """Formatea fees."""
         lines = ["# Fees and Charges\n"]
-        
-        # Fee rules from business rules
-        fee_rules = [rule for rule in business_rules if "fee" in rule.lower()]
-        if fee_rules:
-            lines.append("## Fee Rules:")
-            for rule in fee_rules:
-                lines.append(f"- {rule}")
-            lines.append("")
         
         # Detailed fees
         lines.append("## Fee Details:")
@@ -677,25 +634,11 @@ class KBChunker:
         """Crea chunks Tier 3 (OPCIONALES) para generate_response."""
         chunks = []
         details = article.get("details", {})
-        summary = article.get("summary", {})
         
         # Chunks: FAQs (agrupados de 2-3)
         faq_pairs = details.get("faq_pairs", [])
-        high_impact_faqs = summary.get("high_impact_faq_pairs", [])
         
-        # High impact FAQs primero
-        if high_impact_faqs:
-            content = self._format_faqs(high_impact_faqs)
-            chunks.append(self._create_chunk(
-                content=content,
-                base_metadata=base_metadata,
-                chunk_type="faqs",
-                chunk_category="high_impact",
-                tier="medium",
-                topics=["faq", "questions", "common_questions"]
-            ))
-        
-        # Regular FAQs
+        # FAQs
         if faq_pairs:
             faq_chunks = self._group_faqs(faq_pairs)
             for i, faq_group in enumerate(faq_chunks):

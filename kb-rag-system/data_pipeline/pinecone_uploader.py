@@ -340,9 +340,19 @@ class PineconeUploader:
         """
         try:
             stats = self.index.describe_index_stats()
+            
+            # Convertir namespaces a dict serializable
+            namespaces_dict = {}
+            if hasattr(stats, 'namespaces') and stats.namespaces:
+                for ns_name, ns_obj in stats.namespaces.items():
+                    if hasattr(ns_obj, 'vector_count'):
+                        namespaces_dict[ns_name] = {"vector_count": ns_obj.vector_count}
+                    else:
+                        namespaces_dict[ns_name] = dict(ns_obj) if isinstance(ns_obj, dict) else str(ns_obj)
+            
             return {
                 "total_vectors": stats.total_vector_count,
-                "namespaces": stats.namespaces
+                "namespaces": namespaces_dict
             }
         except Exception as e:
             logger.error(f"Error obteniendo stats: {e}")

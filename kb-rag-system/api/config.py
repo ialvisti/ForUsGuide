@@ -27,11 +27,9 @@ class Settings(BaseSettings):
     
     # Security
     API_KEY: str = os.getenv("API_KEY", "")
-    ALLOWED_ORIGINS: list = [
-        "http://localhost:3000",
-        "http://localhost:8000",
-        "https://your-n8n-instance.com"  # Actualizar con URL real
-    ]
+    # Para desarrollo, permitir todos los orígenes
+    # En producción, cambiar a lista específica de orígenes
+    ALLOWED_ORIGINS: list = ["*"]
     
     # OpenAI
     OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")

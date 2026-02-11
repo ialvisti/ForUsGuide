@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chunks Viewer - KB RAG System</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --primary-light: #eef2ff;
+            --secondary: #64748b;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --error: #ef4444;
+            --error-light: #fee2e2;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-tertiary: #f1f5f9;
+            --bg-code: #1e293b;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --text-code: #e2e8f0;
+            --border: #e2e8f0;
+            --border-focus: #4f46e5;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-secondary);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            box-shadow: var(--shadow-sm);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .header-content {
+            max-width: 1800px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .back-link {
+            text-decoration: none;
+            color: var(--primary);
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            transition: all 0.2s;
+        }
+
+        .back-link:hover {
+            background: var(--primary-light);
+        }
+
+        .stats-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            background: var(--primary-light);
+            color: var(--primary);
+        }
+
+        .container {
+            max-width: 1800px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .filters-section {
+            background: var(--bg-primary);
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+            box-shadow: var(--shadow);
+        }
+
+        .filters-title {
+            font-size: 1.125rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+
+        .filters-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+        }
+
+        .form-group label {
+            font-size: 0.875rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+        }
+
+        .form-group input,
+        .form-group select {
+            padding: 0.625rem 0.875rem;
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.875rem;
+            transition: all 0.2s;
+            background: var(--bg-primary);
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px var(--primary-light);
+        }
+
+        .filters-actions {
+            display: flex;
+            gap: 0.5rem;
+            justify-content: flex-end;
+        }
+
+        .btn {
+            padding: 0.625rem 1.25rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: none;
+        }
+
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: var(--primary-hover);
+        }
+
+        .btn-primary:disabled {
+            background: var(--secondary);
+            cursor: not-allowed;
+        }
+
+        .btn-secondary {
+            background: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-tertiary);
+        }
+
+        .chunks-grid {
+            display: grid;
+            gap: 1.5rem;
+        }
+
+        .chunk-card {
+            background: var(--bg-primary);
+            border-radius: 8px;
+            padding: 1.5rem;
+            box-shadow: var(--shadow);
+            transition: all 0.2s;
+        }
+
+        .chunk-card:hover {
+            box-shadow: var(--shadow-lg);
+        }
+
+        .chunk-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chunk-id {
+            font-family: 'Courier New', monospace;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            word-break: break-all;
+        }
+
+        .chunk-badges {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .badge-critical {
+            background: var(--error-light);
+            color: #991b1b;
+        }
+
+        .badge-high {
+            background: var(--warning-light);
+            color: #92400e;
+        }
+
+        .badge-medium {
+            background: #dbeafe;
+            color: #1e40af;
+        }
+
+        .badge-low {
+            background: #e0e7ff;
+            color: #4338ca;
+        }
+
+        .chunk-metadata {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 0.75rem;
+            margin-bottom: 1rem;
+            padding: 1rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+        }
+
+        .metadata-item {
+            font-size: 0.875rem;
+        }
+
+        .metadata-label {
+            color: var(--text-muted);
+            font-weight: 500;
+            margin-right: 0.5rem;
+        }
+
+        .metadata-value {
+            color: var(--text-primary);
+        }
+
+        .chunk-tags {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+
+        .tag {
+            padding: 0.25rem 0.75rem;
+            background: var(--bg-tertiary);
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .chunk-content {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: var(--bg-tertiary);
+            border-left: 3px solid var(--primary);
+            border-radius: 4px;
+            font-size: 0.875rem;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .chunk-content h1,
+        .chunk-content h2,
+        .chunk-content h3 {
+            margin-top: 0.5rem;
+            margin-bottom: 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .loading {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+        }
+
+        .loader {
+            border: 3px solid var(--border);
+            border-top-color: var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.3;
+        }
+
+        .expand-btn {
+            margin-top: 0.5rem;
+            padding: 0.5rem 1rem;
+            background: var(--primary-light);
+            color: var(--primary);
+            border: none;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .expand-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .chunk-content.collapsed {
+            max-height: 150px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .chunk-content.collapsed::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            height: 50px;
+            background: linear-gradient(transparent, var(--bg-tertiary));
+        }
+
+        .error-message {
+            padding: 1rem;
+            background: var(--error-light);
+            color: #991b1b;
+            border-radius: 6px;
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .filters-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chunk-metadata {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Header -->
+    <header class="header">
+        <div class="header-content">
+            <div>
+                <h1>📦 Chunks Viewer</h1>
+            </div>
+            <div class="header-actions">
+                <div id="statsBadge" class="stats-badge">
+                    <span>Loading...</span>
+                </div>
+                <button onclick="window.location.href='/ui'" class="back-link" style="border: none; cursor: pointer; font-family: inherit; font-size: inherit;">← Back to API</button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <div class="container">
+        <!-- Filters Section -->
+        <div class="filters-section">
+            <h2 class="filters-title">Filters</h2>
+            <div class="filters-grid">
+                <div class="form-group">
+                    <label for="articleId">Article ID</label>
+                    <input type="text" id="articleId" placeholder="Filter by article ID">
+                </div>
+                <div class="form-group">
+                    <label for="tier">Tier</label>
+                    <select id="tier">
+                        <option value="">All Tiers</option>
+                        <option value="critical">Critical</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="chunkType">Type</label>
+                    <input type="text" id="chunkType" placeholder="e.g., business_rules, faqs">
+                </div>
+                <div class="form-group">
+                    <label for="limit">Limit</label>
+                    <select id="limit">
+                        <option value="10">10 chunks</option>
+                        <option value="25" selected>25 chunks</option>
+                        <option value="50">50 chunks</option>
+                        <option value="100">100 chunks</option>
+                        <option value="500">500 chunks</option>
+                    </select>
+                </div>
+            </div>
+            <div class="filters-actions">
+                <button class="btn btn-secondary" onclick="clearFilters()">Clear</button>
+                <button class="btn btn-primary" onclick="loadChunks()" id="loadBtn">Load Chunks</button>
+            </div>
+        </div>
+
+        <!-- Error Message -->
+        <div id="errorMessage" class="error-message" style="display: none;"></div>
+
+        <!-- Chunks Grid -->
+        <div id="chunksContainer">
+            <div class="loading">
+                <div class="loader"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_URL = 'http://localhost:8000';
+
+        // Load stats on page load
+        async function loadStats() {
+            try {
+                const response = await fetch(`${API_URL}/api/v1/index-stats`);
+                const data = await response.json();
+                
+                document.getElementById('statsBadge').innerHTML = `
+                    📊 ${data.total_vectors} vectors
+                `;
+            } catch (error) {
+                console.error('Error loading stats:', error);
+                document.getElementById('statsBadge').innerHTML = `
+                    ⚠️ Stats unavailable
+                `;
+            }
+        }
+
+        // Load chunks
+        async function loadChunks() {
+            const loadBtn = document.getElementById('loadBtn');
+            const chunksContainer = document.getElementById('chunksContainer');
+            const errorMessage = document.getElementById('errorMessage');
+            
+            // Hide error
+            errorMessage.style.display = 'none';
+            
+            // Show loading
+            loadBtn.disabled = true;
+            loadBtn.textContent = 'Loading...';
+            chunksContainer.innerHTML = '<div class="loading"><div class="loader"></div></div>';
+            
+            try {
+                // Build request
+                const request = {
+                    article_id: document.getElementById('articleId').value || null,
+                    tier: document.getElementById('tier').value || null,
+                    chunk_type: document.getElementById('chunkType').value || null,
+                    limit: parseInt(document.getElementById('limit').value)
+                };
+                
+                // Call API
+                const response = await fetch(`${API_URL}/api/v1/chunks`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(request)
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+                }
+                
+                const data = await response.json();
+                
+                // Render chunks
+                renderChunks(data.chunks);
+                
+            } catch (error) {
+                console.error('Error loading chunks:', error);
+                errorMessage.textContent = `Error: ${error.message}`;
+                errorMessage.style.display = 'block';
+                chunksContainer.innerHTML = '';
+            } finally {
+                loadBtn.disabled = false;
+                loadBtn.textContent = 'Load Chunks';
+            }
+        }
+
+        // Render chunks
+        function renderChunks(chunks) {
+            const chunksContainer = document.getElementById('chunksContainer');
+            
+            if (chunks.length === 0) {
+                chunksContainer.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <h3>No chunks found</h3>
+                        <p>Try adjusting your filters</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            chunksContainer.innerHTML = `
+                <div class="chunks-grid">
+                    ${chunks.map((chunk, index) => renderChunk(chunk, index)).join('')}
+                </div>
+            `;
+        }
+
+        // Render single chunk
+        function renderChunk(chunk, index) {
+            const tierBadgeClass = `badge-${chunk.metadata.chunk_tier}`;
+            const specificTopics = chunk.metadata.specific_topics || [];
+            const tags = chunk.metadata.tags || [];
+            
+            return `
+                <div class="chunk-card">
+                    <div class="chunk-header">
+                        <div style="flex: 1;">
+                            <div class="chunk-id">${chunk.id}</div>
+                            <div style="margin-top: 0.5rem; font-size: 0.875rem; color: var(--text-secondary);">
+                                Score: ${chunk.score.toFixed(4)}
+                            </div>
+                        </div>
+                        <div class="chunk-badges">
+                            <span class="badge ${tierBadgeClass}">${chunk.metadata.chunk_tier}</span>
+                        </div>
+                    </div>
+                    
+                    <div class="chunk-metadata">
+                        <div class="metadata-item">
+                            <span class="metadata-label">Article:</span>
+                            <span class="metadata-value">${chunk.metadata.article_title}</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Type:</span>
+                            <span class="metadata-value">${chunk.metadata.chunk_type}</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Record Keeper:</span>
+                            <span class="metadata-value">${chunk.metadata.record_keeper}</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Plan Type:</span>
+                            <span class="metadata-value">${chunk.metadata.plan_type}</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Topic:</span>
+                            <span class="metadata-value">${chunk.metadata.topic}</span>
+                        </div>
+                        <div class="metadata-item">
+                            <span class="metadata-label">Category:</span>
+                            <span class="metadata-value">${chunk.metadata.chunk_category}</span>
+                        </div>
+                    </div>
+                    
+                    ${specificTopics.length > 0 ? `
+                    <div class="chunk-tags">
+                        ${specificTopics.map(topic => `<span class="tag">${topic}</span>`).join('')}
+                    </div>
+                    ` : ''}
+                    
+                    ${tags.length > 0 ? `
+                    <div class="chunk-tags">
+                        ${tags.map(tag => `<span class="tag">🏷️ ${tag}</span>`).join('')}
+                    </div>
+                    ` : ''}
+                    
+                    <div id="content-${index}" class="chunk-content ${chunk.metadata.content.length > 500 ? 'collapsed' : ''}">
+                        ${escapeHtml(chunk.metadata.content)}
+                    </div>
+                    
+                    ${chunk.metadata.content.length > 500 ? `
+                    <button class="expand-btn" onclick="toggleContent(${index})">
+                        Show More
+                    </button>
+                    ` : ''}
+                </div>
+            `;
+        }
+
+        // Toggle content expansion
+        function toggleContent(index) {
+            const content = document.getElementById(`content-${index}`);
+            const btn = content.nextElementSibling;
+            
+            if (content.classList.contains('collapsed')) {
+                content.classList.remove('collapsed');
+                btn.textContent = 'Show Less';
+            } else {
+                content.classList.add('collapsed');
+                btn.textContent = 'Show More';
+            }
+        }
+
+        // Clear filters
+        function clearFilters() {
+            document.getElementById('articleId').value = '';
+            document.getElementById('tier').value = '';
+            document.getElementById('chunkType').value = '';
+            document.getElementById('limit').value = '25';
+        }
+
+        // Escape HTML
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Initialize on load
+        window.addEventListener('DOMContentLoaded', () => {
+            loadStats();
+            loadChunks();
+        });
+    </script>
+</body>
+</html>

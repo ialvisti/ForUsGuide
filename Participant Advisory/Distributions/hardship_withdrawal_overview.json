@@ -1,0 +1,430 @@
+{
+    "metadata": {
+        "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+        "title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+        "description": "End-to-end guide to 401(k) hardship withdrawals for ForUsAll: definition, IRS-approved reasons, plan-dependent eligibility and available amount limits (sources, vesting, loans, employer contributions), request process via Support and RightSignature (including Guidelines review), documentation retention expectations, fees, tax/penalty considerations, and estimated funding timelines by disbursement method.",
+        "audience": "Internal AI Support Agent",
+        "record_keeper": "ForUsAll",
+        "plan_type": "401(k)",
+        "scope": "recordkeeper-specific",
+        "tags": [
+            "Participant Advisory",
+            "Distribution"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-02-01",
+        "source_last_updated": null,
+        "source_system": "DevRev",
+        "topic": "hardship_withdrawal",
+        "subtopics": [
+            "irs_approved_reasons",
+            "fees",
+            "tax_and_penalties",
+            "rightsignature_request_flow",
+            "estimated_processing_times",
+            "documentation_retention",
+            "plan_specific_limits"
+        ]
+    },
+    "details": {
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": "ForUsAll"
+        },
+        "business_rules": [
+            {
+                "category": "eligibility",
+                "rules": [
+                    "The hardship request must meet one of the IRS-approved hardship reasons listed in this article.",
+                    "The withdrawal amount must be necessary to meet the financial need and cannot exceed the documented hardship expenses."
+                ]
+            },
+            {
+                "category": "plan_specific_limits",
+                "rules": [
+                    "Some plans restrict access to certain employer-contributed amounts until specific conditions are met.",
+                    "The amount available for hardship withdrawal may be affected by eligible sources under the plan, the participant's vested balance, and any existing 401(k) loan."
+                ]
+            },
+            {
+                "category": "request_limits",
+                "rules": [
+                    "Only one request per hardship reason is allowed at a time."
+                ]
+            },
+            {
+                "category": "documentation_retention",
+                "rules": [
+                    "ForUsAll does not collect supporting documentation, but the IRS requires the participant to retain supporting documents in case of an audit.",
+                    "The article advises retaining supporting records for 7 years."
+                ]
+            },
+            {
+                "category": "tax_and_penalties",
+                "rules": [
+                    "Hardship withdrawals are subject to federal income taxes.",
+                    "If the participant is under age 59.5, a 10% early withdrawal penalty may apply."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "Standard Processing",
+                "fee": "$75",
+                "notes": "Applies to all hardship withdrawals regardless of disbursement method."
+            },
+            {
+                "service": "Wire Transfer or Overnight Check",
+                "fee": "$75 + $35",
+                "notes": "An additional $35 applies for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Participant contacts ForUsAll Support to request a hardship withdrawal.",
+                "notes": "Support contact options are email help@forusall.com and phone 844-401-2253."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Agent provides the Hardship Distribution Guidelines (including eligibility requirements and processing times) and confirms the participant reviewed it.",
+                "notes": "We will confirm the participant reviewed the Guidelines before sending the RightSignature form link."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Agent sends a secure RightSignature link to complete the hardship withdrawal form.",
+                "notes": null
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Participant completes and submits the hardship withdrawal request through the RightSignature platform.",
+                "notes": "Timelines start once the request is approved and the participant receives an executed confirmation email via RightSignature."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Participant retains supporting documentation for the hardship in case of an IRS audit.",
+                "notes": "ForUsAll does not collect supporting documents; the participant must retain them (the article advises 7 years)."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant asks where to send supporting documentation.",
+                "resolution": "Explain that ForUsAll does not collect supporting documents, but the IRS requires the participant to retain them in case of an audit."
+            },
+            {
+                "issue": "Participant asks why the amount available is less than expected.",
+                "resolution": "Explain that the plan's eligible sources, vested balance, employer match eligibility, and any outstanding 401(k) loan can reduce the amount available for hardship withdrawal; do not guarantee employer match eligibility."
+            },
+            {
+                "issue": "Delay in receiving funds after submitting RightSignature form.",
+                "resolution": "Share the estimated timelines by disbursement method and note that bank or mail carrier delays, processing volume, and holidays or weekends may affect timing."
+            },
+            {
+                "issue": "Incomplete or inaccurate form information.",
+                "resolution": "Advise the participant to ensure banking and contact information is accurate and the form is fully completed before submitting, as incomplete information may affect timing."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "Participant requests a hardship withdrawal for tuition for the next 12 months.",
+                "outcome": "This fits the post-secondary education expenses category if it covers tuition, fees, room, and board for the participant, spouse, or dependents for the next 12 months, and the withdrawal should be limited to the amount necessary to meet the expense."
+            },
+            {
+                "scenario": "Participant has an outstanding 401(k) loan and requests a hardship withdrawal.",
+                "outcome": "Explain that part of the account balance may need to be reserved to offset the loan, which can reduce the amount available for hardship withdrawal."
+            },
+            {
+                "scenario": "Participant asks whether employer match funds can be included.",
+                "outcome": "Explain that eligibility of employer match depends on the specific plan and will be determined by reviewing plan documents; do not guarantee employer match eligibility."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "processing_times",
+                "notes": [
+                    "Timelines start once the request is approved and the participant receives an executed confirmation email via RightSignature after submission.",
+                    "Estimated time to receive funds (wire transfer): 1 - 2 weeks.",
+                    "Estimated time to receive funds (ACH bank transfer): 1 - 2 weeks.",
+                    "Estimated time to receive funds (overnight check via UPS): 1 - 2 weeks.",
+                    "Estimated time to receive funds (standard mail check via USPS): 2 - 3 weeks.",
+                    "Factors that may affect timing include bank or mail carrier delays, volume of processing requests, and holidays or weekends.",
+                    "Best practices to avoid delays include ensuring banking and contact information is accurate, and selecting wire, ACH, or overnight delivery if time-sensitive."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "What is a hardship withdrawal?",
+                "answer": "A hardship withdrawal is a 401(k) distribution that a plan may allow for an urgent financial need, subject to strict rules, potential tax consequences, and long-term retirement impacts."
+            },
+            {
+                "question": "How much can a participant withdraw for a hardship?",
+                "answer": "The participant can request a withdrawal up to the amount of documented hardship expenses, limited to the amount necessary to relieve the financial burden and not more than the verified cost of the hardship."
+            },
+            {
+                "question": "What are the IRS-approved hardship reasons?",
+                "answer": "Post-Secondary Education Expenses; Purchase of a Primary Residence (down payment and closing costs); Preventing Eviction or Foreclosure (past-due amounts to avoid losing your primary residence); Medical Expenses (costs for you, your spouse, or dependents that are not covered by insurance); Funeral or Burial Expenses (for your parent, spouse, child, or dependent); Damage to Primary Residence (repairs due to a qualifying casualty loss as defined by IRS Section 165)."
+            },
+            {
+                "question": "What are the fees for a hardship withdrawal request?",
+                "answer": "Standard processing is $75 for all hardship withdrawals. Wire transfer or overnight check adds +$35. ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee."
+            },
+            {
+                "question": "How does the participant start the request?",
+                "answer": "The participant contacts ForUsAll Support. ForUsAll confirms the participant reviewed the Hardship Distribution Guidelines and then sends a secure RightSignature link to complete the form."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Hardship withdrawal",
+                "definition": "A 401(k) distribution that may be available for an urgent financial need if the request meets IRS hardship criteria and plan rules."
+            },
+            {
+                "term": "Employer match",
+                "definition": "Employer-contributed matching funds that may or may not be eligible for hardship withdrawal depending on the plan's provisions."
+            },
+            {
+                "term": "RightSignature",
+                "definition": "The secure platform ForUsAll uses to send and collect the hardship withdrawal request form for completion and submission."
+            },
+            {
+                "term": "Vested balance",
+                "definition": "The portion of the account balance that is owned by the participant and may affect how much is available for hardship withdrawal under plan rules."
+            },
+            {
+                "term": "Post-Secondary Education",
+                "definition": "Tuition, fees, room, and board for the next 12 months of education; Must be for the participant, spouse, or dependent; Must be after scholarships, grants, or financial aid are applied; Loan repayment or past education expenses are not eligible."
+            },
+            {
+                "term": "Purchase of a Primary Residence",
+                "definition": "Down payment or closing costs to purchase primary residence only; Not eligible: Mortgage payments or second home purchases."
+            },
+            {
+                "term": "Prevent Eviction or Foreclosure",
+                "definition": "Rent or mortgage amounts needed to avoid eviction or foreclosure on the primary residence."
+            },
+            {
+                "term": "Medical or Dental Expenses",
+                "definition": "Medical or dental bills not covered by insurance; Must be for participant, spouse, or dependent; Elective procedures (e.g. most orthodontics) are not eligible."
+            },
+            {
+                "term": "Funeral or Burial Expenses",
+                "definition": "Funeral or burial costs for participant’s parent, spouse, child, or dependent."
+            },
+            {
+                "term": "Damage to Primary Residence",
+                "definition": "Out-of-pocket costs to repair damage to primary residence due to a qualifying casualty event (e.g., fire, flood); Must meet IRS criteria under IRC Section 165; Progressive or maintenance-related damage does not qualify."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not guarantee employer match or other employer-contributed sources are eligible for hardship withdrawal; eligibility depends on plan documents.",
+                "Do not promise an exact processing or delivery date beyond the estimated timelines listed in the article.",
+                "Do not state or imply that ForUsAll collects, reviews, or stores supporting documentation for hardship withdrawals.",
+                "Do not claim the 10% early withdrawal penalty will apply; it may apply if the participant is under age 59.5.",
+                "Do not claim the participant can withdraw more than the documented hardship expense amount or withdraw extra for unrelated expenses.",
+                "Do not invent additional IRS hardship reasons, fees, or timelines not listed in the article."
+            ],
+            "must_do_if_unsure": [
+                "If asked whether employer match funds or other sources are eligible, state that it depends on the plan and will be determined by reviewing plan documents. (we as ForUsAll have to review it, participants have no access to plan documents)",
+                "If the participant's hardship reason is unclear, ask the participant to specify which IRS-approved hardship reason applies from the list in this article.",
+                "If the participant asks for outcomes not described in the article, check other articles for a response or escalate to a human agent."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [
+                "distribution_requests_for_small_account_balances",
+                "what_are_my_options_if_i_am_not_separated_and_not_age_59_5",
+                "can_i_take_a_distribution_while_employed",
+                "when_will_i_receive_my_401k_withdrawal_or_rollover"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Monday to Friday, 7 AM to 5 PM Pacific Time"
+            }
+        },
+        "required_data": {
+            "must_have": [],
+            "nice_to_have": [
+                {
+                    "data_point": "Hardship reason",
+                    "meaning": "The IRS-approved hardship category the participant is claiming for the request.",
+                    "example_values": [
+                        "Post-Secondary Education Expenses",
+                        "Purchase of a Primary Residence",
+                        "Preventing Eviction or Foreclosure",
+                        "Medical or Dental Expenses",
+                        "Funeral or Burial Expenses",
+                        "Damage to Primary Residence"
+                    ],
+                    "why_needed": "Used to determine whether the request meets an IRS-approved hardship reason listed in the article and to apply the one-request-per-reason rule.",
+                    "source_note": "Supported by article section: IRS-Approved Hardship Withdrawal Reasons",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Amount needed for the hardship",
+                    "meaning": "The dollar amount the participant is requesting to withdraw to cover the immediate hardship expense.",
+                    "example_values": [
+                        "A value stated in this article (limited to documented hardship expenses)"
+                    ],
+                    "why_needed": "The request cannot exceed the verified cost of the hardship and must be limited to the amount necessary to relieve the financial burden.",
+                    "source_note": "Supported by article section: Documented Financial Need",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Confirmation of review of Hardship Distribution Guidelines PDF",
+                    "meaning": "The participant confirms they reviewed the Hardship Distribution Guidelines PDF provided by the agent.",
+                    "example_values": [
+                        "Participant confirms they reviewed the PDF"
+                    ],
+                    "why_needed": "The article states ForUsAll will confirm the participant reviewed the PDF before sending the RightSignature link.",
+                    "source_note": "Supported by article section: Step-by-Step: How to Initiate Your Request",
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Participant age relative to 59.5",
+                    "meaning": "Whether the participant is under age 59.5, which affects whether a 10% early withdrawal penalty may apply.",
+                    "example_values": [
+                        "Under 59.5",
+                        "59.5 or older"
+                    ],
+                    "why_needed": "Used to explain that a 10% early withdrawal penalty may apply if the participant is under age 59.5.",
+                    "source_note": "Supported by article section: Tax & Penalty Information",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Outstanding 401(k) loan status",
+                    "meaning": "Whether the participant has a 401(k) loan that has not been paid off, which can reduce available hardship funds.",
+                    "example_values": [
+                        "Has an outstanding loan",
+                        "No outstanding loan"
+                    ],
+                    "why_needed": "An outstanding loan may require reserving part of the balance to offset the loan, reducing the amount available for hardship withdrawal.",
+                    "source_note": "Supported by article section: Outstanding Loan Balance",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Employer match eligibility for hardship withdrawal",
+                    "meaning": "Whether employer-contributed matching funds are eligible sources for hardship withdrawal under the plan.",
+                    "example_values": [
+                        "Eligible",
+                        "Not eligible",
+                        "Unknown (requires plan document review)"
+                    ],
+                    "why_needed": "Determines whether employer match dollars can be included in the hardship withdrawal amount; the article states this depends on plan documents.",
+                    "source_note": "Supported by article section: Employer Match Rules",
+                    "source_type": "plan_profile"
+                },
+                {
+                    "data_point": "Current vested balance",
+                    "meaning": "The participant's vested balance, which may affect the amount available for hardship withdrawal under plan rules.",
+                    "example_values": [],
+                    "why_needed": "The article lists vested balance as a factor that may affect the amount the participant can withdraw.",
+                    "source_note": "Supported by article section: Key Facts About Hardship Withdrawals",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "if_missing": [],
+            "disambiguation_notes": [
+                "Employer match eligibility depends on the plan; do not treat it as universally available.",
+                "Hardship withdrawals are limited to the amount necessary to relieve the financial burden; do not imply participants can withdraw extra for future or unrelated expenses."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "The participant should select an IRS-approved hardship reason listed in this article that applies to their situation (self-certification).",
+                "The participant should request only the amount necessary to meet the financial need and should not exceed the documented hardship expenses (self-certification).",
+                "Only one request per hardship reason is allowed at a time.",
+                "All of the eligibility requirements are not mandatory to request a hardship withdrawal as this process is a Self-Certification process, so participants are not required to meet all eligibility criteria before submitting a request."
+            ],
+            "blocking_conditions": [],
+            "missing_data_conditions": [],
+            "allowed_conclusions": [
+                "After setting expectations and providing the Hardship Distribution Guidelines, send a RightSignature link to complete the form if the participant requests it.",
+                "Standard processing has a $75 fee, with an additional +$35 for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.",
+                "Funds are subject to federal income taxes, and a 10% early withdrawal penalty may apply if the participant is under age 59.5.",
+                "ForUsAll does not collect supporting documents; the participant must retain documentation in case of an IRS audit."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee employer match funds are eligible for hardship withdrawal.",
+                "Do not guarantee a specific dollar amount will be available for hardship withdrawal.",
+                "Do not promise an exact delivery date beyond the estimated timelines listed in the article.",
+                "Do not state the participant will definitely owe (or definitely will not owe) a 10% early withdrawal penalty."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "Hardship withdrawals are self-certified. We can provide the IRS-approved hardship reason list and fee and timeline expectations, and if you would like to proceed, we can send you a secure RightSignature link to submit your request.",
+                    "The amount you request should be limited to the amount necessary to cover your hardship expense and should not exceed your documented hardship expenses."
+                ],
+                "next_steps": [
+                    "Send the participant a secure RightSignature link to complete the hardship withdrawal form."
+                ],
+                "warnings": [
+                    "Do not promise an exact funding date beyond the estimated timelines listed in this article."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not guarantee employer match funds are eligible.",
+                    "Do not promise an exact funding date.",
+                    "Do not say ForUsAll collects supporting documents."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [],
+                "next_steps": [],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": []
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [],
+                "next_steps": [],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": []
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Some hardship withdrawal details depend on your specific plan rules, including which sources (such as employer match) are eligible and how an outstanding loan or vested balance may affect the amount available.",
+                    "We can help by reviewing the plan rules as part of the request process."
+                ],
+                "next_steps": [
+                    "Explain that employer match eligibility and eligible sources are plan-specific."
+                ],
+                "warnings": [
+                    "Do not guarantee employer match eligibility or a specific available amount."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not guarantee the participant can withdraw employer match funds.",
+                    "Do not state a specific available amount without plan-specific confirmation.",
+                    "Do not promise faster timelines than the estimates listed in this article."
+                ]
+            }
+        }
+    }
+}

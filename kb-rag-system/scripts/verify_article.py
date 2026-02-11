@@ -44,12 +44,20 @@ def verify_article(article_id: str, show_details: bool = False) -> bool:
         True si el artículo se encontró correctamente
     """
     try:
+        import time
+        
         # Conectar a Pinecone
         uploader = PineconeUploader()
         
-        # Buscar chunks del artículo
+        # Buscar chunks del artículo con retry (para consistencia eventual)
         logger.info(f"🔍 Buscando chunks para artículo: {article_id}")
         chunks = uploader.get_article_chunks(article_id)
+        
+        # Si no se encuentra, esperar y reintentar (Pinecone tiene consistencia eventual)
+        if not chunks:
+            logger.info("⏱️  No se encontraron chunks. Esperando 10 segundos (consistencia eventual de Pinecone)...")
+            time.sleep(10)
+            chunks = uploader.get_article_chunks(article_id)
         
         if not chunks:
             logger.error(f"❌ No se encontraron chunks para el artículo: {article_id}")

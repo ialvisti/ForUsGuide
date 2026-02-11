@@ -29,7 +29,12 @@ from .models import (
     GenerateResponseRequest,
     GenerateResponseResult,
     HealthResponse,
-    ErrorResponse
+    ErrorResponse,
+    ListChunksRequest,
+    ListChunksResponse,
+    Chunk,
+    ChunkMetadata,
+    IndexStatsResponse
 )
 from .config import settings, validate_settings
 from .middleware import (
@@ -194,6 +199,19 @@ async def ui():
         )
 
 
+@app.get("/ui/chunks")
+async def chunks_ui():
+    """Serve the chunks viewer interface."""
+    chunks_file = Path(__file__).parent.parent / "ui" / "chunks.html"
+    if chunks_file.exists():
+        return FileResponse(chunks_file)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Chunks viewer not found"
+        )
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check(
     pinecone: PineconeUploader = Depends(get_pinecone)
@@ -349,6 +367,116 @@ async def generate_response_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error processing request: {str(e)}"
+        )
+
+
+@app.post(
+    "/api/v1/chunks",
+    response_model=ListChunksResponse,
+    tags=["Chunks Management"]
+)
+async def list_chunks_endpoint(
+    request: ListChunksRequest,
+    pinecone: PineconeUploader = Depends(get_pinecone)
+):
+    """
+    Lista chunks de Pinecone con filtros opcionales.
+    
+    Permite filtrar chunks por:
+    - article_id: ID del artículo
+    - tier: critical, high, medium, low
+    - chunk_type: business_rules, faqs, steps, etc.
+    - limit: número máximo de resultados
+    
+    **No requiere autenticación** (endpoint público para UI)
+    """
+    try:
+        logger.info(f"List chunks request | Filters: article_id={request.article_id}, tier={request.tier}, type={request.chunk_type}")
+        
+        # Construir filtro para Pinecone
+        filter_dict = {}
+        
+        if request.article_id:
+            filter_dict["article_id"] = {"$eq": request.article_id}
+        
+        if request.tier:
+            filter_dict["chunk_tier"] = {"$eq": request.tier}
+        
+        if request.chunk_type:
+            filter_dict["chunk_type"] = {"$eq": request.chunk_type}
+        
+        # Hacer query a Pinecone
+        raw_chunks = pinecone.query_chunks(
+            query_text="list chunks",
+            top_k=request.limit,
+            filter_dict=filter_dict if filter_dict else None
+        )
+        
+        # Convertir a modelo Pydantic
+        chunks = []
+        for raw_chunk in raw_chunks:
+            try:
+                chunk = Chunk(
+                    id=raw_chunk['id'],
+                    score=raw_chunk['score'],
+                    metadata=ChunkMetadata(**raw_chunk['metadata'])
+                )
+                chunks.append(chunk)
+            except Exception as e:
+                logger.warning(f"Error parsing chunk {raw_chunk.get('id')}: {e}")
+                continue
+        
+        logger.info(f"List chunks completed | Found: {len(chunks)} chunks")
+        
+        return ListChunksResponse(
+            chunks=chunks,
+            total=len(chunks),
+            filters_applied={
+                "article_id": request.article_id,
+                "tier": request.tier,
+                "chunk_type": request.chunk_type,
+                "limit": request.limit
+            }
+        )
+    
+    except Exception as e:
+        logger.error(f"Error in list_chunks endpoint: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error listing chunks: {str(e)}"
+        )
+
+
+@app.get(
+    "/api/v1/index-stats",
+    response_model=IndexStatsResponse,
+    tags=["Chunks Management"]
+)
+async def index_stats_endpoint(
+    pinecone: PineconeUploader = Depends(get_pinecone)
+):
+    """
+    Obtiene estadísticas del índice de Pinecone.
+    
+    Retorna:
+    - Total de vectores
+    - Información de namespaces
+    
+    **No requiere autenticación** (endpoint público para UI)
+    """
+    try:
+        stats = pinecone.get_index_stats()
+        
+        return IndexStatsResponse(
+            total_vectors=stats.get('total_vectors', 0),
+            namespaces=stats.get('namespaces', {})
+        )
+    
+    except Exception as e:
+        logger.error(f"Error getting index stats: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error getting stats: {str(e)}"
         )
 
 

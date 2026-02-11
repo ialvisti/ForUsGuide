@@ -19,7 +19,7 @@ class ArticleProcessor:
     
     def __init__(self):
         """Inicializa el procesador de artículos."""
-        self.required_sections = ["metadata", "summary", "details"]
+        self.required_sections = ["metadata", "details"]
     
     def load_article(self, file_path: str) -> Optional[Dict[str, Any]]:
         """
@@ -94,7 +94,6 @@ class ArticleProcessor:
             Dict con información básica
         """
         metadata = article.get("metadata", {})
-        summary = article.get("summary", {})
         
         return {
             "article_id": metadata.get("article_id"),
@@ -104,8 +103,8 @@ class ArticleProcessor:
             "plan_type": metadata.get("plan_type"),
             "scope": metadata.get("scope"),
             "tags": metadata.get("tags", []),
-            "topic": summary.get("topic"),
-            "subtopics": summary.get("subtopics", [])
+            "topic": metadata.get("topic"),
+            "subtopics": metadata.get("subtopics", [])
         }
 
 

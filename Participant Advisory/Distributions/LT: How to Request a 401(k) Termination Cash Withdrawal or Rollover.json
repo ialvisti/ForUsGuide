@@ -18,10 +18,7 @@
     "schema_version": "kb_article_v2",
     "transformed_at": "2026-01-15",
     "source_last_updated": "2025-10-15",
-    "source_system": "DevRev"
-  },
-  "summary": {
-    "purpose": "Help an agent determine eligibility and guide a terminated participant through requesting a 401(k) termination distribution (cash, rollover, or split) using the ForUsAll participant portal, with a RightSignature electronic form as a fallback when portal access is not possible due to MFA access issues.",
+    "source_system": "DevRev",
     "topic": "termination_distribution_request",
     "subtopics": [
       "eligibility_prerequisites",
@@ -30,69 +27,14 @@
       "delivery_methods_check_wire_overnight",
       "mfa_and_portal_access",
       "processing_and_delivery_timelines"
-    ],
-    "required_data_summary": [
-      "(participant_profile) Termination date",
-      "(participant_profile) Participant Status",
-      "(participant_profile) Account balance",
-      "(participant_profile) MFA status",
-      "(participant_profile) Rehire date",
-      "(agent_input) Last Payroll date",
-      "(participant_profile) Participant's name"
-    ],
-    "key_business_rules": [
-      "Participant must have Terminated status and a termination date; if a rehire date exists, termination date must be after the rehire date.",
-      "Only vested balances are eligible for distribution.",
-      "Participant must have MFA enrolled to access the participant portal; if portal access is not possible due to MFA access issues, a RightSignature electronic form can be requested as a slower option.",
-      "Account balance must be greater than 75.00 to proceed; if balance is less than or equal to 75.00, the $75 distribution fee may reduce the distribution to 0.00.",
-      "A $75 distribution fee applies to all requests; no additional charges apply for ACH or regular mail check.",
-      "An additional $35 fee applies for wire or overnight check delivery, and wire transfer and overnight check fees are non-refundable.",
-      "For cash distributions, 20% mandatory federal withholding applies and state withholding may also apply; cash distributions are taxable income for the calendar year processed.",
-      "Wires require exact instructions to avoid rejections and returns; a returned wire may be converted to a mailed check."
-    ],
-    "key_steps_summary": [
-      "Log in to the ForUsAll participant portal and open Loans & Distributions.",
-      "Select the distribution reason (Separation of Service; if unavailable select Default).",
-      "Review sources and vesting, then enter email confirmation information.",
-      "Choose distribution type (cash, rollover, or split) and delivery method, then provide the required delivery and receiving institution details.",
-      "Review elections (including withholding) and submit the request, then track review, processing, and delivery timelines; if portal access is not possible due to MFA access issues, request a RightSignature electronic form from ForUsAll Support."
-    ],
-    "high_impact_faq_pairs": [
-      {
-        "question": "What should I do if Separation of Service is not available as a reason?",
-        "answer": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support."
-      },
-      {
-        "question": "What fees apply to a termination distribution request?",
-        "answer": "A $75 distribution fee applies to all requests. An additional $35 fee applies if you choose wire delivery or an overnight check, and those fees are non-refundable."
-      },
-      {
-        "question": "What are the delivery timelines for checks and wires?",
-        "answer": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS, and wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
-      },
-      {
-        "question": "What taxes apply to a cash distribution?",
-        "answer": "A 20% federal withholding applies and state withholding may also apply. The distribution is taxable income for the calendar year processed."
-      },
-      {
-        "question": "Can I request a distribution before my termination date is in the system?",
-        "answer": "No. You must have a termination date in the system to request a distribution."
-      }
-    ],
-    "plan_specific_guardrails": [
-      "Do not claim a participant can request a termination distribution without a termination date and Terminated status.",
-      "Do not state that unvested funds can be distributed; only vested balances are eligible.",
-      "Do not claim the wire or overnight check fee can be refunded; these fees are non-refundable.",
-      "Do not guarantee whether state withholding will apply or specify state withholding amounts; only state that it may apply.",
-      "Do not promise exact delivery dates; use only the stated approximate timelines."
-    ],
+    ]
+  },
+  "details": {
     "critical_flags": {
       "portal_required": true,
       "mfa_relevant": true,
       "record_keeper_must_be": "LT Trust"
-    }
-  },
-  "details": {
+    },
     "business_rules": [
       {
         "category": "eligibility",

@@ -72,8 +72,9 @@ class TokenManager:
         """
         Calcula presupuesto dinámico basado en número de inquiries.
         
-        DevRev AI tiene límite de ~4000 tokens total por ticket.
-        Dividimos equitativamente entre inquiries con mínimo razonable.
+        Default: 5000 tokens por response (siempre disponibles).
+        Se divide equitativamente entre inquiries si hay múltiples,
+        con un mínimo razonable por inquiry.
         
         Args:
             total_inquiries: Número total de inquiries en el ticket
@@ -81,13 +82,13 @@ class TokenManager:
         Returns:
             Tokens máximos por response
         """
-        TOTAL_BUDGET = 4000
+        DEFAULT_BUDGET = 5000
         MIN_PER_INQUIRY = 800
         
-        if total_inquiries <= 0:
-            return 3000  # Default para 1 inquiry
+        if total_inquiries <= 1:
+            return DEFAULT_BUDGET
         
-        budget_per_inquiry = TOTAL_BUDGET // total_inquiries
+        budget_per_inquiry = DEFAULT_BUDGET // total_inquiries
         
         # Asegurar mínimo razonable
         budget_per_inquiry = max(budget_per_inquiry, MIN_PER_INQUIRY)
@@ -137,6 +138,10 @@ class TokenManager:
         """
         Construye contexto priorizando por tier hasta llenar presupuesto.
         
+        Usa greedy knapsack: si un chunk no cabe, lo salta y prueba
+        el siguiente (que puede ser más pequeño). Itera TODOS los tiers
+        antes de retornar.
+        
         Args:
             chunks_by_tier: Dict con chunks organizados por tier
             budget: Presupuesto de tokens
@@ -147,6 +152,7 @@ class TokenManager:
         """
         selected_chunks = []
         tokens_used = 0
+        skipped_count = 0
         
         # Procesar tiers en orden de prioridad
         for tier in tier_priority:
@@ -161,14 +167,23 @@ class TokenManager:
                     selected_chunks.append(chunk)
                     tokens_used += chunk_tokens
                 else:
-                    # Presupuesto lleno, retornar lo que tenemos
-                    logger.info(f"Budget reached at tier '{tier}' ({tokens_used}/{budget} tokens)")
-                    context = self._format_chunks_as_context(selected_chunks)
-                    return context, selected_chunks, tokens_used
+                    # No cabe — saltar y probar el próximo (puede ser más pequeño)
+                    skipped_count += 1
+                    logger.debug(
+                        f"Skipped chunk in tier '{tier}' "
+                        f"({chunk_tokens} tokens, would exceed budget "
+                        f"{tokens_used + chunk_tokens}/{budget})"
+                    )
         
-        # Si llegamos aquí, todos los chunks caben
+        if skipped_count > 0:
+            logger.info(
+                f"Context built: {len(selected_chunks)} chunks selected, "
+                f"{skipped_count} skipped, {tokens_used}/{budget} tokens"
+            )
+        else:
+            logger.info(f"All chunks fit ({tokens_used}/{budget} tokens)")
+        
         context = self._format_chunks_as_context(selected_chunks)
-        logger.info(f"All chunks fit ({tokens_used}/{budget} tokens)")
         return context, selected_chunks, tokens_used
     
     def _format_chunks_as_context(self, chunks: List[Dict[str, Any]]) -> str:

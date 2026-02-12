@@ -1,0 +1,896 @@
+[
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_3",
+    "score": 0.11144496500492096,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "validation",
+      "chunk_index": 3.0,
+      "chunk_tier": "critical",
+      "chunk_type": "critical_flags",
+      "content": "# Critical Flags\n\n**portal_required:** False\n**mfa_relevant:** False\n**record_keeper_must_be:** ForUsAll",
+      "content_hash": "9fe4e71e",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "flags",
+        "validation"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_6",
+    "score": 0.08482884615659714,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "safety",
+      "chunk_index": 6.0,
+      "chunk_tier": "critical",
+      "chunk_type": "guardrails",
+      "content": "# Guardrails and Safety Rules\n\n## Plan-Specific Guardrails:\n- Do not guarantee employer match or other employer-contributed sources are eligible for hardship withdrawal; eligibility depends on plan documents.\n- Do not guarantee a specific dollar amount will be available for hardship withdrawal; available amounts depend on plan-eligible sources, vested balance, and any outstanding 401(k) loan.\n- Do not promise an exact processing or delivery date beyond the estimated timelines listed in the article.\n- Do not state or imply that ForUsAll collects, reviews, or stores supporting documentation for hardship withdrawals.\n- Do not state the participant will definitely owe (or definitely will not owe) a 10% early withdrawal penalty; it may apply if the participant is under age 59.5.\n\n## Must NOT Say:\n- Do not guarantee employer match or other employer-contributed sources are eligible for hardship withdrawal; eligibility depends on plan documents.\n- Do not promise an exact processing or delivery date beyond the estimated timelines listed in the article.\n- Do not state or imply that ForUsAll collects, reviews, or stores supporting documentation for hardship withdrawals.\n- Do not claim the 10% early withdrawal penalty will apply; it may apply if the participant is under age 59.5.\n- Do not claim the participant can withdraw more than the documented hardship expense amount or withdraw extra for unrelated expenses.\n- Do not invent additional IRS hardship reasons, fees, or timelines not listed in the article.\n\n## Must Do If Unsure:\n- If asked whether employer match funds or other sources are eligible, state that it depends on the plan and will be determined by reviewing plan documents. (we as ForUsAll have to review it, participants have no access to plan documents)\n- If the participant's hardship reason is unclear, ask the participant to specify which IRS-approved hardship reason applies from the list in this article.\n- If the participant asks for outcomes not described in the article, check other articles for a response or escalate to a human agent.",
+      "content_hash": "557cfe28",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "guardrails",
+        "safety",
+        "compliance"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_4",
+    "score": 0.08059649169445038,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "decision_making",
+      "chunk_index": 4.0,
+      "chunk_tier": "critical",
+      "chunk_type": "decision_guide",
+      "content": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- The participant should select an IRS-approved hardship reason listed in this article that applies to their situation (self-certification).\n- The participant should request only the amount necessary to meet the financial need and should not exceed the documented hardship expenses (self-certification).\n- Only one request per hardship reason is allowed at a time.\n- All of the eligibility requirements are not mandatory to request a hardship withdrawal as this process is a Self-Certification process, so participants are not required to meet all eligibility criteria before submitting a request.\n\n\n## Allowed Conclusions:\n- After setting expectations and providing the Hardship Distribution Guidelines, send a RightSignature link to complete the form if the participant requests it.\n- Standard processing has a $75 fee, with an additional +$35 for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.\n- Funds are subject to federal income taxes, and a 10% early withdrawal penalty may apply if the participant is under age 59.5.\n- ForUsAll does not collect supporting documents; the participant must retain documentation in case of an IRS audit.\n\n## Not Allowed Conclusions:\n- Do not guarantee employer match funds are eligible for hardship withdrawal.\n- Do not guarantee a specific dollar amount will be available for hardship withdrawal.\n- Do not promise an exact delivery date beyond the estimated timelines listed in the article.\n- Do not state the participant will definitely owe (or definitely will not owe) a 10% early withdrawal penalty.",
+      "content_hash": "dc545264",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "decision",
+        "outcomes",
+        "eligibility"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_5",
+    "score": 0.07091814279556274,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "response_templates",
+      "chunk_index": 5.0,
+      "chunk_tier": "critical",
+      "chunk_type": "response_frames",
+      "content": "# Response Frames by Outcome\n\n\n## Outcome: can_proceed\n\n### Message Components:\n- Hardship withdrawals are self-certified. We can provide the IRS-approved hardship reason list and fee and timeline expectations, and if you would like to proceed, we can send you a secure RightSignature link to submit your request.\n- The amount you request should be limited to the amount necessary to cover your hardship expense and should not exceed your documented hardship expenses.\n\n### Next Steps:\n- Send the participant a secure RightSignature link to complete the hardship withdrawal form.\n\n### Warnings:\n- Do not promise an exact funding date beyond the estimated timelines listed in this article.\n\n### Do NOT Say:\n- Do not guarantee employer match funds are eligible.\n- Do not promise an exact funding date.\n- Do not say ForUsAll collects supporting documents.\n\n## Outcome: blocked_missing_data\n\n\n## Outcome: blocked_not_eligible\n\n\n## Outcome: ambiguous_plan_rules\n\n### Message Components:\n- Some hardship withdrawal details depend on your specific plan rules, including which sources (such as employer match) are eligible and how an outstanding loan or vested balance may affect the amount available.\n- We can help by reviewing the plan rules as part of the request process.\n\n### Next Steps:\n- Explain that employer match eligibility and eligible sources are plan-specific.\n\n### Warnings:\n- Do not guarantee employer match eligibility or a specific available amount.\n\n### Do NOT Say:\n- Do not guarantee the participant can withdraw employer match funds.\n- Do not state a specific available amount without plan-specific confirmation.\n- Do not promise faster timelines than the estimates listed in this article.",
+      "content_hash": "ee66ae18",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "response",
+        "communication"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_15",
+    "score": 0.06803672015666962,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "technical",
+      "chunk_index": 15.0,
+      "chunk_tier": "high",
+      "chunk_type": "common_issues",
+      "content": "# Common Issues and Resolutions\n\n## Issue: Participant asks where to send supporting documentation.\n**Resolution:** Explain that ForUsAll does not collect supporting documents, but the IRS requires the participant to retain them in case of an audit.\n\n## Issue: Participant asks why the amount available is less than expected.\n**Resolution:** Explain that the plan's eligible sources, vested balance, employer match eligibility, and any outstanding 401(k) loan can reduce the amount available for hardship withdrawal; do not guarantee employer match eligibility.\n\n## Issue: Delay in receiving funds after submitting RightSignature form.\n**Resolution:** Share the estimated timelines by disbursement method and note that bank or mail carrier delays, processing volume, and holidays or weekends may affect timing.\n\n## Issue: Incomplete or inaccurate form information.\n**Resolution:** Advise the participant to ensure banking and contact information is accurate and the form is fully completed before submitting, as incomplete information may affect timing.\n",
+      "content_hash": "d29cdb0c",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "troubleshooting",
+        "issues",
+        "problems"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_22",
+    "score": 0.05496680736541748,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "group_2",
+      "chunk_index": 22.0,
+      "chunk_tier": "low",
+      "chunk_type": "faqs",
+      "content": "# Frequently Asked Questions\n\n## Q: What are the fees for a hardship withdrawal request?\n**A:** Standard processing is $75 for all hardship withdrawals. Wire transfer or overnight check adds +$35. ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.\n\n## Q: How does the participant start the request?\n**A:** The participant contacts ForUsAll Support. ForUsAll confirms the participant reviewed the Hardship Distribution Guidelines and then sends a secure RightSignature link to complete the form.\n",
+      "content_hash": "802324dd",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "faq",
+        "questions"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_19",
+    "score": 0.05059586465358734,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "costs",
+      "chunk_index": 19.0,
+      "chunk_tier": "high",
+      "chunk_type": "fees_details",
+      "content": "# Fees and Charges\n\n## Fee Rules:\n- Fee: Standard processing is $75 for all hardship withdrawals.\n- Fee: Wire transfer or overnight check adds an additional $35; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.\n\n## Fee Details:\n\n**Standard Processing:** $75\n*Applies to all hardship withdrawals regardless of disbursement method.*\n\n**Wire Transfer or Overnight Check:** $75 + $35\n*An additional $35 applies for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.*",
+      "content_hash": "46ca46ee",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "fees",
+        "costs",
+        "charges"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_20",
+    "score": 0.04377010092139244,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "high_impact",
+      "chunk_index": 20.0,
+      "chunk_tier": "medium",
+      "chunk_type": "faqs",
+      "content": "# Frequently Asked Questions\n\n## Q: What is a hardship withdrawal?\n**A:** A hardship withdrawal is a 401(k) distribution that a plan may allow for an urgent financial need, subject to strict rules, potential tax consequences, and long-term retirement impacts.\n\n## Q: How much can a participant withdraw for a hardship?\n**A:** Up to the amount of documented hardship expenses, limited to the amount necessary to relieve the financial burden and not more than the verified cost of the hardship.\n\n## Q: What are the fees for a hardship withdrawal request?\n**A:** Standard processing is $75 for all hardship withdrawals. Wire transfer or overnight check adds +$35. ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.\n\n## Q: Does ForUsAll collect supporting documents?\n**A:** No. ForUsAll does not collect supporting documentation, but the participant must retain supporting documents in case of an IRS audit.\n",
+      "content_hash": "a9f09bf8",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "faq",
+        "questions",
+        "common_questions"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_24",
+    "score": 0.035199813544750214,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "processing_times",
+      "chunk_index": 24.0,
+      "chunk_tier": "low",
+      "chunk_type": "additional_notes",
+      "content": "# Additional Information: Processing Times\n\n- Timelines start once the request is approved and the participant receives an executed confirmation email via RightSignature after submission.\n- Estimated time to receive funds (wire transfer): 1 - 2 weeks.\n- Estimated time to receive funds (ACH bank transfer): 1 - 2 weeks.\n- Estimated time to receive funds (overnight check via UPS): 1 - 2 weeks.\n- Estimated time to receive funds (standard mail check via USPS): 2 - 3 weeks.\n- Factors that may affect timing include bank or mail carrier delays, volume of processing requests, and holidays or weekends.\n- Best practices to avoid delays include ensuring banking and contact information is accurate, and selecting wire, ACH, or overnight delivery if time-sensitive.",
+      "content_hash": "08d88159",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "notes",
+        "additional_info",
+        "processing_times"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_1",
+    "score": 0.03299010917544365,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "data_collection",
+      "chunk_index": 1.0,
+      "chunk_tier": "critical",
+      "chunk_type": "required_data",
+      "content": "# Required Data for This Process\n\n\n## Nice to Have (Optional):\n\n### Hardship reason\n**Description:** The IRS-approved hardship category the participant is claiming for the request.\n**Why needed:** Used to determine whether the request meets an IRS-approved hardship reason listed in the article and to apply the one-request-per-reason rule.\n\n### Amount needed for the hardship\n**Description:** The dollar amount the participant is requesting to withdraw to cover the immediate hardship expense.\n**Why needed:** The request cannot exceed the verified cost of the hardship and must be limited to the amount necessary to relieve the financial burden.\n\n### Confirmation of review of Hardship Distribution Guidelines PDF\n**Description:** The participant confirms they reviewed the Hardship Distribution Guidelines PDF provided by the agent.\n**Why needed:** The article states ForUsAll will confirm the participant reviewed the PDF before sending the RightSignature link.\n\n### Participant age relative to 59.5\n**Description:** Whether the participant is under age 59.5, which affects whether a 10% early withdrawal penalty may apply.\n**Why needed:** Used to explain that a 10% early withdrawal penalty may apply if the participant is under age 59.5.\n\n### Outstanding 401(k) loan status\n**Description:** Whether the participant has a 401(k) loan that has not been paid off, which can reduce available hardship funds.\n**Why needed:** An outstanding loan may require reserving part of the balance to offset the loan, reducing the amount available for hardship withdrawal.\n\n### Employer match eligibility for hardship withdrawal\n**Description:** Whether employer-contributed matching funds are eligible sources for hardship withdrawal under the plan.\n**Why needed:** Determines whether employer match dollars can be included in the hardship withdrawal amount; the article states this depends on plan documents.\n\n### Current vested balance\n**Description:** The participant's vested balance, which may affect the amount available for hardship withdrawal under plan rules.\n**Why needed:** The article lists vested balance as a factor that may affect the amount the participant can withdraw.",
+      "content_hash": "382d22d1",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "data_requirements",
+        "field_collection"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_25",
+    "score": 0.03193243592977524,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "links",
+      "chunk_index": 25.0,
+      "chunk_tier": "low",
+      "chunk_type": "references",
+      "content": "# References and Resources\n\n## Contact Information:\n**Email:** help@forusall.com\n**Phone:** 844-401-2253\n**Hours:** Monday to Friday, 7 AM to 5 PM Pacific Time\n\n## Related Internal Articles:\n- distribution_requests_for_small_account_balances\n- what_are_my_options_if_i_am_not_separated_and_not_age_59_5\n- can_i_take_a_distribution_while_employed\n- when_will_i_receive_my_401k_withdrawal_or_rollover\n",
+      "content_hash": "12d89541",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "references",
+        "links",
+        "resources"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_9",
+    "score": 0.027342194691300392,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "request_limits",
+      "chunk_index": 9.0,
+      "chunk_tier": "high",
+      "chunk_type": "business_rules",
+      "content": "# Business Rules: Request_Limits\n\n## Request Limits:\n- Only one request per hardship reason is allowed at a time.\n",
+      "content_hash": "5ab01e43",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "request_limits",
+        "rules",
+        "policy"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_23",
+    "score": 0.026773404330015182,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "glossary",
+      "chunk_index": 23.0,
+      "chunk_tier": "low",
+      "chunk_type": "definitions",
+      "content": "# Definitions and Terms\n\n## Hardship withdrawal\nA 401(k) distribution that may be available for an urgent financial need if the request meets IRS hardship criteria and plan rules.\n\n## Employer match\nEmployer-contributed matching funds that may or may not be eligible for hardship withdrawal depending on the plan's provisions.\n\n## RightSignature\nThe secure platform ForUsAll uses to send and collect the hardship withdrawal request form for completion and submission.\n\n## Vested balance\nThe portion of the account balance that is owned by the participant and may affect how much is available for hardship withdrawal under plan rules.\n\n## Post-Secondary Education\nTuition, fees, room, and board for the next 12 months of education; Must be for the participant, spouse, or dependent; Must be after scholarships, grants, or financial aid are applied; Loan repayment or past education expenses are not eligible.\n\n## Purchase of a Primary Residence\nDown payment or closing costs to purchase primary residence only; Not eligible: Mortgage payments or second home purchases.\n\n## Prevent Eviction or Foreclosure\nRent or mortgage amounts needed to avoid eviction or foreclosure on the primary residence.\n\n## Medical or Dental Expenses\nMedical or dental bills not covered by insurance; Must be for participant, spouse, or dependent; Elective procedures (e.g. most orthodontics) are not eligible.\n\n## Funeral or Burial Expenses\nFuneral or burial costs for participant’s parent, spouse, child, or dependent.\n\n## Damage to Primary Residence\nOut-of-pocket costs to repair damage to primary residence due to a qualifying casualty event (e.g., fire, flood); Must meet IRS criteria under IRC Section 165; Progressive or maintenance-related damage does not qualify.\n",
+      "content_hash": "7e8f599a",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "definitions",
+        "terms",
+        "glossary"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_13",
+    "score": 0.025259852409362793,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "steps_4_to_5",
+      "chunk_index": 13.0,
+      "chunk_tier": "high",
+      "chunk_type": "steps",
+      "content": "# Step-by-Step Procedure\n\n## Step 4: Participant completes and submits the hardship withdrawal request through the RightSignature platform.\n**Note:** Timelines start once the request is approved and the participant receives an executed confirmation email via RightSignature.\n\n## Step 5: Participant retains supporting documentation for the hardship in case of an IRS audit.\n**Note:** ForUsAll does not collect supporting documents; the participant must retain them (the article advises 7 years).\n",
+      "content_hash": "1ec1f8e0",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "procedure",
+        "steps",
+        "process"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_10",
+    "score": 0.02123778499662876,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "documentation_retention",
+      "chunk_index": 10.0,
+      "chunk_tier": "high",
+      "chunk_type": "business_rules",
+      "content": "# Business Rules: Documentation_Retention\n\n## Documentation Retention:\n- ForUsAll does not collect supporting documentation, but the IRS requires the participant to retain supporting documents in case of an audit.\n- The article advises retaining supporting records for 7 years.\n",
+      "content_hash": "12f97771",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "documentation_retention",
+        "rules",
+        "policy"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_18",
+    "score": 0.019471807405352592,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "scenario_3",
+      "chunk_index": 18.0,
+      "chunk_tier": "medium",
+      "chunk_type": "example",
+      "content": "# Example Scenario\n\n**Scenario:** Participant asks whether employer match funds can be included.\n\n**Outcome:** Explain that eligibility of employer match depends on the specific plan and will be determined by reviewing plan documents; do not guarantee employer match eligibility.",
+      "content_hash": "091f9283",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "example",
+        "scenario",
+        "use_case"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_8",
+    "score": 0.009804400615394115,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "plan_specific_limits",
+      "chunk_index": 8.0,
+      "chunk_tier": "high",
+      "chunk_type": "business_rules",
+      "content": "# Business Rules: Plan_Specific_Limits\n\n## Plan Specific Limits:\n- Some plans restrict access to certain employer-contributed amounts until specific conditions are met.\n- The amount available for hardship withdrawal may be affected by eligible sources under the plan, the participant's vested balance, and any existing 401(k) loan.\n",
+      "content_hash": "22cfef24",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "plan_specific_limits",
+        "rules",
+        "policy"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_12",
+    "score": 0.004526127595454454,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "steps_1_to_3",
+      "chunk_index": 12.0,
+      "chunk_tier": "high",
+      "chunk_type": "steps",
+      "content": "# Step-by-Step Procedure\n\n## Step 1: Participant contacts ForUsAll Support to request a hardship withdrawal.\n**Note:** Support contact options are email help@forusall.com and phone 844-401-2253.\n\n## Step 2: Agent provides the Hardship Distribution Guidelines (including eligibility requirements and processing times) and confirms the participant reviewed it.\n**Note:** We will confirm the participant reviewed the Guidelines before sending the RightSignature form link.\n\n## Step 3: Agent sends a secure RightSignature link to complete the hardship withdrawal form.\n",
+      "content_hash": "9aea7ef1",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "procedure",
+        "steps",
+        "process"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_14",
+    "score": 0.0007436262676492333,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "overview",
+      "chunk_index": 14.0,
+      "chunk_tier": "high",
+      "chunk_type": "steps_summary",
+      "content": "# Key Steps Summary\n\n1. Participant contacts ForUsAll Support to request a hardship withdrawal.\n2. Agent provides the Hardship Distribution Guidelines and confirms the participant reviewed them.\n3. Agent sends a secure RightSignature link; participant completes and submits the hardship withdrawal form in RightSignature.\n4. After approval and the executed confirmation email is received via RightSignature, estimated funding timelines apply by disbursement method.\n5. Participant retains supporting documentation for the hardship for IRS audit purposes (the article advises 7 years).",
+      "content_hash": "d06593a8",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "summary",
+        "steps",
+        "overview"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_7",
+    "score": -0.003887596307322383,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "eligibility",
+      "chunk_index": 7.0,
+      "chunk_tier": "critical",
+      "chunk_type": "business_rules",
+      "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- The hardship request must meet one of the IRS-approved hardship reasons listed in this article.\n- The withdrawal amount must be necessary to meet the financial need and cannot exceed the documented hardship expenses.\n",
+      "content_hash": "e3b327d9",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "eligibility",
+        "rules",
+        "policy"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_2",
+    "score": -0.003887596307322383,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "requirements",
+      "chunk_index": 2.0,
+      "chunk_tier": "critical",
+      "chunk_type": "eligibility",
+      "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- The hardship request must meet one of the IRS-approved hardship reasons listed in this article.\n- The withdrawal amount must be necessary to meet the financial need and cannot exceed the documented hardship expenses.\n",
+      "content_hash": "e3b327d9",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "eligibility",
+        "requirements"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_11",
+    "score": -0.013438387773931026,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "tax_and_penalties",
+      "chunk_index": 11.0,
+      "chunk_tier": "high",
+      "chunk_type": "business_rules",
+      "content": "# Business Rules: Tax_And_Penalties\n\n## Tax And Penalties:\n- Hardship withdrawals are subject to federal income taxes.\n- If the participant is under age 59.5, a 10% early withdrawal penalty may apply.\n",
+      "content_hash": "0d613ab2",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "tax_and_penalties",
+        "rules",
+        "policy"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_16",
+    "score": -0.03311069682240486,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "scenario_1",
+      "chunk_index": 16.0,
+      "chunk_tier": "medium",
+      "chunk_type": "example",
+      "content": "# Example Scenario\n\n**Scenario:** Participant requests a hardship withdrawal for tuition for the next 12 months.\n\n**Outcome:** This fits the post-secondary education expenses category if it covers tuition, fees, room, and board for the participant, spouse, or dependents for the next 12 months, and the withdrawal should be limited to the amount necessary to meet the expense.",
+      "content_hash": "9e59f055",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "example",
+        "scenario",
+        "use_case"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_17",
+    "score": -0.041683830320835114,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "scenario_2",
+      "chunk_index": 17.0,
+      "chunk_tier": "medium",
+      "chunk_type": "example",
+      "content": "# Example Scenario\n\n**Scenario:** Participant has an outstanding 401(k) loan and requests a hardship withdrawal.\n\n**Outcome:** Explain that part of the account balance may need to be reserved to offset the loan, which can reduce the amount available for hardship withdrawal.",
+      "content_hash": "cdb25ce0",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "example",
+        "scenario",
+        "use_case"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  },
+  {
+    "id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_21",
+    "score": -0.05647500231862068,
+    "metadata": {
+      "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+      "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+      "chunk_category": "group_1",
+      "chunk_index": 21.0,
+      "chunk_tier": "low",
+      "chunk_type": "faqs",
+      "content": "# Frequently Asked Questions\n\n## Q: What is a hardship withdrawal?\n**A:** A hardship withdrawal is a 401(k) distribution that a plan may allow for an urgent financial need, subject to strict rules, potential tax consequences, and long-term retirement impacts.\n\n## Q: How much can a participant withdraw for a hardship?\n**A:** The participant can request a withdrawal up to the amount of documented hardship expenses, limited to the amount necessary to relieve the financial burden and not more than the verified cost of the hardship.\n\n## Q: What are the IRS-approved hardship reasons?\n**A:** Post-Secondary Education Expenses; Purchase of a Primary Residence (down payment and closing costs); Preventing Eviction or Foreclosure (past-due amounts to avoid losing your primary residence); Medical Expenses (costs for you, your spouse, or dependents that are not covered by insurance); Funeral or Burial Expenses (for your parent, spouse, child, or dependent); Damage to Primary Residence (repairs due to a qualifying casualty loss as defined by IRS Section 165).\n",
+      "content_hash": "28bcb7b0",
+      "plan_type": "401(k)",
+      "record_keeper": "ForUsAll",
+      "scope": "recordkeeper-specific",
+      "specific_topics": [
+        "faq",
+        "questions"
+      ],
+      "subtopics": [
+        "irs_approved_reasons",
+        "fees",
+        "tax_and_penalties",
+        "rightsignature_request_flow",
+        "estimated_processing_times",
+        "documentation_retention",
+        "plan_specific_limits"
+      ],
+      "tags": [
+        "Participant Advisory",
+        "Distribution"
+      ],
+      "topic": "hardship_withdrawal"
+    }
+  }
+]

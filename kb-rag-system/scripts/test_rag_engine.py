@@ -156,30 +156,48 @@ def test_generate_response():
     print(f"Confidence: {result.confidence}")
     print()
     
-    print("Response Sections:")
-    for section in result.response.get('sections', []):
-        print(f"\n  Topic: {section.get('topic', 'N/A')}")
-        
-        print(f"  Answer Components:")
-        for component in section.get('answer_components', []):
-            print(f"    - {component}")
-        
-        steps = section.get('steps', [])
-        if steps:
-            print(f"  Steps:")
-            for step in steps:
-                print(f"    {step.get('step_number', '?')}. {step.get('action', 'N/A')}")
-                if step.get('note'):
-                    print(f"       Note: {step['note']}")
-        
-        warnings = section.get('warnings', [])
-        if warnings:
-            print(f"  Warnings:")
-            for warning in warnings:
-                print(f"    ⚠️  {warning}")
+    resp = result.response
+    print(f"Outcome: {resp.get('outcome', 'N/A')}")
+    print(f"Outcome Reason: {resp.get('outcome_reason', 'N/A')}")
+    print()
+    
+    participant_resp = resp.get('response_to_participant', {})
+    print(f"Opening: {participant_resp.get('opening', 'N/A')}")
+    print()
+    
+    key_points = participant_resp.get('key_points', [])
+    if key_points:
+        print("Key Points:")
+        for kp in key_points:
+            print(f"  - {kp}")
+    
+    steps = participant_resp.get('steps', [])
+    if steps:
+        print("\nSteps:")
+        for step in steps:
+            print(f"  {step.get('step_number', '?')}. {step.get('action', 'N/A')}")
+            if step.get('detail'):
+                print(f"     Detail: {step['detail']}")
+    
+    warnings = participant_resp.get('warnings', [])
+    if warnings:
+        print("\nWarnings:")
+        for warning in warnings:
+            print(f"  ⚠️  {warning}")
+    
+    questions = resp.get('questions_to_ask', [])
+    if questions:
+        print("\nQuestions to Ask:")
+        for q in questions:
+            print(f"  ? {q.get('question', 'N/A')}")
+            print(f"    Why: {q.get('why', 'N/A')}")
+    
+    escalation = resp.get('escalation', {})
+    if escalation.get('needed'):
+        print(f"\nEscalation Needed: {escalation.get('reason', 'N/A')}")
     
     print("\nGuardrails Applied:")
-    for guardrail in result.guardrails.get('must_not_say', []):
+    for guardrail in resp.get('guardrails_applied', []):
         print(f"  - {guardrail}")
     
     print("\nMetadata:")

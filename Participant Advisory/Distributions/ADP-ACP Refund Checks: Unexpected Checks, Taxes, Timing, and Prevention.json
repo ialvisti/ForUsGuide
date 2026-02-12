@@ -1,0 +1,1025 @@
+{
+    "metadata": {
+        "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+        "title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+        "description": "Explains why a participant may receive an unexpected or unsolicited 401(k) check, most commonly due to ADP/ACP nondiscrimination testing failures that require corrective refunds of excess contributions (often affecting highly compensated employees). Clarifies what the refund amount includes, reassures that it is required by law and not a mistake, and addresses participant concerns about fraud, unauthorized activity, or account security. Outlines tax reporting via Form 1099-R including pre-tax vs Roth treatment, confirms there is no 10% early withdrawal penalty for ADP/ACP refunds, and explains that refunded amounts cannot be re-contributed to the 401(k) for that year and still count toward the IRS annual contribution limit. Describes typical issuance timing and the March 15 corrective distribution deadline for calendar-year plans, and shares prevention tips to reduce the chance or impact of future refunds. Provides support contact information for confirmation and questions.",
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": "401(k)",
+        "scope": "global",
+        "tags": [
+            "Excess Contribution Refund",
+            "ADP Testing",
+            "ACP Testing",
+            "Highly Compensated Employees",
+            "Form 1099-R",
+            "Taxes",
+            "Participant Notices",
+            "Savings Rate Information",
+            "Educational Webinar"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-02-04",
+        "source_last_updated": null,
+        "source_system": "DevRev",
+        "topic": "excess_contribution_refund",
+        "subtopics": [
+            "adp_acp_testing",
+            "corrective_distributions",
+            "tax_reporting_1099r",
+            "pre_tax_vs_roth_taxation",
+            "refund_deadlines",
+            "prevention_tips",
+            "unexpected_or_unauthorized_check_concern"
+        ]
+    },
+    "details": {
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        },
+        "business_rules": [
+            {
+                "category": "reason_for_refund_check",
+                "rules": [
+                    "Most likely, the participant received a check because the plan failed ADP (Actual Deferral Percentage) or ACP (Actual Contribution Percentage) testing.",
+                    "ADP and ACP are annual IRS nondiscrimination tests intended to ensure fairness between highly compensated employees (HCEs) and non-highly compensated employees (NHCEs).",
+                    "When testing fails, certain participants, often HCEs, are refunded excess contributions to bring the plan back into compliance.",
+                    "The check is not a mistake; it is required by law.",
+                    "These refunds do not mean the participant did anything wrong.",
+                    "Agents should use 'most likely' language unless the participant's specific plan details have been confirmed through official support.",
+                    "If a participant receives multiple checks, it may be because they had both pre-tax and Roth excess contributions refunded. To confirm the source of each check, please contact support at help@forusall.com or 844-401-2253, business hours Monday-Friday 8am-5pm PST."
+                ]
+            },
+            {
+                "category": "refund_amount_calculation",
+                "rules": [
+                    "The refund amount includes excess contributions and associated earnings or losses.",
+                    "Refunds are calculated based on how much the plan exceeded the testing limit, how much each HCE contributed, and earnings or losses on the excess amounts.",
+                    "Refund amounts vary by plan year and depend on plan-wide contribution patterns.",
+                    "The refunded amount may be higher or lower than the excess contribution amount alone because it can include earnings or losses."
+                ]
+            },
+            {
+                "category": "tax_reporting_and_taxability",
+                "rules": [
+                    "A Form 1099-R is provided in the year the refund is issued for tax reporting.",
+                    "If the refund is from pre-tax contributions, the entire refunded amount is taxable as ordinary income in the year the refund is issued, not the year the contribution was originally made.",
+                    "If the refund is from Roth contributions, only the earnings portion is taxable; the original Roth contributions are not taxed again.",
+                    "For Roth refunds, the earnings are shown separately on Form 1099-R, and 10% federal tax withholding is typically applied to the taxable portion; additional state taxes may be withheld depending on where the participant lives.",
+                    "There is no 10% early withdrawal penalty for ADP/ACP refunds.",
+                    "For additional tax guidance, participants should consult a tax advisor."
+                ]
+            },
+            {
+                "category": "timing_and_deadlines",
+                "rules": [
+                    "Refunds related to ADP/ACP testing for the prior plan year are typically issued in the first few months of the following year.",
+                    "For calendar-year plans, the IRS requires these refunds to be issued by March 15 of the year after the tested plan year (the corrective distribution deadline).",
+                    "If a refund is issued after March 15, the plan may face IRS penalties, but the participant still reports the income in the year the refund is received."
+                ]
+            },
+            {
+                "category": "prevention_and_expectations",
+                "rules": [
+                    "Participants cannot prevent the employer's plan from failing the test, but may be able to reduce their own chances of receiving a refund in future years.",
+                    "Spreading contributions over the full year rather than front-loading may help limit the refund amount if affected again.",
+                    "Safe Harbor 401(k) plan design automatically satisfies ADP/ACP testing and can eliminate the need for refunds entirely.",
+                    "Increasing NHCE participation can help the plan pass testing, including requesting a 401(k) educational webinar and improving access to financial literacy and enrollment tools.",
+                    "Refunded amounts cannot be re-contributed back into the participant's 401(k) for that year and still count toward the IRS annual contribution limit for that year.",
+                    "Participants may reinvest refunded amounts into an IRA if they haven't maxed out their IRA contribution for the prior year; they should contact their IRA provider to confirm this and understand any applicable rules or deadlines.",
+                    "Participants may monitor and adjust their contribution patterns in future years to help avoid front-loading contributions. For further instructions and confirm full access to your account, contact support."
+                ]
+            },
+            {
+                "category": "fraud_and_security_concerns",
+                "rules": [
+                    "Always acknowledge and reasure the participant that ForUsAll has the highest security standards in the industry and their information is confidential and safe.",
+                    "If the participant suspects fraud or identity theft, acknowledge the concern and explain the most likely reason is an ADP/ACP corrective refund. Direct them to the approved support channels.",
+                    "Do not confirm fraud or unauthorized access based solely on the participant receiving a check.",
+                    "If the participant reports irregularities (wrong payee name, unfamiliar address, multiple unexpected checks), direct them to support for review and confirmation.",
+                    "Do not instruct the participant to share sensitive personal information in chat; direct them to the approved support channels."
+                ]
+            },
+            {
+                "category": "channel_and_portal_limitations",
+                "rules": [
+                    "Do not instruct the participant to use a participant portal for this issue; provide the approved support email and phone channels.",
+                    "Do not reference internal tools, internal queues, or operational steps to the participant.",
+                    "Participants may monitor and adjust their contribution patterns in future years to help avoid front-loading contributions. For further instructions and confirm full access to your account, contact support."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "Distribution fee for ADP/ACP corrective refunds",
+                "fee": "Depends on plan specifics; typically taken from the participant's refund amount.",
+                "notes": "Applies to all requests. To confirm if a fee was applied, contact support."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Explain that an unexpected 401(k) check is most likely a required ADP/ACP corrective refund due to failed nondiscrimination testing, not a participant-requested withdrawal.",
+                "notes": "Use uncertainty language such as 'most likely' unless confirmed through official support."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Reassure the participant that the check is not a mistake, is required by law when testing fails, and does not mean they did anything wrong.",
+                "notes": null
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Clarify what the refund can include: excess contributions plus earnings or losses on the excess amounts.",
+                "notes": "Do not calculate or estimate the participant's excess amount or earnings/losses without official confirmation."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Explain tax reporting: the participant will receive a Form 1099-R for the year the refund is issued, and the income is reported in the year the refund is received.",
+                "notes": "For pre-tax refunds, the full amount is taxable; for Roth refunds, only earnings are taxable. Recommend consulting a tax advisor for personalized guidance."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Share timing context: refunds are typically issued in the first few months of the following year, and for calendar-year plans the corrective distribution deadline is March 15 of the year after the tested plan year.",
+                "notes": "If issued after March 15, the plan may face penalties, but the participant still reports income in the year received."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Share prevention tips for future years: spread contributions across the full year, and encourage discussion with the employer about Safe Harbor plan design and improving NHCE participation (including educational webinars and enrollment/financial literacy tools).",
+                "notes": null
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Set expectations: the participant cannot re-contribute the refunded amount back into the 401(k) for that year, and the original contribution still counts toward the IRS annual contribution limit for that year.",
+                "notes": "Example referenced in the source content: If a participant contributed 23,000 and received 3,000 back, the IRS still counts the participant as having contributed 23,000 for that year."
+            },
+            {
+                "step_number": 8,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Provide support contact information for confirmation, irregularities, or questions.",
+                "notes": "Approved channels: Email help@forusall.com and Phone 844-401-2253; business hours Monday-Friday 8am-5pm PST."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant believes the refund check is an error or unauthorized distribution.",
+                "resolution": "Explain that these checks are most likely required corrective refunds due to ADP/ACP testing and are not a mistake; provide support contact details for confirmation."
+            },
+            {
+                "issue": "Participant state they got 2 checks and is confused why.",
+                "resolution": "Explain that these checks are most likely separate refunds for pre-tax and Roth excess contributions, and to confirm the source of each check, please contact support at help@forusall.com or 844-401-2253, business hours Monday-Friday 8am-5pm PST."
+            },
+            {
+                "issue": "Participant is unsure whether the refund was pre-tax or Roth and what portion is taxable.",
+                "resolution": "Explain that taxability depends on whether the refunded contributions were pre-tax or Roth and that the 1099-R shows the breakdown; support can help confirm the refund source if needed."
+            },
+            {
+                "issue": "Participant thinks they can put the refunded money back into the 401(k) for the same year.",
+                "resolution": "Clarify that the refunded amount cannot be re-contributed to the 401(k) for that year and still counts toward the IRS annual contribution limit for that year."
+            },
+            {
+                "issue": "Participant is worried about a 10% early withdrawal penalty.",
+                "resolution": "Confirm there is no 10% early withdrawal penalty for ADP/ACP refunds."
+            },
+            {
+                "issue": "Participant reports red flags such as wrong payee name, unfamiliar address, or multiple unexpected checks.",
+                "resolution": "Acknowledge the concern and direct the participant to support for review and confirmation using the approved email and phone channels."
+            },
+            {
+                "issue": "Participant asks when they should expect to receive the refund check after testing.",
+                "resolution": "Explain that refunds for a prior plan year are typically issued in the first few months of the following year and that for calendar-year plans the IRS corrective distribution deadline is March 15 of the year after the tested plan year."
+            },
+            {
+                "issue": "Participant asks what the IRS corrective distribution deadline means.",
+                "resolution": "Explain that for calendar-year plans the IRS requires ADP/ACP corrective refunds to be issued by March 15 of the year after the tested plan year."
+            },
+            {
+                "issue": "Participant reports they received the refund after March 15 and is worried they will be penalized.",
+                "resolution": "Explain that if the refund is issued after March 15 the plan may face IRS penalties, but the participant still reports the income in the year the refund is received."
+            },
+            {
+                "issue": "Participant is confused about which tax year the refund belongs to.",
+                "resolution": "Explain that the refund is taxable and reported in the year the refund is issued/received, not the year the original contributions were made."
+            },
+            {
+                "issue": "Participant asks why the refund is taxable if it is a correction.",
+                "resolution": "Explain that refunds can be taxable depending on the source: pre-tax refunds are fully taxable and Roth refunds are taxable only on earnings, and the Form 1099-R will reflect what is reported."
+            },
+            {
+                "issue": "Participant asks why only earnings are taxable for a Roth refund.",
+                "resolution": "Explain that the participant's original Roth contributions are not taxed again, but the earnings portion is taxable and shown separately on the Form 1099-R."
+            },
+            {
+                "issue": "Participant asks where to find the taxable amount on the Form 1099-R.",
+                "resolution": "Explain that the Form 1099-R shows the total amount refunded and provides a breakdown of earnings versus contributions, which is especially important for Roth refunds."
+            },
+            {
+                "issue": "Participant asks why federal withholding was taken from their refund.",
+                "resolution": "Explain that for Roth refunds, 10% federal tax withholding is typically applied to the taxable portion, and the withholding will be shown on the Form 1099-R."
+            },
+            {
+                "issue": "Participant asks whether state taxes can be withheld from the refund.",
+                "resolution": "Explain that additional state taxes may be withheld depending on where the participant lives, and any withholding will be reflected on the Form 1099-R."
+            },
+            {
+                "issue": "Participant says they did not front-load contributions and still got a refund and wants to know why.",
+                "resolution": "Explain that the refund is driven by plan-wide ADP/ACP testing results and plan-wide contribution patterns, and that refunds vary by plan year."
+            },
+            {
+                "issue": "Participant asks how their employer can reduce the chance of refunds for employees.",
+                "resolution": "Explain that Safe Harbor plan design automatically satisfies ADP/ACP testing and that increasing NHCE participation can help the plan pass testing."
+            },
+            {
+                "issue": "Participant asks what actions they can take to reduce the chance or impact of a refund next year.",
+                "resolution": "Explain that spreading contributions across the full year may help limit the refund amount, and suggest discussing Safe Harbor plan design and NHCE participation with the employer."
+            },
+            {
+                "issue": "Participant asks if they can put the refund into an IRA instead of the 401(k).",
+                "resolution": "Explain that they may be able to contribute the refunded amount to an outside Traditional or Roth IRA if they are within the IRA contribution deadline and have not maxed out the prior year, and advise consulting a tax advisor for limits and eligibility."
+            },
+            {
+                "issue": "Participant asks what documents they should keep related to the refund.",
+                "resolution": "Explain that they should keep their Form 1099-R and refund letter with their tax documents."
+            },
+            {
+                "issue": "Participant asks whether getting this refund means their plan is shutting down or their account is closed.",
+                "resolution": "Explain that receiving a refund check is tied to annual compliance testing and does not indicate the plan is shutting down or the participant’s account was closed."
+            },
+            {
+                "issue": "Participant asks why they were affected if they do not think they are highly compensated.",
+                "resolution": "Explain that refunds most often impact HCEs but are based on plan testing results, and direct them to support if they want confirmation specific to their situation."
+            },
+            {
+                "issue": "Participant asks whether the refund changes their annual contribution limit usage.",
+                "resolution": "Explain that the refunded amount cannot be re-contributed to the 401(k) for that year and still counts toward the IRS annual contribution limit for that year, consistent with the example provided."
+            },
+            {
+                "issue": "Participant says they never received the Form 1099-R and wants to know what to do.",
+                "resolution": "Explain that the Form 1099-R is issued in the year the refund is issued and is needed for tax reporting; direct them to support for help if they cannot locate it."
+            },
+            {
+                "issue": "Participant asks if the refund check includes investment gains or losses.",
+                "resolution": "Explain that the refund can include earnings or losses on the excess amounts, which can affect the final refunded amount."
+            },
+            {
+                "issue": "Participant asks if the check will always be issued every year going forward.",
+                "resolution": "Explain that refunds are specific to each plan year and vary based on plan-wide contribution patterns and testing outcomes, so it is not guaranteed to happen every year."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant reports receiving a check from their 401(k) but says they did not request any distribution.",
+                "outcome": "Explain that the most likely reason is an ADP/ACP corrective refund of excess contributions, that the amount may include earnings or losses, and that a Form 1099-R will be issued for tax reporting."
+            },
+            {
+                "scenario": "A participant contributed 23,000 for the year and later received a 3,000 refund check.",
+                "outcome": "Explain that the participant cannot re-contribute the 3,000 back into the 401(k) for that year and that the IRS still counts the participant as having contributed 23,000 for that year."
+            },
+            {
+                "scenario": "A participant received a Roth-related ADP/ACP refund and wants to know what is taxable.",
+                "outcome": "Explain that only the earnings portion is taxable for Roth refunds and that the earnings are shown separately on the Form 1099-R."
+            },
+            {
+                "scenario": "A participant received a refund check in April and is worried about the IRS deadline.",
+                "outcome": "Explain that for calendar-year plans the IRS requires refunds to be issued by March 15 of the year after the tested plan year, but if the refund is issued after that date, the plan may face penalties while the participant still reports the income in the year it is received."
+            },
+            {
+                "scenario": "A participant asks whether the unexpected check means their account was hacked or someone withdrew money without permission.",
+                "outcome": "Acknowledge the concern and explain the most likely reason is an ADP/ACP corrective refund required by annual testing; do not confirm fraud and provide support contact information for verification."
+            },
+            {
+                "scenario": "A participant says the refund check amount is higher than expected and asks why.",
+                "outcome": "Explain that the refunded amount can include earnings or losses on the excess amounts, which can increase or decrease the total returned; direct them to support if they need confirmation for their specific calculation."
+            },
+            {
+                "scenario": "A participant says the refund check amount is lower than expected and asks why.",
+                "outcome": "Explain that the refunded amount can reflect earnings or losses on the excess amounts and that refund amounts vary by plan year; provide support contact information for plan-specific confirmation."
+            },
+            {
+                "scenario": "A participant asks which year they should report the refund on their taxes.",
+                "outcome": "Explain that the refund is reported in the year the refund is issued/received, not the year the original contributions were made, and that they will receive a Form 1099-R for that year."
+            },
+            {
+                "scenario": "A participant received a pre-tax related refund and asks whether the full amount is taxable.",
+                "outcome": "Explain that if the refund is from pre-tax contributions, the entire refunded amount is taxable as ordinary income in the year the refund is issued."
+            },
+            {
+                "scenario": "A participant received a Roth-related refund and asks why federal withholding was taken out.",
+                "outcome": "Explain that 10% federal tax withholding is typically applied to the taxable portion for Roth refunds and that the Form 1099-R will show the withholding."
+            },
+            {
+                "scenario": "A participant asks what the IRS corrective distribution deadline is and why it matters.",
+                "outcome": "Explain that for calendar-year plans, the IRS requires these refunds to be issued by March 15 of the year after the tested plan year, and that refunds issued after that date may cause penalties to the plan."
+            },
+            {
+                "scenario": "A participant says they received the refund after March 15 and is worried they will be penalized.",
+                "outcome": "Explain that if the refund is late the plan sponsor may face IRS penalties, but the participant still reports the income in the year the refund is received."
+            },
+            {
+                "scenario": "A participant asks if they can avoid future refunds by changing their contributions.",
+                "outcome": "Explain that they cannot prevent the plan from failing the test, but spreading contributions over the full year rather than front-loading may help limit the refund amount if impacted again."
+            },
+            {
+                "scenario": "A participant asks what they can ask their employer to do to reduce refunds going forward.",
+                "outcome": "Explain that a Safe Harbor 401(k) plan design automatically satisfies ADP/ACP testing and can eliminate the need for refunds, and that increasing NHCE participation can help the plan pass testing."
+            },
+            {
+                "scenario": "A participant asks if receiving the refund means they did something wrong.",
+                "outcome": "Reassure them that these refunds do not mean they did anything wrong and that the check is required by law when testing fails."
+            },
+            {
+                "scenario": "A participant asks what documents they should keep related to the refund.",
+                "outcome": "Explain they should keep the Form 1099-R and the refund letter with their tax documents for their records."
+            },
+            {
+                "scenario": "A participant asks whether they can contribute the refunded amount to an IRA instead.",
+                "outcome": "Explain they may be able to contribute it to an outside Traditional or Roth IRA if within the IRA contribution deadline and if they have not maxed the prior year, and advise consulting a tax advisor for limits and eligibility."
+            },
+            {
+                "scenario": "A participant asks if the check being issued means their plan is shutting down or their account is closed.",
+                "outcome": "Explain that receiving a refund check is tied to annual compliance testing and does not indicate the plan is shutting down or the account was closed."
+            },
+            {
+                "scenario": "A participant asks why they received a refund even though they did not change their deferral elections during the year.",
+                "outcome": "Explain that refunds are driven by plan-wide ADP/ACP testing outcomes and plan-wide contribution patterns, and amounts vary by plan year."
+            },
+            {
+                "scenario": "A participant asks why they were affected if they do not believe they are highly compensated.",
+                "outcome": "Explain that refunds most often impact HCEs but depend on plan testing results; provide support contact information if they want confirmation specific to their situation."
+            },
+            {
+                "scenario": "A participant asks where to see the earnings versus contributions breakdown for their refund.",
+                "outcome": "Explain that the Form 1099-R shows the total amount refunded and a breakdown of earnings versus contributions, especially important for Roth refunds."
+            },
+            {
+                "scenario": "A participant asks whether this refund will cause a 10% early withdrawal penalty.",
+                "outcome": "Explain there is no 10% early withdrawal penalty for ADP/ACP refunds."
+            },
+            {
+                "scenario": "A participant says the check payee name looks wrong or the check was mailed to an unfamiliar address.",
+                "outcome": "Acknowledge the concern, do not confirm fraud, and direct them to support for review and confirmation using the approved email and phone channels."
+            },
+            {
+                "scenario": "A participant asks whether the refund amount can change from year to year.",
+                "outcome": "Explain that refund amounts are specific to each plan year and vary based on plan-wide contribution patterns and testing outcomes."
+            },
+            {
+                "scenario": "A participant asks if they will receive a refund check every year going forward.",
+                "outcome": "Explain that refunds are not guaranteed every year and depend on plan-wide contribution patterns and testing outcomes for each plan year."
+            },
+            {
+                "scenario": "A participant asks if they can re-contribute the refunded amount back into the 401(k) for the same year.",
+                "outcome": "Clarify that the refunded amount cannot be re-contributed to the 401(k) for that year and still counts toward the IRS annual contribution limit for that year."
+            },
+            {
+                "scenario": "A participant asks if they can roll the refunded amount into another retirement account.",
+                "outcome": "Explain that they may be able to contribute the refunded amount to an outside Traditional or Roth IRA if they are within the IRA contribution deadline and have not maxed out their IRA contributions for the prior year, and advise consulting a tax advisor for limits and eligibility."
+            },
+            {
+                "scenario": "A participant states they got 2 checks and is confused why.",
+                "outcome": "Explain that these checks are most likely separate refunds for pre-tax and Roth excess contributions, and to confirm the source of each check, please contact support at help@forusall.com or 844-401-2253, business hours Monday-Friday 8am-5pm PST."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "tone_and_reassurance",
+                "notes": [
+                    "Use calm, reassuring language.",
+                    "Emphasize that the check is most likely a required compliance correction and does not mean the participant did anything wrong."
+                ]
+            },
+            {
+                "category": "uncertainty_language",
+                "notes": [
+                    "Use 'most likely' when describing the cause unless confirmed through official support."
+                ]
+            },
+            {
+                "category": "avoid_tax_advice",
+                "notes": [
+                    "Only state what is supported regarding Form 1099-R and pre-tax vs Roth treatment.",
+                    "Recommend consulting a tax advisor for personalized tax guidance."
+                ]
+            },
+            {
+                "category": "portal_guidance",
+                "notes": [
+                    "Do not instruct the participant to use a portal for this issue; this article has a global scope. Provide the approved support channels."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "Why did I get a 401(k) refund check?",
+                "answer": "Most likely because the plan failed ADP or ACP nondiscrimination testing and needed to refund excess contributions to bring the plan back into compliance."
+            },
+            {
+                "question": "Is the check a mistake?",
+                "answer": "No. The refund is required by law when ADP/ACP testing requires a correction."
+            },
+            {
+                "question": "What does the refund amount include?",
+                "answer": "It includes excess contributions and the earnings or losses on those excess amounts."
+            },
+            {
+                "question": "When do I report the refund on my taxes?",
+                "answer": "The refund is taxable in the year it is issued/received, not the year the contribution was originally made, and it is reported using the Form 1099-R for that year."
+            },
+            {
+                "question": "Is there a 10% early withdrawal penalty for this refund?",
+                "answer": "No. There is no 10% early withdrawal penalty for ADP/ACP refunds."
+            },
+            {
+                "question": "Why did I receive a check from my 401(k) that I did not request?",
+                "answer": "Most likely because the plan failed ADP/ACP nondiscrimination testing and had to issue a corrective refund of excess contributions to bring the plan back into compliance."
+            },
+            {
+                "question": "What are ADP and ACP tests?",
+                "answer": "They are annual IRS nondiscrimination tests intended to ensure fairness between highly compensated employees (HCEs) and non-highly compensated employees (NHCEs). ADP checks employee contributions, and ACP checks employer matching and after-tax contributions."
+            },
+            {
+                "question": "Who is most likely to receive an ADP/ACP refund?",
+                "answer": "When testing fails, refunds most often impact highly compensated employees (HCEs), but the correction depends on plan testing results."
+            },
+            {
+                "question": "How is the refund amount determined?",
+                "answer": "Refunds are based on how much the plan exceeded the testing limit, how much each HCE contributed, and the earnings or losses on the excess amounts."
+            },
+            {
+                "question": "Why is my refund amount higher or lower than I expected?",
+                "answer": "The refund can include earnings or losses on the excess amounts, which can increase or decrease the total returned."
+            },
+            {
+                "question": "Will I get a Form 1099-R for this refund?",
+                "answer": "Yes. You will receive a Form 1099-R in the year the refund is issued, and it will show the total refunded amount and any withholding."
+            },
+            {
+                "question": "What information does the Form 1099-R include for this refund?",
+                "answer": "It shows the total amount refunded, a breakdown of earnings versus contributions (especially important for Roth refunds), and any federal and/or state tax withholding."
+            },
+            {
+                "question": "Is an ADP/ACP refund taxable?",
+                "answer": "Yes, but the taxable amount depends on whether the refund is from pre-tax contributions or Roth contributions."
+            },
+            {
+                "question": "How is a pre-tax ADP/ACP refund taxed?",
+                "answer": "If the refund is from pre-tax contributions, the entire refunded amount is taxable as ordinary income in the year the refund is issued."
+            },
+            {
+                "question": "How is a Roth ADP/ACP refund taxed?",
+                "answer": "If the refund is from Roth contributions, only the earnings portion is taxable, and the original Roth contributions are not taxed again."
+            },
+            {
+                "question": "Why was federal tax withheld from my refund?",
+                "answer": "For Roth refunds, 10% federal tax withholding is typically applied to the taxable portion, and the withholding is shown on your Form 1099-R."
+            },
+            {
+                "question": "Can state taxes be withheld from my refund?",
+                "answer": "Additional state taxes may be withheld depending on where you live, and any withholding will be shown on your Form 1099-R."
+            },
+            {
+                "question": "When are these refunds usually issued?",
+                "answer": "Refunds related to ADP/ACP testing for a prior plan year are typically issued in the first few months of the following year."
+            },
+            {
+                "question": "What is the IRS deadline for issuing these refunds for a calendar-year plan?",
+                "answer": "For calendar-year plans, the IRS requires these refunds to be issued by March 15 of the year after the tested plan year."
+            },
+            {
+                "question": "What if the refund is issued after March 15?",
+                "answer": "If the refund is issued after March 15, the plan may face IRS penalties, but you still report the income in the year the refund is received."
+            },
+            {
+                "question": "Does receiving this check mean I did something wrong?",
+                "answer": "No. These refunds do not mean you did anything wrong; they are required corrections when a plan fails annual testing."
+            },
+            {
+                "question": "Does receiving a refund mean my 401(k) plan is shutting down?",
+                "answer": "No. Receiving a refund check is tied to annual compliance testing and does not indicate the plan is shutting down or that your account was closed."
+            },
+            {
+                "question": "Can I re-contribute the refunded amount back into my 401(k) for that year?",
+                "answer": "No. You cannot re-contribute the refunded amount back into your 401(k) for that year, and it still counts toward your IRS annual contribution limit for that year."
+            },
+            {
+                "question": "Does the refunded amount still count toward my IRS annual contribution limit for that year?",
+                "answer": "Yes. The refunded amount cannot be re-contributed for that year, and the IRS still counts your contribution for that year as originally contributed."
+            },
+            {
+                "question": "Is there any 10% early withdrawal penalty on this refund?",
+                "answer": "No. There is no 10% early withdrawal penalty for ADP/ACP refunds."
+            },
+            {
+                "question": "How can I reduce the chance or impact of receiving a refund in future years?",
+                "answer": "You may be able to reduce your chances or limit the refund amount by spreading contributions over the full year rather than front-loading early."
+            },
+            {
+                "question": "What can my employer do to reduce refunds in the future?",
+                "answer": "Your employer can consider adopting a Safe Harbor 401(k) plan design, which automatically satisfies ADP/ACP testing and can eliminate the need for refunds, and can also improve NHCE participation."
+            },
+            {
+                "question": "Can I contribute my refund to an IRA instead?",
+                "answer": "If you have not maxed your IRA contribution for the prior year, you may be able to contribute the refunded amount to an outside Traditional or Roth IRA depending on the IRA contribution deadline; consult a tax advisor for limits and eligibility."
+            },
+            {
+                "question": "What should I do if I'm not sure how this affects my taxes?",
+                "answer": "Keep your Form 1099-R and any refund letter with your tax documents and consult a tax advisor or preparer for guidance."
+            },
+            {
+                "question": "Can ForUsAll confirm whether my refund was from pre-tax or Roth contributions?",
+                "answer": "Yes. ForUsAll can help confirm the refund source (pre-tax or Roth)."
+            },
+            {
+                "question": "What documents should I keep for my records?",
+                "answer": "Keep your Form 1099-R and refund letter with your tax documents."
+            },
+            {
+                "question": "Why did I get a refund even though I didn't change my contribution election?",
+                "answer": "Refunds are driven by plan-wide ADP/ACP testing results and plan-wide contribution patterns, and they can vary by plan year."
+            },
+            {
+                "question": "What are ADP/ACP refunds meant to correct?",
+                "answer": "They correct a failed IRS nondiscrimination testing result by refunding excess contributions (and related earnings) to bring the plan back into compliance."
+            },
+            {
+                "question": "Do these refunds include employer match or after-tax contributions?",
+                "answer": "ACP testing relates to employer matching and after-tax contributions, and corrective refunds can be related to the plan failing ACP testing."
+            },
+            {
+                "question": "If I have questions or think something looks wrong, who should I contact?",
+                "answer": "Contact support at help@forusall.com or 844-401-2253, business hours Monday-Friday 8am-5pm PST."
+            },
+            {
+                "question": "What if the amount doesn't look right or I received multiple checks?",
+                "answer": "If something seems off, contact support at help@forusall.com or 844-401-2253 so they can confirm the details for your specific situation."
+            },
+            {
+                "question": "What if the check payee name looks incorrect or unfamiliar?",
+                "answer": "Contact support at help@forusall.com or 844-401-2253 so they can review and confirm the details for your specific situation."
+            },
+            {
+                "question": "What if I received the refund but did not receive a refund letter or I lost it?",
+                "answer": "Keep your Form 1099-R for tax reporting and contact support if you need help confirming details about your refund."
+            },
+            {
+                "question": "Does this refund affect my ability to contribute in the future?",
+                "answer": "The article does not specify future contribution changes; if you need plan-specific guidance, contact support."
+            },
+            {
+                "question": "I received 2 checks, why is that?",
+                "answer": "Checks for Pre Tax and Roth funds are typically disbursed separatedly. If a participant receives multiple checks, it may be because they had both pre-tax and Roth excess contributions refunded. To confirm the source of each check, please contact support at help@forusall.com or 844-401-2253, business hours Monday-Friday 8am-5pm PST."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "ADP testing",
+                "definition": "An annual IRS nondiscrimination test that checks employee contributions to help ensure a 401(k) plan does not disproportionately favor high earners over other employees."
+            },
+            {
+                "term": "ACP testing",
+                "definition": "An annual IRS nondiscrimination test that checks employer matching and after-tax contributions to help ensure a 401(k) plan does not disproportionately favor high earners over other employees."
+            },
+            {
+                "term": "HCE",
+                "definition": "Highly Compensated Employee; participants in this group are often the ones who receive refunds when ADP/ACP testing fails."
+            },
+            {
+                "term": "NHCE",
+                "definition": "Non-Highly Compensated Employee; higher participation and contribution patterns among NHCEs can help a plan pass ADP/ACP testing."
+            },
+            {
+                "term": "Form 1099-R",
+                "definition": "A tax form issued for the year a refund is issued that shows the total amount refunded, earnings vs contributions (especially for Roth), and any tax withholding."
+            },
+            {
+                "term": "Corrective distribution deadline",
+                "definition": "For calendar-year plans, the IRS deadline of March 15 in the year after the tested plan year by which ADP/ACP corrective refunds must be issued."
+            },
+            {
+                "term": "ADP refund",
+                "definition": "A corrective refund issued when a plan fails ADP testing and must return excess employee contributions (and related earnings or losses) to bring the plan back into compliance."
+            },
+            {
+                "term": "ACP refund",
+                "definition": "A corrective refund issued when a plan fails ACP testing and must return excess amounts related to employer matching and after-tax contributions (and related earnings or losses) to bring the plan back into compliance."
+            },
+            {
+                "term": "Nondiscrimination testing",
+                "definition": "Annual IRS-required testing (including ADP and ACP) intended to ensure a 401(k) plan does not disproportionately favor high earners over other employees."
+            },
+            {
+                "term": "Corrective refund",
+                "definition": "A refund issued to correct a failed ADP/ACP testing result so the plan can return to compliance."
+            },
+            {
+                "term": "Excess contributions",
+                "definition": "Contributions that must be returned to certain participants when ADP/ACP testing fails to bring the plan back into compliance."
+            },
+            {
+                "term": "Excess contribution refund",
+                "definition": "A payment returning excess contributions (and related earnings or losses) issued as a corrective action after ADP/ACP testing requires a correction."
+            },
+            {
+                "term": "Corrective distribution",
+                "definition": "A distribution made to correct a plan issue identified during ADP/ACP testing by refunding excess contributions and related earnings or losses."
+            },
+            {
+                "term": "Earnings",
+                "definition": "Investment gains associated with the excess amounts being refunded, which can increase the total refund amount."
+            },
+            {
+                "term": "Losses",
+                "definition": "Investment declines associated with the excess amounts being refunded, which can decrease the total refund amount."
+            },
+            {
+                "term": "Pre-tax contributions",
+                "definition": "401(k) contributions made before taxes; if refunded due to ADP/ACP testing, the entire refunded amount is taxable as ordinary income in the year the refund is issued."
+            },
+            {
+                "term": "Roth contributions",
+                "definition": "401(k) contributions made after taxes; if refunded due to ADP/ACP testing, only the earnings portion is taxable and the original contributions are not taxed again."
+            },
+            {
+                "term": "Tax withholding",
+                "definition": "Federal and/or state taxes withheld from the refund; for Roth refunds, 10% federal withholding is typically applied to the taxable portion, and state withholding may apply depending on where the participant lives."
+            },
+            {
+                "term": "Taxable portion",
+                "definition": "The part of the refund that is subject to tax reporting; for pre-tax refunds this is the entire refunded amount, and for Roth refunds this is typically the earnings portion."
+            },
+            {
+                "term": "Refund issuance year",
+                "definition": "The calendar year the refund is issued/received, which is the year the participant reports the income for tax purposes."
+            },
+            {
+                "term": "Calendar-year plan",
+                "definition": "A plan with a plan year that matches the calendar year; for these plans, the corrective distribution deadline is March 15 of the following year."
+            },
+            {
+                "term": "Corrective distribution deadline (March 15)",
+                "definition": "The IRS deadline for calendar-year plans to issue ADP/ACP corrective refunds by March 15 of the year after the tested plan year."
+            },
+            {
+                "term": "Late corrective refund",
+                "definition": "A corrective refund issued after the March 15 deadline for calendar-year plans; the plan may face IRS penalties, but the participant still reports the income in the year the refund is received."
+            },
+            {
+                "term": "Safe Harbor 401(k)",
+                "definition": "A plan design that automatically satisfies ADP/ACP testing requirements and can eliminate the need for ADP/ACP refund checks."
+            },
+            {
+                "term": "Plan-wide contribution patterns",
+                "definition": "Overall contribution behavior across the plan population that influences whether the plan passes ADP/ACP testing and how refund amounts vary by plan year."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not guarantee ADP/ACP testing is definitively the reason for the check; use 'most likely' unless confirmed through official support.",
+                "Do not advise the participant to cash, deposit, void, shred, return, reissue, or otherwise act on the check; the content does not provide handling instructions.",
+                "Do not provide tax advice beyond what is stated; recommend consulting a tax advisor for personalized guidance.",
+                "Do not introduce timelines beyond what is stated (first few months of the following year; March 15 deadline for calendar-year plans).",
+                "Do not claim a participant portal is required or available for this issue; provide the approved email and phone support channels.",
+                "Do not state the participant is an HCE or that compensation status is the reason; only note that refunds often affect HCEs when testing fails.",
+                "Do not state or imply the participant definitely received the refund because they are an HCE; only say refunds often affect HCEs and outcomes vary by plan testing results.",
+                "Do not confirm fraud, identity theft, or an account compromise based only on receiving a check; treat the most likely cause as an ADP/ACP corrective refund and direct to support for verification.",
+                "Do not request or collect sensitive personal information in chat beyond what is explicitly permitted (for example, do not ask for full SSN, full date of birth, bank details, or account numbers); direct to support channels instead.",
+                "Do not provide step-by-step tax filing instructions or tell the participant which tax forms or lines to use; recommend consulting a tax advisor or preparer.",
+                "Do not estimate, calculate, or validate the participant's refund amount using assumptions; the calculation depends on plan testing limits and earnings/losses.",
+                "Do not guarantee the participant will receive a specific refund amount, a second refund, or no refunds in future years; refunds vary by plan year and plan-wide contribution patterns.",
+                "Do not guarantee the refund will be issued by a specific date or delivered by a specific method; only use the timing language stated in the article.",
+                "Do not guarantee the participant will receive a Form 1099-R by a specific date; only state it will be issued in the year the refund is issued.",
+                "Do not state that federal or state withholding will always occur; the article describes typical withholding behavior for Roth taxable earnings and that state withholding may depend on where the participant lives.",
+                "Do not claim that a late refund creates penalties for the participant; the article states penalties may apply to the plan sponsor, not the participant.",
+                "Do not claim the participant can re-contribute the refunded amount back into the 401(k) for that year; the article states they cannot and it still counts toward the IRS annual contribution limit for that year.",
+                "Do not guarantee IRA contribution eligibility or deadlines; only state the participant may be able to contribute to an outside IRA depending on the IRA contribution deadline and eligibility, and recommend consulting a tax advisor.",
+                "Do not introduce alternative causes for the check (such as hardship, loans, RMDs, plan termination, or rollovers) unless confirmed through official support; the article focuses on ADP/ACP corrective refunds.",
+                "Do not provide ADP/ACP testing formulas, thresholds, or IRS code citations; keep explanations at the high level described in the article.",
+                "Do not instruct the participant to obtain documents from any system or portal that is not explicitly stated; provide the approved support contact information instead.",
+                "Do not claim the plan is shutting down, the account was closed, or employment status changed as a result of receiving the refund; the article does not support those conclusions.",
+                "Do not promise that spreading contributions across the year will prevent refunds; the article states it may help reduce the chance or limit the amount.",
+                "Do not promise that the employer will adopt Safe Harbor; only state it is an option the participant can ask the employer to consider.",
+                "Do not state the participant must take a specific action with the refund check to remain compliant; the article provides explanation and directs to support for case-specific questions.",
+                "Do not tell the participant that the refund changes their contribution limit usage beyond what is stated; keep to the article's rule that the original contribution still counts for that year."
+            ],
+            "must_do_if_unsure": [
+                "If a personalized tax explanation is requested, ask whether the refund source was pre-tax or Roth and whether the participant has Form 1099-R details available.",
+                "If the participant requests confirmation, reports irregularities, or asks for actions not described, provide support contact information.",
+                "If the participant is unsure which year to report the refund, confirm the year the refund was issued/received and restate that reporting is based on the year received and the Form 1099-R for that year.",
+                "If the participant is unsure what portion is taxable, explain that it depends on whether the refund was pre-tax or Roth and that the 1099-R shows the amounts; suggest consulting a tax advisor for personalized guidance.",
+                "If the participant asks about withholding, clarify that withholding details are shown on the Form 1099-R and avoid guessing amounts.",
+                "If the participant asks about timing, use only the stated language (first few months of the following year; March 15 deadline for calendar-year plans) and direct to support for plan-specific confirmation.",
+                "If the participant asks whether the refund can be re-contributed to the 401(k), restate that it cannot be re-contributed for that year and still counts toward the IRS annual contribution limit for that year.",
+                "If the participant expresses concern about fraud or unauthorized activity, acknowledge the concern, do not confirm fraud, and direct them to support for verification.",
+                "If the participant mentions a refund letter but cannot provide details, ask what the letter says about the refund and advise keeping it with the 1099-R for their records.",
+                "If the participant asks about contributing the refund to an IRA, state it may be possible depending on the IRA contribution deadline and eligibility and recommend consulting a tax advisor before proceeding.",
+                "If the participant is confused about ADP vs ACP, provide the high-level definitions (ADP checks employee contributions; ACP checks employer matching and after-tax contributions) without adding formulas or thresholds.",
+                "If the participant asks why they were impacted, explain refunds often affect HCEs but depend on plan testing outcomes and direct them to support for participant-specific confirmation.",
+                "If the participant reports multiple checks or believes the amount is incorrect, avoid validating calculations and direct them to support for review and confirmation."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [],
+            "external_links": [
+                "https://www.irs.gov/retirement-plans/401k-plan-fix-it-guide-the-plan-failed-the-401k-adp-and-acp-nondiscrimination-tests]"
+            ],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Monday-Friday 8am-5pm PST"
+            }
+        },
+        "required_data": {
+            "must_have": [],
+            "nice_to_have": [
+                {
+                    "data_point": "Participant's name",
+                    "meaning": "The first and last name of the participant.",
+                    "example_values": [
+                        "John Doe",
+                        "Jane Doe",
+                        "Oscar Santiago Garcia"
+                    ],
+                    "why_needed": "Required but not mandatory to confirm that we found a user related to the participant in our system.",
+                    "source_note": "Supported by this article section",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant Status",
+                    "meaning": "The status of the participant in the system.",
+                    "example_values": [
+                        "Active",
+                        "Terminated",
+                        "Ineligible",
+                        "Deceased",
+                        "Unknown"
+                    ],
+                    "why_needed": "Required but not mandatory to confirm that the participant has already left their employer in order to request a distribution.",
+                    "source_note": "Supported by this article section",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant Plan",
+                    "meaning": "The company plan the participant is or was enrolled in.",
+                    "example_values": [
+                        "Arbor Lodging Management (nvn)",
+                        "Bristol Myers (nvn)"
+                    ],
+                    "why_needed": "Required but not mandatory to confirm that the participant has already left their employer.",
+                    "source_note": "Supported by this article section",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Refund contribution source",
+                    "meaning": "Whether the refunded contributions were pre-tax or Roth, which changes what portion is taxable.",
+                    "example_values": [
+                        "Pre-tax",
+                        "Roth",
+                        "A value stated in this article"
+                    ],
+                    "why_needed": "Determines whether the entire refund is taxable (pre-tax) or only the earnings portion is taxable (Roth).",
+                    "source_note": "Supported by article section: Tax implications for pre-tax vs Roth refunds",
+                    "source_type": "unknown"
+                },
+                {
+                    "data_point": "Year the refund was issued/received",
+                    "meaning": "The calendar year the corrective refund check was issued, which is the tax year the income is reported.",
+                    "example_values": [
+                        "A year stated by the participant",
+                        "A value stated in this article"
+                    ],
+                    "why_needed": "Refund income is reported in the year the refund is issued/received, not the year contributions were made.",
+                    "source_note": "Supported by article section: Refund is taxable in the year issued",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Form 1099-R details",
+                    "meaning": "Amounts and withholding shown on the Form 1099-R for the refund year, including total refunded amount and breakdown of earnings vs contributions (especially for Roth).",
+                    "example_values": [
+                        "A value stated on the participant's Form 1099-R",
+                        "A value stated in this article"
+                    ],
+                    "why_needed": "Used for accurate tax reporting and to understand earnings vs contributions and withholding.",
+                    "source_note": "Supported by article section: Will I receive a tax form?",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Refund amount and refund letter details",
+                    "meaning": "The total amount refunded and any supporting details provided with the check (such as a refund letter).",
+                    "example_values": [
+                        "A dollar amount stated by the participant",
+                        "A value stated in this article"
+                    ],
+                    "why_needed": "Helps contextualize the corrective refund and supports discussion of what the amount includes (excess contributions plus earnings or losses).",
+                    "source_note": "Supported by article section: Amount returned includes excess contributions and earnings or losses",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Participant status",
+                    "meaning": "Participant status used for internal context when reviewing the participant profile.",
+                    "example_values": [
+                        "Active",
+                        "Terminated",
+                        "Ineligible",
+                        "Deceased",
+                        "Unknown"
+                    ],
+                    "why_needed": "Used for internal context when reviewing participant information.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant first and last name",
+                    "meaning": "Participant name used for internal context when reviewing the participant profile.",
+                    "example_values": [],
+                    "why_needed": "Used for internal context when reviewing participant information.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Primary email",
+                    "meaning": "Participant email used for internal context when reviewing the participant profile.",
+                    "example_values": [],
+                    "why_needed": "Used for internal context when reviewing participant information.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Refund contribution source",
+                    "ask_participant": "Was the refund from pre-tax contributions or Roth contributions (or does your 1099-R indicate which)?",
+                    "agent_note": "Do not state what portion is taxable without knowing whether the refund source was pre-tax or Roth; support can help confirm the refund source if needed."
+                },
+                {
+                    "missing_data_point": "Form 1099-R details",
+                    "ask_participant": "Do you have your Form 1099-R for the refund year (and if so, what amounts and withholding are shown)?",
+                    "agent_note": "Do not guess taxable amounts or withholding; the 1099-R shows the breakdown and withholding. Support can help confirm details if the participant is unsure."
+                },
+                {
+                    "missing_data_point": "Participant status",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                },
+                {
+                    "missing_data_point": "Participant first and last name",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                },
+                {
+                    "missing_data_point": "Primary email",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                }
+            ],
+            "disambiguation_notes": [
+                "Taxability differs by contribution source: pre-tax refunds are fully taxable; Roth refunds are taxable only on earnings.",
+                "Refunds are reported in the tax year the refund is issued/received, not the year the original contributions were made.",
+                " Refunds are most likely due to ADP/ACP testing corrections, which are required by law and do not indicate a mistake or wrongdoing by the participant.",
+                "An 'unexpected' or 'unauthorized' check in this context usually refers to an ADP/ACP corrective refund, not a participant-initiated withdrawal request.",
+                "Do not assume or state that the participant is an HCE; refunds often affect HCEs, but support can confirm participant-specific details.",
+                "Do not assume or state the participant's employment status or plan status based on receiving a refund; support can confirm participant-specific details.",
+                "Do not assume or state the participant's tax situation; recommend consulting a tax advisor for personalized guidance."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [],
+            "blocking_conditions": [],
+            "missing_data_conditions": [
+                {
+                    "condition": "Participant requests a personalized tax explanation but the refund contribution source (pre-tax vs Roth) is not provided.",
+                    "missing_data_point": "Refund contribution source",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "To confirm this please reach out to support"
+                },
+                {
+                    "condition": "Participant requests help determining what was taxed or withheld but does not have the Form 1099-R amounts available.",
+                    "missing_data_point": "Form 1099-R details",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Do you have your Form 1099-R for the refund year (and if so, what amounts and withholding are shown)?"
+                }
+            ],
+            "allowed_conclusions": [
+                "The refund check is most likely a corrective distribution due to failed ADP/ACP nondiscrimination testing.",
+                "The refund amount can include excess contributions and earnings or losses on the excess amounts.",
+                "A Form 1099-R will be issued in the year the refund is issued for tax reporting.",
+                "Pre-tax refunds are fully taxable as ordinary income in the year the refund is issued.",
+                "Roth refunds are taxable only on the earnings portion, and earnings are shown separately on the 1099-R.",
+                "There is no 10% early withdrawal penalty for ADP/ACP refunds.",
+                "For calendar-year plans, the corrective distribution deadline is March 15 of the year after the tested plan year.",
+                "If the participant needs confirmation or has irregularities, they should contact support using the approved email and phone channels."
+            ],
+            "not_allowed_conclusions": [
+                "Do not claim the participant can re-contribute the refunded amount back into the 401(k) for that year.",
+                "Do not guarantee a specific refund issuance date other than what is stated (first few months of the following year; March 15 deadline for calendar-year plans).",
+                "Do not guarantee IRA eligibility, contribution limits, or tax outcomes beyond what is stated; recommend consulting a tax advisor for personalized guidance.",
+                "Do not confirm fraud or unauthorized access based solely on receiving a check; use the most likely ADP/ACP corrective refund explanation and provide support contacts for verification.",
+                "Do not state the participant is an HCE; only note that refunds often affect HCEs when testing fails."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "Most likely, you received this check because the plan failed annual ADP/ACP testing and had to refund excess contributions to stay compliant.",
+                    "This is not a mistake and is required by law when testing corrections are needed.",
+                    "The amount can include excess contributions plus earnings or losses.",
+                    "You should receive a Form 1099-R for the year the refund is issued for tax reporting."
+                ],
+                "next_steps": [
+                    "Use the Form 1099-R when filing your taxes for the year the refund was issued.",
+                    "If you want to reduce the chance or impact of future refunds, consider spreading contributions across the full year and talking to your employer about Safe Harbor plan design and improving NHCE participation.",
+                    "If you have questions or want confirmation for your specific situation, contact support at [help@forusall.com](mailto:help@forusall.com) or 844-401-2253."
+                ],
+                "warnings": [
+                    "You cannot re-contribute the refunded amount back into your 401(k) for that year, and it still counts toward your IRS annual contribution limit for that year."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not say the refund was a mistake or optional.",
+                    "Do not guarantee the exact reason for the check beyond stating it is most likely related to ADP/ACP testing.",
+                    "Do not provide instructions on what to do with the check (cash, deposit, return, void) because handling instructions are not provided here.",
+                    "Do not provide personalized tax advice; recommend consulting a tax advisor."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "I can share the general rules, but to clarify what portion is taxable for your specific refund, I need a bit more information."
+                ],
+                "next_steps": [
+                    "Confirm whether your refund was from pre-tax contributions or Roth contributions.",
+                    "Review your Form 1099-R for the refund year, which shows the total amount, any earnings breakdown (especially for Roth), and withholding."
+                ],
+                "warnings": [
+                    "I cannot confirm what portion is taxable or what was withheld without the refund source (pre-tax vs Roth) and/or the 1099-R details."
+                ],
+                "questions_to_ask": [
+                    "Was the refund from pre-tax contributions or Roth contributions (or does your 1099-R indicate which)?",
+                    "Do you have your Form 1099-R for the refund year (and if so, what amounts and withholding are shown)?"
+                ],
+                "what_not_to_say": [
+                    "Do not guess taxable amounts or withholding amounts.",
+                    "Do not provide personalized tax advice; recommend consulting a tax advisor."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [],
+                "next_steps": [],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not claim the participant is not eligible for a refund; eligibility exclusions are not defined here."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Refund amounts and whether you receive a refund can vary by plan year and depend on plan-wide contribution patterns.",
+                    "If you want confirmation for your specific situation, support can help."
+                ],
+                "next_steps": [
+                    "If you have further questions or need confirmation, contact support at help@forusall.com or 844-401-2253 business hours Monday-Friday 8am-5pm PST."
+                ],
+                "warnings": [
+                    "Do not assume a specific refund amount or timing beyond what is stated."
+                ],
+                "questions_to_ask": [
+                    "Do you want a general explanation, or are you trying to determine the taxable amount for your specific refund?",
+                    "Do you know whether your refund was from pre-tax or Roth contributions, and do you have your 1099-R details?",
+                    "For additional confirmation, please reach out to support who can review your specific situation and provide more details. You can reach them at help@forusall.com or 844-401-2253 business hours Monday-Friday 8am-5pm PST."
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee refunds will never happen in the future.",
+                    "Do not confirm fraud or unauthorized access based solely on receiving a check.",
+                    "Do not state the participant is an HCE; only note that refunds often affect HCEs when testing fails.",
+                    "Do not provide personalized tax advice; recommend consulting a tax advisor.",
+                    "Do not provide instructions on what to do with the check (cash, deposit, return, void) because handling instructions are not provided here.",
+                    "Do not guarantee the exact reason for the check beyond stating it is most likely related to ADP/ACP testing.",
+                    "If unsure, instruct participant to reach out to support for confirmation rather than guessing or assuming details."
+                ]
+            }
+        }
+    }
+}

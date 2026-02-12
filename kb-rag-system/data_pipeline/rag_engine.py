@@ -53,22 +53,22 @@ class RequiredDataResponse:
 
 
 @dataclass
-class ResponseSection:
-    """Sección de respuesta."""
-    topic: str
-    answer_components: List[str]
-    steps: List[Dict[str, Any]]
-    warnings: List[str]
-    outcomes: Optional[List[str]] = None
-
-
-@dataclass
 class GenerateResponseResult:
-    """Respuesta del endpoint /generate-response."""
+    """
+    Respuesta del endpoint /generate-response.
+    
+    Campos:
+        decision: Calidad del retrieval RAG ("can_proceed", "uncertain", "out_of_scope").
+                  Calculado por el engine basado en confidence score de Pinecone.
+        confidence: Score de confianza del retrieval (0.0 - 1.0).
+        response: Respuesta estructurada del LLM con schema outcome-driven.
+                  Contiene: outcome, outcome_reason, response_to_participant,
+                  questions_to_ask, escalation, guardrails_applied, data_gaps.
+        metadata: Info de diagnóstico (chunks_used, tokens, modelo).
+    """
     decision: str  # "can_proceed", "uncertain", "out_of_scope"
     confidence: float
     response: Dict[str, Any]
-    guardrails: Dict[str, List[str]]
     metadata: Dict[str, Any]
 
 
@@ -170,12 +170,14 @@ class RAGEngine:
                     "No relevant articles found for this topic"
                 )
             
-            # 2. Construir contexto (budget pequeño para este endpoint)
-            context_budget = 1500  # Tokens para contexto
+            # 2. Construir contexto
+            # Budget suficiente para incluir el chunk de required_data completo
+            # (artículos con muchos campos pueden superar 1500 tokens fácilmente)
+            context_budget = 2500  # Tokens para contexto
             context, selected_chunks, tokens_used = self._build_context_from_chunks(
                 chunks=chunks,
                 budget=context_budget,
-                prioritize_types=['required_data', 'eligibility', 'business_rules']
+                prioritize_types=['required_data_must_have', 'eligibility', 'business_rules']
             )
             
             logger.info(f"Context construido: {len(selected_chunks)} chunks, {tokens_used} tokens")
@@ -204,8 +206,8 @@ class RAGEngine:
                 logger.error(f"Respuesta: {llm_response[:500]}")
                 parsed = {"participant_data": [], "plan_data": []}
             
-            # 6. Calcular confidence
-            confidence = self._calculate_confidence(chunks)
+            # 6. Calcular confidence (usa fórmula específica para required_data)
+            confidence = self._calculate_required_data_confidence(chunks, query_topic=topic)
             
             # 7. Construir respuesta
             return RequiredDataResponse(
@@ -265,12 +267,11 @@ class RAGEngine:
         
         try:
             # 1. Calcular presupuesto de contexto
-            context_budget = self.token_manager.calculate_context_budget(
-                max_response_tokens,
-                reserve_for_response=0.35  # 35% para respuesta del LLM
-            )
+            # Budget combinado: maximizar contexto, reservar mínimo para respuesta.
+            # Más contexto = más material de KB = respuesta más precisa y detallada.
+            context_budget = max_response_tokens - self.RESPONSE_MIN_TOKENS
             
-            logger.info(f"Context budget: {context_budget} tokens")
+            logger.info(f"Context budget: {context_budget} tokens (de {max_response_tokens} total, reservando {self.RESPONSE_MIN_TOKENS} para response)")
             
             # 2. Buscar chunks relevantes
             chunks = self._search_for_response(
@@ -300,7 +301,12 @@ class RAGEngine:
             
             logger.info(f"Context: {len(selected_chunks)} chunks, {tokens_used} tokens")
             
-            # 5. Generar prompts
+            # 5. Calcular tokens para completion
+            # Lo que el contexto no usó, queda disponible para la respuesta.
+            # Mínimo garantizado: RESPONSE_MIN_TOKENS.
+            completion_budget = max(self.RESPONSE_MIN_TOKENS, max_response_tokens - tokens_used)
+            
+            # 6. Generar prompts (usa completion_budget para informar al LLM)
             system_prompt, user_prompt = build_generate_response_prompt(
                 context=context,
                 inquiry=inquiry,
@@ -308,12 +314,8 @@ class RAGEngine:
                 record_keeper=record_keeper,
                 plan_type=plan_type,
                 topic=topic,
-                max_tokens=max_response_tokens
+                max_tokens=completion_budget
             )
-            
-            # 6. Calcular tokens para completion
-            completion_budget = max_response_tokens - tokens_used
-            completion_budget = max(500, completion_budget)  # Mínimo 500 tokens
             
             # 7. Llamar LLM
             llm_response = self._call_llm(
@@ -328,31 +330,37 @@ class RAGEngine:
             except json.JSONDecodeError as e:
                 logger.error(f"Error parseando JSON del LLM: {e}")
                 logger.error(f"Respuesta: {llm_response[:500]}")
-                # Fallback a respuesta básica
+                # Fallback: construir respuesta mínima con el nuevo schema
                 parsed = {
-                    "sections": [{
-                        "topic": topic,
-                        "answer_components": [llm_response[:1000]],
+                    "outcome": "blocked_missing_data",
+                    "outcome_reason": "Response parsing failed — raw LLM output could not be parsed as JSON.",
+                    "response_to_participant": {
+                        "opening": "We were unable to generate a structured response for your inquiry.",
+                        "key_points": [llm_response[:1000]] if llm_response else [],
                         "steps": [],
-                        "warnings": ["Response parsing failed"]
-                    }],
+                        "warnings": []
+                    },
+                    "questions_to_ask": [],
+                    "escalation": {
+                        "needed": True,
+                        "reason": "Response parsing failed. Please contact Support for assistance."
+                    },
                     "guardrails_applied": [],
-                    "data_gaps": []
+                    "data_gaps": ["LLM response was not valid JSON"]
                 }
             
-            # 9. Calcular confidence y decision
+            # 9. Calcular confidence y decision (calidad del retrieval RAG)
             confidence = self._calculate_confidence(chunks)
             decision = self._determine_decision(confidence)
             
             # 10. Construir respuesta
+            # - decision/confidence: calidad del retrieval (calculado por el engine)
+            # - response.outcome: determinación del caso (calculado por el LLM)
+            # - guardrails viven SOLO dentro de response.guardrails_applied (sin duplicación)
             return GenerateResponseResult(
                 decision=decision,
                 confidence=confidence,
                 response=parsed,
-                guardrails={
-                    "must_not_say": parsed.get("guardrails_applied", []),
-                    "must_verify": []
-                },
                 metadata={
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
@@ -372,10 +380,34 @@ class RAGEngine:
     # Helper Methods - Búsqueda
     # ========================================================================
     
+    # Tokens mínimos reservados para la respuesta del LLM.
+    # El resto del budget (max_response_tokens - este valor) va a contexto de KB.
+    # 1200 tokens alcanza para una respuesta completa con el JSON schema.
+    RESPONSE_MIN_TOKENS = 1200
+    
     # Umbral mínimo para considerar que una búsqueda con filtro de topic
     # tuvo resultados suficientes. Si no se alcanza, se hace fallback sin topic.
     TOPIC_FILTER_MIN_CHUNKS = 3
     TOPIC_FILTER_MIN_SCORE = 0.20
+    
+    def _get_topic_variations(self, topic: str) -> List[str]:
+        """
+        Genera variaciones de case para un topic (Pinecone es case-sensitive).
+        
+        Args:
+            topic: Topic en lowercase (normalizado por el validator)
+        
+        Returns:
+            Lista de variaciones únicas: ['rollover', 'Rollover', 'ROLLOVER']
+        """
+        variations = list(set([
+            topic,
+            topic.lower(),
+            topic.capitalize(),
+            topic.title(),
+            topic.upper()
+        ]))
+        return variations
     
     def _search_for_required_data(
         self,
@@ -384,38 +416,119 @@ class RAGEngine:
         plan_type: str,
         topic: str
     ) -> List[Dict[str, Any]]:
-        """Busca chunks relevantes para required_data endpoint."""
-        # Filtros base (obligatorios)
-        base_filters = {
+        """
+        Busca chunks relevantes para el endpoint required_data.
+        
+        Usa una búsqueda en dos fases:
+        
+        Phase 1: Buscar chunks required_data_must_have (lo más crítico).
+          Ejecuta DOS búsquedas paralelas y toma el mejor resultado por score:
+          - 1A: Record-keeper específico (ej: "LT Trust")
+          - 1B: Scope global (artículos que aplican a todos los RKs)
+          
+          La similitud semántica (el query incluye el topic) rankea
+          el artículo correcto más alto automáticamente.
+        
+        Phase 2: Buscar chunks de contexto (eligibility, business_rules)
+          del mismo artículo que ganó en Phase 1.
+        """
+        enriched_query = f"{inquiry} {topic}"
+        
+        # ── Phase 1A: Buscar must_have por record_keeper específico ──
+        rk_filters = {
             "record_keeper": {"$eq": record_keeper},
             "plan_type": {"$eq": plan_type},
-            "chunk_type": {"$in": ["required_data", "eligibility", "business_rules"]}
+            "chunk_type": {"$eq": "required_data_must_have"}
         }
-        
-        # Intentar primero con filtro de topic para mayor precisión
-        if topic:
-            topic_filters = {**base_filters, "topic": {"$eq": topic}}
-            chunks = self.pinecone.query_chunks(
-                query_text=inquiry,
-                top_k=10,
-                filter_dict=topic_filters
-            )
-            
-            if self._topic_results_sufficient(chunks):
-                logger.info(f"Found {len(chunks)} chunks for required_data (with topic filter: {topic})")
-                return chunks
-            
-            logger.info(f"Topic filter '{topic}' returned insufficient results ({len(chunks)} chunks), falling back without topic")
-        
-        # Fallback: buscar sin filtro de topic
-        chunks = self.pinecone.query_chunks(
-            query_text=inquiry,
-            top_k=10,
-            filter_dict=base_filters
+        rk_chunks = self.pinecone.query_chunks(
+            query_text=enriched_query,
+            top_k=3,
+            filter_dict=rk_filters
         )
+        logger.info(f"Phase 1A (RK={record_keeper}): found {len(rk_chunks)} chunks")
         
-        logger.info(f"Found {len(chunks)} chunks for required_data (without topic filter)")
-        return chunks
+        # ── Phase 1B: Buscar must_have en artículos de scope global ──
+        # Artículos con scope="global" no tienen record_keeper específico
+        # y aplican a todos los record keepers.
+        global_filters = {
+            "scope": {"$eq": "global"},
+            "plan_type": {"$eq": plan_type},
+            "chunk_type": {"$eq": "required_data_must_have"}
+        }
+        global_chunks = self.pinecone.query_chunks(
+            query_text=enriched_query,
+            top_k=3,
+            filter_dict=global_filters
+        )
+        logger.info(f"Phase 1B (scope=global): found {len(global_chunks)} chunks")
+        
+        # ── Merge 1A + 1B: deduplicar y ordenar por score ──
+        # La similitud semántica determina qué artículo es más relevante
+        # al topic del query. El mejor resultado queda primero.
+        required_data_chunks = self._merge_and_rank_chunks(rk_chunks, global_chunks)
+        
+        if required_data_chunks:
+            best = required_data_chunks[0]
+            logger.info(
+                f"Phase 1 best match: article={best['metadata'].get('article_id')}, "
+                f"topic={best['metadata'].get('topic')}, score={best['score']:.4f}"
+            )
+        else:
+            logger.warning("Phase 1: No required_data_must_have chunks found")
+            return []
+        
+        # ── Phase 2: Buscar chunks de contexto del artículo ganador ──
+        # Usamos article_id para focalizar en el mismo artículo.
+        best_article_id = required_data_chunks[0]['metadata'].get('article_id')
+        
+        context_filters = {
+            "article_id": {"$eq": best_article_id},
+            "chunk_type": {"$in": ["eligibility", "business_rules"]}
+        }
+        logger.info(f"Phase 2: focusing context on article_id={best_article_id}")
+        
+        context_chunks = self.pinecone.query_chunks(
+            query_text=enriched_query,
+            top_k=7,
+            filter_dict=context_filters
+        )
+        logger.info(f"Phase 2 (context): found {len(context_chunks)} chunks")
+        
+        # ── Merge: required_data primero, luego contexto (deduplicado) ──
+        seen_ids = set()
+        merged = []
+        
+        for chunk in required_data_chunks + context_chunks:
+            chunk_id = chunk.get('id')
+            if chunk_id not in seen_ids:
+                seen_ids.add(chunk_id)
+                merged.append(chunk)
+        
+        logger.info(f"Total merged chunks for required_data: {len(merged)}")
+        return merged
+    
+    def _merge_and_rank_chunks(
+        self,
+        *chunk_lists: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Merge múltiples listas de chunks, deduplicar por ID, ordenar por score.
+        
+        Returns:
+            Lista deduplicada ordenada por score descendente (mejor primero)
+        """
+        seen_ids = set()
+        all_chunks = []
+        
+        for chunk_list in chunk_lists:
+            for chunk in chunk_list:
+                chunk_id = chunk.get('id')
+                if chunk_id not in seen_ids:
+                    seen_ids.add(chunk_id)
+                    all_chunks.append(chunk)
+        
+        all_chunks.sort(key=lambda c: c.get('score', 0), reverse=True)
+        return all_chunks
     
     def _search_for_response(
         self,
@@ -427,7 +540,7 @@ class RAGEngine:
     ) -> List[Dict[str, Any]]:
         """Busca chunks relevantes para generate_response endpoint."""
         # Construir query enriquecido con datos recolectados
-        query_parts = [inquiry]
+        query_parts = [inquiry, topic]
         
         if collected_data:
             # Agregar snippets de datos relevantes al query
@@ -443,7 +556,7 @@ class RAGEngine:
             "plan_type": {"$eq": plan_type}
         }
         
-        # Intentar primero con filtro de topic para mayor precisión
+        # Strategy 1: Intentar con filtro de topic exacto
         if topic:
             topic_filters = {**base_filters, "topic": {"$eq": topic}}
             chunks = self.pinecone.query_chunks(
@@ -456,9 +569,28 @@ class RAGEngine:
                 logger.info(f"Found {len(chunks)} chunks for generate_response (with topic filter: {topic})")
                 return chunks
             
-            logger.info(f"Topic filter '{topic}' returned insufficient results ({len(chunks)} chunks), falling back without topic")
+            logger.info(f"Topic filter '{topic}' returned insufficient results ({len(chunks)} chunks)")
+            
+            # Strategy 2: Buscar por tags (el topic puede estar en tags del artículo)
+            topic_variations = self._get_topic_variations(topic)
+            tags_filters = {
+                "record_keeper": {"$eq": record_keeper},
+                "plan_type": {"$eq": plan_type},
+                "tags": {"$in": topic_variations}
+            }
+            chunks = self.pinecone.query_chunks(
+                query_text=enriched_query,
+                top_k=30,
+                filter_dict=tags_filters
+            )
+            
+            if self._topic_results_sufficient(chunks):
+                logger.info(f"Found {len(chunks)} chunks for generate_response (with tags filter: {topic_variations})")
+                return chunks
+            
+            logger.info(f"Tags filter also returned insufficient results ({len(chunks)} chunks), falling back without topic")
         
-        # Fallback: buscar sin filtro de topic
+        # Strategy 3: Fallback sin filtro de topic
         chunks = self.pinecone.query_chunks(
             query_text=enriched_query,
             top_k=30,
@@ -515,6 +647,8 @@ class RAGEngine:
             ordered_chunks = chunks
         
         # Agregar chunks hasta llenar presupuesto
+        # Usa continue en vez de break para no descartar chunks pequeños
+        # que podrían caber después de uno grande que no cupo
         selected = []
         tokens_used = 0
         
@@ -525,8 +659,7 @@ class RAGEngine:
             if tokens_used + chunk_tokens <= budget:
                 selected.append(chunk)
                 tokens_used += chunk_tokens
-            else:
-                break
+            # Si no cabe, seguir intentando con el próximo chunk (puede ser más pequeño)
         
         # Formatear como contexto
         context_parts = []
@@ -568,6 +701,12 @@ class RAGEngine:
     # Helper Methods - LLM
     # ========================================================================
     
+    # Multiplicador para GPT-5.2: los reasoning tokens se consumen dentro
+    # de max_completion_tokens, así que necesitamos presupuesto extra.
+    # Con reasoning_effort="medium", el modelo puede usar ~60-70% en reasoning.
+    GPT5_REASONING_MULTIPLIER = 4
+    GPT5_MIN_COMPLETION_TOKENS = 2000
+    
     def _call_llm(
         self,
         system_prompt: str,
@@ -580,7 +719,9 @@ class RAGEngine:
         Args:
             system_prompt: System prompt
             user_prompt: User prompt
-            max_tokens: Máximo de tokens para completion
+            max_tokens: Máximo de tokens para el contenido de la respuesta.
+                        Para GPT-5.2, se escala automáticamente para incluir
+                        headroom para reasoning tokens.
         
         Returns:
             Respuesta del LLM (string)
@@ -598,9 +739,19 @@ class RAGEngine:
             
             # Configuración específica por modelo
             if self.is_gpt5:
-                # GPT-5.2: Usa max_completion_tokens en lugar de max_tokens
-                params["max_completion_tokens"] = max_tokens
-                logger.debug(f"Llamando GPT-5.2 con max_completion_tokens={max_tokens}")
+                # GPT-5.2: max_completion_tokens incluye TANTO reasoning como content.
+                # Si pedimos 800 tokens y el modelo usa 780 en reasoning,
+                # solo quedan 20 para el JSON → respuesta vacía.
+                # Escalamos para dar suficiente headroom al reasoning.
+                scaled_tokens = max(
+                    max_tokens * self.GPT5_REASONING_MULTIPLIER,
+                    self.GPT5_MIN_COMPLETION_TOKENS
+                )
+                params["max_completion_tokens"] = scaled_tokens
+                logger.info(
+                    f"Llamando GPT-5.2 | requested={max_tokens} "
+                    f"| scaled max_completion_tokens={scaled_tokens}"
+                )
                 
                 # Agregar reasoning_effort si está configurado
                 if self.reasoning_effort:
@@ -616,7 +767,17 @@ class RAGEngine:
             response = self.openai_client.chat.completions.create(**params)
             
             content = response.choices[0].message.content
-            logger.debug(f"LLM response: {len(content)} characters")
+            
+            # GPT-5.2 puede retornar content=None si agotó tokens en reasoning
+            if content is None or content.strip() == "":
+                logger.warning(
+                    f"LLM retornó contenido vacío/None. "
+                    f"Finish reason: {response.choices[0].finish_reason}. "
+                    f"Usage: {response.usage}"
+                )
+                return "{}"
+            
+            logger.info(f"LLM response: {len(content)} characters")
             
             return content
         
@@ -627,6 +788,120 @@ class RAGEngine:
     # ========================================================================
     # Helper Methods - Confidence & Decision
     # ========================================================================
+    
+    def _check_topic_relevance(
+        self,
+        chunks: List[Dict[str, Any]],
+        query_topic: str
+    ) -> bool:
+        """
+        Verifica si el topic del query es relevante al artículo encontrado.
+        
+        Compara el query_topic contra el topic, tags y subtopics del artículo.
+        Usa substring matching case-insensitive para manejar variaciones
+        como "hardship" vs "hardship_withdrawal" o "rollover" vs "Rollover".
+        
+        Args:
+            chunks: Chunks encontrados (usa metadata del primero)
+            query_topic: Topic del request (ej: "rollover", "hardship")
+        
+        Returns:
+            True si el topic es relevante al artículo
+        """
+        if not query_topic or not chunks:
+            return False
+        
+        query_lower = query_topic.lower()
+        meta = chunks[0].get('metadata', {})
+        
+        # Check 1: ¿El query topic es substring del topic del artículo?
+        # Ej: "hardship" está en "hardship_withdrawal"
+        article_topic = (meta.get('topic') or '').lower()
+        if query_lower in article_topic:
+            return True
+        
+        # Check 2: ¿El query topic coincide con algún tag?
+        # Ej: "rollover" coincide con tag "Rollover"
+        for tag in meta.get('tags', []):
+            if query_lower in tag.lower():
+                return True
+        
+        # Check 3: ¿El query topic coincide con algún subtopic?
+        # Ej: "fees" coincide con subtopic "fees"
+        for subtopic in meta.get('subtopics', []):
+            if query_lower in subtopic.lower():
+                return True
+        
+        return False
+    
+    def _calculate_required_data_confidence(
+        self,
+        chunks: List[Dict[str, Any]],
+        query_topic: str
+    ) -> float:
+        """
+        Calcula confidence para el endpoint /required-data.
+        
+        Combina tres tipos de señales:
+        
+        1. Retrieval + Topic (55%): ¿Encontramos el chunk correcto Y del topic correcto?
+           - must_have encontrado + topic coincide = 50% (match perfecto)
+           - must_have encontrado + topic NO coincide = 15% (artículo equivocado)
+           - must_have NO encontrado = 0%
+           
+        2. Soporte contextual (10%): ¿Hay chunks critical y suficiente contexto?
+        
+        3. Similitud semántica (35%): ¿Qué tan bien alinea el query con los chunks?
+        """
+        if not chunks:
+            return 0.0
+        
+        # === Componente 1: Must Have + Topic Match (55%) ===
+        retrieval_score = 0.0
+        
+        has_must_have = any(
+            c['metadata'].get('chunk_type') == 'required_data_must_have'
+            for c in chunks
+        )
+        
+        topic_matched = self._check_topic_relevance(chunks, query_topic)
+        
+        if has_must_have:
+            if topic_matched:
+                # Match perfecto: artículo correcto con must_have chunk
+                retrieval_score += 0.50
+            else:
+                # Must have encontrado pero del topic equivocado.
+                # Bonus reducido — puede ser el artículo incorrecto.
+                retrieval_score += 0.15
+        
+        # === Componente 2: Soporte Contextual (10%) ===
+        # Señal B: Cobertura de chunks critical (5%)
+        critical_count = sum(
+            1 for c in chunks
+            if c['metadata'].get('chunk_tier') == 'critical'
+        )
+        retrieval_score += 0.05 * min(1.0, critical_count / 3)
+        
+        # Señal C: Profundidad de contexto (5%)
+        retrieval_score += 0.05 * min(1.0, len(chunks) / 5)
+        
+        # === Componente 3: Similitud Semántica (35%) ===
+        top_scores = [c['score'] for c in chunks[:3]]
+        avg_score = sum(top_scores) / len(top_scores) if top_scores else 0.0
+        similarity_score = avg_score * 0.35
+        
+        confidence = retrieval_score + similarity_score
+        
+        logger.info(
+            f"Required data confidence: {confidence:.3f} "
+            f"(retrieval={retrieval_score:.3f}, similarity={similarity_score:.3f}, "
+            f"must_have={'yes' if has_must_have else 'no'}, "
+            f"topic_matched={'yes' if topic_matched else 'no'}, "
+            f"critical_chunks={critical_count}, total_chunks={len(chunks)})"
+        )
+        
+        return round(min(1.0, confidence), 3)
     
     def _calculate_confidence(self, chunks: List[Dict[str, Any]]) -> float:
         """
@@ -696,23 +971,26 @@ class RAGEngine:
         )
     
     def _build_uncertain_response(self, reason: str, confidence: float) -> GenerateResponseResult:
-        """Construye respuesta de fallback."""
+        """Construye respuesta de fallback con el schema outcome-driven."""
         return GenerateResponseResult(
             decision="out_of_scope",
             confidence=confidence,
             response={
-                "sections": [{
-                    "topic": "error",
-                    "answer_components": [
-                        f"Unable to generate response: {reason}"
-                    ],
+                "outcome": "blocked_missing_data",
+                "outcome_reason": f"Unable to generate response: {reason}",
+                "response_to_participant": {
+                    "opening": "We were unable to find sufficient information to address your inquiry.",
+                    "key_points": [],
                     "steps": [],
-                    "warnings": ["This inquiry may require human review"]
-                }]
-            },
-            guardrails={
-                "must_not_say": [],
-                "must_verify": []
+                    "warnings": []
+                },
+                "questions_to_ask": [],
+                "escalation": {
+                    "needed": True,
+                    "reason": "This inquiry may require human review."
+                },
+                "guardrails_applied": [],
+                "data_gaps": [reason]
             },
             metadata={
                 "error": reason,

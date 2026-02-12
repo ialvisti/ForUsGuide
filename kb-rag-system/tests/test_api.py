@@ -167,8 +167,20 @@ class TestGenerateResponseEndpoint:
         mock_response = Mock()
         mock_response.decision = "can_proceed"
         mock_response.confidence = 0.85
-        mock_response.response = {"sections": []}
-        mock_response.guardrails = {"must_not_say": [], "must_verify": []}
+        mock_response.response = {
+            "outcome": "can_proceed",
+            "outcome_reason": "Test response",
+            "response_to_participant": {
+                "opening": "Test opening",
+                "key_points": [],
+                "steps": [],
+                "warnings": []
+            },
+            "questions_to_ask": [],
+            "escalation": {"needed": False, "reason": None},
+            "guardrails_applied": [],
+            "data_gaps": []
+        }
         mock_response.metadata = {}
         
         with patch('api.main.rag_engine') as mock_engine:

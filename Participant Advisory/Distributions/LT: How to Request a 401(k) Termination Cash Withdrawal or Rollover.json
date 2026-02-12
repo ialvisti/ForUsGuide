@@ -2,7 +2,7 @@
   "metadata": {
     "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
     "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form when portal access is not possible. This article is specific to the recordkeeper LT Trust.",
+    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form when portal access is not possible. Includes rollover best practices such as correct wire vs. check details, data-entry tips, and common errors to avoid. Also covers the small account balance fee-out process for terminated participants with a Total Vested Balance of $75 or less, where the account is closed and no funds are distributed. This article is specific to the recordkeeper LT Trust.",
     "audience": "Internal AI Support Agent",
     "record_keeper": "LT Trust",
     "plan_type": "401(k)",
@@ -11,12 +11,17 @@
       "Withdrawal Request",
       "Termination Distribution",
       "Distribution",
-      "Taxes"
+      "Taxes",
+      "Rollover",
+      "Participant Advisory",
+      "Fee-Out",
+      "Small Balance",
+      "Participant Dashboard"
     ],
     "language": "en-US",
     "last_updated": null,
     "schema_version": "kb_article_v2",
-    "transformed_at": "2026-01-15",
+    "transformed_at": "2026-02-11",
     "source_last_updated": "2025-10-15",
     "source_system": "DevRev",
     "topic": "termination_distribution_request",
@@ -26,7 +31,14 @@
       "tax_withholding",
       "delivery_methods_check_wire_overnight",
       "mfa_and_portal_access",
-      "processing_and_delivery_timelines"
+      "processing_and_delivery_timelines",
+      "rollover_best_practices",
+      "wire_vs_check_instructions",
+      "data_entry_best_practices",
+      "common_data_entry_errors_character_limits_fbo",
+      "small_balance_threshold_rules",
+      "fee_out_process",
+      "fee_out_account_closure"
     ]
   },
   "details": {
@@ -43,7 +55,9 @@
           "Only vested balances are eligible for distribution.",
           "If there is a Rehire date in the system, the Termination date must be after or higher than the Rehire date.",
           "Not mentioned from the Plan Data, that the plan is in a Blackout period.",
-          "The Participant must have MFA enrolled for participant portal access."
+          "The Participant must have MFA enrolled for participant portal access.",
+          "Select Separation of Service if the participant has already left their employer. If the portal shows 'Default' instead of Separation of Service due to a website issue, the participant should select Default and continue because it is the same option.",
+          "If the participant is still employed and wants to roll over eligible funds (such as rollover source balances), they must contact ForUsAll Support first to confirm eligibility."
         ]
       },
       {
@@ -77,6 +91,70 @@
           "Wires require exact instructions to avoid rejections and returns.",
           "A returned wire may be converted to a mailed check."
         ]
+      },
+      {
+        "category": "portal_access_best_practices",
+        "rules": [
+          "Participants must go to forusall.com/login and use their credentials to log in.",
+          "Participants access the rollover or distribution flow by selecting Loans & Distributions from the dashboard.",
+          "Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended)."
+        ]
+      },
+      {
+        "category": "rollover_payment_method",
+        "rules": [
+          "The participant must select a payment method for rollovers: check or wire.",
+          "The participant should confirm with their receiving provider how they prefer to receive rollovers (check or wire) before submitting.",
+          "Rollover destination options include IRA, Qualified Plan, Roth IRA, and Roth Qualified Plan.",
+          "Traditional funds can be rolled over into a Traditional type account or a Roth type account (Roth conversion may have tax implications), and Roth funds must be rolled over into a Roth type account."
+        ]
+      },
+      {
+        "category": "wire_instructions",
+        "rules": [
+          "Many financial institutions have different instructions for wires versus ACH; participants must use wire-specific details when selecting a wire transfer.",
+          "Incorrect wire instructions may cause funds to be rejected and reissued by check, adding delays.",
+          "Participants should verify wire details directly with the receiving institution before submitting.",
+          "Wire transfers are subject to an extra $35 fee charged by American Trust.",
+          "For wire rollovers, the participant must provide: Bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider."
+        ]
+      },
+      {
+        "category": "check_rollover_instructions",
+        "rules": [
+          "For check rollovers, participants must provide the receiving institution and a mailing address (either the receiving institution address or the participant address if they want the check mailed to them directly).",
+          "If the participant selects IRA or Roth IRA as the rollover destination, they must include the account number for that IRA.",
+          "Rollover destination options include IRA, Qualified Plan, Roth IRA, and Roth Qualified Plan."
+        ]
+      },
+      {
+        "category": "data_entry_best_practices",
+        "rules": [
+          "Some fields (such as financial institution name or address) have system-imposed character limits; participants may need abbreviated names or addresses to avoid rejections or manual corrections.",
+          "Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork.",
+          "If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan.",
+          "If the provider accepts rollovers via wire, confirm the participant is using the provider's wire-specific routing and account numbers."
+        ]
+      },
+      {
+        "category": "processing_times",
+        "rules": [
+          "Wire transfers are typically completed within 1–2 weeks.",
+          "Overnight check transfers are typically completed within 1–2 weeks.",
+          "Standard checks usually arrive within 2–3 weeks via USPS."
+        ]
+      },
+      {
+        "category": "small_balance_fee_out",
+        "rules": [
+          "If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is $75 or less, the fee-out process applies and the account is closed with no funds distributed.",
+          "If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is above $75, the normal distribution process applies and the participant can submit a standard termination distribution request.",
+          "The $75 threshold determines whether the normal distribution process (above $75) or the fee-out account closure process ($75 or less) applies.",
+          "For Total Vested Balances of $75 or less, the closing fee is equal to or greater than the Total Vested Balance, reducing the account to $0 and resulting in no payout.",
+          "Fee-out is an account closure process initiated by ForUsAll with the recordkeeper; it is not a participant-selected distribution method in the portal.",
+          "The participant will receive a confirmation once the fee-out account closure has been completed.",
+          "Do not mention the small balance threshold when helping a participant with a balance above $75."
+        ]
       }
     ],
     "fees": [
@@ -102,14 +180,14 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.",
-        "notes": "Portal submission is the fastest route. The participant must use the portal login URL provided in references."
+        "notes": "Portal submission is the fastest route. The participant must use the portal login URL provided in references. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan."
       },
       {
         "step_number": 2,
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must select a distribution reason for the request.",
-        "notes": "The participant must choose Separation of Service. If Separation of Service is unavailable, the participant must choose Default and continue."
+        "notes": "The participant must choose Separation of Service. If Separation of Service is unavailable or the portal shows 'Default' instead due to a website issue, the participant must choose Default and continue because it is the same option."
       },
       {
         "step_number": 3,
@@ -130,54 +208,54 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must choose the distribution type and how funds will be delivered.",
-        "notes": "The participant must choose from the following options: lump sum cash distribution, full rollover to an IRA or qualified plan, or partial rollover plus partial cash."
+        "notes": "The participant must choose from the following options: lump sum cash distribution, full direct rollover to an IRA or qualified plan, or partial direct rollover to an IRA or qualified plan with the remaining balance as a cash distribution."
       },
       {
         "step_number": 6,
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must provide delivery details for the chosen option.",
-        "notes": "For checks, the participant must provide a mailing address and (for cash) any additional withholding if selected. For wires, the participant must provide required routing and account details. For rollovers, the participant must provide the receiving institution information and IRA or sub-account number if applicable."
+        "notes": "For cash checks, the participant must provide a mailing address and any additional withholding if selected. For cash wires, the participant must provide required routing and account details. For rollover checks, the participant must provide the receiving institution, mailing address, rollover destination type (IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan), and the IRA or sub-account number if selecting IRA or Roth IRA. For rollover wires, the participant must provide the bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider. Important: many financial institutions have different instructions for wires versus ACH — the participant must use wire-specific details. Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork. Some fields have system-imposed character limits; participants may need to abbreviate names or addresses."
       },
       {
         "step_number": 7,
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must review elections and submit the request in the portal.",
-        "notes": "The participant must confirm distribution elections, tax withholding, and delivery method, then submit. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored."
+        "notes": "The participant must confirm distribution elections, tax withholding, and delivery method, then submit. For rollovers, Traditional funds can go into a Traditional type account or a Roth type account (Roth conversion may have tax implications), and Roth funds must go into a Roth type account. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored."
       },
       {
         "step_number": 8,
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must track review, processing, and delivery timelines after submission.",
-        "notes": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution. OverNight Check timelines should be treated the same as regular checks."
+        "notes": "ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution. Overnight checks typically complete in about 1–2 weeks after approval."
       }
     ],
     "common_issues": [
       {
         "issue": "Cannot log in or access the participant portal due to Participant data 'MFA' is 'not enrolled'.",
-        "resolution": "The participant must enroll MFA in the participant portal. The participant must use the portal login URL provided in references, click on 'New here? Create an Account' and follow the instructions to create an account. The participant must be advised that they must use the email on file to correctly create an account."
+        "resolution": "MFA is required for participant portal access. If the participant cannot access the portal because MFA is not enrolled, advise them to contact ForUsAll Support to request an electronic form to proceed with the distribution request. If the participant prefers to use the portal, they must create an online account using the email on file and enroll MFA by going to the portal login URL, clicking on 'New here? Create an Account' and following the instructions."
       },
       {
         "issue": "The participant cannot log in or access the participant portal and Participant data 'MFA' is 'enrolled' (Participant doesn't mention they have forgotten their password).",
-        "resolution": "The participant must call the Participant Support team at '844-401-2253' to reset their MFA."
+        "resolution": "If MFA status is enrolled, the participant has already set up an authenticator app on their cellphone (for example Okta Verify or Google Authenticator). Remind the participant to locate their authenticator app, retrieve the current code, and enter it when prompted. If the participant confirms they do not have access to the authenticator app, it is not working, or they cannot find it, they must call the Participant Support team at '844-401-2253' to verify their identity and reset their MFA."
       },
       {
         "issue": "The participant cannot log in or access the participant portal due to Participant have forgotten their password.",
-        "resolution": "The participant must use the portal login URL provided in references, click on 'Forgot your password?' and follow the instructions to reset their password. The participant must be advised that they must use the email on file to correctly reset their password."
+        "resolution": "The participant must use the portal login URL provided in references, click on 'Forgot your password?' and follow the instructions to reset their password. The participant must be advised that they must use the email on file to correctly reset their password. If the participant mentions they are not getting the password reset email, advise them to check their spam/junk folder. If they still cannot locate it, they must contact Participant Support team at '844-401-2253', business hours Monday to Friday 7AM to 5PM PST for further assistance."
       },
       {
-        "issue": "The participant cannot log in or access the participant portal due to error '10051'.",
+        "issue": "The participant cannot log in or access the participant portal due to error '10051' or any other error code.",
         "resolution": "Advise the participant to contact ForUsAll Support to confirm their account information."
       },
       {
         "issue": "The Participant mentions that the Separation of Service reason is not listed.",
-        "resolution": "The participant must select Default and proceed. If unsure whether separation is recorded, the Participant must contact ForUsAll Support."
+        "resolution": "The participant must select Default and proceed. If the portal shows Default instead of Separation of Service, this is a known website issue and Default is the same option. If unsure whether separation is recorded, the Participant must contact ForUsAll Support."
       },
       {
         "issue": "The Participant mentions that the Account Balance is 0.",
-        "resolution": "The Participant must contact ForUsAll Support"
+        "resolution": "The Participant must contact ForUsAll Support."
       },
       {
         "issue": "The Participant mentions that the Vesting percentage appears incorrect.",
@@ -188,12 +266,84 @@
         "resolution": "This is a known display issue. If a valid email was entered in the Email Confirmation Information section, the 'none' label can be ignored."
       },
       {
-        "issue": "Check or Wirenot received after the expected timeframe.",
-        "resolution": "Allow about 2–3 weeks from approval for processing and delivery times. If overdue, the Participant must contact ForUsAll Support."
+        "issue": "Check or Wire not received after the expected timeframe.",
+        "resolution": "Allow about 2–3 weeks from approval for check processing and delivery times, and 1–2 weeks for wires. If overdue, the Participant must contact ForUsAll Support."
       },
       {
         "issue": "The Participant is unsure about taxes for a cash distribution.",
         "resolution": "Explain that 20% federal withholding applies and state withholding may also apply, and that the distribution is taxable income for the calendar year processed. Recommend consulting a tax professional for personal circumstances."
+      },
+      {
+        "issue": "Loans & Distributions section does not load in the portal.",
+        "resolution": "Have the participant refresh the browser or clear the cache before retrying. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended)."
+      },
+      {
+        "issue": "Participant may be in the wrong plan if they have multiple 401(k) accounts through ForUsAll.",
+        "resolution": "Ask the participant to double-check they are accessing the correct plan before continuing."
+      },
+      {
+        "issue": "Receiving institution name or address exceeds system character limits during rollover submission.",
+        "resolution": "Advise the participant to confirm with the receiving provider whether abbreviations are acceptable for long names or addresses."
+      },
+      {
+        "issue": "Incorrect wire routing or account numbers entered (using ACH details instead of wire-specific details).",
+        "resolution": "Advise the participant to obtain and use wire-specific routing and account numbers from the receiving provider and verify accuracy before submitting. Many financial institutions have different instructions for wires versus ACH."
+      },
+      {
+        "issue": "Wire rejected by receiving institution and reissued by check.",
+        "resolution": "Explain that incorrect wire instructions caused rejection and reissue by check. The extra wire fee is non-refundable, so the participant should confirm all wire details with the receiving institution before submitting."
+      },
+      {
+        "issue": "The participant mentions they are not receiving the authentication code through their emails or text messages, and Participant data 'MFA' is 'enrolled' (Participant doesn't mention they have forgotten their password).",
+        "resolution": "Clarify that the code is generated by the authenticator app on their cellphone they set up when they created the ForUsAll online account (for example Okta Verify or Google Authenticator). If the participant confirms they do not have the code, the code is not working, they got a new phone, or they no longer have access to the app, the participant must call the Participant Support team at '844-401-2253', business hours Monday to Friday 7AM to 5PM PST to verify their identity and reset their MFA code."
+      },
+      {
+        "issue": "Participant asks to request a normal distribution but their Total Vested Balance is $75 or less.",
+        "resolution": "Explain that if the participant is terminated and has a termination date on file and the Total Vested Balance is $75 or less, the fee-out process applies and the account will be closed with no funds distributed."
+      },
+      {
+        "issue": "The Participant mentions that the Account Total Vested Balance is $0.",
+        "resolution": "The Participant must contact ForUsAll Support."
+      },
+      {
+        "issue": "The Participant mentions that the Account Balance is empty or listed as '--'.",
+        "resolution": "Explain that this most likely means the current Total Vested Balance is $0.00 due to no contributions registered or the balance was already moved. The Participant must contact ForUsAll Support to confirm."
+      },
+      {
+        "issue": "The Participant mentions that there are 2 different balances shown in their account — one higher at the top left, and another one in the 'Total Vested Balance' section.",
+        "resolution": "Explain that the balance at the top may include employer contributions that are not yet vested. The Total Vested Balance is the amount that is fully vested and available for distribution. The Participant must contact ForUsAll Support for clarification on non-vested balances."
+      },
+      {
+        "issue": "The Participant asks why they cannot take the full amount shown at the top left corner of the dashboard.",
+        "resolution": "Explain that the balance at the top may include employer contributions that are not yet vested. The Total Vested Balance is the amount that is fully vested and available for distribution. The Participant must contact ForUsAll Support for clarification on non-vested balances."
+      },
+      {
+        "issue": "I got the account-closure confirmation or I see my account is $0, but I never received a check or a wire deposit.",
+        "resolution": "Explain that if the Total Vested Balance at termination was $75 or less, it typically goes through the fee-out process: ForUsAll submits a request to the recordkeeper, a standard account closing fee is applied, and because that fee is equal to or greater than the remaining Total Vested Balance, the account is reduced to $0 and no funds are distributed."
+      },
+      {
+        "issue": "What is the exact closing fee or fee-out amount?",
+        "resolution": "State that there is a standard account closing fee, but the exact amount is not specified. Explain the practical impact: it may fully offset the balance when it is $75 or less. For exact fee details, direct the participant to ForUsAll Support."
+      },
+      {
+        "issue": "My balance is exactly $75. Does that follow normal distribution or fee-out?",
+        "resolution": "Explain that if the participant is terminated and has a termination date on file and the Total Vested Balance is $75 or less, the fee-out process applies and the account will be closed with no funds distributed."
+      },
+      {
+        "issue": "I want to do a rollover, wire, or check, but my balance is $75 or less.",
+        "resolution": "Explain that if the participant is terminated and has a termination date on file and the Total Vested Balance is $75 or less, the fee-out process applies and the account will be closed with no funds distributed. A rollover, wire, or check would not be processed under the fee-out scenario."
+      },
+      {
+        "issue": "My balance is over $75 and I want to take the money out, but I can't find where to initiate the process online.",
+        "resolution": "Restate the portal steps: log in at forusall.com/login, go to Loans & Distributions at the top right, in the Separation of Service section click the drop down and select Termination Distribution (or Default if Termination Distribution is not visible), then Get Started at the bottom, choose the distribution method (check/wire/rollover), and submit the request for review and processing. If the participant still cannot locate it or cannot log in, advise contacting ForUsAll Support."
+      },
+      {
+        "issue": "Participant's balance dropped to $0 and they believe it was an error.",
+        "resolution": "Explain that fee-out applies for Total Vested Balances of $75 or less and a standard closing fee can be equal to or greater than the remaining balance, reducing it to $0 with no funds distributed. Share that they will receive a confirmation once the account is fully closed and direct them to ForUsAll Support if they want additional verification."
+      },
+      {
+        "issue": "Participant is trying to submit a termination distribution but is not terminated or does not have a termination date on file.",
+        "resolution": "Explain that the participant can initiate a termination distribution request only if they are terminated and have a termination date on file. The participant can either wait until they have a termination date updated if the termination date was recently added, or if the termination date will be in a near future, or contact their employer to request them to update the termination date through their payroll system. Once the employer updates the termination date on their payroll, we will update it as well."
       },
       {
         "issue": "The participant has already tried the common troubleshooting steps and is still experiencing issues or the issue mentioned is not listed in the common issues.",
@@ -216,6 +366,54 @@
       {
         "scenario": "Vesting shows 80% but the participant expected 100%.",
         "outcome": "Do not proceed with submission until vesting is reviewed. Only vested amounts are eligible, so the participant should contact ForUsAll Support to review vesting."
+      },
+      {
+        "scenario": "Participant is wiring rollover funds to Fidelity IRA and is unsure which bank details to use.",
+        "outcome": "Advise the participant to obtain wire-specific routing and account details from Fidelity, including any intermediary bank details (such as JP Morgan Chase) if provided, and verify the details directly with the receiving institution before submitting. Do not use ACH details for wire transfers."
+      },
+      {
+        "scenario": "Participant selected check as rollover payment method and wants the funds sent immediately to their Fidelity IRA.",
+        "outcome": "Advise the participant to wait the standard 2–3 weeks for USPS delivery after approval, as the processing time by the custodian cannot be modified."
+      },
+      {
+        "scenario": "A participant with status Terminated and a termination date on file has an account Total Vested Balance of $50.",
+        "outcome": "Fee-out applies. ForUsAll submits a fee-out request, a closing fee offsets the Total Vested Balance to $0, and no funds are distributed."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of exactly $75.",
+        "outcome": "Fee-out applies because the Total Vested Balance is $75 or less. ForUsAll submits a fee-out request, a closing fee offsets the Total Vested Balance to $0, and no funds are distributed."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $74 and asks when their check will arrive.",
+        "outcome": "Explain that fee-out applies for balances of $75 or less, so the account will be closed via a closing fee and no funds will be distributed. The participant will receive a confirmation once the account is fully closed."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $60 and wants to roll the funds to another retirement plan.",
+        "outcome": "Explain that fee-out typically applies for balances of $75 or less, meaning the account is closed and no funds are distributed (so a rollover would not be processed under fee-out). Offer to connect them with ForUsAll Support if they need assistance or confirmation of options."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $30 and believes the balance dropping to $0 was an error.",
+        "outcome": "Explain that fee-out applies for balances of $75 or less and a standard closing fee can be equal to or greater than the remaining balance, reducing it to $0 with no funds distributed. Share that they will receive a confirmation once the account is fully closed and direct them to ForUsAll Support if they want additional verification."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $250 and wants to roll the funds into another retirement plan.",
+        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal. Refer to the rollover best practices in this article for how to proceed."
+      },
+      {
+        "scenario": "A participant states their Total Vested Balance shows as '--'.",
+        "outcome": "Explain that this most likely means the current Total Vested Balance is $0.00. To confirm, the participant must contact ForUsAll Support."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $80, has MFA enrolled, has online access, and does not know how to request a distribution.",
+        "outcome": "Confirm that balances above $75 follow the standard termination distribution process and restate the navigation steps (log in > Loans & Distributions > Separation of Service section > select Termination Distribution or Default). If the participant still cannot locate it, advise them to contact ForUsAll Support for assistance."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $500 and wants a paper check as a cash lump sum distribution.",
+        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose Lump Sum and check as the method, and submit the request. If they don't have MFA enrolled or cannot log in, direct them to contact ForUsAll Support to request an electronic form."
+      },
+      {
+        "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $1,200 and wants a wire transaction as a lump sum distribution.",
+        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose wire as the method, and submit the request. If they do not have MFA enrolled or cannot log in, instruct them to contact ForUsAll Support to request an electronic form."
       }
     ],
     "additional_notes": [
@@ -224,7 +422,8 @@
         "notes": [
           "ForUsAll reviews distribution requests within about two business days.",
           "Checks typically arrive in about 2–3 weeks after approval via USPS.",
-          "Wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+          "Wires typically complete in about 1–2 weeks after approval depending on the receiving institution.",
+          "Overnight checks typically complete in about 1–2 weeks after approval depending on the receiving institution."
         ]
       },
       {
@@ -251,13 +450,34 @@
         "category": "roth_and_traditional_sources",
         "notes": [
           "The portal displays Traditional and any Roth sources.",
-          "Ensure the receiving account accepts the tax character of the funds (for example, Roth IRA for Roth amounts)."
+          "Ensure the receiving account accepts the tax character of the funds (for example, Roth IRA for Roth amounts).",
+          "Traditional funds can be rolled over into a Traditional type account or a Roth type account (Roth conversion may have tax implications), and Roth funds must be rolled over into a Roth type account."
         ]
       },
       {
         "category": "alternate_submission_method",
         "notes": [
           "If portal access is not possible, a RightSignature electronic form can be requested from ForUsAll Support and is typically slower than portal submission."
+        ]
+      },
+      {
+        "category": "rollover_data_entry_tips",
+        "notes": [
+          "Some fields (such as financial institution name or address) have system-imposed character limits; participants may need abbreviated names or addresses.",
+          "Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork.",
+          "If the provider accepts rollovers via wire, confirm the participant is using the provider's wire-specific routing and account numbers, not ACH details.",
+          "If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan."
+        ]
+      },
+      {
+        "category": "small_balance_fee_out",
+        "notes": [
+          "If a terminated participant with a termination date on file has a Total Vested Balance of $75 or less, the fee-out process applies: ForUsAll submits a fee-out request to the recordkeeper, a standard closing fee is applied, and the account is reduced to $0 with no funds distributed.",
+          "The $75 threshold determines whether the normal distribution process (above $75) or the fee-out account closure process ($75 or less) applies.",
+          "$75 or less includes an exact balance of $75.00; this is treated as fee-out, not a standard distribution.",
+          "Above $75 means strictly greater than $75.00 (for example, $75.01 follows the normal distribution process).",
+          "Do not mention the small balance threshold when helping a participant with a balance above $75.",
+          "The participant will receive a confirmation once the fee-out closure is complete."
         ]
       }
     ],
@@ -268,11 +488,11 @@
       },
       {
         "question": "What should I do if Separation of Service is not available as a reason?",
-        "answer": "Select Default and proceed. If unsure whether separation is recorded, contact ForUsAll Support."
+        "answer": "Select Default and proceed. If the portal shows Default instead of Separation of Service, this is a known website issue and Default is the same option. If unsure whether separation is recorded, contact ForUsAll Support."
       },
       {
         "question": "What are the delivery timelines for checks and wires?",
-        "answer": "ForUsAll reviews within about two business days. Checks typically arrive in about 2–3 weeks after approval via USPS, and wires typically complete in about 1–2 weeks after approval depending on the receiving institution."
+        "answer": "ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS, wires typically complete in about 1–2 weeks after approval depending on the receiving institution, and overnight checks typically complete in about 1–2 weeks after approval."
       },
       {
         "question": "What taxes apply to a cash distribution?",
@@ -280,7 +500,7 @@
       },
       {
         "question": "Will ForUsAll help complete all required fields on this form?",
-        "answer": "No. While this is a ForUsAll form, certain required fields must be completed using information provided directly by the other financial institution. ForUsAll is unable to supply or verify information that must come from an external company. If you’re unsure what information is needed, we recommend contacting the advisor or representative at the other institution so they can provide the correct details for you to enter on the form or request."
+        "answer": "No. While this is a ForUsAll form, certain required fields must be completed using information provided directly by the other financial institution. ForUsAll is unable to supply or verify information that must come from an external company. If you're unsure what information is needed, we recommend contacting the advisor or representative at the other institution so they can provide the correct details for you to enter on the form or request."
       },
       {
         "question": "Im gonna left my employer in a future date, can I request a distribution now?",
@@ -289,6 +509,66 @@
       {
         "question": "Im gonna left my employer in a future date, what options do I have?",
         "answer": "Once you have a termination date, you can: request a full cash distribution, request a full rollover, or request a partial rollover plus partial cash."
+      },
+      {
+        "question": "Where does the participant start the rollover process online?",
+        "answer": "The participant logs in at forusall.com/login, then selects Loans & Distributions from the dashboard and chooses Separation of Service under Termination Distribution."
+      },
+      {
+        "question": "What should a participant do if they are still employed but want to roll over eligible funds?",
+        "answer": "Contact ForUsAll Support to confirm eligibility."
+      },
+      {
+        "question": "What information is required for rollovers by wire?",
+        "answer": "Bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider. The participant must use wire-specific details, not ACH details."
+      },
+      {
+        "question": "What information is required for rollovers by check?",
+        "answer": "Financial institution, mailing address, and rollover destination type (IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan). If IRA or Roth IRA is selected, the participant must include the IRA account number."
+      },
+      {
+        "question": "What are the two types of processing mentioned for terminated participant accounts?",
+        "answer": "Normal distribution processing for Total Vested Balances above $75, and fee-out processing for Total Vested Balances of $75 or less when the participant is terminated and has a termination date on file."
+      },
+      {
+        "question": "How does the fee-out process close the account?",
+        "answer": "ForUsAll submits a fee-out request to the plan's recordkeeper, a standard account closing fee is applied, and because the fee is equal to or greater than the remaining Total Vested Balance, the account is reduced to $0 with no funds distributed."
+      },
+      {
+        "question": "What happens if a terminated participant has a Total Vested Balance of exactly $75?",
+        "answer": "A balance of $75 or less is typically processed via the fee-out process, which closes the account and results in no funds being distributed."
+      },
+      {
+        "question": "Will a participant receive a check or wire if their terminated account balance is $75 or less?",
+        "answer": "No. When the fee-out process applies, the standard account closing fee offsets the remaining balance, reducing the account to $0 and resulting in no payout."
+      },
+      {
+        "question": "Who submits the fee-out request for very small balances?",
+        "answer": "ForUsAll submits the fee-out request to the plan's recordkeeper."
+      },
+      {
+        "question": "What is the main purpose of the fee-out process for balances of $75 or less?",
+        "answer": "It closes very small terminated accounts by applying a standard closing fee that reduces the remaining balance to $0."
+      },
+      {
+        "question": "Should agents mention the $75 small balance threshold when helping a participant with a balance above $75?",
+        "answer": "No. For balances above $75, follow the standard termination distribution process without referencing the small balance threshold."
+      },
+      {
+        "question": "Will the participant be notified when a fee-out closure is complete?",
+        "answer": "Yes. The participant should receive a confirmation once the account has been fully closed."
+      },
+      {
+        "question": "Can a participant request help submitting a distribution request without doing it online?",
+        "answer": "If the participant cannot log in to their ForUsAll online account, they can contact ForUsAll Support to request an electronic form to complete the distribution request. For security reasons, participants must complete the process themselves, and Support cannot initiate the request for them."
+      },
+      {
+        "question": "How can a participant get additional assistance if they need help with a distribution request?",
+        "answer": "They can contact ForUsAll Support by email at 'help@forusall.com' or by phone at 844-401-2253. Business hours Monday to Friday 7 am to 5 pm PT (Closed on national Holidays)."
+      },
+      {
+        "question": "My Total Vested Balance shows as '--'. What does this mean?",
+        "answer": "This most likely means the current Total Vested Balance is $0.00 or the balance was already moved. To confirm, please contact ForUsAll Support."
       }
     ],
     "definitions": [
@@ -302,7 +582,15 @@
       },
       {
         "term": "Rollover",
-        "definition": "A distribution sent to an IRA or qualified plan instead of being paid directly to the participant."
+        "definition": "A distribution type where funds are transferred to another qualified retirement account, such as an IRA or a new employer's 401(k), instead of being paid directly to the participant."
+      },
+      {
+        "term": "Full Rollover",
+        "definition": "Transfers the participant's entire account balance to another qualified retirement account."
+      },
+      {
+        "term": "Partial Rollover",
+        "definition": "Transfers part of the participant's balance to another qualified retirement account and distributes the remaining balance as cash."
       },
       {
         "term": "Vested balance",
@@ -319,6 +607,70 @@
       {
         "term": "Early withdrawal penalty",
         "definition": "A penalty that is applied to a distribution if the participant is under 59 1/2 years old."
+      },
+      {
+        "term": "FBO",
+        "definition": "For the benefit of; text that will automatically appear in paperwork and should not be manually entered in the Financial Institution field."
+      },
+      {
+        "term": "ABA Routing Number",
+        "definition": "A routing number used for wire transfers to identify the receiving institution."
+      },
+      {
+        "term": "Subaccount Number",
+        "definition": "An account number for the participant's IRA or Roth IRA that must be entered correctly for wire rollovers."
+      },
+      {
+        "term": "Termination Distribution",
+        "definition": "A distribution reason used when a participant's employment has ended. This option is selected in the ForUsAll participant portal to initiate a termination distribution request."
+      },
+      {
+        "term": "Fee-out process",
+        "definition": "An account closing process for terminated participants with a termination date on file and a Total Vested Balance of $75 or less, where a closing fee offsets the remaining balance to $0 and no funds are distributed."
+      },
+      {
+        "term": "Normal distribution process",
+        "definition": "The standard 401(k) termination distribution request flow used when a terminated participant with a termination date on file has a Total Vested Balance above $75."
+      },
+      {
+        "term": "Terminated participant",
+        "definition": "A participant whose employment has ended, has a termination date on file, has eligibility status Terminated, and whose 401(k) account will be processed according to the termination distribution rules."
+      },
+      {
+        "term": "Termination Date on file",
+        "definition": "Official date recorded in the system indicating when a participant's employment ended."
+      },
+      {
+        "term": "Small Balance Rule",
+        "definition": "A rule stating that if a terminated participant's account Total Vested Balance is $75 or less, the account is typically closed via the fee-out process rather than a standard distribution."
+      },
+      {
+        "term": "Fee-out request",
+        "definition": "A request submitted automatically by ForUsAll to the plan's recordkeeper to close an account with a Total Vested Balance equal to $75 or less by applying the account closing fee."
+      },
+      {
+        "term": "Account closing fee",
+        "definition": "A standard fee applied to close an account; for balances of $75 or less, this fee can fully offset the remaining balance and reduce the account to $0. No balance will be distributed to the participant."
+      },
+      {
+        "term": "Recordkeeper",
+        "definition": "The organization that maintains plan records and processes transactions such as distributions and fee-out closures."
+      },
+      {
+        "term": "Loans & Distributions section",
+        "definition": "The area in the ForUsAll participant portal where a participant can initiate and submit distribution requests."
+      },
+      {
+        "term": "Total Vested Balance",
+        "definition": "The total amount of money in a participant's 401(k) account that they own outright and can withdraw or roll over upon termination of employment."
+      },
+      {
+        "term": "Fee-out closure confirmation",
+        "definition": "A confirmation provided to the participant after the fee-out process has completed and the account has been fully closed if the Total Vested Balance is $75 or less."
+      },
+      {
+        "term": "ForUsAll participant portal",
+        "definition": "The online account access point where participants can log in and submit a standard termination distribution request."
       }
     ],
     "guardrails": {
@@ -329,31 +681,57 @@
         "Do not claim the wire fee can be refunded; the wire fee is non-refundable.",
         "Do not claim where or how to access any document other than the portal URL and contact methods explicitly provided.",
         "Do not claim that ForUsAll will help complete all required fields on this form.",
-        "Do not disclose account balances or vesting percentages, or any other sensitive information."
+        "Do not disclose account balances or vesting percentages, or any other sensitive information.",
+        "Do not claim that wire and check instructions are the same; many financial institutions have different details for wires versus ACH.",
+        "Do not promise that the rollover or distribution will be processed faster than the stated typical timelines.",
+        "Do not promise that ForUsAll will complete the process for the participant; they must enter the information themselves in the portal.",
+        "Do not say a participant with a balance of $75 or less can request a normal distribution.",
+        "Do not claim any payout will be issued for fee-out closures.",
+        "Do not provide processing timelines, delivery timelines, or confirmation timing that are not stated.",
+        "Do not assert eligibility requirements beyond terminated status and having a termination date on file.",
+        "Do not state the exact dollar amount of the account closing fee; the article does not provide it. Account closing fee is basically the process where an account with a Total Vested Balance of $75 or less is closed by applying a standard fee that offsets the remaining balance to $0.",
+        "Do not promise that fee-out will always apply in every plan scenario; use 'typically' or 'generally' as written.",
+        "Do not imply the participant must mention the small balance threshold when their balance is above $75.",
+        "Do not claim the participant can select or submit a 'fee-out' option in the portal; the article describes it as submitted by ForUsAll to the recordkeeper.",
+        "Do not instruct the participant to contact the recordkeeper directly; the article directs participants to the ForUsAll portal or ForUsAll Support.",
+        "Do not claim that a fee-out closure is reversible or that funds can be reissued after the balance is offset to $0; the article does not mention reversals.",
+        "Do not claim that fee-out applies to active employees or participants who are not separated from service; the article ties this to employment ending.",
+        "Do not suggest that a participant can avoid fee-out by delaying action or selecting a different reason in the portal; the article does not describe such an option.",
+        "Do not state that unvested funds can be distributed under any scenario; only vested balances are eligible.",
+        "Do not state that the participant will receive a specific type of confirmation (email, letter, portal message) for fee-out unless explicitly stated."
       ],
       "must_do_if_unsure": [
         "Advise the participant to contact ForUsAll Support if vesting percentages or account sources appear incorrect.",
         "Advise the participant to contact ForUsAll Support if portal access issues prevent online submission.",
         "Advise the participant to contact ForUsAll Support if employment separation status appears uncertain or not reflected in the portal options.",
-        "Advise the participant to contact ForUsAll Support if they are unsure about the information needed to complete the form."
+        "Advise the participant to contact ForUsAll Support if they are unsure about the information needed to complete the form.",
+        "Direct the participant to contact ForUsAll Support at help@forusall.com or 844-401-2253 if they are unsure which distribution type to select.",
+        "Instruct the participant to verify wire or check details directly with the receiving institution when the participant is uncertain about routing numbers, account numbers, subaccount numbers, or intermediary bank information.",
+        "If eligibility status Terminated is not on file, a termination date is not on file, or the current Total Vested Balance is unclear, do not confirm eligibility; request or retrieve the missing information using the appropriate source.",
+        "If the current Total Vested Balance is unclear, do not state whether fee-out applies; request or retrieve the current balance using the appropriate source.",
+        "If the balance is near the $75 threshold and the exact amount cannot be confirmed, do not classify the processing type; request or retrieve the exact Total Vested Balance using the appropriate source.",
+        "If the participant reports they submitted a request but the status is unknown, do not confirm completion or closure; request or retrieve the request status using the appropriate source.",
+        "If the participant asks about the account closing fee amount and it is not available, do not guess; route to ForUsAll Support or retrieve the fee information from the appropriate source.",
+        "If the participant asks when they will receive a confirmation and timing is not stated, do not estimate; request or retrieve the status/confirmation details using the appropriate source.",
+        "If a participant claims they should receive funds despite a $75 or less balance, do not dispute without verification; request or retrieve the balance and processing type (fee-out vs. normal distribution) using the appropriate source.",
+        "If the participant cannot locate the Loans & Distributions section or the Separation of Service reason in the portal, do not assume their portal view; provide the standard navigation steps and direct them to Support if it still does not appear or they state they cannot log in.",
+        "Advise the participant to contact ForUsAll Support if employment separation status appears uncertain or not reflected in the portal options."
       ]
     },
     "references": {
       "participant_portal": "https://account.forusall.com/login",
       "internal_articles": [
         "LT Trust: Understanding Login Error Codes",
-        "LT: Completing Your Rollover Online – Best Practices",
         "LT: When will I receive my wire transfer, ACH transfer, or check?",
         "LT: How do I roll over my 401(k) to another retirement account?",
         "LT: How to Request a Rollover Source Withdrawal from Your 401(k)",
-        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-        "Distribution Requests for Small Account Balances",
         "Can I roll over Roth 401(k) funds separately from pre-tax funds?",
         "What Are the Tax Implications of a Cash Distribution vs a Rollover Distribution?",
         "Can I take a distribution while employed?",
         "Can I Split My 401(k) Rollover Between Multiple Providers?",
-        "Can I take a distribution while employed?",
-        "When Will I Receive My 401(k) Withdrawal or Rollover?"
+        "When Will I Receive My 401(k) Withdrawal or Rollover?",
+        "How Do I Cancel or Change a Pending Distribution Request?",
+        "What You Need to Know About Your 401(k) When Leaving Your Employer"
       ],
       "external_links": [
         "https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions"
@@ -402,15 +780,20 @@
           "source_type": "participant_profile"
         },
         {
-          "data_point": "Account balance",
-          "meaning": "The total balance of the participant's account.",
+          "data_point": "Account Balance",
+          "meaning": "The total amount of money in the participant's 401(k) account that they own outright and can withdraw or roll over upon termination of employment.",
           "example_values": [
             10000.0,
+            100000.0,
             0.0,
             95.23,
+            75.0,
+            75.01,
+            50.0,
+            74.99,
             null
           ],
-          "why_needed": "To verify eligibility for distribution, the account balance must be greater than 75.00. If the account balance is less than or equal to 75.00, the distribution fee may reduce the account to 0.00 and no funds may be distributed to the participant.",
+          "why_needed": "To verify eligibility for distribution, the account Total Vested Balance must be greater than 75.00 for a normal distribution. If the account Total Vested Balance is less than or equal to 75.00, the fee-out process applies and no funds may be distributed to the participant.",
           "source_note": "Supported by article section: Prerequisites",
           "source_type": "participant_profile"
         },
@@ -466,6 +849,31 @@
           "why_needed": "Determines the type of distribution requested by the participant.",
           "source_note": "Supported by article section: Prerequisites and Step 5",
           "source_type": "message_text"
+        },
+        {
+          "data_point": "Verification of the receiving financial institution's information",
+          "meaning": "The participant needs to confirm the receiving institution's information is accurate for the rollover.",
+          "example_values": [
+            "Fidelity Investments",
+            "Vanguard",
+            "Charles Schwab"
+          ],
+          "why_needed": "This determines the correct receiving institution information for the rollover and helps ensure wire or check details are accurate.",
+          "source_note": "Supported by article section: Step 6 and wire_instructions",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Rollover destination type",
+          "meaning": "The destination category selected in the check flow: IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan.",
+          "example_values": [
+            "IRA",
+            "Qualified Plan",
+            "Roth IRA",
+            "Roth Qualified Plan"
+          ],
+          "why_needed": "Determines the destination selection and enforces the rule that traditional and Roth funds must roll into matching account types.",
+          "source_note": "Supported by article section: rollover_payment_method and check_rollover_instructions",
+          "source_type": "message_text"
         }
       ],
       "if_missing": [
@@ -485,9 +893,9 @@
           "agent_note": "MFA is required for participant portal access. If the participant cannot enroll MFA and cannot access the portal, advise requesting a RightSignature electronic form from ForUsAll Support."
         },
         {
-          "missing_data_point": "Account balance",
-          "ask_participant": "Is your 401(k) account balance greater than 75.00?",
-          "agent_note": "If the balance is less than or equal to 75.00, the distribution fee may reduce the account to 0.00 and no funds may be distributed to the participant."
+          "missing_data_point": "Account Total Vested Balance",
+          "ask_participant": "Is your Total Vested Balance greater than 75.00?",
+          "agent_note": "If the Total Vested Balance is less than or equal to 75.00, the fee-out process applies and no funds may be distributed to the participant."
         },
         {
           "missing_data_point": "Last Payroll date",
@@ -508,7 +916,21 @@
       "disambiguation_notes": [
         "If the participant's name is not found in our system, it means that we cannot determine if the participant is eligible for a distribution since, we won't be able to retrieve any of the must have data points.",
         "If there's no termination date, it means that the participant is not eligible for a distribution since we need to know when the participant left their employer.",
-        "If there's a rehire date, previous to the termination date. Otherwise, if rehire date is greater than the termination date, it means that the participant is not eligible for a distribution since they are still employed."
+        "If there's a rehire date, it must be before the termination date. Otherwise, if rehire date is greater than the termination date, it means that the participant is not eligible for a distribution since they are still employed.",
+        "If the participant states they cannot find the 'Loans & Distributions' section, ask them to use a computer or laptop (not mobile) and an up-to-date browser (Chrome or Edge recommended).",
+        "If the participant states the system shows a $0 balance, ask them to contact ForUsAll Support.",
+        "The $75 threshold determines whether the normal distribution process (above $75) or the fee-out account closure process ($75 or less) applies.",
+        "$75 or less includes an exact balance of $75.00; this is treated as fee-out, not a standard distribution.",
+        "Above $75 means strictly greater than $75.00 (for example, $75.01 follows the normal distribution process).",
+        "Fee-out is an account closure process initiated by ForUsAll with the recordkeeper; it is not a participant-selected distribution method in the portal.",
+        "No funds are distributed in a fee-out means the remaining Total Vested Balance is fully offset by the account closing fee, resulting in a $0 balance and no payout.",
+        "Normal distribution process refers to the participant-initiated online request flow in the ForUsAll portal (Loans & Distributions) using the Separation of Service section and selecting Termination Distribution (or Default) as the distribution reason.",
+        "Termination Distribution and Separation of Service are used in the context of requesting a distribution in the ForUsAll online portal after employment ends; they are not used for active employees.",
+        "The instruction 'do not mention the small balance threshold' applies only when the Total Vested Balance is above $75 and the participant is following the standard request flow.",
+        "If the Total Vested Balance is unknown, shows as '--' or not current, do not assume which process applies; verify the current balance before classifying it as fee-out or normal distribution.",
+        "A fee-out closure is different from a check, wire, or rollover; those methods are part of the normal distribution process for balances above $75.",
+        "Confirmation for fee-out refers to confirmation that the account has been fully closed; the article does not specify the delivery channel or timing.",
+        "MFA status enrolled is mandatory to proceed with an online termination distribution request for Total Vested Balances above $75."
       ]
     },
     "decision_guide": {
@@ -519,18 +941,31 @@
         "ambiguous_plan_rules"
       ],
       "eligibility_requirements": [
-        "Participant must have a termination date",
-        "Participant must have an Account balance greater than 75.00",
-        "If Rehire date is not null, it must be before the termination date",
-        "Participant must have a MFA status of 'enrolled' for participant portal access",
-        "Participant must have a status of 'Terminated'"
+        "Participant eligibility status must be Terminated.",
+        "Participant must have a termination date on file.",
+        "Participant must have a current Total Vested Balance amount that can be verified.",
+        "If Total Vested Balance is above $75, the normal distribution process applies.",
+        "If Total Vested Balance is $75 or less, fee-out applies and no normal distribution request can be initiated.",
+        "If Total Vested Balance is above $75 and MFA is enrolled and the participant can log in, they qualify to submit the normal distribution request online in the ForUsAll portal.",
+        "If Total Vested Balance is above $75 and MFA is not enrolled or the participant cannot log in, they qualify to submit the normal distribution request using an electronic form provided by Support.",
+        "If Rehire date is not null, it must be before the termination date.",
+        "Only vested balances are eligible for distribution."
       ],
       "blocking_conditions": [
-        "Participant doesn't have a termination date",
-        "Participant doesn't have an Account balance greater than 75.00",
-        "If Rehire date is not null, it is after the termination date",
-        "Participant have a MFA status of 'not enrolled' or is null for participant portal access",
-        "Participant status is not 'Terminated'"
+        "Participant is not terminated.",
+        "Participant does not have a termination date on file.",
+        "Participant Total Vested Balance is $75 or less (fee-out applies; a normal distribution request cannot be initiated).",
+        "Online portal submission cannot be completed if MFA is not enrolled or if the participant is having issues logging in. Route the participant to Support to request an electronic form.",
+        "Participant eligibility status cannot be verified in-system (do not confirm eligibility to submit a termination distribution until verified).",
+        "Participant current Total Vested Balance cannot be verified or shows as '--' (do not classify as fee-out vs. normal distribution until balance is confirmed). Contact Support.",
+        "Participant cannot log in to the ForUsAll portal to access the Loans & Distributions section (online request cannot be completed; route to Support to request an electronic form).",
+        "Participant termination status cannot be verified in-system (do not confirm eligibility to submit a termination distribution until verified).",
+        "Participant termination date cannot be verified in-system (do not confirm eligibility to submit a termination distribution until verified).",
+        "Participant is unable to locate or access the Loans & Distributions section in the portal (online request cannot be completed; route to Support for guided assistance or to request an electronic form if needed).",
+        "Participant cannot select Termination Distribution in the drop down menu. Tell the participant sometimes the drop down shows a Default value due to a website glitch. If they do not see this or the Get Started button does not show, do not proceed with portal instructions; route to Support to investigate eligibility/profile setup.",
+        "Participant reports the account already shows a $0 Total Vested Balance or has '--' (no distribution can be initiated; confirm whether fee-out closure has already completed).",
+        "Participant requests a payout for a fee-out scenario ($75 or less) and insists a check/wire/rollover should be issued (do not proceed with a normal distribution workflow; verify balance and explain fee-out applies, then route to Support if they keep disputing).",
+        "If Rehire date is not null, it is after the termination date."
       ],
       "missing_data_conditions": [
         {
@@ -547,41 +982,59 @@
         }
       ],
       "allowed_conclusions": [
+        "If the participant is terminated, has a termination date on file, has MFA enrolled for online account access, and the Total Vested Balance is above $75, they can submit the normal distribution request online in the ForUsAll portal.",
+        "If the participant is terminated, has a termination date on file, and the Total Vested Balance is $75 or less, the account will be closed through the fee-out process and no funds will be distributed.",
+        "If the participant is terminated, has a termination date on file, and the Total Vested Balance is above $75 but MFA is not enrolled or the participant cannot log in, they can request an electronic form from Support to submit the normal distribution request.",
         "If a rehire date is present and it's after the termination date, the participant is not eligible for a distribution.",
-        "If the participant is eligible for a distribution, they can request a rollover or a cash distribution or a partial rollover or partial cash withdrawal."
+        "If the participant is eligible for a distribution, they can request a rollover or a cash distribution or a partial rollover or partial cash withdrawal.",
+        "The participant can complete the rollover online by following the steps in this article.",
+        "A $75 processing fee applies to all distribution requests. To confirm the correct distribution process, verify termination status Terminated, termination date on file, and current Total Vested Balance amount before confirming which process applies."
       ],
       "not_allowed_conclusions": [
-        "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant.",
-        "Do not claim unvested funds are eligible for distribution. Only vested balances are eligible for distribution.",
+        "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant. If information is not provided by the participant or if not available in our system, we cannot confirm eligibility and contact support will be needed.",
+        "Do not claim unvested funds are eligible for distribution. Only vested balances are eligible for distribution. For clarity, refer the participant to the Total Vested Balance section in their ForUsAll account.",
         "If the participant has a Termination date, but is status is NOT 'Terminated', this indicates that the information is not up to date and the participant is not eligible to proceed until they contact ForUsAll Support to confirm the information.",
-        "If the participant status is 'Terminated', but doesn't have a Termination date, this indicates that the information is not up to date and the participant is not eligible to proceed until they contact ForUsAll Support to confirm the information."
+        "If the participant status is 'Terminated', but doesn't have a Termination date, this indicates that the information is not up to date and the participant is not eligible to proceed until they contact ForUsAll Support to confirm the information.",
+        "Do not guarantee that an employed participant is eligible to roll over funds through this flow.",
+        "Do not promise that a rollover will complete faster than the typical timelines stated in this article.",
+        "Do not say a participant with a Total Vested Balance of $75 or less can request a normal distribution.",
+        "Do not guarantee any payout will occur for fee-out closures.",
+        "Do not state any processing time, delivery time, or confirmation timing that is not stated."
       ]
     },
     "response_frames": {
       "can_proceed": {
         "participant_message_components": [
           "We confirmed you are eligible since you already have a termination date.",
-          "You can request a termination distribution in the ForUsAll participant portal under Loans & Distributions at the top right corner",
-          "Please follow the steps outlined in the article to request a distribution."
+          "You can request a termination distribution in the ForUsAll participant portal under Loans & Distributions at the top right corner.",
+          "Please follow the steps outlined in the article to request a distribution.",
+          "For rollovers, you can complete the process online by logging in at forusall.com/login and selecting Loans & Distributions."
         ],
         "next_steps": [
           "Guide the participant through the portal steps in order to request a distribution.",
-          "If the participant mentions the type of distribution they want to request, be specific about the steps they need to follow."
+          "If the participant mentions the type of distribution they want to request, be specific about the steps they need to follow.",
+          "For rollovers, under Termination Distribution, select Separation of Service and click Get Started.",
+          "Before submitting a rollover, advise the participant to confirm with their receiving provider all of the information provided, including wire-specific details if applicable."
         ],
         "warnings": [
+          "A $75 processing fee applies to all distribution requests.",
+          "An additional $35 fee applies for wire distributions (non-refundable) and overnight check delivery. If you would like your check to be overnighted, contact ForUsAll Support.",
           "For cash distributions, 20% federal withholding applies and state withholding may apply.",
-          "For cash distrobution be advised a possible 10% early withdrawal penalty may apply if you are under 59 1/2 years old.",
-          "For wire distribution be advised a possible additional fee will apply and this fee is non-refundable.",
-          "For overnight check distribution be advised a possible additional fee will apply and this fee is non-refundable.",
-          "Be advised the processing time for a wire is 1 to 2 weeks and checks are typically delivered in 2 to 3 weeks."
+          "For cash distribution be advised a possible 10% early withdrawal penalty may apply if you are under 59 1/2 years old.",
+          "Be advised the processing time for a wire is 1 to 2 weeks, overnight checks are 1 to 2 weeks, and standard checks are typically delivered in 2 to 3 weeks. These timelines are approximate and cannot be expedited.",
+          "Incorrect wire instructions may cause rejection and reissue by check, adding delays and a non-refundable wire fee."
         ],
         "questions_to_ask": [],
         "what_not_to_say": [
           "Do not promise exact delivery dates.",
           "Do not state that the wire and overnight check fees can be refunded.",
           "Do not state that unvested funds can be distributed.",
-          "Do not promise they can avoid the early withdrawal penalty",
-          "Do not specify additional state tax withholding amounts"
+          "Do not promise they can avoid the early withdrawal penalty.",
+          "Do not specify additional state tax withholding amounts.",
+          "Do not provide tax advice.",
+          "Do not provide information to fill in required fields; the participant must enter this information themselves.",
+          "Do not promise a specific completion date beyond the stated typical timelines.",
+          "Do not mention the small balance threshold if the balance is above $75."
         ]
       },
       "blocked_missing_data": {
@@ -610,16 +1063,23 @@
       },
       "blocked_not_eligible": {
         "participant_message_components": [
+          "A termination distribution request can be initiated only if you are terminated and have a termination date on file.",
+          "If your balance is $75 or less and you are terminated with a termination date on file, your account will be closed through the fee-out process and no funds will be distributed.",
           "Only vested balances are eligible for distribution."
         ],
         "next_steps": [
           "Have the participant review vesting in the portal before submitting.",
-          "If vesting appears incorrect, advise contacting ForUsAll Support to review vesting records before proceeding."
+          "If vesting appears incorrect, advise contacting ForUsAll Support to review vesting records before proceeding.",
+          "If the participant needs help, is disputing the amounts, or wants more clarification, provide ForUsAll Support contact options."
         ],
-        "warnings": [],
+        "warnings": [
+          "A $75 processing fee applies to all distribution requests."
+        ],
         "questions_to_ask": [],
         "what_not_to_say": [
-          "Do not state that unvested amounts can be distributed."
+          "Do not state that unvested amounts can be distributed.",
+          "Do not suggest a normal distribution request is available for balances of $75 or less.",
+          "Do not promise any payout for fee-out closures."
         ]
       },
       "ambiguous_plan_rules": {

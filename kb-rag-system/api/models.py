@@ -125,10 +125,10 @@ class GenerateResponseRequest(BaseModel):
     )
     
     max_response_tokens: Optional[int] = Field(
-        default=1500,
+        default=5000,
         ge=500,
-        le=3000,
-        description="Máximo de tokens para la respuesta"
+        le=5000,
+        description="Máximo de tokens para la respuesta (default: 5000)"
     )
     
     total_inquiries_in_ticket: Optional[int] = Field(
@@ -203,54 +203,82 @@ class ResponseStep(BaseModel):
     
     step_number: int = Field(..., description="Número del paso")
     action: str = Field(..., description="Acción a realizar")
-    note: Optional[str] = Field(None, description="Nota adicional o warning")
+    detail: Optional[str] = Field(None, description="Contexto adicional o sub-instrucciones")
 
 
-class ResponseSection(BaseModel):
-    """Una sección de la respuesta."""
+class QuestionToAsk(BaseModel):
+    """Pregunta para el participante cuando faltan datos."""
     
-    topic: str = Field(..., description="Tema de esta sección")
-    answer_components: List[str] = Field(..., description="Componentes de la respuesta")
-    steps: List[ResponseStep] = Field(default_factory=list, description="Pasos a seguir")
-    warnings: List[str] = Field(default_factory=list, description="Warnings importantes")
-    outcomes: Optional[List[str]] = Field(default=None, description="Posibles resultados")
+    question: str = Field(..., description="Texto de la pregunta")
+    why: str = Field(..., description="Por qué se necesita esta información")
 
 
-class Guardrails(BaseModel):
-    """Guardrails aplicados."""
+class Escalation(BaseModel):
+    """Info de escalación a Support."""
     
-    must_not_say: List[str] = Field(
+    needed: bool = Field(..., description="Si se requiere escalación a Support")
+    reason: Optional[str] = Field(None, description="Razón de la escalación")
+
+
+class ResponseToParticipant(BaseModel):
+    """Contenido de la respuesta al participante."""
+    
+    opening: str = Field(..., description="Resumen personalizado en 1-2 oraciones")
+    key_points: List[str] = Field(
         default_factory=list,
-        description="Cosas que se evitaron decir"
+        description="Hechos esenciales, cada uno único y sin superposición"
     )
-    must_verify: List[str] = Field(
+    steps: List[ResponseStep] = Field(
         default_factory=list,
-        description="Cosas que deben verificarse"
+        description="Pasos secuenciales que el participante debe seguir"
     )
+    warnings: List[str] = Field(
+        default_factory=list,
+        description="Advertencias consolidadas (cada una única)"
+    )
+
+
+class OutcomeType(str, Enum):
+    """Tipos de outcome determinados por el LLM basado en reglas del artículo."""
+    CAN_PROCEED = "can_proceed"
+    BLOCKED_NOT_ELIGIBLE = "blocked_not_eligible"
+    BLOCKED_MISSING_DATA = "blocked_missing_data"
+    AMBIGUOUS_PLAN_RULES = "ambiguous_plan_rules"
 
 
 class GenerateResponseResult(BaseModel):
-    """Response del endpoint /generate-response."""
+    """
+    Response del endpoint /generate-response.
     
-    decision: DecisionType = Field(..., description="Decisión: can_proceed, uncertain, out_of_scope")
+    Dos niveles de determinación:
+    - decision/confidence: Calidad del retrieval RAG (calculado por el engine).
+    - response.outcome: Determinación del caso del participante (calculado por el LLM).
+    """
+    
+    decision: DecisionType = Field(
+        ...,
+        description="Calidad del retrieval RAG: can_proceed, uncertain, out_of_scope"
+    )
     
     confidence: float = Field(
         ...,
         ge=0.0,
         le=1.0,
-        description="Confidence score"
+        description="Confidence score del retrieval"
     )
     
     response: Dict[str, Any] = Field(
         ...,
-        description="Respuesta estructurada con sections"
+        description=(
+            "Respuesta outcome-driven del LLM. Contiene: outcome, outcome_reason, "
+            "response_to_participant, questions_to_ask, escalation, "
+            "guardrails_applied, data_gaps"
+        )
     )
-    
-    guardrails: Guardrails = Field(..., description="Guardrails aplicados")
     
     metadata: Dict[str, Any] = Field(
         ...,
-        description="Metadata del procesamiento"
+        description="Metadata del procesamiento (chunks_used, tokens, modelo)"
     )
 
 

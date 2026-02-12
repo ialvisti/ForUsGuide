@@ -106,33 +106,41 @@ class KBChunker:
         # Crear hash del contenido para deduplicación
         content_hash = hashlib.md5(content.encode()).hexdigest()[:8]
         
+        metadata = {
+            # Metadata del artículo
+            "article_id": base_metadata["article_id"],
+            "article_title": base_metadata["title"],
+            "description": base_metadata.get("description", ""),
+            "record_keeper": base_metadata["record_keeper"],
+            "plan_type": base_metadata["plan_type"],
+            "scope": base_metadata["scope"],
+            "tags": base_metadata["tags"],
+            
+            # Metadata del artículo - topics
+            "topic": base_metadata["topic"],
+            "subtopics": base_metadata["subtopics"],
+            
+            # Metadata del chunk
+            "chunk_type": chunk_type,
+            "chunk_category": chunk_category,
+            "chunk_index": self.chunk_counter,
+            "chunk_tier": tier,  # critical, high, medium, low
+            
+            # Para búsqueda avanzada
+            "specific_topics": topics or [],
+            "content_hash": content_hash
+        }
+        
+        # Limpiar valores None del metadata.
+        # Pinecone no indexa valores null, lo que causa errores o campos
+        # invisibles para filtros. Artículos con scope="global" tienen
+        # record_keeper=None, por ejemplo.
+        metadata = {k: v for k, v in metadata.items() if v is not None}
+        
         return {
             "id": chunk_id,
             "content": content,
-            "metadata": {
-                # Metadata del artículo
-                "article_id": base_metadata["article_id"],
-                "article_title": base_metadata["title"],
-                "description": base_metadata.get("description", ""),
-                "record_keeper": base_metadata["record_keeper"],
-                "plan_type": base_metadata["plan_type"],
-                "scope": base_metadata["scope"],
-                "tags": base_metadata["tags"],
-                
-                # Metadata del artículo - topics
-                "topic": base_metadata["topic"],
-                "subtopics": base_metadata["subtopics"],
-                
-                # Metadata del chunk
-                "chunk_type": chunk_type,
-                "chunk_category": chunk_category,
-                "chunk_index": self.chunk_counter,
-                "chunk_tier": tier,  # critical, high, medium, low
-                
-                # Para búsqueda avanzada
-                "specific_topics": topics or [],
-                "content_hash": content_hash
-            }
+            "metadata": metadata
         }
     
     # ============================================================================
@@ -144,24 +152,76 @@ class KBChunker:
         article: Dict[str, Any],
         base_metadata: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Crea chunks para el modo required_data."""
+        """
+        Crea chunks granulares para el modo required_data.
+        
+        Genera chunks separados para cada sección de required_data:
+        - must_have: Campos obligatorios del portal (para /required-data endpoint)
+        - nice_to_have: Campos opcionales del mensaje (para /generate-response)
+        - if_missing: Instrucciones cuando falta data (para /generate-response)
+        - disambiguation_notes: Reglas de decisión (para /generate-response)
+        """
         chunks = []
         details = article.get("details", {})
-        
-        # Chunk 1: Required Data Complete
         required_data = details.get("required_data", {})
-        if required_data:
-            content = self._format_required_data(required_data)
+        
+        # Chunk: Must Have fields (CRITICAL - used by /required-data endpoint)
+        # These are the data points that must be extracted from the participant portal.
+        must_have = required_data.get("must_have", [])
+        if must_have:
+            content = self._format_required_data_must_have(must_have)
             chunks.append(self._create_chunk(
                 content=content,
                 base_metadata=base_metadata,
-                chunk_type="required_data",
-                chunk_category="data_collection",
+                chunk_type="required_data_must_have",
+                chunk_category="portal_data_extraction",
                 tier="critical",
-                topics=["data_requirements", "field_collection"]
+                topics=["data_requirements", "must_have", "portal_data"]
             ))
         
-        # Chunk 2: Eligibility Requirements
+        # Chunk: Nice to Have fields (MEDIUM - used by /generate-response endpoint)
+        # These are optional data points derived from the conversation message text.
+        nice_to_have = required_data.get("nice_to_have", [])
+        if nice_to_have:
+            content = self._format_required_data_nice_to_have(nice_to_have)
+            chunks.append(self._create_chunk(
+                content=content,
+                base_metadata=base_metadata,
+                chunk_type="required_data_nice_to_have",
+                chunk_category="conversation_context",
+                tier="medium",
+                topics=["data_requirements", "nice_to_have", "message_context"]
+            ))
+        
+        # Chunk: If Missing instructions (HIGH - used by /generate-response endpoint)
+        # These tell the AI agent what to ask the participant when data is missing.
+        if_missing = required_data.get("if_missing", [])
+        if if_missing:
+            content = self._format_required_data_if_missing(if_missing)
+            chunks.append(self._create_chunk(
+                content=content,
+                base_metadata=base_metadata,
+                chunk_type="required_data_if_missing",
+                chunk_category="missing_data_handling",
+                tier="high",
+                topics=["data_requirements", "if_missing", "data_gaps"]
+            ))
+        
+        # Chunk: Disambiguation Notes (MEDIUM - used by /generate-response endpoint)
+        # Decision-making rules for edge cases. NOTE: Previously not chunked at all (bug).
+        disambiguation = required_data.get("disambiguation_notes", [])
+        if disambiguation:
+            content = self._format_required_data_disambiguation(disambiguation)
+            chunks.append(self._create_chunk(
+                content=content,
+                base_metadata=base_metadata,
+                chunk_type="required_data_disambiguation",
+                chunk_category="decision_logic",
+                tier="medium",
+                topics=["data_requirements", "disambiguation", "edge_cases"]
+            ))
+        
+        # Chunk: Eligibility Requirements (keep as-is)
         business_rules = details.get("business_rules", [])
         eligibility_rules = [
             rule for rule in business_rules 
@@ -178,7 +238,7 @@ class KBChunker:
                 topics=["eligibility", "requirements"]
             ))
         
-        # Chunk 3: Critical Flags
+        # Chunk: Critical Flags (keep as-is)
         critical_flags = details.get("critical_flags", {})
         if critical_flags:
             content = self._format_critical_flags(critical_flags)
@@ -193,49 +253,82 @@ class KBChunker:
         
         return chunks
     
-    def _format_required_data(
+    def _format_required_data_must_have(
         self,
-        required_data: Dict[str, Any]
+        must_have: List[Dict[str, Any]]
     ) -> str:
-        """Formatea required_data para el chunk."""
-        lines = ["# Required Data for This Process\n"]
+        """Formatea must_have fields para su propio chunk."""
+        lines = ["# Required Data — Must Have (Portal/Profile Data)\n"]
+        lines.append("These fields MUST be collected from the participant portal or profile system.\n")
         
-        # Must have fields
-        must_have = required_data.get("must_have", [])
-        if must_have:
-            lines.append("## Must Have (Required):")
-            for field in must_have:
-                lines.append(f"\n### {field.get('data_point')}")
-                lines.append(f"**Description:** {field.get('meaning')}")
-                lines.append(f"**Why needed:** {field.get('why_needed')}")
-                lines.append(f"**Data type:** {field.get('source_type', 'participant_data')}")
-                if field.get('example_values'):
-                    examples = field['example_values']
-                    if isinstance(examples, list):
-                        # Filtrar None y convertir todo a string
-                        valid_examples = [str(ex) for ex in examples if ex is not None]
-                        if valid_examples:
-                            lines.append(f"**Examples:** {', '.join(valid_examples)}")
-                    else:
-                        if examples is not None:
-                            lines.append(f"**Example:** {examples}")
+        for field in must_have:
+            lines.append(f"### {field.get('data_point')}")
+            lines.append(f"**Description:** {field.get('meaning')}")
+            lines.append(f"**Why needed:** {field.get('why_needed')}")
+            lines.append(f"**Source:** {field.get('source_type', 'participant_data')}")
+            if field.get('example_values'):
+                examples = field['example_values']
+                if isinstance(examples, list):
+                    valid_examples = [str(ex) for ex in examples if ex is not None]
+                    if valid_examples:
+                        lines.append(f"**Examples:** {', '.join(valid_examples)}")
+                else:
+                    if examples is not None:
+                        lines.append(f"**Example:** {examples}")
+            lines.append("")
         
-        # Nice to have fields
-        nice_to_have = required_data.get("nice_to_have", [])
-        if nice_to_have:
-            lines.append("\n## Nice to Have (Optional):")
-            for field in nice_to_have:
-                lines.append(f"\n### {field.get('data_point')}")
-                lines.append(f"**Description:** {field.get('meaning')}")
-                lines.append(f"**Why needed:** {field.get('why_needed')}")
+        return "\n".join(lines)
+
+    def _format_required_data_nice_to_have(
+        self,
+        nice_to_have: List[Dict[str, Any]]
+    ) -> str:
+        """Formatea nice_to_have fields para su propio chunk."""
+        lines = ["# Required Data — Nice to Have (Conversation Context)\n"]
+        lines.append("These fields are OPTIONAL and typically extracted from the participant's message.\n")
         
-        # If missing instructions
-        if_missing = required_data.get("if_missing", [])
-        if if_missing:
-            lines.append("\n## If Data is Missing:")
-            for item in if_missing:
-                lines.append(f"\n**Missing:** {item.get('missing_data_point')}")
-                lines.append(f"**Ask:** {item.get('ask_participant')}")
+        for field in nice_to_have:
+            lines.append(f"### {field.get('data_point')}")
+            lines.append(f"**Description:** {field.get('meaning')}")
+            lines.append(f"**Why needed:** {field.get('why_needed')}")
+            lines.append(f"**Source:** {field.get('source_type', 'message_text')}")
+            if field.get('example_values'):
+                examples = field['example_values']
+                if isinstance(examples, list):
+                    valid_examples = [str(ex) for ex in examples if ex is not None]
+                    if valid_examples:
+                        lines.append(f"**Examples:** {', '.join(valid_examples)}")
+            lines.append("")
+        
+        return "\n".join(lines)
+
+    def _format_required_data_if_missing(
+        self,
+        if_missing: List[Dict[str, Any]]
+    ) -> str:
+        """Formatea if_missing instructions para su propio chunk."""
+        lines = ["# Required Data — If Missing (What to Ask)\n"]
+        lines.append("When a required data point is not available, use these prompts to collect it.\n")
+        
+        for item in if_missing:
+            lines.append(f"### Missing: {item.get('missing_data_point')}")
+            lines.append(f"**Ask participant:** {item.get('ask_participant')}")
+            if item.get('agent_note'):
+                lines.append(f"**Agent note:** {item.get('agent_note')}")
+            lines.append("")
+        
+        return "\n".join(lines)
+
+    def _format_required_data_disambiguation(
+        self,
+        disambiguation: List[str]
+    ) -> str:
+        """Formatea disambiguation notes para su propio chunk."""
+        lines = ["# Required Data — Disambiguation Notes\n"]
+        lines.append("Edge-case logic and decision rules for interpreting participant data.\n")
+        
+        for note in disambiguation:
+            lines.append(f"- {note}")
         
         return "\n".join(lines)
     

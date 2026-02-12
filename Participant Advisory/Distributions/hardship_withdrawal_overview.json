@@ -4,9 +4,9 @@
         "title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
         "description": "End-to-end guide to 401(k) hardship withdrawals for ForUsAll: definition, IRS-approved reasons, plan-dependent eligibility and available amount limits (sources, vesting, loans, employer contributions), request process via Support and RightSignature (including Guidelines review), documentation retention expectations, fees, tax/penalty considerations, and estimated funding timelines by disbursement method.",
         "audience": "Internal AI Support Agent",
-        "record_keeper": "ForUsAll",
+        "record_keeper": null,
         "plan_type": "401(k)",
-        "scope": "recordkeeper-specific",
+        "scope": "global",
         "tags": [
             "Participant Advisory",
             "Distribution"
@@ -32,7 +32,7 @@
         "critical_flags": {
             "portal_required": false,
             "mfa_relevant": false,
-            "record_keeper_must_be": "ForUsAll"
+            "record_keeper_must_be": null
         },
         "business_rules": [
             {

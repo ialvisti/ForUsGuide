@@ -321,10 +321,8 @@ async def generate_response_endpoint(
     4. n8n empaqueta y envía a DevRev AI
     
     **Token Budget:**
-    - Dinámico basado en `total_inquiries_in_ticket`
-    - 1 inquiry: ~3000 tokens
-    - 2 inquiries: ~1500 tokens cada una
-    - 3+ inquiries: ~1200 tokens cada una
+    - Default: 5000 tokens (siempre disponibles)
+    - Se puede reducir vía `max_response_tokens` si se necesita
     
     **Autenticación:** Requiere header `X-API-Key`
     """
@@ -358,7 +356,6 @@ async def generate_response_endpoint(
             decision=result.decision,
             confidence=result.confidence,
             response=result.response,
-            guardrails=result.guardrails,
             metadata=result.metadata
         )
     

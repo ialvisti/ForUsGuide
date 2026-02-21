@@ -26,9 +26,13 @@ import json
 import argparse
 import logging
 from pathlib import Path
+from dotenv import load_dotenv
 
 # Agregar parent directory al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
+
+# Cargar variables de entorno desde .env
+load_dotenv(Path(__file__).parent.parent / ".env")
 
 from data_pipeline.article_processor import load_article_from_path
 from data_pipeline.chunking import generate_chunks_from_article

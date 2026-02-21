@@ -191,10 +191,17 @@ Return ONLY the JSON object, no additional text."""
 # Helper Functions
 # ============================================================================
 
+def _format_record_keeper(record_keeper) -> str:
+    """Format record_keeper for prompt display, handling None."""
+    if record_keeper:
+        return record_keeper
+    return "Not specified (global/general inquiry)"
+
+
 def build_required_data_prompt(
     context: str,
     inquiry: str,
-    record_keeper: str,
+    record_keeper,
     plan_type: str,
     topic: str
 ) -> tuple:
@@ -207,7 +214,7 @@ def build_required_data_prompt(
     user_prompt = USER_PROMPT_REQUIRED_DATA_TEMPLATE.format(
         context=context,
         inquiry=inquiry,
-        record_keeper=record_keeper,
+        record_keeper=_format_record_keeper(record_keeper),
         plan_type=plan_type,
         topic=topic
     )
@@ -219,7 +226,7 @@ def build_generate_response_prompt(
     context: str,
     inquiry: str,
     collected_data: dict,
-    record_keeper: str,
+    record_keeper,
     plan_type: str,
     topic: str,
     max_tokens: int
@@ -249,7 +256,7 @@ def build_generate_response_prompt(
         context=context,
         collected_data=data_str,
         inquiry=inquiry,
-        record_keeper=record_keeper,
+        record_keeper=_format_record_keeper(record_keeper),
         plan_type=plan_type,
         topic=topic,
         max_tokens=max_tokens

@@ -1,0 +1,710 @@
+{
+    "metadata": {
+        "article_id": "missed_60_day_rollover_window",
+        "title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+        "description": "Use when a participant took an indirect rollover distribution (funds paid to the participant, such as a check made payable to them) and is asking about the 60-day rollover deadline — whether they missed it, what happens if they did, or whether exceptions exist. Does NOT apply to direct rollovers where funds are sent provider-to-provider. Applies to all record keepers and all plan types. Covers the IRS 60-day rollover rule, tax and penalty consequences of missing the deadline (taxable income, potential 10% early withdrawal penalty if under 59½, Form 1099-R reporting), and three IRS-recognized exception paths: automatic waiver for financial institution errors, self-certification for qualifying circumstances (serious illness, death in family, natural disasters, institutional delays, mail problems), and Private Letter Ruling (PLR) for rare situations. Emphasizes consulting a qualified tax professional before claiming any exception. ForUsAll can help clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice.",
+        "topic": "rollover",
+        "subtopics": [
+            "60-day rollover rule",
+            "direct vs indirect rollover",
+            "taxable distribution consequences",
+            "rollover exceptions and waivers",
+            "IRS forms and reporting"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": null,
+        "scope": "global",
+        "tags": [
+            "Taxes",
+            "Incoming Rollover",
+            "Withdrawal Request --> Terminated Distribution"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-02-16",
+        "source_last_updated": null,
+        "source_system": null
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "applicability",
+                "rules": [
+                    "The 60-day rollover rule applies when a participant takes a distribution intended to be rolled into a 401(k) or IRA by the participant (for example, a check made payable to the participant).",
+                    "The 60-day rollover rule does not apply to direct rollovers where funds are sent directly from one provider to another.",
+                    "The 60-day rollover rule applies to distributions payable to the participant, not to direct rollovers between providers."
+                ]
+            },
+            {
+                "category": "processing_timelines",
+                "rules": [
+                    "Processing times for Private Letter Rulings (PLRs) are typically longer than other IRS exceptions."
+                ]
+            },
+            {
+                "category": "deadline_and_consequences",
+                "rules": [
+                    "If the rollover is not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income.",
+                    "If the rollover is not completed within the 60-day window, the participant may owe a 10% early withdrawal penalty if under age 59\u00bd.",
+                    "If the rollover is not completed within the 60-day window, the amount is reported on IRS Form 1099-R as a distribution.",
+                    "Depositing the funds into another retirement account later does not qualify as a rollover unless certain exceptions are met."
+                ]
+            },
+            {
+                "category": "exceptions",
+                "rules": [
+                    "An automatic waiver may be granted when the delay was caused by a financial institution error and all other requirements are met.",
+                    "A participant may be able to self-certify that they qualify for an extension due to specific circumstances such as serious illness or death in the family, natural disasters, errors or delays by a financial institution, or mail delivery problems or lost checks.",
+                    "For self-certification, the participant needs to keep proper documentation and may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes.",
+                    "In rare situations, a participant can request a formal waiver through a Private Letter Ruling (PLR) directly from the IRS."
+                ]
+            },
+            {
+                "category": "support_scope",
+                "rules": [
+                    "ForUsAll can help clarify plan activity, verify check processing dates, or resend provider documentation.",
+                    "ForUsAll cannot provide tax advice."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "Private Letter Ruling (PLR) request to the IRS",
+                "fee": "IRS user fee (amount varies).",
+                "notes": null
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Confirm whether the transaction was an indirect rollover situation (a distribution intended to be rolled into a 401(k) or IRA by the participant).",
+                "notes": "The article gives the example of a check made payable to the participant."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Confirm whether the rollover was completed within 60 days of the participant receiving the funds.",
+                "notes": "The 60-day window is based on receiving the funds."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the rollover was not completed within 60 days, explain that the distribution is generally treated as taxable income and is reported on IRS Form 1099-R as a distribution.",
+                "notes": "If the participant is under age 59\u00bd, they may owe a 10% early withdrawal penalty."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Explain that depositing the funds later generally will not qualify as a rollover unless an IRS-recognized exception applies.",
+                "notes": null
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Review potential exceptions: automatic waiver for financial institution error, self-certification for specific circumstances, or a Private Letter Ruling (PLR) request to the IRS in rare situations.",
+                "notes": "Self-certification examples include serious illness or death in the family, natural disasters, errors or delays by a financial institution, and mail delivery problems or lost checks. PLR involves a written application, a fee, and longer processing times."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Encourage the participant to consult a qualified tax professional before claiming an exception or submitting forms to the IRS.",
+                "notes": "The tax professional can help confirm eligibility for an exception, complete required documentation (like self-certification), determine whether a PLR is necessary, and report the transaction correctly on the tax return."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant needs operational help, provide ForUsAll support contact information to clarify plan activity, verify check processing dates, or resend provider documentation.",
+                "notes": "Do not provide tax advice."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant believes a late deposit into another retirement account automatically counts as a rollover.",
+                "resolution": "Explain that depositing later generally will not qualify as a rollover unless an exception is met, and recommend consulting a qualified tax professional about exceptions."
+            },
+            {
+                "issue": "Participant is unsure whether the 60-day rule applies to their situation.",
+                "resolution": "Clarify that the rule applies to distributions intended to be rolled over by the participant and does not apply to direct rollovers where funds move directly between providers."
+            },
+            {
+                "issue": "Participant asks whether they will owe taxes or penalties after missing the deadline.",
+                "resolution": "State the article's general consequences (generally taxable; may owe 10% penalty if under 59\u00bd; reported on Form 1099-R) and recommend consulting a qualified tax professional for their specific tax situation."
+            },
+            {
+                "issue": "Participant asks what documentation is needed for self-certification.",
+                "resolution": "Explain that they need to keep proper documentation and may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes, and recommend consulting a qualified tax professional for completion and reporting."
+            },
+            {
+                "issue": "Participant thinks the 60-day rollover rule applies to every rollover, including provider-to-provider transfers.",
+                "resolution": "Clarify that the 60-day rollover rule does not apply to direct rollovers where funds are sent directly from one provider to another."
+            },
+            {
+                "issue": "Participant missed the 60-day window and asks if the transaction can still be treated as a rollover without an exception.",
+                "resolution": "Explain that depositing the funds later generally will not qualify as a rollover unless they meet certain exceptions, and recommend consulting a qualified tax professional about exceptions."
+            },
+            {
+                "issue": "Participant says a financial institution delay caused the missed deadline and asks if that changes anything.",
+                "resolution": "Explain that the IRS may grant an automatic waiver when the delay was caused by a financial institution error and all other requirements are met, and recommend consulting a qualified tax professional before claiming an exception."
+            },
+            {
+                "issue": "Participant reports a serious illness or death in the family and asks if they can extend the 60-day deadline.",
+                "resolution": "Explain that they may be able to self-certify for an extension due to specific circumstances like serious illness or death in the family, that they should keep proper documentation, and recommend consulting a qualified tax professional."
+            },
+            {
+                "issue": "Participant reports a natural disaster prevented them from completing the rollover on time.",
+                "resolution": "Explain that they may be able to self-certify for an extension due to circumstances like natural disasters, that they should keep proper documentation, and recommend consulting a qualified tax professional."
+            },
+            {
+                "issue": "Participant says the check was lost or delayed in the mail and asks what to do about the 60-day limit.",
+                "resolution": "Explain that they may be able to self-certify for an extension due to mail delivery problems or lost checks, that they should keep proper documentation, and recommend consulting a qualified tax professional."
+            },
+            {
+                "issue": "Participant says they deposited the funds after 60 days and asks if they should undo or reverse the deposit.",
+                "resolution": "Explain that the article states a late deposit generally will not qualify as a rollover unless an exception is met, and recommend consulting a qualified tax professional for guidance on their specific situation."
+            },
+            {
+                "issue": "Participant asks how to fill out a self-certification statement or what exact wording to use.",
+                "resolution": "Explain that the article says self-certification may be possible for specific circumstances and requires keeping proper documentation, and advise consulting a qualified tax professional to help complete required documentation."
+            },
+            {
+                "issue": "Participant asks whether they should request a Private Letter Ruling (PLR) to fix a missed 60-day rollover.",
+                "resolution": "Explain that in rare situations a participant can request a formal waiver from the IRS through a PLR, and that it involves a written application, a fee, and longer processing times, and recommend consulting a qualified tax professional to determine whether a PLR is necessary."
+            },
+            {
+                "issue": "Participant asks ForUsAll to confirm whether they qualify for an exception or to tell them which exception to use.",
+                "resolution": "Explain that ForUsAll cannot provide tax advice, and recommend consulting a qualified tax professional to confirm eligibility for an exception and complete required documentation."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant received a distribution payable to them and did not complete the rollover within 60 days.",
+                "outcome": "The distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if the participant is under age 59\u00bd, and is reported on IRS Form 1099-R as a distribution. Exceptions may be available; recommend consulting a tax professional."
+            },
+            {
+                "scenario": "A participant completed a direct rollover where funds moved directly from one provider to another.",
+                "outcome": "The 60-day rollover rule does not apply to direct rollovers."
+            },
+            {
+                "scenario": "A participant missed the 60-day window due to a mail delivery problem or lost check.",
+                "outcome": "The participant may be able to self-certify for an extension due to mail delivery problems or lost checks and should keep proper documentation; recommend consulting a tax professional."
+            },
+            {
+                "scenario": "A participant wants an exception but does not fit common circumstances and asks for the most formal path.",
+                "outcome": "In rare situations, the participant can request a formal waiver through a Private Letter Ruling (PLR) with a written application, a fee, and longer processing times; recommend consulting a tax professional."
+            },
+            {
+                "scenario": "A participant received a distribution payable to them and completed the rollover within 60 days of receiving the funds.",
+                "outcome": "The participant completed the rollover within the 60-day window described in the article. The article states the IRS allows moving funds between eligible retirement accounts without paying taxes or penalties when completed within 60 days of receiving the funds."
+            },
+            {
+                "scenario": "A participant received a distribution payable to them but is unsure of the exact date they received the funds and whether 60 days have passed.",
+                "outcome": "The agent should not conclude whether the rollover deadline was met without the date the funds were received. The agent should ask for the date the participant received the funds and, if needed, offer ForUsAll help to verify check processing dates or resend provider documentation."
+            },
+            {
+                "scenario": "A participant missed the 60-day window due to a financial institution error and asks if the IRS can still allow rollover treatment.",
+                "outcome": "The article states an automatic waiver may be granted when the delay was caused by a financial institution error and all other requirements are met. The agent should recommend consulting a qualified tax professional before claiming an exception or submitting forms to the IRS."
+            },
+            {
+                "scenario": "A participant missed the 60-day window due to a delay by a financial institution and wants to use self-certification.",
+                "outcome": "The article states self-certification may be possible due to errors or delays by a financial institution. The participant should keep proper documentation and may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes. Recommend consulting a qualified tax professional for eligibility confirmation and documentation."
+            },
+            {
+                "scenario": "A participant missed the 60-day window due to a natural disaster and asks what options exist.",
+                "outcome": "The article states the participant may be able to self-certify for an extension due to circumstances like natural disasters. They should keep proper documentation and should consult a qualified tax professional before claiming an exception or submitting forms to the IRS."
+            },
+            {
+                "scenario": "A participant missed the 60-day window due to a serious illness and asks if they can still treat the deposit as a rollover.",
+                "outcome": "The article states the participant may be able to self-certify for an extension due to circumstances like serious illness. The participant should keep proper documentation and should consult a qualified tax professional to confirm eligibility and report the transaction correctly."
+            },
+            {
+                "scenario": "A participant missed the 60-day window due to a death in the family and asks what proof they need.",
+                "outcome": "The article says the participant should keep proper documentation for self-certification and may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes. Recommend consulting a qualified tax professional to help complete required documentation and report the transaction correctly."
+            },
+            {
+                "scenario": "A participant deposited the funds into another retirement account after the 60-day window and assumes it still counts as a rollover.",
+                "outcome": "The article states that even if the participant deposits the funds later, it will not qualify as a rollover unless certain exceptions are met. The agent should recommend consulting a qualified tax professional to determine whether an exception applies."
+            },
+            {
+                "scenario": "A participant asks ForUsAll to confirm whether they qualify for a waiver or extension.",
+                "outcome": "The agent should explain that ForUsAll cannot provide tax advice and should recommend consulting a qualified tax professional to confirm whether the participant is eligible for an exception and to complete required documentation."
+            },
+            {
+                "scenario": "A participant asks ForUsAll to tell them how to report the missed rollover on their tax return.",
+                "outcome": "The agent should state that ForUsAll cannot provide tax advice and recommend consulting a qualified tax professional to report the transaction correctly on the tax return."
+            },
+            {
+                "scenario": "A participant missed the 60-day window and asks what IRS forms are involved.",
+                "outcome": "The article states that the amount is reported on IRS Form 1099-R as a distribution if the rollover is not completed within the 60-day window. For self-certification situations, the participant may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes."
+            },
+            {
+                "scenario": "A participant is under age 59\u00bd, missed the 60-day window, and asks what additional consequences might apply.",
+                "outcome": "The article states the distribution is generally treated as taxable income and the participant may owe a 10% early withdrawal penalty if under age 59\u00bd. The agent should recommend consulting a qualified tax professional for guidance specific to the participant."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "irs_reporting",
+                "notes": [
+                    "If the rollover is not completed within the 60-day window, the amount is reported on IRS Form 1099-R as a distribution.",
+                    "For self-certification situations, the participant may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes."
+                ]
+            },
+            {
+                "category": "processing_times",
+                "notes": [
+                    "A Private Letter Ruling (PLR) involves longer processing times."
+                ]
+            },
+            {
+                "category": "support_limitations",
+                "notes": [
+                    "ForUsAll can help clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "What is the 60-day rollover rule?",
+                "answer": "The IRS allows you to move funds between eligible retirement accounts without paying taxes or penalties if you complete the rollover within 60 days of receiving the funds."
+            },
+            {
+                "question": "When does the 60-day rollover rule apply?",
+                "answer": "It applies when you took a distribution and intended to roll the funds into a 401(k) or IRA yourself, such as when a check is made payable to you."
+            },
+            {
+                "question": "Does the 60-day rule apply to direct rollovers?",
+                "answer": "No. It does not apply to direct rollovers where funds are sent directly from one provider to another."
+            },
+            {
+                "question": "What happens if I miss the 60-day deadline?",
+                "answer": "If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if you are under age 59\u00bd, and is reported on IRS Form 1099-R as a distribution."
+            },
+            {
+                "question": "Are there exceptions if I miss the 60-day rollover deadline?",
+                "answer": "Yes. The IRS may allow flexibility through waivers or extensions such as an automatic waiver for certain financial institution errors, self-certification for specific circumstances, or a Private Letter Ruling (PLR) request to the IRS in rare situations."
+            },
+            {
+                "question": "What circumstances can support self-certification for an extension?",
+                "answer": "Examples include serious illness or death in the family, natural disasters, errors or delays by a financial institution, and mail delivery problems or lost checks."
+            },
+            {
+                "question": "Can ForUsAll provide tax advice about the 60-day rollover rule?",
+                "answer": "No. ForUsAll can help clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice."
+            },
+            {
+                "question": "If I miss the 60-day deadline but deposit the funds into another retirement account later, does it still count as a rollover?",
+                "answer": "No. The article states that even if you deposit the funds into another retirement account later, it will not qualify as a rollover unless you meet certain exceptions."
+            },
+            {
+                "question": "What is an automatic waiver for the 60-day rollover deadline?",
+                "answer": "The article states an automatic waiver may be granted when the delay was caused by a financial institution error and all other requirements are met."
+            },
+            {
+                "question": "What kinds of situations may qualify for self-certification to extend the 60-day rollover window?",
+                "answer": "The article says you may be able to self-certify for an extension due to specific circumstances like serious illness or death in the family, natural disasters, errors or delays by a financial institution, or mail delivery problems or lost checks."
+            },
+            {
+                "question": "Do I need to keep documentation if I plan to self-certify for an extension?",
+                "answer": "Yes. The article states you will need to keep proper documentation if you self-certify."
+            },
+            {
+                "question": "What IRS form may be used as evidence during tax filing for self-certification situations?",
+                "answer": "The article states you may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes for self-certification situations."
+            },
+            {
+                "question": "What is a Private Letter Ruling (PLR) and when might it be used for a missed 60-day rollover?",
+                "answer": "The article states that in rare situations you can request a formal waiver directly from the IRS through a Private Letter Ruling (PLR)."
+            },
+            {
+                "question": "What does a Private Letter Ruling (PLR) involve?",
+                "answer": "The article states a PLR involves a written application, a fee, and longer processing times."
+            },
+            {
+                "question": "What can a tax professional help me with related to a missed 60-day rollover?",
+                "answer": "The article recommends consulting a qualified tax professional to confirm whether you are eligible for an exception, help you complete required documentation (like self-certification), determine if a Private Letter Ruling is necessary, and report the transaction correctly on your tax return."
+            },
+            {
+                "question": "Can ForUsAll help verify when my check was processed or resend provider documentation?",
+                "answer": "Yes. The article states ForUsAll can help clarify your plan activity, verify check processing dates, or resend provider documentation."
+            },
+            {
+                "question": "How do I contact ForUsAll for help related to plan activity or documentation for a rollover situation?",
+                "answer": "The article lists ForUsAll support contact options as help@forusall.com and 844-401-2253."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "60-day rollover rule",
+                "definition": "A rule allowing movement of retirement funds between eligible accounts without taxes or penalties if the rollover is completed within 60 days of receiving the funds."
+            },
+            {
+                "term": "Direct rollover",
+                "definition": "A rollover where funds are sent directly from one provider to another, which the article states is not subject to the 60-day rule."
+            },
+            {
+                "term": "Distribution",
+                "definition": "Funds taken out of a retirement account, such as when a check is made payable to the participant."
+            },
+            {
+                "term": "Automatic waiver",
+                "definition": "An IRS flexibility option described as granted when the delay was caused by a financial institution error and all other requirements are met."
+            },
+            {
+                "term": "Self-certification",
+                "definition": "A process where a participant may be able to self-certify that they qualify for an extension due to specific circumstances, and should keep proper documentation."
+            },
+            {
+                "term": "Private Letter Ruling (PLR)",
+                "definition": "A formal waiver request to the IRS that involves a written application, a fee, and longer processing times, described as used in rare situations."
+            },
+            {
+                "term": "IRS Form 1099-R",
+                "definition": "A form on which the amount is reported as a distribution if the rollover is not completed within the 60-day window."
+            },
+            {
+                "term": "IRS Form 5498",
+                "definition": "A form the participant may obtain and file or attach as part of self-certification when filing taxes for self-certification situations, according to the article."
+            },
+            {
+                "term": "60-day rollover window",
+                "definition": "The 60-day period described in the article during which a participant must complete a rollover after receiving funds for it to qualify under the IRS 60-day rollover rule."
+            },
+            {
+                "term": "Eligible retirement accounts",
+                "definition": "Retirement accounts described in the article as eligible for moving funds between them under the 60-day rollover rule, such as a 401(k) or an IRA."
+            },
+            {
+                "term": "Indirect rollover",
+                "definition": "A rollover situation described in the article where the participant receives the funds from a distribution (for example, a check made payable to the participant) and intends to roll the funds into a 401(k) or IRA themselves."
+            },
+            {
+                "term": "Early withdrawal penalty",
+                "definition": "A potential 10% penalty the article says a participant may owe if they miss the 60-day rollover deadline and are under age 59\u00bd."
+            },
+            {
+                "term": "Taxable income",
+                "definition": "How the article describes a distribution that is not rolled over within the 60-day window: it is generally treated as taxable income."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not provide tax advice.",
+                "Do not guarantee that a missed 60-day rollover deadline will be approved for an exception, waiver, or extension.",
+                "Do not guarantee that a late deposit into another retirement account will qualify as a rollover without an exception.",
+                "Do not state or imply specific tax outcomes beyond the article's general statements (for example, do not promise no taxes or no penalties).",
+                "Do not state a specific fee amount for a Private Letter Ruling (PLR) because the article does not provide an amount.",
+                "Do not state specific processing timelines because the article only states that a PLR has longer processing times.",
+                "Do not claim that the 60-day rollover rule applies to direct rollovers where funds are sent directly from one provider to another.",
+                "Do not tell the participant that depositing the funds after 60 days will still qualify as a rollover unless you also state that it requires meeting an exception.",
+                "Do not instruct the participant on how to complete, submit, or word a self-certification beyond stating that self-certification may be possible and that they should keep proper documentation.",
+                "Do not advise the participant to submit forms to the IRS without also stating the article's recommendation to consult a qualified tax professional first.",
+                "Do not tell the participant they definitely owe the 10% early withdrawal penalty; the article states they may owe it only if they are under age 59\u00bd.",
+                "Do not claim the participant is eligible for an automatic waiver unless it is established that the delay was caused by a financial institution error and all other requirements are met (as stated in the article).",
+                "Do not claim that any specific self-certification circumstance will be accepted by the IRS; the article states self-certification may be possible for specific circumstances.",
+                "Do not suggest that a Private Letter Ruling (PLR) is always required to address a missed 60-day rollover; the article describes PLR as a rare situation.",
+                "Do not imply ForUsAll can determine whether a participant qualifies for an IRS waiver or extension; the article directs participants to consult a qualified tax professional for eligibility confirmation.",
+                "Do not state or imply that IRS Form 5498 is required in all cases; the article says it may be used as evidence during tax filing for self-certification situations.",
+                "Do not tell the participant that IRS Form 1099-R will not be issued if they later deposit the funds; the article states the amount is reported on IRS Form 1099-R as a distribution when the rollover is not completed within the 60-day window.",
+                "Do not characterize the 60-day rule as optional or flexible by default; the article states the rollover must be completed within 60 days unless an exception applies."
+            ],
+            "must_do_if_unsure": [
+                "If it is unclear whether the transaction was a direct rollover or a distribution payable to the participant, ask clarifying questions before applying the 60-day rule.",
+                "If the participant is seeking to claim an exception, recommend consulting a qualified tax professional to confirm eligibility and complete documentation.",
+                "If dates related to receiving funds or check processing are unclear, offer ForUsAll help to verify check processing dates or resend provider documentation.",
+                "If the payment type is unclear (paid to the participant versus provider-to-provider), ask how the funds were issued before referencing the 60-day rollover window.",
+                "If the participant asks which exception applies or whether they qualify, restate that only a qualified tax professional can confirm eligibility and advise them to consult one before taking next steps.",
+                "If the participant cannot confirm dates from memory, ask them to provide the date they received the funds and avoid concluding the deadline status until they share it.",
+                "If it is unclear when the 60-day rollover window started, ask the participant for the date they received the funds and do not conclude whether the deadline was met without that information.",
+                "If the participant believes a late deposit automatically qualifies as a rollover, restate that a late deposit generally does not qualify unless an exception is met, and recommend consulting a qualified tax professional about exceptions.",
+                "If the participant is asking about whether the distribution will be taxable or whether penalties apply, restate the article's general consequences and recommend consulting a qualified tax professional for their specific tax situation.",
+                "If the participant indicates a financial institution error or delay contributed to missing the deadline, explain the article's automatic waiver concept and recommend consulting a qualified tax professional before claiming an exception.",
+                "If the participant indicates circumstances listed for self-certification (such as serious illness or death in the family, natural disasters, financial institution errors or delays, or mail delivery problems or lost checks), explain that self-certification may be possible, remind them to keep proper documentation, and recommend consulting a qualified tax professional.",
+                "If the participant asks how to complete self-certification or what documentation is sufficient, refer them to a qualified tax professional to help complete required documentation, as the article advises.",
+                "If the participant asks whether a Private Letter Ruling is necessary, explain that the article describes PLR as a rare option and recommend consulting a qualified tax professional to determine whether it is necessary.",
+                "If the participant requests tax-return filing instructions or form-by-form guidance, state that ForUsAll cannot provide tax advice and recommend consulting a qualified tax professional to report the transaction correctly on the tax return."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [],
+            "external_links": [
+                "https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions"
+            ],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Monday-Friday 8am-5pm PST"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Whether the funds were received by the participant (distribution payable to the participant) versus sent provider-to-provider (direct rollover)",
+                    "meaning": "Determines whether the 60-day rollover rule applies (it applies to distributions intended to be rolled over by the participant and does not apply to direct rollovers).",
+                    "example_values": [
+                        "Check made payable to you",
+                        "Funds sent directly from one provider to another"
+                    ],
+                    "why_needed": "Used to determine if the 60-day rollover rule applies.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Date the participant received the funds",
+                    "meaning": "Used to determine when the 60-day rollover window starts.",
+                    "example_values": [
+                        "2026-02-04",
+                        "2026-03-15"
+                    ],
+                    "why_needed": "Needed to evaluate whether the rollover was completed within 60 days of receiving the funds.",
+                    "source_note": "This information comes from what the participant provides.",
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Whether the rollover was completed within 60 days of receiving the funds",
+                    "meaning": "Determines whether the distribution is treated as an on-time rollover or a missed-deadline situation under the article's rule.",
+                    "example_values": [
+                        "Completed within 60 days",
+                        "Not completed within 60 days"
+                    ],
+                    "why_needed": "Needed to determine whether the missed-deadline consequences apply.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Whether the participant is under age 59\u00bd",
+                    "meaning": "Determines whether the 10% early withdrawal penalty may apply if the deadline was missed.",
+                    "example_values": [
+                        "Under age 59\u00bd",
+                        "Age 59\u00bd or older"
+                    ],
+                    "why_needed": "Used to communicate that the 10% early withdrawal penalty may apply only if under age 59\u00bd.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Reason the 60-day deadline was missed",
+                    "meaning": "Helps assess whether an IRS-recognized exception path might apply (automatic waiver, self-certification, or PLR).",
+                    "example_values": [
+                        "Serious illness or death in the family",
+                        "Natural disasters",
+                        "Errors or delays by a financial institution",
+                        "Mail delivery problems or lost checks"
+                    ],
+                    "why_needed": "Used to identify which exception category may be relevant based on the article.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Whether the delay was caused by a financial institution error",
+                    "meaning": "Relevant to the automatic waiver path described in the article.",
+                    "example_values": [
+                        "Delay caused by a financial institution error",
+                        "Delay not caused by a financial institution error",
+                        "Other details provided by the participant"
+                    ],
+                    "why_needed": "Used to identify whether the automatic waiver description could apply.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Whether the participant has kept proper documentation for self-certification",
+                    "meaning": "The article states documentation should be kept and the participant may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes.",
+                    "example_values": [
+                        "Participant has documentation",
+                        "Participant does not have documentation"
+                    ],
+                    "why_needed": "Used to align with the article's guidance for self-certification support and evidence during tax filing.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Whether the funds were received by the participant (distribution payable to the participant) versus sent provider-to-provider (direct rollover)",
+                    "ask_participant": "Were the funds paid to you (for example, a check made payable to you), or were they sent directly from one provider to another as a direct rollover?",
+                    "agent_note": "Do not apply the 60-day rollover rule unless it is confirmed this was a distribution intended to be rolled over by the participant."
+                },
+                {
+                    "missing_data_point": "Date the participant received the funds",
+                    "ask_participant": "On what date did you receive the funds from the distribution?",
+                    "agent_note": "Do not confirm whether the rollover was within 60 days without the date the funds were received."
+                },
+                {
+                    "missing_data_point": "Whether the rollover was completed within 60 days of receiving the funds",
+                    "ask_participant": "Did you deposit or roll the funds into your 401(k) or IRA within 60 days of receiving them?",
+                    "agent_note": "Do not state that the deadline was missed or met without confirming whether the rollover was completed within 60 days of receiving the funds."
+                }
+            ],
+            "disambiguation_notes": [
+                "The article distinguishes direct rollovers (provider-to-provider) from distributions payable to the participant; the 60-day rule applies only to the latter.",
+                "The article describes consequences as generally taxable and potentially subject to a 10% early withdrawal penalty if under age 59\u00bd; avoid treating this as a guaranteed outcome for every individual situation."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "For the 60-day rollover rule to be relevant, the participant must have received the funds from a distribution intended to be rolled into a 401(k) or IRA by the participant.",
+                "Automatic waiver is described as granted when the delay was caused by a financial institution error and all other requirements are met.",
+                "Self-certification is described as potentially available for specific circumstances such as serious illness or death in the family, natural disasters, errors or delays by a financial institution, or mail delivery problems or lost checks."
+            ],
+            "blocking_conditions": [],
+            "missing_data_conditions": [
+                {
+                    "condition": "Cannot determine whether the 60-day rollover rule applies without confirming whether the funds were paid to the participant versus sent directly provider-to-provider.",
+                    "missing_data_point": "Whether the funds were received by the participant (distribution payable to the participant) versus sent provider-to-provider (direct rollover)",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Were the funds paid to you (for example, a check made payable to you), or were they sent directly from one provider to another as a direct rollover?"
+                },
+                {
+                    "condition": "Cannot evaluate the 60-day window without the date the participant received the funds.",
+                    "missing_data_point": "Date the participant received the funds",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "On what date did you receive the funds from the distribution?"
+                },
+                {
+                    "condition": "Cannot determine if missed-deadline consequences apply without confirming whether the rollover was completed within 60 days of receiving the funds.",
+                    "missing_data_point": "Whether the rollover was completed within 60 days of receiving the funds",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Did you deposit or roll the funds into your 401(k) or IRA within 60 days of receiving them?"
+                }
+            ],
+            "allowed_conclusions": [
+                "If this was a direct rollover sent provider-to-provider, the 60-day rollover rule does not apply.",
+                "If the rollover was not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income.",
+                "If the rollover was not completed within 60 days, the participant may owe a 10% early withdrawal penalty if under age 59\u00bd.",
+                "If the rollover is not completed within 60 days, the amount is reported on IRS Form 1099-R as a distribution.",
+                "Exceptions may be available through an automatic waiver, self-certification for certain circumstances, or a Private Letter Ruling (PLR) in rare situations.",
+                "A qualified tax professional can help confirm eligibility for an exception, complete documentation, determine whether a PLR is necessary, and report the transaction correctly on the tax return.",
+                "ForUsAll can clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee that missing the 60-day window will qualify for an exception or waiver.",
+                "Do not guarantee that the participant will or will not owe taxes or penalties beyond the article's general statements.",
+                "Do not claim that depositing funds later will qualify as a rollover without confirming an applicable exception.",
+                "Do not provide tax advice or tell the participant how to file taxes.",
+                "Do not state a specific fee amount or processing timeline for a Private Letter Ruling (PLR)."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "The IRS 60-day rollover rule allows moving funds between eligible retirement accounts without taxes or penalties if the rollover is completed within 60 days of receiving the funds.",
+                    "This rule does not apply to direct rollovers where funds are sent directly from one provider to another.",
+                    "If the rollover was not completed within 60 days, the distribution is generally treated as taxable income and is reported on IRS Form 1099-R as a distribution.",
+                    "If you are under age 59\u00bd, you may owe a 10% early withdrawal penalty.",
+                    "In some cases, the IRS allows flexibility through waivers or extensions such as an automatic waiver, self-certification for specific circumstances, or a Private Letter Ruling (PLR) in rare situations.",
+                    "Before claiming an exception or submitting any forms to the IRS, consult a qualified tax professional.",
+                    "If you need help clarifying plan activity, verifying check processing dates, or resending provider documentation, contact ForUsAll support.",
+                    "ForUsAll cannot provide tax advice."
+                ],
+                "next_steps": [
+                    "Consult a qualified tax professional to confirm whether an exception applies and how to report the transaction correctly on your tax return.",
+                    "If you need help clarifying plan activity or verifying check processing dates, contact ForUsAll support."
+                ],
+                "warnings": [
+                    "ForUsAll cannot provide tax advice.",
+                    "A Private Letter Ruling (PLR) involves a written application, a fee, and longer processing times."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not promise that an exception will be approved.",
+                    "Do not promise specific tax outcomes or penalties."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "To determine whether the 60-day rollover rule applies and whether the 60-day deadline was met, I need a few details about how the funds were distributed and when you received them.",
+                    "This rule applies to distributions intended to be rolled over by you and does not apply to direct rollovers sent provider-to-provider."
+                ],
+                "next_steps": [
+                    "Provide the requested details so we can clarify whether the 60-day rollover rule applies and whether the 60-day window was met.",
+                    "If you are considering an exception, consult a qualified tax professional before claiming an exception or submitting any forms to the IRS."
+                ],
+                "warnings": [
+                    "ForUsAll cannot provide tax advice."
+                ],
+                "questions_to_ask": [
+                    "Were the funds paid to you (for example, a check made payable to you), or were they sent directly from one provider to another as a direct rollover?",
+                    "On what date did you receive the funds from the distribution?",
+                    "Did you deposit or roll the funds into your 401(k) or IRA within 60 days of receiving them?"
+                ],
+                "what_not_to_say": [
+                    "Do not confirm that the deadline was missed or met without the date the funds were received and whether the rollover was completed within 60 days.",
+                    "Do not provide tax advice or guarantee an exception."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "The article states that the 60-day rollover rule does not apply to direct rollovers where funds are sent directly from one provider to another."
+                ],
+                "next_steps": [
+                    "Confirm whether the transaction was a direct rollover sent provider-to-provider.",
+                    "If you still have questions about reporting or exceptions, consult a qualified tax professional."
+                ],
+                "warnings": [
+                    "ForUsAll cannot provide tax advice."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not apply the 60-day rollover rule to a direct rollover.",
+                    "Do not provide tax advice."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "The article describes IRS rules and exceptions for the 60-day rollover window, but determining whether an IRS exception applies in your situation can depend on your specific circumstances and documentation.",
+                    "The IRS may allow flexibility through an automatic waiver, self-certification for certain circumstances, or a Private Letter Ruling (PLR) in rare situations."
+                ],
+                "next_steps": [
+                    "Consult a qualified tax professional to confirm whether you are eligible for an exception and to help with any required documentation.",
+                    "If you need help clarifying plan activity, verifying check processing dates, or resending provider documentation, contact ForUsAll support."
+                ],
+                "warnings": [
+                    "ForUsAll cannot provide tax advice.",
+                    "A Private Letter Ruling (PLR) involves a written application, a fee, and longer processing times.",
+                    "Keep proper documentation if you plan to claim an exception or self-certify."
+                ],
+                "questions_to_ask": [
+                    "What caused the delay in completing the rollover (for example, serious illness or death in the family, natural disasters, errors or delays by a financial institution, or mail delivery problems or lost checks)?",
+                    "Do you have documentation to support your claim if you plan to self-certify for an extension?",
+                    "Have you consulted a qualified tax professional to confirm whether you are eligible for an exception and to help with any required documentation?",
+                    "Do you need help clarifying plan activity, verifying check processing dates, or resending provider documentation?",
+                    "If you have questions about how to report this on your tax return, have you consulted a qualified tax professional?",
+                    "If you are considering a Private Letter Ruling (PLR), have you consulted a qualified tax professional to determine whether it is necessary and to help with the application process?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee that an exception, waiver, or extension will be approved.",
+                    "Do not provide specific instructions for IRS filing or claim a specific fee amount or processing timeline for a PLR.",
+                    "Do not provide tax advice.",
+                    "Do not tell the participant they definitely owe taxes or penalties; the article states they may owe them depending on their age and circumstances.",
+                    "Do not claim that a late deposit will qualify as a rollover without confirming an applicable exception.",
+                    "Do not instruct the participant on how to complete self-certification beyond stating that it may be possible and that they should keep proper documentation.",
+                    "Do not suggest that a PLR is always necessary; the article describes it as a rare option."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        }
+    }
+}

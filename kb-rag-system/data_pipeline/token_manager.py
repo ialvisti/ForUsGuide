@@ -122,9 +122,7 @@ class TokenManager:
             if used_tokens + chunk_tokens <= budget:
                 selected.append(chunk)
                 used_tokens += chunk_tokens
-            else:
-                # No cabe más
-                break
+            # If it doesn't fit, skip and try the next chunk (may be smaller)
         
         logger.debug(f"Truncated to {len(selected)}/{len(chunks)} chunks ({used_tokens}/{budget} tokens)")
         return selected

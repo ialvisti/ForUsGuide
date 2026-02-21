@@ -4,15 +4,21 @@ RAG Engine - Motor principal de búsqueda y generación.
 Este módulo implementa el RAG engine con dos funciones principales:
 1. get_required_data() - Determina qué datos se necesitan
 2. generate_response() - Genera respuesta contextualizada
+
+All public methods are async to avoid blocking FastAPI's event loop.
+Pinecone SDK calls (synchronous) are wrapped with asyncio.to_thread().
+OpenAI calls use the native AsyncOpenAI client.
 """
 
 import os
 import json
+import asyncio
+import hashlib
 import logging
 from typing import Dict, Any, List, Optional
-from dataclasses import dataclass, asdict
-from openai import OpenAI
-from dotenv import load_dotenv
+from dataclasses import dataclass
+from openai import AsyncOpenAI
+from cachetools import TTLCache
 
 from .pinecone_uploader import PineconeUploader
 from .token_manager import TokenManager
@@ -21,11 +27,6 @@ from .prompts import (
     build_generate_response_prompt
 )
 
-# Cargar variables de entorno
-load_dotenv()
-
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -85,12 +86,17 @@ class RAGEngine:
     2. generate_response() - ¿Cómo respondemos?
     """
     
+    # Search cache: avoids repeated Pinecone queries for identical parameters.
+    CACHE_MAX_SIZE = 128
+    CACHE_TTL_SECONDS = 300  # 5 minutes
+
     def __init__(
         self,
         openai_api_key: Optional[str] = None,
         model: str = "gpt-4o-mini",
         temperature: float = 0.1,
-        reasoning_effort: Optional[str] = None
+        reasoning_effort: Optional[str] = None,
+        pinecone_uploader: Optional['PineconeUploader'] = None
     ):
         """
         Inicializa el RAG engine.
@@ -100,13 +106,15 @@ class RAGEngine:
             model: Modelo de OpenAI a usar (default: gpt-4o-mini)
             temperature: Temperature para generación (default: 0.1)
             reasoning_effort: Esfuerzo de razonamiento para GPT-5.2 (none, low, medium, high, xhigh)
+            pinecone_uploader: Pre-configured PineconeUploader instance.
+                               If None, creates a new one (standalone usage).
         """
-        # OpenAI client
+        # Async OpenAI client — non-blocking in FastAPI's event loop
         api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
         if not api_key:
             raise ValueError("OPENAI_API_KEY no está configurada")
         
-        self.openai_client = OpenAI(api_key=api_key)
+        self.openai_client = AsyncOpenAI(api_key=api_key)
         self.model = model
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
@@ -114,11 +122,21 @@ class RAGEngine:
         # Detectar si es modelo GPT-5.2
         self.is_gpt5 = "gpt-5" in model.lower()
         
-        # Pinecone uploader para búsquedas
-        self.pinecone = PineconeUploader()
+        # Pinecone uploader para búsquedas (sync SDK, wrapped with asyncio.to_thread).
+        # Reuse a shared instance when provided to avoid duplicate connections.
+        self.pinecone = pinecone_uploader or PineconeUploader()
         
         # Token manager
         self.token_manager = TokenManager(model="gpt-4")
+        
+        # TTL cache for Pinecone search results
+        self._search_cache: TTLCache = TTLCache(
+            maxsize=self.CACHE_MAX_SIZE,
+            ttl=self.CACHE_TTL_SECONDS
+        )
+        # Lock to prevent duplicate Pinecone calls when concurrent coroutines
+        # check the cache before either has written back.
+        self._cache_lock = asyncio.Lock()
         
         logger.info(f"RAG Engine inicializado con modelo: {model}")
         if self.is_gpt5 and reasoning_effort:
@@ -128,10 +146,10 @@ class RAGEngine:
     # ENDPOINT 1: Get Required Data
     # ========================================================================
     
-    def get_required_data(
+    async def get_required_data(
         self,
         inquiry: str,
-        record_keeper: str,
+        record_keeper: Optional[str],
         plan_type: str,
         topic: str,
         related_inquiries: Optional[List[str]] = None
@@ -157,7 +175,7 @@ class RAGEngine:
         
         try:
             # 1. Buscar chunks relevantes con filtros
-            chunks = self._search_for_required_data(
+            chunks = await self._search_for_required_data(
                 inquiry=inquiry,
                 record_keeper=record_keeper,
                 plan_type=plan_type,
@@ -170,10 +188,8 @@ class RAGEngine:
                     "No relevant articles found for this topic"
                 )
             
-            # 2. Construir contexto
-            # Budget suficiente para incluir el chunk de required_data completo
-            # (artículos con muchos campos pueden superar 1500 tokens fácilmente)
-            context_budget = 2500  # Tokens para contexto
+            # 2. Construir contexto (CPU-bound, no async needed)
+            context_budget = 2500
             context, selected_chunks, tokens_used = self._build_context_from_chunks(
                 chunks=chunks,
                 budget=context_budget,
@@ -191,11 +207,11 @@ class RAGEngine:
                 topic=topic
             )
             
-            # 4. Llamar LLM
-            llm_response = self._call_llm(
+            # 4. Llamar LLM (async)
+            llm_response = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=800  # Respuesta relativamente corta
+                max_tokens=800
             )
             
             # 5. Parsear respuesta
@@ -206,7 +222,7 @@ class RAGEngine:
                 logger.error(f"Respuesta: {llm_response[:500]}")
                 parsed = {"participant_data": [], "plan_data": []}
             
-            # 6. Calcular confidence (usa fórmula específica para required_data)
+            # 6. Calcular confidence
             confidence = self._calculate_required_data_confidence(chunks, query_topic=topic)
             
             # 7. Construir respuesta
@@ -226,19 +242,19 @@ class RAGEngine:
             )
         
         except Exception as e:
-            logger.error(f"Error en get_required_data: {e}")
-            import traceback
-            traceback.print_exc()
-            return self._build_empty_required_data_response(str(e))
+            logger.exception("Error en get_required_data")
+            return self._build_empty_required_data_response(
+                "An internal error occurred while determining required data"
+            )
     
     # ========================================================================
     # ENDPOINT 2: Generate Response
     # ========================================================================
     
-    def generate_response(
+    async def generate_response(
         self,
         inquiry: str,
-        record_keeper: str,
+        record_keeper: Optional[str],
         plan_type: str,
         topic: str,
         collected_data: Dict[str, Any],
@@ -267,14 +283,12 @@ class RAGEngine:
         
         try:
             # 1. Calcular presupuesto de contexto
-            # Budget combinado: maximizar contexto, reservar mínimo para respuesta.
-            # Más contexto = más material de KB = respuesta más precisa y detallada.
             context_budget = max_response_tokens - self.RESPONSE_MIN_TOKENS
             
             logger.info(f"Context budget: {context_budget} tokens (de {max_response_tokens} total, reservando {self.RESPONSE_MIN_TOKENS} para response)")
             
-            # 2. Buscar chunks relevantes
-            chunks = self._search_for_response(
+            # 2. Buscar chunks relevantes (async)
+            chunks = await self._search_for_response(
                 inquiry=inquiry,
                 record_keeper=record_keeper,
                 plan_type=plan_type,
@@ -289,7 +303,7 @@ class RAGEngine:
                     confidence=0.0
                 )
             
-            # 3. Organizar chunks por tier
+            # 3. Organizar chunks por tier (CPU-bound, no async needed)
             chunks_by_tier = self._organize_chunks_by_tier(chunks)
             
             # 4. Construir contexto priorizando por tier
@@ -302,11 +316,9 @@ class RAGEngine:
             logger.info(f"Context: {len(selected_chunks)} chunks, {tokens_used} tokens")
             
             # 5. Calcular tokens para completion
-            # Lo que el contexto no usó, queda disponible para la respuesta.
-            # Mínimo garantizado: RESPONSE_MIN_TOKENS.
             completion_budget = max(self.RESPONSE_MIN_TOKENS, max_response_tokens - tokens_used)
             
-            # 6. Generar prompts (usa completion_budget para informar al LLM)
+            # 6. Generar prompts
             system_prompt, user_prompt = build_generate_response_prompt(
                 context=context,
                 inquiry=inquiry,
@@ -317,8 +329,8 @@ class RAGEngine:
                 max_tokens=completion_budget
             )
             
-            # 7. Llamar LLM
-            llm_response = self._call_llm(
+            # 7. Llamar LLM (async)
+            llm_response = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_tokens=completion_budget
@@ -330,7 +342,6 @@ class RAGEngine:
             except json.JSONDecodeError as e:
                 logger.error(f"Error parseando JSON del LLM: {e}")
                 logger.error(f"Respuesta: {llm_response[:500]}")
-                # Fallback: construir respuesta mínima con el nuevo schema
                 parsed = {
                     "outcome": "blocked_missing_data",
                     "outcome_reason": "Response parsing failed — raw LLM output could not be parsed as JSON.",
@@ -349,14 +360,11 @@ class RAGEngine:
                     "data_gaps": ["LLM response was not valid JSON"]
                 }
             
-            # 9. Calcular confidence y decision (calidad del retrieval RAG)
+            # 9. Calcular confidence y decision
             confidence = self._calculate_confidence(chunks)
             decision = self._determine_decision(confidence)
             
             # 10. Construir respuesta
-            # - decision/confidence: calidad del retrieval (calculado por el engine)
-            # - response.outcome: determinación del caso (calculado por el LLM)
-            # - guardrails viven SOLO dentro de response.guardrails_applied (sin duplicación)
             return GenerateResponseResult(
                 decision=decision,
                 confidence=confidence,
@@ -371,24 +379,28 @@ class RAGEngine:
             )
         
         except Exception as e:
-            logger.error(f"Error en generate_response: {e}")
-            import traceback
-            traceback.print_exc()
-            return self._build_uncertain_response(str(e), confidence=0.0)
+            logger.exception("Error en generate_response")
+            return self._build_uncertain_response(
+                "An internal error occurred while generating the response",
+                confidence=0.0
+            )
     
     # ========================================================================
     # Helper Methods - Búsqueda
     # ========================================================================
     
     # Tokens mínimos reservados para la respuesta del LLM.
-    # El resto del budget (max_response_tokens - este valor) va a contexto de KB.
-    # 1200 tokens alcanza para una respuesta completa con el JSON schema.
     RESPONSE_MIN_TOKENS = 1200
     
     # Umbral mínimo para considerar que una búsqueda con filtro de topic
     # tuvo resultados suficientes. Si no se alcanza, se hace fallback sin topic.
     TOPIC_FILTER_MIN_CHUNKS = 3
     TOPIC_FILTER_MIN_SCORE = 0.20
+    
+    # Record-keeper cascade settings
+    RK_FALLBACK_DEFAULT = "LT Trust"
+    RK_CASCADE_MIN_CHUNKS = 1
+    RK_CASCADE_MIN_SCORE = 0.15
     
     def _get_topic_variations(self, topic: str) -> List[str]:
         """
@@ -409,76 +421,239 @@ class RAGEngine:
         ]))
         return variations
     
-    def _search_for_required_data(
+    # ── Cached Pinecone query wrapper ──
+    
+    def _cache_key(self, query_text: str, top_k: int, filter_dict: Optional[Dict]) -> str:
+        """Build a deterministic cache key from query parameters."""
+        raw = json.dumps({"q": query_text, "k": top_k, "f": filter_dict}, sort_keys=True)
+        return hashlib.md5(raw.encode()).hexdigest()
+    
+    async def _cached_query(
+        self,
+        query_text: str,
+        top_k: int,
+        filter_dict: Optional[Dict[str, Any]] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Async Pinecone query with TTL caching.
+        
+        Wraps the synchronous Pinecone SDK call in asyncio.to_thread
+        so it doesn't block the event loop, and caches results to avoid
+        redundant network round-trips for identical queries.
+        
+        Uses asyncio.Lock to prevent duplicate Pinecone calls when
+        concurrent coroutines generate the same cache key.
+        """
+        key = self._cache_key(query_text, top_k, filter_dict)
+        
+        async with self._cache_lock:
+            if key in self._search_cache:
+                logger.debug("Cache HIT for Pinecone query")
+                return self._search_cache[key]
+            
+            result = await asyncio.to_thread(
+                self.pinecone.query_chunks,
+                query_text=query_text,
+                top_k=top_k,
+                filter_dict=filter_dict
+            )
+            
+            self._search_cache[key] = result
+            return result
+    
+    # ── Record-Keeper Cascade Strategy ──
+    
+    def _build_rk_cascade(
+        self,
+        record_keeper: Optional[str]
+    ) -> List[Dict[str, Any]]:
+        """
+        Build the ordered cascade of record-keeper filter levels.
+        
+        The cascade determines the search priority order based on whether
+        a record_keeper was provided by the caller.
+        
+        When record_keeper IS provided:
+          1. RK-specific   → use provided RK to narrow down quickly
+          2. Global scope   → record_keeper=null articles (scope="global")
+          3. LT Trust       → default fallback RK (skipped if already tried)
+          4. Any            → no RK filter, rely on semantic relevance
+        
+        When record_keeper is NOT provided:
+          1. Global scope   → record_keeper=null articles first
+          2. LT Trust       → default fallback RK
+          3. Any            → no RK filter, rely on semantic relevance
+        
+        Returns:
+            Ordered list of cascade levels, each with "filters" and "label".
+        """
+        cascade = []
+        
+        if record_keeper:
+            cascade.append({
+                "filters": {"record_keeper": {"$eq": record_keeper}},
+                "label": f"RK={record_keeper}"
+            })
+            cascade.append({
+                "filters": {"scope": {"$eq": "global"}},
+                "label": "scope=global"
+            })
+            if record_keeper != self.RK_FALLBACK_DEFAULT:
+                cascade.append({
+                    "filters": {"record_keeper": {"$eq": self.RK_FALLBACK_DEFAULT}},
+                    "label": f"RK={self.RK_FALLBACK_DEFAULT} (fallback)"
+                })
+            cascade.append({
+                "filters": {},
+                "label": "any RK (semantic only)"
+            })
+        else:
+            cascade.append({
+                "filters": {"scope": {"$eq": "global"}},
+                "label": "scope=global"
+            })
+            cascade.append({
+                "filters": {"record_keeper": {"$eq": self.RK_FALLBACK_DEFAULT}},
+                "label": f"RK={self.RK_FALLBACK_DEFAULT} (fallback)"
+            })
+            cascade.append({
+                "filters": {},
+                "label": "any RK (semantic only)"
+            })
+        
+        return cascade
+    
+    def _rk_results_sufficient(
+        self,
+        chunks: List[Dict[str, Any]],
+        min_chunks: Optional[int] = None,
+        min_score: Optional[float] = None
+    ) -> bool:
+        """
+        Evaluate whether a cascade level returned sufficient results.
+        
+        Args:
+            chunks: Results from this cascade level
+            min_chunks: Minimum number of results (default: RK_CASCADE_MIN_CHUNKS)
+            min_score: Minimum best score (default: RK_CASCADE_MIN_SCORE)
+        
+        Returns:
+            True if the results are sufficient to stop cascading
+        """
+        min_c = min_chunks if min_chunks is not None else self.RK_CASCADE_MIN_CHUNKS
+        min_s = min_score if min_score is not None else self.RK_CASCADE_MIN_SCORE
+        
+        if len(chunks) < min_c:
+            return False
+        if chunks and chunks[0].get('score', 0) < min_s:
+            return False
+        return True
+    
+    # ── Search methods (async) ──
+    
+    async def _search_for_required_data(
         self,
         inquiry: str,
-        record_keeper: str,
+        record_keeper: Optional[str],
         plan_type: str,
         topic: str
     ) -> List[Dict[str, Any]]:
         """
         Busca chunks relevantes para el endpoint required_data.
         
-        Usa una búsqueda en dos fases:
+        Uses a cascading record-keeper strategy:
         
-        Phase 1: Buscar chunks required_data_must_have (lo más crítico).
-          Ejecuta DOS búsquedas paralelas y toma el mejor resultado por score:
-          - 1A: Record-keeper específico (ej: "LT Trust")
-          - 1B: Scope global (artículos que aplican a todos los RKs)
-          
-          La similitud semántica (el query incluye el topic) rankea
-          el artículo correcto más alto automáticamente.
+        When RK provided:
+          Phase 1: Parallel queries — RK-specific + global scope
+                   RK results are prioritized; global supplements.
+          Phase 1 fallback: If neither returned results, cascade to
+                   LT Trust → any.
         
-        Phase 2: Buscar chunks de contexto (eligibility, business_rules)
-          del mismo artículo que ganó en Phase 1.
+        When RK NOT provided:
+          Phase 1: Global scope first.
+          Phase 1 fallback: If insufficient, cascade to LT Trust → any.
+        
+        Phase 2 (always): Context chunks (eligibility, business_rules) from
+          the winning article.
         """
         enriched_query = f"{inquiry} {topic}"
+        rk_cascade = self._build_rk_cascade(record_keeper)
+        required_data_chunks: List[Dict[str, Any]] = []
         
-        # ── Phase 1A: Buscar must_have por record_keeper específico ──
-        rk_filters = {
-            "record_keeper": {"$eq": record_keeper},
-            "plan_type": {"$eq": plan_type},
-            "chunk_type": {"$eq": "required_data_must_have"}
-        }
-        rk_chunks = self.pinecone.query_chunks(
-            query_text=enriched_query,
-            top_k=3,
-            filter_dict=rk_filters
-        )
-        logger.info(f"Phase 1A (RK={record_keeper}): found {len(rk_chunks)} chunks")
-        
-        # ── Phase 1B: Buscar must_have en artículos de scope global ──
-        # Artículos con scope="global" no tienen record_keeper específico
-        # y aplican a todos los record keepers.
-        global_filters = {
-            "scope": {"$eq": "global"},
-            "plan_type": {"$eq": plan_type},
-            "chunk_type": {"$eq": "required_data_must_have"}
-        }
-        global_chunks = self.pinecone.query_chunks(
-            query_text=enriched_query,
-            top_k=3,
-            filter_dict=global_filters
-        )
-        logger.info(f"Phase 1B (scope=global): found {len(global_chunks)} chunks")
-        
-        # ── Merge 1A + 1B: deduplicar y ordenar por score ──
-        # La similitud semántica determina qué artículo es más relevante
-        # al topic del query. El mejor resultado queda primero.
-        required_data_chunks = self._merge_and_rank_chunks(rk_chunks, global_chunks)
+        if record_keeper:
+            # ── RK provided: run first two cascade levels in parallel ──
+            rk_filters = {
+                **rk_cascade[0]["filters"],
+                "plan_type": {"$in": [plan_type, "all"]},
+                "chunk_type": {"$eq": "required_data_must_have"}
+            }
+            global_filters = {
+                **rk_cascade[1]["filters"],
+                "plan_type": {"$in": [plan_type, "all"]},
+                "chunk_type": {"$eq": "required_data_must_have"}
+            }
+            
+            rk_chunks, global_chunks = await asyncio.gather(
+                self._cached_query(enriched_query, top_k=3, filter_dict=rk_filters),
+                self._cached_query(enriched_query, top_k=3, filter_dict=global_filters),
+            )
+            
+            logger.info(f"Phase 1A ({rk_cascade[0]['label']}): found {len(rk_chunks)} chunks")
+            logger.info(f"Phase 1B ({rk_cascade[1]['label']}): found {len(global_chunks)} chunks")
+            
+            if rk_chunks:
+                required_data_chunks = self._merge_and_rank_chunks(rk_chunks, global_chunks)
+            elif global_chunks:
+                required_data_chunks = global_chunks
+            
+            # If parallel levels insufficient, continue cascade from level 2+
+            if not self._rk_results_sufficient(required_data_chunks):
+                for level in rk_cascade[2:]:
+                    level_filters = {
+                        **level["filters"],
+                        "plan_type": {"$in": [plan_type, "all"]},
+                        "chunk_type": {"$eq": "required_data_must_have"}
+                    }
+                    level_chunks = await self._cached_query(
+                        enriched_query, top_k=3, filter_dict=level_filters
+                    )
+                    logger.info(f"Cascade ({level['label']}): found {len(level_chunks)} chunks")
+                    
+                    if self._rk_results_sufficient(level_chunks):
+                        required_data_chunks = self._merge_and_rank_chunks(
+                            required_data_chunks, level_chunks
+                        )
+                        break
+        else:
+            # ── No RK: sequential cascade through all levels ──
+            for level in rk_cascade:
+                level_filters = {
+                    **level["filters"],
+                    "plan_type": {"$in": [plan_type, "all"]},
+                    "chunk_type": {"$eq": "required_data_must_have"}
+                }
+                level_chunks = await self._cached_query(
+                    enriched_query, top_k=3, filter_dict=level_filters
+                )
+                logger.info(f"Cascade ({level['label']}): found {len(level_chunks)} chunks")
+                
+                if self._rk_results_sufficient(level_chunks):
+                    required_data_chunks = self._merge_and_rank_chunks(
+                        required_data_chunks, level_chunks
+                    )
+                    break
         
         if required_data_chunks:
             best = required_data_chunks[0]
             logger.info(
-                f"Phase 1 best match: article={best['metadata'].get('article_id')}, "
+                f"Required data best match: article={best['metadata'].get('article_id')}, "
                 f"topic={best['metadata'].get('topic')}, score={best['score']:.4f}"
             )
         else:
-            logger.warning("Phase 1: No required_data_must_have chunks found")
+            logger.warning("Required data: No required_data_must_have chunks found across all cascade levels")
             return []
         
-        # ── Phase 2: Buscar chunks de contexto del artículo ganador ──
-        # Usamos article_id para focalizar en el mismo artículo.
+        # ── Phase 2: Context chunks from the winning article ──
         best_article_id = required_data_chunks[0]['metadata'].get('article_id')
         
         context_filters = {
@@ -487,10 +662,8 @@ class RAGEngine:
         }
         logger.info(f"Phase 2: focusing context on article_id={best_article_id}")
         
-        context_chunks = self.pinecone.query_chunks(
-            query_text=enriched_query,
-            top_k=7,
-            filter_dict=context_filters
+        context_chunks = await self._cached_query(
+            enriched_query, top_k=7, filter_dict=context_filters
         )
         logger.info(f"Phase 2 (context): found {len(context_chunks)} chunks")
         
@@ -530,74 +703,109 @@ class RAGEngine:
         all_chunks.sort(key=lambda c: c.get('score', 0), reverse=True)
         return all_chunks
     
-    def _search_for_response(
+    async def _search_for_response(
         self,
         inquiry: str,
-        record_keeper: str,
+        record_keeper: Optional[str],
         plan_type: str,
         topic: str,
         collected_data: Dict[str, Any]
     ) -> List[Dict[str, Any]]:
-        """Busca chunks relevantes para generate_response endpoint."""
-        # Construir query enriquecido con datos recolectados
+        """
+        Busca chunks relevantes para generate_response endpoint.
+        
+        Uses a cascading record-keeper strategy combined with topic strategies:
+        
+        For each RK cascade level (ordered by priority):
+          1. Try topic exact-match filter
+          2. Try tags filter (with case variations)
+          3. Try no-topic filter
+          If any strategy returns sufficient results, stop cascading.
+        
+        RK cascade order depends on whether record_keeper was provided
+        (see _build_rk_cascade for details).
+        """
         query_parts = [inquiry, topic]
         
         if collected_data:
-            # Agregar snippets de datos relevantes al query
             if "participant_data" in collected_data:
                 for key, value in list(collected_data["participant_data"].items())[:3]:
                     query_parts.append(f"{key}: {value}")
         
         enriched_query = " ".join(query_parts)
+        rk_cascade = self._build_rk_cascade(record_keeper)
         
-        # Filtros base (obligatorios)
-        base_filters = {
-            "record_keeper": {"$eq": record_keeper},
-            "plan_type": {"$eq": plan_type}
-        }
-        
-        # Strategy 1: Intentar con filtro de topic exacto
-        if topic:
-            topic_filters = {**base_filters, "topic": {"$eq": topic}}
-            chunks = self.pinecone.query_chunks(
-                query_text=enriched_query,
-                top_k=30,
-                filter_dict=topic_filters
-            )
-            
-            if self._topic_results_sufficient(chunks):
-                logger.info(f"Found {len(chunks)} chunks for generate_response (with topic filter: {topic})")
-                return chunks
-            
-            logger.info(f"Topic filter '{topic}' returned insufficient results ({len(chunks)} chunks)")
-            
-            # Strategy 2: Buscar por tags (el topic puede estar en tags del artículo)
-            topic_variations = self._get_topic_variations(topic)
-            tags_filters = {
-                "record_keeper": {"$eq": record_keeper},
-                "plan_type": {"$eq": plan_type},
-                "tags": {"$in": topic_variations}
+        for level in rk_cascade:
+            base_filters = {
+                **level["filters"],
+                "plan_type": {"$in": [plan_type, "all"]}
             }
-            chunks = self.pinecone.query_chunks(
-                query_text=enriched_query,
-                top_k=30,
-                filter_dict=tags_filters
+            
+            chunks = await self._search_with_topic_strategies(
+                enriched_query, base_filters, topic
+            )
+            
+            if self._rk_results_sufficient(
+                chunks,
+                min_chunks=self.TOPIC_FILTER_MIN_CHUNKS,
+                min_score=self.TOPIC_FILTER_MIN_SCORE
+            ):
+                logger.info(
+                    f"generate_response: found {len(chunks)} chunks "
+                    f"at cascade level '{level['label']}'"
+                )
+                return chunks
+            
+            logger.info(
+                f"generate_response: cascade level '{level['label']}' "
+                f"insufficient ({len(chunks)} chunks), trying next level"
+            )
+        
+        logger.warning("generate_response: no sufficient results across all cascade levels")
+        return chunks if chunks else []
+    
+    async def _search_with_topic_strategies(
+        self,
+        enriched_query: str,
+        base_filters: Dict[str, Any],
+        topic: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Apply topic-filtering strategies within a given base filter set.
+        
+        Strategy 1: Topic exact match
+        Strategy 2: Tags filter (with case variations)
+        Strategy 3: No topic filter (base filters only)
+        
+        Returns the first sufficient result set, or the last attempt.
+        """
+        if topic:
+            # Strategy 1: Topic exact match
+            topic_filters = {**base_filters, "topic": {"$eq": topic}}
+            chunks = await self._cached_query(
+                enriched_query, top_k=30, filter_dict=topic_filters
             )
             
             if self._topic_results_sufficient(chunks):
-                logger.info(f"Found {len(chunks)} chunks for generate_response (with tags filter: {topic_variations})")
+                logger.debug(f"Topic strategy 1 (exact): {len(chunks)} chunks")
                 return chunks
             
-            logger.info(f"Tags filter also returned insufficient results ({len(chunks)} chunks), falling back without topic")
+            # Strategy 2: Tags filter
+            topic_variations = self._get_topic_variations(topic)
+            tags_filters = {**base_filters, "tags": {"$in": topic_variations}}
+            chunks = await self._cached_query(
+                enriched_query, top_k=30, filter_dict=tags_filters
+            )
+            
+            if self._topic_results_sufficient(chunks):
+                logger.debug(f"Topic strategy 2 (tags): {len(chunks)} chunks")
+                return chunks
         
-        # Strategy 3: Fallback sin filtro de topic
-        chunks = self.pinecone.query_chunks(
-            query_text=enriched_query,
-            top_k=30,
-            filter_dict=base_filters
+        # Strategy 3: No topic filter
+        chunks = await self._cached_query(
+            enriched_query, top_k=30, filter_dict=base_filters
         )
-        
-        logger.info(f"Found {len(chunks)} chunks for generate_response (without topic filter)")
+        logger.debug(f"Topic strategy 3 (no topic): {len(chunks)} chunks")
         return chunks
     
     def _topic_results_sufficient(self, chunks: List[Dict[str, Any]]) -> bool:
@@ -707,14 +915,14 @@ class RAGEngine:
     GPT5_REASONING_MULTIPLIER = 4
     GPT5_MIN_COMPLETION_TOKENS = 2000
     
-    def _call_llm(
+    async def _call_llm(
         self,
         system_prompt: str,
         user_prompt: str,
         max_tokens: int
     ) -> str:
         """
-        Llama al LLM (OpenAI).
+        Llama al LLM (OpenAI) de forma asíncrona.
         
         Args:
             system_prompt: System prompt
@@ -727,22 +935,16 @@ class RAGEngine:
             Respuesta del LLM (string)
         """
         try:
-            # Preparar parámetros base
             params = {
                 "model": self.model,
                 "messages": [
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": user_prompt}
                 ],
-                "response_format": {"type": "json_object"}  # Todos los modelos soportan esto
+                "response_format": {"type": "json_object"}
             }
             
-            # Configuración específica por modelo
             if self.is_gpt5:
-                # GPT-5.2: max_completion_tokens incluye TANTO reasoning como content.
-                # Si pedimos 800 tokens y el modelo usa 780 en reasoning,
-                # solo quedan 20 para el JSON → respuesta vacía.
-                # Escalamos para dar suficiente headroom al reasoning.
                 scaled_tokens = max(
                     max_tokens * self.GPT5_REASONING_MULTIPLIER,
                     self.GPT5_MIN_COMPLETION_TOKENS
@@ -753,22 +955,19 @@ class RAGEngine:
                     f"| scaled max_completion_tokens={scaled_tokens}"
                 )
                 
-                # Agregar reasoning_effort si está configurado
                 if self.reasoning_effort:
                     params["reasoning_effort"] = self.reasoning_effort
                     logger.debug(f"Reasoning effort: {self.reasoning_effort}")
             else:
-                # GPT-4.x: Usa max_tokens y temperature
                 params["max_tokens"] = max_tokens
                 params["temperature"] = self.temperature
                 logger.debug(f"Llamando GPT-4 con max_tokens={max_tokens}, temperature={self.temperature}")
             
-            # Llamar API
-            response = self.openai_client.chat.completions.create(**params)
+            # Async call — does not block the event loop
+            response = await self.openai_client.chat.completions.create(**params)
             
             content = response.choices[0].message.content
             
-            # GPT-5.2 puede retornar content=None si agotó tokens en reasoning
             if content is None or content.strip() == "":
                 logger.warning(
                     f"LLM retornó contenido vacío/None. "

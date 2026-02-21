@@ -2,14 +2,11 @@
 Configuración de la API.
 
 Maneja variables de entorno y settings de la aplicación.
+Pydantic BaseSettings reads env vars automatically — no os.getenv needed.
 """
 
-import os
+from typing import List
 from pydantic_settings import BaseSettings
-from dotenv import load_dotenv
-
-# Cargar variables de entorno
-load_dotenv()
 
 
 class Settings(BaseSettings):
@@ -21,37 +18,45 @@ class Settings(BaseSettings):
     API_DESCRIPTION: str = "API para sistema RAG de Knowledge Base de Participant Advisory"
     
     # Server
-    API_HOST: str = os.getenv("API_HOST", "0.0.0.0")
-    API_PORT: int = int(os.getenv("API_PORT", "8000"))
-    ENVIRONMENT: str = os.getenv("ENVIRONMENT", "development")
+    API_HOST: str = "0.0.0.0"
+    API_PORT: int = 8000
+    ENVIRONMENT: str = "development"
     
     # Security
-    API_KEY: str = os.getenv("API_KEY", "")
-    # Para desarrollo, permitir todos los orígenes
-    # En producción, cambiar a lista específica de orígenes
-    ALLOWED_ORIGINS: list = ["*"]
+    API_KEY: str = ""
+    ALLOWED_ORIGINS: List[str] = ["*"]
     
     # OpenAI
-    OPENAI_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-    OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    OPENAI_TEMPERATURE: float = float(os.getenv("OPENAI_TEMPERATURE", "0.1"))
-    OPENAI_REASONING_EFFORT: str = os.getenv("OPENAI_REASONING_EFFORT", "medium")  # Para GPT-5.2
+    OPENAI_API_KEY: str = ""
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_TEMPERATURE: float = 0.1
+    OPENAI_REASONING_EFFORT: str = "medium"
     
     # Pinecone
-    PINECONE_API_KEY: str = os.getenv("PINECONE_API_KEY", "")
-    INDEX_NAME: str = os.getenv("INDEX_NAME", "kb-articles-production")
-    NAMESPACE: str = os.getenv("NAMESPACE", "kb_articles")
+    PINECONE_API_KEY: str = ""
+    INDEX_NAME: str = "kb-articles-production"
+    NAMESPACE: str = "kb_articles"
     
     # Logging
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")
+    LOG_LEVEL: str = "INFO"
     
     # Rate Limiting (requests per minute)
     RATE_LIMIT_REQUIRED_DATA: int = 60
     RATE_LIMIT_GENERATE_RESPONSE: int = 30
     
-    class Config:
-        env_file = ".env"
-        case_sensitive = True
+    model_config = {
+        "env_file": ".env",
+        "case_sensitive": True,
+    }
+
+    @property
+    def cors_origins(self) -> List[str]:
+        """Return CORS origins based on environment."""
+        if self.ENVIRONMENT == "production":
+            return [o for o in self.ALLOWED_ORIGINS if o != "*"] or [
+                "https://forusguide.onrender.com"
+            ]
+        return self.ALLOWED_ORIGINS
 
 
 # Singleton instance

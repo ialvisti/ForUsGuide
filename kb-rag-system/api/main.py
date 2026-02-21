@@ -51,10 +51,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Global instances (initialized on startup)
-rag_engine: RAGEngine = None
-pinecone_uploader: PineconeUploader = None
-
 
 # ============================================================================
 # Lifespan Context Manager
@@ -64,6 +60,7 @@ pinecone_uploader: PineconeUploader = None
 async def lifespan(app: FastAPI):
     """
     Lifespan context manager para startup y shutdown.
+    Stores instances on app.state instead of module-level globals.
     """
     # Startup
     logger.info("=" * 80)
@@ -75,23 +72,26 @@ async def lifespan(app: FastAPI):
         validate_settings()
         logger.info("✅ Configuration validated")
         
-        # Inicializar RAG Engine
-        global rag_engine
-        rag_engine = RAGEngine(
+        # Inicializar Pinecone Uploader → app.state (explicit settings)
+        app.state.pinecone_uploader = PineconeUploader(
+            api_key=settings.PINECONE_API_KEY,
+            index_name=settings.INDEX_NAME,
+            namespace=settings.NAMESPACE
+        )
+        logger.info("✅ Pinecone connection established")
+        
+        # Inicializar RAG Engine → app.state (shares Pinecone instance)
+        app.state.rag_engine = RAGEngine(
             openai_api_key=settings.OPENAI_API_KEY,
             model=settings.OPENAI_MODEL,
             temperature=settings.OPENAI_TEMPERATURE,
-            reasoning_effort=settings.OPENAI_REASONING_EFFORT if "gpt-5" in settings.OPENAI_MODEL.lower() else None
+            reasoning_effort=settings.OPENAI_REASONING_EFFORT if "gpt-5" in settings.OPENAI_MODEL.lower() else None,
+            pinecone_uploader=app.state.pinecone_uploader
         )
         logger.info("✅ RAG Engine initialized")
         
-        # Inicializar Pinecone Uploader
-        global pinecone_uploader
-        pinecone_uploader = PineconeUploader()
-        logger.info("✅ Pinecone connection established")
-        
         # Get stats
-        stats = pinecone_uploader.get_index_stats()
+        stats = app.state.pinecone_uploader.get_index_stats()
         logger.info(f"📊 Total vectors in index: {stats.get('total_vectors', 0)}")
         
         logger.info("=" * 80)
@@ -121,10 +121,10 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS Middleware
+# CORS Middleware — uses environment-aware origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.ALLOWED_ORIGINS,
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -142,7 +142,7 @@ if UI_DIR.exists():
 
 
 # ============================================================================
-# Dependency Functions
+# Dependency Functions (read from app.state, not globals)
 # ============================================================================
 
 async def verify_api_key(request: Request):
@@ -150,24 +150,26 @@ async def verify_api_key(request: Request):
     await authenticate_request(request)
 
 
-def get_rag_engine() -> RAGEngine:
-    """Dependency para obtener RAG engine."""
-    if rag_engine is None:
+def get_rag_engine(request: Request) -> RAGEngine:
+    """Dependency para obtener RAG engine from app.state."""
+    engine = getattr(request.app.state, "rag_engine", None)
+    if engine is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="RAG Engine not initialized"
         )
-    return rag_engine
+    return engine
 
 
-def get_pinecone() -> PineconeUploader:
-    """Dependency para obtener Pinecone uploader."""
-    if pinecone_uploader is None:
+def get_pinecone(request: Request) -> PineconeUploader:
+    """Dependency para obtener Pinecone uploader from app.state."""
+    uploader = getattr(request.app.state, "pinecone_uploader", None)
+    if uploader is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Pinecone not initialized"
         )
-    return pinecone_uploader
+    return uploader
 
 
 # ============================================================================
@@ -271,8 +273,8 @@ async def required_data_endpoint(
     try:
         logger.info(f"Required data request | Topic: {request.topic} | RK: {request.record_keeper}")
         
-        # Llamar RAG engine
-        result = engine.get_required_data(
+        # Llamar RAG engine (async)
+        result = await engine.get_required_data(
             inquiry=request.inquiry,
             record_keeper=request.record_keeper,
             plan_type=request.plan_type,
@@ -282,7 +284,6 @@ async def required_data_endpoint(
         
         logger.info(f"Required data completed | Confidence: {result.confidence}")
         
-        # Convertir dataclass a dict para Pydantic
         return RequiredDataResponse(
             article_reference=result.article_reference,
             required_fields=result.required_fields,
@@ -291,10 +292,10 @@ async def required_data_endpoint(
         )
     
     except Exception as e:
-        logger.error(f"Error in required_data endpoint: {e}")
+        logger.exception("Error in required_data endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing request: {str(e)}"
+            detail="An error occurred while processing the required-data request."
         )
 
 
@@ -334,8 +335,8 @@ async def generate_response_endpoint(
             f"Max tokens: {request.max_response_tokens}"
         )
         
-        # Llamar RAG engine
-        result = engine.generate_response(
+        # Llamar RAG engine (async)
+        result = await engine.generate_response(
             inquiry=request.inquiry,
             record_keeper=request.record_keeper,
             plan_type=request.plan_type,
@@ -351,7 +352,6 @@ async def generate_response_endpoint(
             f"Confidence: {result.confidence}"
         )
         
-        # Convertir dataclass a dict para Pydantic
         return GenerateResponseResult(
             decision=result.decision,
             confidence=result.confidence,
@@ -360,10 +360,10 @@ async def generate_response_endpoint(
         )
     
     except Exception as e:
-        logger.error(f"Error in generate_response endpoint: {e}")
+        logger.exception("Error in generate_response endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error processing request: {str(e)}"
+            detail="An error occurred while generating the response."
         )
 
 
@@ -379,35 +379,43 @@ async def list_chunks_endpoint(
     """
     Lista chunks de Pinecone con filtros opcionales.
     
-    Permite filtrar chunks por:
-    - article_id: ID del artículo
-    - tier: critical, high, medium, low
-    - chunk_type: business_rules, faqs, steps, etc.
-    - limit: número máximo de resultados
+    Uses Pinecone's list + fetch API (no semantic search) when an article_id
+    is provided. Falls back to semantic search only when no article_id is given.
     
     **No requiere autenticación** (endpoint público para UI)
     """
     try:
         logger.info(f"List chunks request | Filters: article_id={request.article_id}, tier={request.tier}, type={request.chunk_type}")
         
-        # Construir filtro para Pinecone
-        filter_dict = {}
-        
         if request.article_id:
-            filter_dict["article_id"] = {"$eq": request.article_id}
-        
-        if request.tier:
-            filter_dict["chunk_tier"] = {"$eq": request.tier}
-        
-        if request.chunk_type:
-            filter_dict["chunk_type"] = {"$eq": request.chunk_type}
-        
-        # Hacer query a Pinecone
-        raw_chunks = pinecone.query_chunks(
-            query_text="list chunks",
-            top_k=request.limit,
-            filter_dict=filter_dict if filter_dict else None
-        )
+            # Preferred path: list + fetch (no semantic search, deterministic)
+            raw_chunks = pinecone.list_and_fetch_chunks(
+                prefix=request.article_id,
+                limit=request.limit,
+                tier=request.tier,
+                chunk_type=request.chunk_type
+            )
+        else:
+            # Fallback: semantic search with contextual query
+            query_parts = []
+            if request.tier:
+                query_parts.append(f"{request.tier} priority")
+            if request.chunk_type:
+                query_parts.append(f"{request.chunk_type}")
+            query_parts.append("knowledge base article content")
+            query_text = " ".join(query_parts)
+            
+            filter_dict = {}
+            if request.tier:
+                filter_dict["chunk_tier"] = {"$eq": request.tier}
+            if request.chunk_type:
+                filter_dict["chunk_type"] = {"$eq": request.chunk_type}
+            
+            raw_chunks = pinecone.query_chunks(
+                query_text=query_text,
+                top_k=request.limit,
+                filter_dict=filter_dict if filter_dict else None
+            )
         
         # Convertir a modelo Pydantic
         chunks = []
@@ -437,10 +445,10 @@ async def list_chunks_endpoint(
         )
     
     except Exception as e:
-        logger.error(f"Error in list_chunks endpoint: {e}")
+        logger.exception("Error in list_chunks endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error listing chunks: {str(e)}"
+            detail="An error occurred while listing chunks."
         )
 
 
@@ -455,10 +463,6 @@ async def index_stats_endpoint(
     """
     Obtiene estadísticas del índice de Pinecone.
     
-    Retorna:
-    - Total de vectores
-    - Información de namespaces
-    
     **No requiere autenticación** (endpoint público para UI)
     """
     try:
@@ -470,10 +474,10 @@ async def index_stats_endpoint(
         )
     
     except Exception as e:
-        logger.error(f"Error getting index stats: {e}")
+        logger.exception("Error getting index stats")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error getting stats: {str(e)}"
+            detail="An error occurred while retrieving index stats."
         )
 
 

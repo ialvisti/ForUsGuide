@@ -12,16 +12,10 @@ import os
 import time
 import logging
 from typing import List, Dict, Any, Optional
-from dotenv import load_dotenv
 from pinecone import Pinecone
 from tqdm import tqdm
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Cargar variables de entorno
-load_dotenv()
 
 
 class PineconeUploader:
@@ -302,9 +296,7 @@ class PineconeUploader:
             return chunks
             
         except Exception as e:
-            logger.error(f"Error en query: {e}")
-            import traceback
-            traceback.print_exc()
+            logger.exception("Error en query")
             return []
     
     def get_article_chunks(
@@ -322,14 +314,91 @@ class PineconeUploader:
         Returns:
             Lista de chunks del artículo
         """
-        # Hacer una query genérica con filtro por article_id
-        # Pinecone con embeddings integrados requiere text no vacío
-        return self.query_chunks(
-            query_text="article information",  # Query genérico
-            top_k=1000,  # Suficiente para cualquier artículo
-            filter_dict={"article_id": {"$eq": article_id}},
-            include_metadata=include_metadata
-        )
+        return self.list_and_fetch_chunks(prefix=article_id)
+    
+    def list_and_fetch_chunks(
+        self,
+        prefix: Optional[str] = None,
+        limit: int = 100,
+        tier: Optional[str] = None,
+        chunk_type: Optional[str] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        List chunks using Pinecone's list + fetch API (no semantic search).
+        
+        Unlike query_chunks, this does NOT perform semantic search — it
+        lists vector IDs by prefix and fetches their metadata. Filtering
+        by tier/chunk_type is done in-memory after fetching.
+        
+        Args:
+            prefix: ID prefix to filter by (e.g., article_id)
+            limit: Maximum number of chunks to return
+            tier: Optional tier filter (critical, high, medium, low)
+            chunk_type: Optional chunk_type filter
+        
+        Returns:
+            Lista de chunks with id, score=1.0, and metadata
+        """
+        try:
+            # Collect vector IDs via paginated list()
+            all_ids: List[str] = []
+            list_kwargs: Dict[str, Any] = {"namespace": self.namespace}
+            if prefix:
+                list_kwargs["prefix"] = prefix
+            
+            for page in self.index.list(**list_kwargs):
+                if isinstance(page, list):
+                    all_ids.extend(page)
+                elif hasattr(page, 'vectors'):
+                    all_ids.extend(v.get('id', v) if isinstance(v, dict) else v for v in page.vectors)
+                else:
+                    all_ids.extend(page)
+                
+                if len(all_ids) >= limit * 2:
+                    break
+            
+            if not all_ids:
+                logger.info("list_and_fetch_chunks: no IDs found")
+                return []
+            
+            # Fetch in batches of 100 (Pinecone fetch limit)
+            chunks: List[Dict[str, Any]] = []
+            fetch_batch_size = 100
+            
+            for i in range(0, len(all_ids), fetch_batch_size):
+                batch_ids = all_ids[i:i + fetch_batch_size]
+                fetch_result = self.index.fetch(ids=batch_ids, namespace=self.namespace)
+                
+                vectors = fetch_result.vectors if hasattr(fetch_result, 'vectors') else {}
+                for vec_id, vec in vectors.items():
+                    metadata = {}
+                    if hasattr(vec, 'metadata') and vec.metadata:
+                        metadata = dict(vec.metadata)
+                    
+                    # In-memory filtering
+                    if tier and metadata.get('chunk_tier') != tier:
+                        continue
+                    if chunk_type and metadata.get('chunk_type') != chunk_type:
+                        continue
+                    
+                    chunks.append({
+                        "id": vec_id,
+                        "score": 1.0,
+                        "metadata": metadata
+                    })
+                    
+                    if len(chunks) >= limit:
+                        break
+                
+                if len(chunks) >= limit:
+                    break
+            
+            logger.info(f"list_and_fetch_chunks: returned {len(chunks)} chunks")
+            return chunks
+            
+        except Exception as e:
+            logger.exception("Error in list_and_fetch_chunks")
+            return []
     
     def get_index_stats(self) -> Dict[str, Any]:
         """
@@ -361,6 +430,8 @@ class PineconeUploader:
 
 def main():
     """Función de prueba."""
+    from dotenv import load_dotenv
+    load_dotenv()
     uploader = PineconeUploader()
     
     # Probar con chunk de ejemplo

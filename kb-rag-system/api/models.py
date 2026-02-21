@@ -43,11 +43,14 @@ class RequiredDataRequest(BaseModel):
         description="La consulta del participante"
     )
     
-    record_keeper: str = Field(
-        ...,
-        min_length=2,
+    record_keeper: Optional[str] = Field(
+        default=None,
         max_length=100,
-        description="Record keeper (ej: 'LT Trust', 'Vanguard')",
+        description=(
+            "Record keeper (ej: 'LT Trust', 'Vanguard'). "
+            "When provided, RK-specific articles are prioritized. "
+            "When omitted, global articles are searched first."
+        ),
         examples=["LT Trust", "Vanguard", "Fidelity"]
     )
     
@@ -78,6 +81,15 @@ class RequiredDataRequest(BaseModel):
             raise ValueError("Inquiry cannot be empty")
         return v.strip()
     
+    @field_validator('record_keeper')
+    @classmethod
+    def validate_record_keeper(cls, v: Optional[str]) -> Optional[str]:
+        """Normaliza record_keeper: strip whitespace, treat empty string as None."""
+        if v is None:
+            return None
+        v = v.strip()
+        return v if v else None
+    
     @field_validator('topic')
     @classmethod
     def validate_topic(cls, v: str) -> str:
@@ -95,11 +107,13 @@ class GenerateResponseRequest(BaseModel):
         description="La consulta del participante"
     )
     
-    record_keeper: str = Field(
-        ...,
-        min_length=2,
+    record_keeper: Optional[str] = Field(
+        default=None,
         max_length=100,
-        description="Record keeper"
+        description=(
+            "Record keeper. When provided, RK-specific articles are prioritized. "
+            "When omitted, global articles are searched first."
+        )
     )
     
     plan_type: str = Field(
@@ -145,6 +159,15 @@ class GenerateResponseRequest(BaseModel):
         if not v.strip():
             raise ValueError("Inquiry cannot be empty")
         return v.strip()
+    
+    @field_validator('record_keeper')
+    @classmethod
+    def validate_record_keeper(cls, v: Optional[str]) -> Optional[str]:
+        """Normaliza record_keeper: strip whitespace, treat empty string as None."""
+        if v is None:
+            return None
+        v = v.strip()
+        return v if v else None
     
     @field_validator('topic')
     @classmethod
@@ -316,13 +339,13 @@ class ChunkMetadata(BaseModel):
     article_id: str
     article_title: str
     description: Optional[str] = None
-    record_keeper: str
-    plan_type: str
+    record_keeper: Optional[str] = None
+    plan_type: Optional[str] = None
     scope: Optional[str] = None
     tags: Optional[List[str]] = None
     
     # Topics
-    topic: str
+    topic: Optional[str] = None
     subtopics: Optional[List[str]] = None
     
     # Metadata del chunk
@@ -331,6 +354,7 @@ class ChunkMetadata(BaseModel):
     chunk_category: str
     chunk_index: Optional[int] = None
     content: str
+    content_hash: Optional[str] = None
     specific_topics: Optional[List[str]] = None
     
     # Fechas (disponibles cuando el artículo las incluye)

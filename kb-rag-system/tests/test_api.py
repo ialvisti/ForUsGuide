@@ -6,7 +6,7 @@ Tests de integración para los endpoints de la API.
 
 import pytest
 from fastapi.testclient import TestClient
-from unittest.mock import patch, Mock
+from unittest.mock import patch, Mock, AsyncMock
 import os
 
 
@@ -28,11 +28,22 @@ def mock_env(test_api_key, monkeypatch):
 
 @pytest.fixture
 def client(mock_env):
-    """Test client para FastAPI."""
-    with patch('api.main.RAGEngine'), \
-         patch('api.main.PineconeUploader'):
+    """Test client for FastAPI.
+    
+    Patches constructors + validate_settings so the lifespan runs
+    successfully and stores mocked instances on app.state.
+    Uses context-manager form so lifespan events fire correctly.
+    """
+    mock_engine = Mock()
+    mock_pinecone = Mock()
+    mock_pinecone.get_index_stats.return_value = {'total_vectors': 0}
+    
+    with patch('api.main.validate_settings'), \
+         patch('api.main.RAGEngine', return_value=mock_engine), \
+         patch('api.main.PineconeUploader', return_value=mock_pinecone):
         from api.main import app
-        return TestClient(app)
+        with TestClient(app) as c:
+            yield c
 
 
 class TestHealthEndpoint:
@@ -40,17 +51,18 @@ class TestHealthEndpoint:
     
     def test_health_check_success(self, client):
         """Test health check exitoso."""
-        with patch('api.main.pinecone_uploader') as mock_pinecone:
-            mock_pinecone.get_index_stats.return_value = {'total_vectors': 33}
-            
-            response = client.get("/health")
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert data['status'] in ['healthy', 'degraded']
-            assert 'version' in data
-            assert 'pinecone_connected' in data
-            assert 'openai_configured' in data
+        client.app.state.pinecone_uploader.get_index_stats.return_value = {
+            'total_vectors': 33
+        }
+        
+        response = client.get("/health")
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert data['status'] in ['healthy', 'degraded']
+        assert 'version' in data
+        assert 'pinecone_connected' in data
+        assert 'openai_configured' in data
 
 
 class TestRootEndpoint:
@@ -122,25 +134,27 @@ class TestRequiredDataEndpoint:
         mock_response.confidence = 0.9
         mock_response.metadata = {}
         
-        with patch('api.main.rag_engine') as mock_engine:
-            mock_engine.get_required_data.return_value = mock_response
-            
-            response = client.post(
-                "/api/v1/required-data",
-                json={
-                    "inquiry": "I want to rollover my 401k balance",
-                    "record_keeper": "LT Trust",
-                    "plan_type": "401(k)",
-                    "topic": "rollover"
-                },
-                headers={"X-API-Key": test_api_key}
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert 'article_reference' in data
-            assert 'required_fields' in data
-            assert 'confidence' in data
+        # The mock is on app.state from the lifespan; set async return value
+        client.app.state.rag_engine.get_required_data = AsyncMock(
+            return_value=mock_response
+        )
+        
+        response = client.post(
+            "/api/v1/required-data",
+            json={
+                "inquiry": "I want to rollover my 401k balance",
+                "record_keeper": "LT Trust",
+                "plan_type": "401(k)",
+                "topic": "rollover"
+            },
+            headers={"X-API-Key": test_api_key}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert 'article_reference' in data
+        assert 'required_fields' in data
+        assert 'confidence' in data
 
 
 class TestGenerateResponseEndpoint:
@@ -183,31 +197,33 @@ class TestGenerateResponseEndpoint:
         }
         mock_response.metadata = {}
         
-        with patch('api.main.rag_engine') as mock_engine:
-            mock_engine.generate_response.return_value = mock_response
-            
-            response = client.post(
-                "/api/v1/generate-response",
-                json={
-                    "inquiry": "How do I complete a rollover?",
-                    "record_keeper": "LT Trust",
-                    "plan_type": "401(k)",
-                    "topic": "rollover",
-                    "collected_data": {
-                        "participant_data": {"balance": "$1000"},
-                        "plan_data": {}
-                    },
-                    "max_response_tokens": 1500,
-                    "total_inquiries_in_ticket": 1
+        # The mock is on app.state from the lifespan; set async return value
+        client.app.state.rag_engine.generate_response = AsyncMock(
+            return_value=mock_response
+        )
+        
+        response = client.post(
+            "/api/v1/generate-response",
+            json={
+                "inquiry": "How do I complete a rollover?",
+                "record_keeper": "LT Trust",
+                "plan_type": "401(k)",
+                "topic": "rollover",
+                "collected_data": {
+                    "participant_data": {"balance": "$1000"},
+                    "plan_data": {}
                 },
-                headers={"X-API-Key": test_api_key}
-            )
-            
-            assert response.status_code == 200
-            data = response.json()
-            assert 'decision' in data
-            assert 'confidence' in data
-            assert 'response' in data
+                "max_response_tokens": 1500,
+                "total_inquiries_in_ticket": 1
+            },
+            headers={"X-API-Key": test_api_key}
+        )
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert 'decision' in data
+        assert 'confidence' in data
+        assert 'response' in data
 
 
 class TestRequestIDTracking:

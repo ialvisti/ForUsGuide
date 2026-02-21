@@ -13,7 +13,6 @@ from typing import Dict, Any, List
 import logging
 import hashlib
 
-logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
@@ -131,10 +130,16 @@ class KBChunker:
             "content_hash": content_hash
         }
         
-        # Limpiar valores None del metadata.
-        # Pinecone no indexa valores null, lo que causa errores o campos
-        # invisibles para filtros. Artículos con scope="global" tienen
-        # record_keeper=None, por ejemplo.
+        # Global articles have plan_type=None / record_keeper=None.
+        # Pinecone doesn't index null values, so filtered queries like
+        # plan_type=$eq:"401(k)" silently skip records without the field.
+        # Use sentinel "all" so these articles match $in filters.
+        if metadata.get("plan_type") is None:
+            metadata["plan_type"] = "all"
+        if metadata.get("record_keeper") is None:
+            metadata["record_keeper"] = "all"
+        
+        # Strip remaining None values (e.g. description, optional fields).
         metadata = {k: v for k, v in metadata.items() if v is not None}
         
         return {

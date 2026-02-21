@@ -660,15 +660,15 @@
                         </div>
                         <div class="metadata-item">
                             <span class="metadata-label">Record Keeper:</span>
-                            <span class="metadata-value">${chunk.metadata.record_keeper}</span>
+                            <span class="metadata-value">${chunk.metadata.record_keeper || 'Global'}</span>
                         </div>
                         <div class="metadata-item">
                             <span class="metadata-label">Plan Type:</span>
-                            <span class="metadata-value">${chunk.metadata.plan_type}</span>
+                            <span class="metadata-value">${chunk.metadata.plan_type || 'All'}</span>
                         </div>
                         <div class="metadata-item">
                             <span class="metadata-label">Topic:</span>
-                            <span class="metadata-value">${chunk.metadata.topic}</span>
+                            <span class="metadata-value">${chunk.metadata.topic || '—'}</span>
                         </div>
                         <div class="metadata-item">
                             <span class="metadata-label">Category:</span>

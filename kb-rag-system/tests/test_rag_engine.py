@@ -15,7 +15,7 @@ class TestRAGEngine:
     @pytest.fixture
     def mock_rag_engine(self):
         """Fixture para RAG engine con mocks."""
-        with patch('data_pipeline.rag_engine.OpenAI'), \
+        with patch('data_pipeline.rag_engine.AsyncOpenAI'), \
              patch('data_pipeline.rag_engine.PineconeUploader'):
             engine = RAGEngine(
                 openai_api_key="test-key",
@@ -96,7 +96,7 @@ class TestConfidenceCalculation:
     @pytest.fixture
     def engine(self):
         """Engine para tests."""
-        with patch('data_pipeline.rag_engine.OpenAI'), \
+        with patch('data_pipeline.rag_engine.AsyncOpenAI'), \
              patch('data_pipeline.rag_engine.PineconeUploader'):
             return RAGEngine(openai_api_key="test")
     

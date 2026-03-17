@@ -1,0 +1,519 @@
+{
+    "metadata": {
+        "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+        "title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+        "description": "Explains Required Minimum Distributions (RMDs), including who must take them, how the starting age varies by birth year under SECURE 2.0, how employment status and 5% ownership affect the still-working exception, when distributions must begin (Required Beginning Date rules), how RMDs are calculated, penalties for missed RMDs, key annual deadlines, distribution methods, and tax considerations. Also covers how Roth conversions within a 401(k) can reduce or eliminate future RMDs on the converted balance, including the 5-year holding rule for tax-free withdrawals, the rule that RMD amounts cannot be converted, and considerations around rolling Roth 401(k) funds to a Roth IRA for consolidation or legacy planning. Notes Roth IRA and Roth 401(k) lifetime exemptions and encourages contacting ForUsAll support for help with the distribution process.",
+        "topic": "distribution",
+        "subtopics": [
+            "required_minimum_distribution",
+            "secure_2_0",
+            "required_beginning_date",
+            "still_working_exception",
+            "rmd_penalties",
+            "rmd_deadlines",
+            "rmd_calculation",
+            "roth_conversion_rmd_impact"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": "401(k)",
+        "scope": "global",
+        "tags": [
+            "RMD Fidelity --> RMD",
+            "Taxes"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-02-17",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "eligibility",
+                "rules": [
+                    "An RMD is generally required once the 401(k) account owner reaches age 73 (or age 75 if born in 1960 or later, under SECURE Act 2.0).",
+                    "Roth 401(k) RMDs became exempt through the SECURE Act 2.0 as of 2024.",
+                    "If the participant is still actively employed by the sponsoring employer past the applicable RMD age (age 73, or age 75 if born in 1960 or later), and the plan permits, RMDs from that current employer plan may be delayed until the year the participant retires.",
+                    "The still-working exception applies only to the current employer's plan and does not apply to accounts from former employers.",
+                    "If the participant owns 5% or more of the business sponsoring the plan, the still-working exception does not apply.",
+                    "Ownership for the 5% rule includes family-attributed ownership (shares held by a spouse, child, or parent may count toward ownership percentage)."
+                ]
+            },
+            {
+                "category": "timing",
+                "rules": [
+                    "The Required Beginning Date (RBD) is generally April 1 of the year after turning the applicable RMD age (age 73, or age 75 if born in 1960 or later).",
+                    "First RMD year rule: the first RMD can be delayed until April 1 of the year following the year the participant reaches the applicable RMD age.",
+                    "Subsequent RMDs must be withdrawn by December 31 each year.",
+                    "Delaying the first RMD may result in taking two distributions in one year, which could affect taxes."
+                ]
+            },
+            {
+                "category": "calculation",
+                "rules": [
+                    "RMDs are calculated using the account balance as of December 31 of the previous year and an IRS life expectancy factor.",
+                    "The IRS life expectancy factor comes from the Uniform Lifetime Table or Joint Life Table (if applicable).",
+                    "Most 401(k) providers, including ForUsAll, typically handle the calculation, but the participant should review and verify accuracy."
+                ]
+            },
+            {
+                "category": "penalties",
+                "rules": [
+                    "Missing an RMD triggers an excise tax penalty on the missed amount.",
+                    "Under SECURE 2.0, the penalty is reduced to 25%, and may be reduced to 10% if corrected promptly.",
+                    "Previously, the excise tax penalty was 50% of the missed amount."
+                ]
+            },
+            {
+                "category": "taxation",
+                "rules": [
+                    "RMDs are taxed as ordinary income.",
+                    "Participants should plan for taxes by ensuring withholding is set up or preparing for a potential tax payment."
+                ]
+            },
+            {
+                "category": "distribution_methods",
+                "rules": [
+                    "Participants may take the RMD as a lump sum or as installments throughout the year."
+                ]
+            },
+            {
+                "category": "roth_conversion_and_rmds",
+                "rules": [
+                    "When a participant converts pre-tax 401(k) funds to Roth within the plan, the pre-tax balance is reduced, which lowers future taxable RMDs.",
+                    "Starting in 2024, funds converted to Roth within a 401(k) are exempt from RMDs during the account owner's lifetime.",
+                    "Converted funds must be held for at least 5 years to qualify for tax-free Roth withdrawals.",
+                    "RMD amounts cannot be converted to Roth; the RMD for a given year must be taken separately and first, before any Roth conversion is processed.",
+                    "Rolling over Roth 401(k) funds to a Roth IRA is no longer necessary to avoid RMDs (due to the SECURE Act 2.0 change), but may still be beneficial for consolidation or legacy planning purposes."
+                ]
+            }
+        ],
+        "fees": [],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Determine whether the participant is required to take an RMD by confirming whether the participant has reached the applicable RMD age (age 73, or age 75 if born in 1960 or later) and whether the account type is subject to 401(k) RMD rules.",
+                "notes": "The RMD starting age is 73 for most participants, but increases to 75 for those born in 1960 or later under SECURE Act 2.0. Roth 401(k) RMDs became exempt as of 2024. The still-working exception may apply to a current employer plan only if the plan permits and the participant is not a 5% owner."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Identify the participant's Required Beginning Date (RBD) and the applicable deadlines for the first and subsequent RMDs.",
+                "notes": "First RMD can be delayed until April 1 of the year after reaching the applicable RMD age (age 73, or age 75 if born in 1960 or later). Subsequent RMDs must be taken by December 31 each year. Delaying the first RMD can cause two distributions in one year."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Confirm how the RMD amount is calculated using the prior year-end account balance and the IRS life expectancy factor, and encourage review of the calculated amount for accuracy.",
+                "notes": "Calculation uses the account balance as of December 31 of the previous year and an IRS life expectancy factor from the Uniform Lifetime Table or Joint Life Table (if applicable)."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Request the RMD form by phone and guide the participant to complete and submit it.",
+                "notes": "The RMD form must be requested through a phone call to ForUsAll; guide the participant to request the form, then complete and submit it to request the RMD."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If an RMD was missed, explain that penalties may apply and that correcting promptly may reduce the penalty under SECURE 2.0.",
+                "notes": "Penalty is 25% and potentially 10% if corrected promptly."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant asks about reducing or eliminating future RMDs, explain how in-plan Roth conversions can lower future taxable RMDs and that Roth funds are exempt from RMDs as of 2024. Note the 5-year holding rule, the rule that RMD amounts cannot be converted, and that the decision to convert depends on individual tax circumstances.",
+                "notes": "Do not advise whether a Roth conversion is the right decision for the participant. Mention that the current year's RMD must be taken separately and first before any conversion. If the participant is interested in pursuing a Roth conversion, guide them to contact ForUsAll support for next steps."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant is unsure whether they must take an RMD this year.",
+                "resolution": "Confirm whether the participant has reached the applicable RMD age (age 73, or age 75 if born in 1960 or later), and assess whether the still-working exception might apply (only for a current employer plan, only if the plan permits, and not for 5% owners)."
+            },
+            {
+                "issue": "Participant delayed their first RMD and is surprised by needing two distributions in one year.",
+                "resolution": "Explain that delaying the first RMD until April 1 of the following year can result in taking two distributions in one year (the delayed first-year RMD plus the current-year RMD due by December 31), which could affect taxes."
+            },
+            {
+                "issue": "Participant missed an RMD and is worried about penalties.",
+                "resolution": "Explain that missing an RMD triggers an excise tax penalty, which under SECURE 2.0 is 25% and may be reduced to 10% if corrected promptly."
+            },
+            {
+                "issue": "Participant asks whether a Roth conversion can eliminate their RMDs.",
+                "resolution": "Explain that converting pre-tax funds to Roth within the 401(k) reduces the pre-tax balance, which lowers future taxable RMDs. Starting in 2024, the converted Roth funds are exempt from RMDs. However, converted funds must be held for at least 5 years for tax-free withdrawals, and the RMD amount for a given year cannot be converted—it must be taken separately first."
+            },
+            {
+                "issue": "Participant wants to convert their RMD amount to Roth.",
+                "resolution": "Explain that the RMD for a given year must be taken separately and first before any Roth conversion can be processed. The RMD amount itself cannot be converted to Roth."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "Participant asks when RMDs start.",
+                "outcome": "RMDs generally start at age 73, or age 75 if born in 1960 or later (under SECURE Act 2.0). The first RMD can be delayed until April 1 of the year after reaching the applicable RMD age."
+            },
+            {
+                "scenario": "Participant is still working past RMD age and asks if they can delay taking an RMD from their current employer's 401(k).",
+                "outcome": "They may be able to delay RMDs from the current employer plan only if the plan permits and they are not a 5% (or more) owner; this exception does not apply to former employer plans."
+            },
+            {
+                "scenario": "Participant has Roth 401(k) funds and asks whether they must take RMDs.",
+                "outcome": "Roth 401(k) funds are exempt from RMDs during the account owner's lifetime as of 2024."
+            },
+            {
+                "scenario": "Participant asks whether converting pre-tax funds to Roth in their 401(k) will reduce their RMDs.",
+                "outcome": "Yes—converting pre-tax funds to Roth reduces the pre-tax balance, which lowers future taxable RMDs. Starting in 2024, the converted Roth funds are exempt from RMDs. The conversion is taxable in the year it occurs, and converted funds must be held for at least 5 years for tax-free withdrawals."
+            },
+            {
+                "scenario": "Participant wants to convert their entire pre-tax balance to Roth, including the current year's RMD amount.",
+                "outcome": "The RMD for the current year must be taken separately and first; it cannot be included in the Roth conversion. After the RMD is satisfied, the remaining pre-tax balance may be converted to Roth."
+            },
+            {
+                "scenario": "Participant asks whether they still need to roll their Roth 401(k) to a Roth IRA to avoid RMDs.",
+                "outcome": "No—as of 2024, Roth 401(k) funds are exempt from RMDs during the account owner's lifetime. Rolling to a Roth IRA is no longer necessary to avoid RMDs, but may still be useful for consolidation or legacy planning."
+            }
+        ],
+        "additional_notes": [
+            "The RMD starting age is determined by birth year under SECURE Act 2.0: age 73 for those born before 1960, and age 75 for those born in 1960 or later. All age references in this article should be interpreted using this rule.",
+            "Roth conversions can eliminate future RMDs on the converted balance, but a Roth conversion is a taxable event and the decision depends on individual tax circumstances. This article explains the mechanics but does not advise on whether a conversion is appropriate for a given participant.",
+            "Rolling Roth 401(k) funds to a Roth IRA is no longer necessary to avoid RMDs (as of 2024 under SECURE Act 2.0), but may still be beneficial for account consolidation or legacy planning."
+        ],
+        "faq_pairs": [
+            {
+                "question": "What is an RMD?",
+                "answer": "An RMD is the minimum amount that must be withdrawn annually from certain retirement accounts once the account owner reaches a specific age, to ensure tax-deferred savings eventually become taxable under IRS regulations."
+            },
+            {
+                "question": "Which accounts are subject to RMDs?",
+                "answer": "RMDs are required from tax-deferred employer-sponsored plans such as a 401(k)."
+            },
+            {
+                "question": "Are Roth accounts subject to RMDs?",
+                "answer": "Roth 401(k) funds are exempt from RMDs during the account owner's lifetime as of 2024."
+            },
+            {
+                "question": "When is the deadline for my first RMD and later RMDs?",
+                "answer": "The first RMD can be delayed until April 1 of the year following the year you reach the applicable RMD age (age 73, or age 75 if born in 1960 or later). Subsequent RMDs must be withdrawn by December 31 each year."
+            },
+            {
+                "question": "What happens if I miss an RMD?",
+                "answer": "Missing an RMD triggers an excise tax penalty on the missed amount. Under SECURE 2.0, the penalty is 25%, and it may be reduced to 10% if corrected promptly."
+            },
+            {
+                "question": "How are RMDs calculated?",
+                "answer": "RMDs are calculated using your account balance as of December 31 of the previous year and an IRS life expectancy factor from the Uniform Lifetime Table or Joint Life Table (if applicable)."
+            },
+            {
+                "question": "At what age do I have to start taking RMDs from my 401(k)?",
+                "answer": "The RMD starting age depends on your birth year. If you were born before 1960, RMDs begin at age 73. If you were born in 1960 or later, RMDs begin at age 75. This change was made under SECURE Act 2.0."
+            },
+            {
+                "question": "How does a Roth conversion affect my RMDs?",
+                "answer": "When you convert pre-tax 401(k) funds to Roth within the plan, your pre-tax balance decreases, which lowers your future taxable RMDs. Starting in 2024, the converted Roth funds are exempt from RMDs during your lifetime. Converted funds must be held for at least 5 years to qualify for tax-free Roth withdrawals."
+            },
+            {
+                "question": "Can I convert my RMD amount to Roth?",
+                "answer": "No. The RMD for a given year must be taken separately and first before any Roth conversion can be processed. You cannot convert the RMD amount itself to Roth."
+            },
+            {
+                "question": "Do I still need to roll my Roth 401(k) into a Roth IRA to avoid RMDs?",
+                "answer": "No. As of 2024, Roth 401(k) funds are exempt from RMDs during the account owner's lifetime under SECURE Act 2.0. Rolling over to a Roth IRA is no longer necessary to avoid RMDs, but may still be useful for consolidation or legacy planning."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Required Minimum Distribution (RMD)",
+                "definition": "The minimum amount that must be withdrawn annually from certain retirement accounts once the account owner reaches a specific age."
+            },
+            {
+                "term": "Required Beginning Date (RBD)",
+                "definition": "The latest date you can start taking RMDs, generally April 1 of the year after you reach the applicable RMD age (age 73, or age 75 if born in 1960 or later under SECURE Act 2.0)."
+            },
+            {
+                "term": "Still-working exception",
+                "definition": "A rule that may allow a participant who is still actively employed by the sponsoring employer past the applicable RMD age (age 73, or age 75 if born in 1960 or later) to delay RMDs from that employer's plan until the year they retire, if the plan permits."
+            },
+            {
+                "term": "5% ownership exception",
+                "definition": "A rule stating that if a participant owns 5% or more of the business sponsoring the plan, the still-working exception does not apply; ownership can include family-attributed ownership."
+            },
+            {
+                "term": "Excise tax penalty (missed RMD)",
+                "definition": "A tax penalty applied to the missed RMD amount when a required distribution is not taken; under SECURE 2.0 it is 25% and may be reduced to 10% if corrected promptly."
+            },
+            {
+                "term": "Roth conversion (in-plan)",
+                "definition": "The process of converting pre-tax 401(k) funds to Roth funds within the same plan. The converted amount is taxable in the year of conversion, but future qualified withdrawals from the Roth portion are tax-free."
+            },
+            {
+                "term": "5-year holding rule (Roth conversion)",
+                "definition": "A rule requiring that Roth-converted funds be held for at least 5 years from the year of conversion before withdrawals of earnings qualify as tax-free."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not guarantee that a participant can use the still-working exception unless the plan is confirmed to permit it.",
+                "Do not state an RMD age, RBD, or deadline that differs from what is described in this article: the applicable RMD age is 73 (or 75 if born in 1960 or later under SECURE Act 2.0).",
+                "Do not invent processing times, delivery times, or specific operational timelines for distributions, use the information as stated in the article 'lt:_how_to_request_a_401(k)_termination_cash_withdrawal_or_rollover'",
+                "Do not provide support contact details (email, phone, hours, URLs) other than what is listed in details.references.contact.",
+                "Do not guarantee a specific penalty reduction outcome beyond what the article states (25% and potentially 10% if corrected promptly).",
+                "Do not claim which IRS table must be used for a participant unless the article's applicability statement is sufficient (Uniform Lifetime Table or Joint Life Table if applicable).",
+                "Do not advise whether a Roth conversion is the right decision for a specific participant; that is a tax planning decision that depends on individual circumstances.",
+                "Do not state that an RMD amount can be converted to Roth; the RMD must be taken separately and first."
+            ],
+            "must_do_if_unsure": [
+                "If it is unclear whether the participant's plan permits delaying RMDs while still working, state that plan permission is required and do not confirm eligibility for the deferral without confirmation.",
+                "If the participant's age, employment status, ownership status, or account type is missing, request the needed information before concluding whether an RMD is required or when it must begin."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [
+                "lt:_how_to_request_a_401(k)_termination_cash_withdrawal_or_rollover",
+                "distribution_requests_for_small_account_balances",
+                "how_do_i_cancel_or_change_a_pending_distribution_request?",
+                "can_i_take_a_distribution_while_employed?"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Monday to Friday, 7 AM to 5 PM Pacific Time"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Participant date of birth",
+                    "meaning": "Used to determine whether the participant has reached the applicable RMD age (age 73, or age 75 if born in 1960 or later) and to apply the related required beginning date timing rules.",
+                    "example_values": [
+                        "1951-01-01",
+                        "1959-12-31",
+                        "1960-07-01"
+                    ],
+                    "why_needed": "Determines whether the participant has reached the applicable RMD age and which age threshold applies (73 or 75 based on birth year), informing first RMD timing guidance.",
+                    "source_note": "Supported by article section: Age Requirement",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant employment status with the sponsoring employer",
+                    "meaning": "Whether the participant is still actively employed by the employer sponsoring the plan.",
+                    "example_values": [
+                        "Active",
+                        "Terminated",
+                        "Deceased",
+                        "Ineligible"
+                    ],
+                    "why_needed": "Employment status is part of determining whether RMDs from a current employer plan may be deferred if the plan permits.",
+                    "source_note": "Supported by article section: Still-Working Exception",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Whether the participant owns 5% or more of the sponsoring business (including family-attributed ownership)",
+                    "meaning": "Determines whether the still-working exception is disallowed due to ownership rules.",
+                    "example_values": [
+                        "Participant owns less than 5% of the business"
+                    ],
+                    "why_needed": "If the participant owns 5% or more, the still-working exception does not apply.",
+                    "source_note": "Supported by article section: Ownership Exception",
+                    "source_type": "agent_input"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Account balance as of December 31 of the previous year",
+                    "meaning": "The prior year-end account balance used to calculate the RMD amount.",
+                    "example_values": [
+                        "$100,000.00",
+                        "$23,450.75"
+                    ],
+                    "why_needed": "Used in the RMD calculation formula described in the article.",
+                    "source_note": "Supported by article section: How Are RMDs Calculated?",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Whether the participant has Roth 401(k) funds or has completed an in-plan Roth conversion",
+                    "meaning": "Indicates whether the participant has funds that may be exempt from RMDs and whether Roth conversion guidance is relevant.",
+                    "example_values": [
+                        "Participant has both pre-tax and Roth 401(k) balances",
+                        "Participant converted $50,000 from pre-tax to Roth in 2024"
+                    ],
+                    "why_needed": "Helps determine whether to surface Roth conversion guidance and whether part of the participant's balance is already exempt from RMDs.",
+                    "source_note": "Supported by article section: Roth Conversion and RMDs",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Participant date of birth",
+                    "ask_participant": "What is your date of birth?",
+                    "agent_note": "Date of birth is needed to determine both whether the participant has reached the applicable RMD age and which threshold applies (age 73, or age 75 if born in 1960 or later). If only age is provided, confirm whether they were born before or in/after 1960 to determine the correct threshold."
+                },
+                {
+                    "missing_data_point": "Participant employment status with the sponsoring employer",
+                    "ask_participant": "Are you still actively employed by the employer sponsoring this plan?",
+                    "agent_note": "Employment status is part of determining whether RMDs from a current employer plan may be deferred if the plan permits it."
+                },
+                {
+                    "missing_data_point": "Whether the participant owns 5% or more of the sponsoring business (including family-attributed ownership)",
+                    "ask_participant": "Do you own 5% or more of the sponsoring business (including family-attributed ownership)?",
+                    "agent_note": "If the participant owns 5% or more, the still-working exception does not apply."
+                }
+            ],
+            "disambiguation_notes": [
+                "The still-working exception only applies to the current employer's plan and is only available if the plan permits it.",
+                "If the participant owns 5% or more (including family-attributed ownership), the still-working exception does not apply.",
+                "Pre-tax 401(k) funds are subject to RMDs; Roth 401(k) funds are exempt from RMDs during the account owner's lifetime as of 2024.",
+                "The applicable RMD starting age depends on birth year: age 73 for those born before 1960, age 75 for those born in 1960 or later (SECURE Act 2.0).",
+                "RMD amounts for a given year cannot be included in a Roth conversion; the RMD must be taken separately and first before any conversion is processed."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "Participant has reached the applicable RMD age (age 73, or age 75 if born in 1960 or later) for accounts subject to 401(k) RMD rules, unless a still-working deferral applies to a current employer plan and the plan permits it.",
+                "For a still-working deferral: participant is actively employed by the sponsoring employer, the plan permits deferral, and the participant is not a 5% (or more) owner (including family-attributed ownership)."
+            ],
+            "blocking_conditions": [
+                "Participant is a 5% (or more) owner of the sponsoring business (including family-attributed ownership) and is seeking to use the still-working exception."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "Age or date of birth is not known, so it cannot be determined whether the participant has reached the applicable RMD age (age 73, or age 75 if born in 1960 or later).",
+                    "missing_data_point": "Participant date of birth",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What is your age?"
+                },
+                {
+                    "condition": "Employment status with the sponsoring employer is not known, so it cannot be determined whether the still-working exception might apply.",
+                    "missing_data_point": "Participant employment status with the sponsoring employer",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Are you still actively employed by the employer sponsoring this plan?"
+                },
+                {
+                    "condition": "Ownership status is not known, so it cannot be determined whether the still-working exception is disallowed due to the 5% ownership rule.",
+                    "missing_data_point": "Whether the participant owns 5% or more of the sponsoring business (including family-attributed ownership)",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Are you a 5% (or more) owner of the sponsoring business (including family-attributed ownership)?"
+                }
+            ],
+            "allowed_conclusions": [
+                "The first RMD can be delayed until April 1 of the year after reaching the applicable RMD age (age 73, or age 75 if born in 1960 or later), and subsequent RMDs are due by December 31 each year.",
+                "Roth 401(k) funds are exempt from RMDs during the account owner's lifetime as of 2024.",
+                "If an RMD is missed, an excise tax penalty applies; under SECURE 2.0 it is 25% and may be reduced to 10% if corrected promptly.",
+                "A still-working participant may be able to delay RMDs from a current employer plan only if the plan permits and the participant is not a 5% (or more) owner.",
+                "Roth conversions within a 401(k) reduce the pre-tax balance and can eliminate future RMDs on the converted portion; starting in 2024, Roth funds are exempt from RMDs during the account owner's lifetime.",
+                "RMD amounts for a given year cannot be converted to Roth; the RMD must be taken separately and first.",
+                "Converted funds must be held for at least 5 years to qualify for tax-free Roth withdrawals."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee that a participant can defer RMDs while still working without confirming the plan permits the still-working exception.",
+                "Do not state that the still-working exception applies to former employer plans.",
+                "Do not provide processing timelines for distributions that are not stated in the article.",
+                "Do not provide support contact details (email, phone, hours, URLs) other than what is listed in details.references.contact.",
+                "Do not advise whether a Roth conversion is the right decision for a specific participant's tax situation."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "Your first RMD can be taken by April 1 of the year after you reach the applicable RMD age (age 73, or age 75 if you were born in 1960 or later); after that, RMDs are due by December 31 each year.",
+                    "You can take your RMD as a lump sum or in installments throughout the year.",
+                    "RMDs are taxed as ordinary income, so consider setting up withholding or preparing for a potential tax payment.",
+                    "If you have converted pre-tax funds to Roth within your 401(k), the converted portion is exempt from RMDs starting in 2024. Converted funds must be held for at least 5 years for tax-free withdrawals."
+                ],
+                "next_steps": [
+                    "Confirm the required beginning date and plan the first-year timing to avoid a potential two-distribution year.",
+                    "If considering a Roth conversion, remember that the current year's RMD must be taken separately and first before any conversion is processed."
+                ],
+                "warnings": [
+                    "Delaying your first RMD can result in taking two distributions in one year, which could affect your taxes.",
+                    "Missing an RMD may trigger an excise tax penalty (25% under SECURE 2.0, and potentially 10% if corrected promptly)."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not guarantee any plan-specific deferral permission unless confirmed.",
+                    "Do not promise any processing timelines not stated in the article.",
+                    "Do not advise whether a Roth conversion is the right decision for the participant's tax situation."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "We cannot confirm whether you are required to take an RMD or what your deadline is until we have the necessary information.",
+                    "Your employment status needs to be confirmed to determine whether the still-working exception might apply.",
+                    "Your ownership status needs to be confirmed to determine whether the still-working exception is disallowed due to the 5% ownership rule."
+                ],
+                "next_steps": [
+                    "Collect the missing details needed to determine whether an RMD applies and what the deadlines are.",
+                    "If the question involves delaying RMDs while still working, confirm whether the plan permits that deferral before concluding eligibility."
+                ],
+                "warnings": [
+                    "Do not delay action without confirming the applicable deadline (first RMD by April 1 of the following year, then December 31 annually)."
+                ],
+                "questions_to_ask": [
+                    "What is your age?",
+                    "Are you still actively employed by the employer sponsoring this plan?",
+                    "Do you own 5% or more of the business sponsoring the plan (including any family-attributed ownership such as shares held by a spouse, child, or parent)?"
+                ],
+                "what_not_to_say": [
+                    "Do not confirm that the still-working exception applies without confirming that the plan permits it."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "You have not yet reached the applicable RMD age (age 73, or age 75 if born in 1960 or later) so you are not required to take an RMD at this time.",
+                    "If you are still working past the applicable RMD age, you may be able to delay RMDs from your current employer plan if the plan permits it; however, if you own 5% (or more) of the sponsoring business, the still-working exception does not apply."
+                ],
+                "next_steps": [
+                    "Advise the participant to plan for when RMDs will be required based on their age and employment status."
+                ],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not say an RMD is required if the participant has not reached the applicable RMD age (age 73, or age 75 if born in 1960 or later)."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Whether you can delay RMDs while still working depends on whether your current employer's plan permits that deferral."
+                ],
+                "next_steps": [
+                    "Confirm whether the plan permits the still-working exception before concluding that the participant can defer RMDs from the current employer plan.",
+                    "If plan permission is confirmed, use employment status and ownership status to determine whether the deferral can apply."
+                ],
+                "warnings": [
+                    "Do not delay action without confirming the applicable deadline (first RMD by April 1 of the following year, then December 31 annually)."
+                ],
+                "questions_to_ask": [
+                    "Are you still actively employed by the employer sponsoring this plan?",
+                    "Do you own 5% or more of the business sponsoring the plan (including any family-attributed ownership such as shares held by a spouse, child, or parent)?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee the plan allows delaying RMDs while still working.",
+                    "Do not claim how the plan's permission is determined unless explicitly stated."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        }
+    }
+}

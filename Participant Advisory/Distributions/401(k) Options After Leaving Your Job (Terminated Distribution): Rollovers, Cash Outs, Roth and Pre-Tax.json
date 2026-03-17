@@ -1,0 +1,770 @@
+{
+    "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "description": "General education article for participants who have left, quit, been terminated, or separated from service and need to understand their 401(k) options. Covers three paths: leaving funds in the plan, taking a cash distribution (check or wire), or completing a rollover (direct or indirect) to an IRA or another qualified retirement plan. Explains minimum balance rules including mandatory cash-out for balances under $1,000 and automatic IRA rollover for balances between $1,000 and $7,000. Details tax consequences including 20% federal withholding, possible state withholding, the 10% early withdrawal penalty for participants under age 59½, 1099-R reporting, and the 60-day indirect rollover deadline. Also explains how Roth and pre-tax sources are automatically separated so different distribution options and payment methods (check or wire) can be selected for each source. This article is not record-keeper-specific and does not include portal steps or processing timelines.",
+        "topic": "distribution",
+        "subtopics": [
+            "rollover",
+            "cash_distribution",
+            "roth_401k",
+            "pre_tax_401k",
+            "tax_reporting",
+            "minimum_balance_rules",
+            "mandatory_cash_out",
+            "automatic_ira_rollover",
+            "early_withdrawal_penalty",
+            "federal_tax_withholding",
+            "60_day_rollover_rule",
+            "1099_r",
+            "direct_vs_indirect_rollover",
+            "wire_and_check_payment_methods"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": "401(k)",
+        "scope": "global",
+        "tags": [
+            "Withdrawal Request --> Terminated Distribution",
+            "Taxes",
+            "Advisory Session"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-03-11",
+        "source_last_updated": null,
+        "source_system": null
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "post_employment_options",
+                "rules": [
+                    "After leaving a job, the participant's 401(k) savings remain theirs, but they must decide what to do with them.",
+                    "The article describes three options after leaving a job: leave funds in the plan, take a cash distribution, or roll over the 401(k)."
+                ]
+            },
+            {
+                "category": "leave_funds_in_plan",
+                "rules": [
+                    "The participant may be able to leave the 401(k) account in the plan and keep it invested according to current selections.",
+                    "If the account balance is less than $7,000, the former employer has the right to remove the participant from the plan.",
+                    "If the balance is less than $1,000, the participant may receive a mandatory cash-out minus taxes and potential penalties.",
+                    "If the balance is between $1,000 and $7,000, the funds may be automatically rolled over into an IRA chosen by the plan provider.",
+                    "The participant can no longer make contributions to the plan after leaving the job.",
+                    "The participant must keep contact information up to date to receive future communications."
+                ]
+            },
+            {
+                "category": "cash_distribution_taxes",
+                "rules": [
+                    "A cash distribution means the funds are paid directly to the participant, typically by check or wire.",
+                    "A cash distribution typically involves 20% federal tax withholding.",
+                    "State taxes may also be withheld if the participant's state mandates it.",
+                    "If the participant is under age 59½, an additional 10% early withdrawal penalty may apply when filing taxes unless an exception applies.",
+                    "A 1099-R will be issued reflecting the distribution and taxes withheld and must be reported on the participant's next tax return."
+                ]
+            },
+            {
+                "category": "rollover_rules",
+                "rules": [
+                    "A rollover distribution allows the participant to move 401(k) funds to an IRA or another qualified retirement plan without paying immediate taxes or penalties if done properly.",
+                    "A rollover preserves retirement savings and keeps funds growing.",
+                    "A rollover can be completed by check mailed to the new IRA or plan provider or by wire transfer directly to the new account.",
+                    "If the rollover is not a direct transfer and the funds are paid to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties.",
+                    "A 1099-R will be issued the following year for rollover reporting purposes."
+                ]
+            },
+            {
+                "category": "roth_and_pre_tax_handling",
+                "rules": [
+                    "When a 401(k) distribution request is submitted, Roth and pre-tax funds are automatically separated.",
+                    "The participant can choose a specific distribution option and payment method individually for each source.",
+                    "An example provided is rolling pre-tax 401(k) funds to a Traditional IRA and Roth 401(k) funds to a Roth IRA."
+                ]
+            }
+        ],
+        "fees": [],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Confirm that the participant has recently left their job or is planning to leave and needs guidance on what to do with their 401(k).",
+                "notes": "The article is specifically about 401(k) savings after leaving a job."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Explain the three available paths described in the article: leave the funds in the plan, take a cash distribution, or complete a rollover.",
+                "notes": "Do not present these as equally available in every case without noting the minimum balance rules tied to leaving funds in the plan."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant wants to leave funds in the plan, explain that this may be allowed and that the account can remain invested according to current selections.",
+                "notes": "Also explain that no further contributions can be made and that contact information must be kept up to date."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Review the minimum balance rules for leaving funds in the plan: balances under $7,000 may be removed from the plan by the former employer, balances under $1,000 may be cashed out, and balances between $1,000 and $7,000 may be automatically rolled into an IRA chosen by the plan provider.",
+                "notes": "The article describes these as possible plan outcomes the former employer has the right to apply."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant is considering a cash distribution, explain that funds are paid directly to them, typically by check or wire.",
+                "notes": "This option gives immediate access to cash but can reduce long-term retirement savings."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Explain the tax consequences of a cash distribution, including typical 20% federal withholding, possible state withholding, and the possible 10% early withdrawal penalty for participants under age 59½ unless an exception applies.",
+                "notes": "Also state that a 1099-R will be issued for tax reporting."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant is considering a rollover, explain that funds can be moved to an IRA or another qualified retirement plan without immediate taxes or penalties if done properly.",
+                "notes": "This preserves retirement savings and continued tax-advantaged growth."
+            },
+            {
+                "step_number": 8,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Explain the two rollover payment methods described in the article: a check mailed to the new IRA or plan provider, or a wire transfer sent directly to the new account.",
+                "notes": "The article notes that wire transfers are faster but require specific instructions."
+            },
+            {
+                "step_number": 9,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the rollover will not be a direct transfer and funds will be paid to the participant first, explain the 60-day timing rule described in the article.",
+                "notes": "The article states that the rollover generally must be completed within 60 days to avoid taxes and penalties."
+            },
+            {
+                "step_number": 10,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant has both Roth and pre-tax sources, explain that the system automatically separates those sources and allows a distribution option and payment method to be selected for each source individually.",
+                "notes": "Use the article's example of pre-tax funds going to a Traditional IRA and Roth funds going to a Roth IRA when helpful."
+            },
+            {
+                "step_number": 11,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant is unsure which option is best or needs help understanding tax implications, provide the support contact options listed in the article.",
+                "notes": "Contact methods in the article are email, phone, and a 1-on-1 advisory scheduling link, along with support hours."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "The participant is unsure whether cashing out or rolling over is better.",
+                "resolution": "Explain that a cash distribution provides direct access to funds but typically triggers withholding and may trigger an early withdrawal penalty, while a rollover generally avoids immediate taxes and penalties if done properly."
+            },
+            {
+                "issue": "The participant assumes they can always leave funds in the former employer's plan.",
+                "resolution": "Explain that they may be able to leave funds in the plan, but balances under $7,000 may be removed from the plan by the former employer under the minimum balance rules described in the article."
+            },
+            {
+                "issue": "The participant has both Roth and pre-tax money and is unsure whether they must use the same option for both.",
+                "resolution": "Explain that the system automatically separates Roth and pre-tax funds and allows a separate distribution option and payment method to be selected for each source."
+            },
+            {
+                "issue": "The participant does not understand why they received or will receive a 1099-R.",
+                "resolution": "Explain that the article states a 1099-R is issued for both cash distributions and rollovers for tax reporting purposes."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A former employee wants to leave their 401(k) where it is and has a balance below $1,000.",
+                "outcome": "Explain that the article says they may receive a mandatory cash-out minus taxes and potential penalties."
+            },
+            {
+                "scenario": "A former employee wants to avoid immediate taxes and keep retirement savings growing.",
+                "outcome": "Explain that the article describes a rollover to an IRA or another qualified retirement plan as the option that generally avoids immediate taxes and penalties if done properly."
+            },
+            {
+                "scenario": "A participant has both pre-tax and Roth 401(k) funds and wants each to go to the appropriate IRA type.",
+                "outcome": "Explain that the article says the system automatically separates the sources, allowing pre-tax funds to be rolled to a Traditional IRA and Roth funds to be rolled to a Roth IRA."
+            },
+            {
+                "scenario": "A participant receives the distribution first instead of sending it directly to the new account.",
+                "outcome": "Explain that the article says the rollover generally must be completed within 60 days to avoid taxes and penalties."
+            },
+            {
+                "scenario": "A former employee wants to leave their 401(k) in the plan and has a balance of $5,500.",
+                "outcome": "Explain that the article says balances between $1,000 and $7,000 may be automatically rolled over into an IRA chosen by the plan provider."
+            },
+            {
+                "scenario": "A former employee wants to take cash from their 401(k) right away to cover immediate expenses.",
+                "outcome": "Explain that the article says a cash distribution pays the funds directly to the participant, but 20% federal tax withholding may apply and state taxes may also be withheld if required."
+            },
+            {
+                "scenario": "A participant under age 59½ wants to cash out their 401(k) after leaving their job.",
+                "outcome": "Explain that the article says an additional 10% early withdrawal penalty may apply when taxes are filed unless an exception applies."
+            },
+            {
+                "scenario": "A former employee wants to keep their current investments and delay making a decision about their 401(k).",
+                "outcome": "Explain that the article says they may be able to leave the account in the plan and it will continue to be invested according to their current selections."
+            },
+            {
+                "scenario": "A participant leaves their job and asks whether they can keep contributing to the same 401(k) account.",
+                "outcome": "Explain that the article says they will no longer be able to make contributions to the plan after leaving the job."
+            },
+            {
+                "scenario": "A participant wants to roll over their 401(k) and asks which payment methods are available.",
+                "outcome": "Explain that the article says rollovers are typically completed either by check mailed to the new IRA or plan provider or by wire transfer to the new account."
+            },
+            {
+                "scenario": "A participant wants the fastest rollover method available.",
+                "outcome": "Explain that the article describes wire transfer as a faster rollover method, but notes that it requires specific instructions."
+            },
+            {
+                "scenario": "A participant asks whether they will owe taxes immediately if they complete a rollover correctly.",
+                "outcome": "Explain that the article says no immediate tax is owed on a rollover when it is done properly."
+            },
+            {
+                "scenario": "A participant asks whether they will receive any tax form after taking a cash distribution.",
+                "outcome": "Explain that the article says they will receive a 1099-R reflecting the distribution and taxes withheld for reporting on their next tax return."
+            },
+            {
+                "scenario": "A former employee leaves their job and forgets to update their mailing address and other contact details.",
+                "outcome": "Explain that the article says they must keep their contact information up to date to receive future communications."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "tax_reporting",
+                "notes": [
+                    "A 1099-R is issued for cash distributions and reflects the distribution and taxes withheld.",
+                    "A 1099-R is also issued for rollover reporting purposes."
+                ]
+            },
+            {
+                "category": "rollover_timing",
+                "notes": [
+                    "If the rollover is not a direct transfer and funds are paid via mail check to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties."
+                ]
+            },
+            {
+                "category": "support_contacts",
+                "notes": [
+                    "Email support is available at help@forusall.com.",
+                    "Phone support is available at 844-401-2253.",
+                    "A 1-on-1 advisory session can be scheduled at www.calendly.com/forusalladvisory.",
+                    "Support hours are Monday-Friday, 7 AM - 5 PM PST."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "What happens to a 401(k) after leaving a job?",
+                "answer": "The participant's retirement savings remain theirs, but they need to decide whether to leave the funds in the plan, take a cash distribution, or roll over the account."
+            },
+            {
+                "question": "Can a participant leave their funds in the former employer's plan?",
+                "answer": "They may be able to leave the funds in the plan and keep them invested according to current selections, but if the balance is under $7,000 the former employer has the right to remove them from the plan."
+            },
+            {
+                "question": "What are the tax consequences of taking a cash distribution?",
+                "answer": "The article says 20% federal withholding may apply, state taxes may also be withheld if required, and if the participant is under age 59½ an additional 10% early withdrawal penalty may apply when taxes are filed unless an exception applies."
+            },
+            {
+                "question": "What is the main tax benefit of a rollover?",
+                "answer": "A rollover to an IRA or another qualified retirement plan can avoid immediate taxes or penalties if done properly."
+            },
+            {
+                "question": "Can Roth and pre-tax 401(k) funds be rolled over separately?",
+                "answer": "Yes. The article states that Roth and pre-tax funds are automatically separated during the distribution request so the participant can choose a separate distribution option and payment method for each source."
+            },
+            {
+                "question": "What happens if a rollover is not a direct transfer?",
+                "answer": "If the funds are paid to the participant first, the article says the rollover generally must be completed within 60 days to avoid taxes and penalties."
+            },
+            {
+                "question": "What happens if my 401(k) balance is less than $1,000 after I leave my job?",
+                "answer": "The article says that if the balance is less than $1,000, the participant may receive a mandatory cash-out minus taxes and potential penalties."
+            },
+            {
+                "question": "What happens if my 401(k) balance is between $1,000 and $7,000 after I leave my job?",
+                "answer": "The article says that if the balance is between $1,000 and $7,000, the funds may be automatically rolled over into an IRA chosen by the plan provider."
+            },
+            {
+                "question": "Can I still contribute to my old 401(k) after leaving my job?",
+                "answer": "No. The article says that after leaving the job, the participant will no longer be able to make contributions to the plan."
+            },
+            {
+                "question": "Why do I need to keep my contact information updated after leaving my job?",
+                "answer": "The article says the participant must keep contact information up to date in order to receive future communications."
+            },
+            {
+                "question": "How can a rollover be completed?",
+                "answer": "The article says rollovers are typically completed either by check mailed to the new IRA or plan provider or by wire transfer directly to the new account."
+            },
+            {
+                "question": "Is a wire transfer available for a rollover?",
+                "answer": "Yes. The article says a rollover can be completed by wire transfer directly to the new account, and notes that this is faster but requires specific instructions."
+            },
+            {
+                "question": "Will I receive a tax form after completing a rollover?",
+                "answer": "Yes. The article says a 1099-R will be issued the following year for reporting purposes."
+            },
+            {
+                "question": "What is the difference between a cash distribution and a rollover distribution?",
+                "answer": "The article says a rollover distribution sends funds to an IRA or another retirement plan with no immediate tax owed when done properly, while a cash distribution pays funds directly to the participant and typically requires immediate tax withholding."
+            },
+            {
+                "question": "Can I choose different payment methods for Roth and pre-tax funds?",
+                "answer": "Yes. The article says the system automatically breaks down each source in the account and allows the participant to choose a payment method individually for each source."
+            },
+            {
+                "question": "Where can I get help deciding which 401(k) option is best for me?",
+                "answer": "The article says participants can get help by emailing help@forusall.com or calling 844-401-2253, or scheduling a 1-on-1 advisory session at www.calendly.com/forusalladvisory during Monday-Friday, 7 AM - 5 PM PST."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Cash distribution",
+                "definition": "A payment of 401(k) funds directly to the participant, typically by check or wire."
+            },
+            {
+                "term": "Rollover distribution",
+                "definition": "A movement of 401(k) funds to an IRA or another qualified retirement plan that can avoid immediate taxes and penalties if done properly."
+            },
+            {
+                "term": "Pre-tax funds",
+                "definition": "401(k) contributions made before income taxes are applied. These funds grow tax-deferred, meaning taxes are owed when the money is eventually withdrawn. The article describes rolling pre-tax funds to a Traditional IRA as an example."
+            },
+            {
+                "term": "Roth funds",
+                "definition": "401(k) contributions made with after-tax dollars. These funds have tax-free growth potential and qualified withdrawals are generally tax-free. The article describes rolling Roth funds to a Roth IRA as an example."
+            },
+            {
+                "term": "1099-R",
+                "definition": "The tax form issued for reporting a distribution or rollover."
+            },
+            {
+                "term": "Minimum Balance Rule",
+                "definition": "The rule described in the article stating that if the account balance is less than $7,000, the former employer has the right to remove the participant from the plan."
+            },
+            {
+                "term": "Mandatory cash-out",
+                "definition": "A payout the participant may receive if the account balance is less than $1,000, minus taxes and potential penalties."
+            },
+            {
+                "term": "IRA",
+                "definition": "An account that may receive rolled over 401(k) funds, including an IRA chosen by the plan provider or a new IRA selected for a rollover."
+            },
+            {
+                "term": "Wire transfer",
+                "definition": "A payment or rollover method where funds are sent directly to the new account."
+            },
+            {
+                "term": "Check",
+                "definition": "A payment or rollover method where funds are mailed to the participant or to the new IRA or plan provider, depending on the distribution type."
+            },
+            {
+                "term": "Federal tax withholding",
+                "definition": "The federal tax amount that may apply to a cash distribution, which the article states is 20%."
+            },
+            {
+                "term": "State taxes",
+                "definition": "Taxes that may also be withheld from a cash distribution if the participant's state mandates it."
+            },
+            {
+                "term": "10% early withdrawal penalty",
+                "definition": "An additional penalty that may apply when a participant under age 59½ takes a cash distribution, unless an exception applies."
+            },
+            {
+                "term": "60 days rule",
+                "definition": "The time period the article says generally applies to complete a rollover when the funds are paid to the participant first, in order to avoid taxes and penalties."
+            },
+            {
+                "term": "Traditional IRA",
+                "definition": "The IRA type used in the article's example for rolling over pre-tax 401(k) funds."
+            },
+            {
+                "term": "Roth IRA",
+                "definition": "The IRA type used in the article's example for rolling over Roth 401(k) funds."
+            },
+            {
+                "term": "Distribution request",
+                "definition": "The request submitted for a 401(k) distribution, during which Roth and pre-tax funds are automatically separated according to the article."
+            },
+            {
+                "term": "Distribution option",
+                "definition": "The option selected for each source in the account, such as rollover or cash distribution."
+            },
+            {
+                "term": "Payment method",
+                "definition": "The method selected for each source in the account, such as check or wire."
+            },
+            {
+                "term": "Current selections",
+                "definition": "The participant's existing investment selections that continue to apply if the 401(k) account remains in the plan."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not guarantee that the participant can leave funds in the plan; the article says they may be able to do so.",
+                "Do not guarantee that a rollover will avoid taxes or penalties unless it is described as done properly.",
+                "Do not provide any processing or delivery timeline that is not stated in the article.",
+                "Do not assert that a participant is exempt from the 10% early withdrawal penalty unless an exception is actually confirmed outside this article.",
+                "Do not state that state tax withholding always applies; the article says it may apply if the state mandates it.",
+                "Do not claim the participant can continue contributing to the former employer's plan after leaving the job.",
+                "Do not say a portal is required or available, because the article does not mention portal steps.",
+                "Do not say the participant must cash out their account unless the balance rule in the article applies.",
+                "Do not say the former employer will always remove a participant from the plan when the balance is under $7,000; the article says the employer has the right to do so.",
+                "Do not say that balances between $1,000 and $7,000 will always be automatically rolled over; the article says they may be.",
+                "Do not describe a cash distribution as tax-free or penalty-free.",
+                "Do not tell the participant that a rollover can only be completed one way; the article lists both check and wire transfer.",
+                "Do not say a wire transfer is always available without the specific instructions the article says are required.",
+                "Do not state that Roth and pre-tax funds stay combined during the distribution request; the article says they are automatically separated.",
+                "Do not tell the participant that the same distribution option or payment method must be used for all sources in the account.",
+                "Do not omit that a 1099-R is issued for reporting purposes when explaining cash distributions or rollovers.",
+                "Do not recommend cashing out as a best practice; if the participant wants to cash out due to an emergency or because they really need the money, explain the tax consequences and long-term impact and direct them to request a cash distribution if that is the option they choose."
+            ],
+            "must_do_if_unsure": [
+                "State only the options and tax impacts described in the article.",
+                "If the participant needs help deciding or needs tax clarification beyond the article, direct them to the support contacts listed in the article.",
+                "If plan-specific availability is unclear, explain the article's conditional language instead of making a definite claim and direct to support for plan-specific rules."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [],
+            "external_links": [
+                "www.calendly.com/forusalladvisory"
+            ],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Monday-Friday, 7 AM - 5 PM PST"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Chosen 401(k) option",
+                    "meaning": "Which path the participant wants to take with the 401(k), such as leaving funds in the plan, taking a cash distribution, or completing a rollover, when tailored next-step guidance is needed.",
+                    "example_values": [
+                        "Leave funds in the plan",
+                        "Take a cash distribution",
+                        "Complete a rollover to an IRA or another qualified retirement plan"
+                    ],
+                    "why_needed": "Needed to explain the correct rules, tax impact, and next steps for that option when giving tailored guidance. It is not required to provide general education about the options in the article.",
+                    "source_note": "Supported by article section: Your 401(k) Options After Leaving a Job",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Distribution option for each account source",
+                    "meaning": "Which distribution option the participant wants for each source in the account when Roth and pre-tax funds are involved and tailored next-step guidance is needed.",
+                    "example_values": [
+                        "Roll pre-tax funds to a Traditional IRA",
+                        "Roll Roth funds to a Roth IRA",
+                        "Cash distribution for pre-tax funds, rollover for Roth funds",
+                        "Rollover for both sources to separate IRAs"
+                    ],
+                    "why_needed": "Needed because the article says Roth and pre-tax funds are automatically separated and can each have their own distribution option when giving tailored guidance. It is not required for general education.",
+                    "source_note": "Supported by article section: Can I Roll Over Roth 401(k) Funds Separately From Pre-Tax Funds?",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Payment method for each account source",
+                    "meaning": "How the participant wants each source paid or transferred, such as by check or wire when applicable, when tailored next-step guidance is needed.",
+                    "example_values": [
+                        "Check mailed to the new IRA or plan provider",
+                        "Wire transfer directly to the new account",
+                        "Check for pre-tax rollover, wire for Roth rollover",
+                        "Check mailed to participant (cash distribution)"
+                    ],
+                    "why_needed": "Needed because the article says a payment method can be selected individually for each source when giving tailored guidance. It is not required for general education.",
+                    "source_note": "Supported by article section: Can I Roll Over Roth 401(k) Funds Separately From Pre-Tax Funds?",
+                    "source_type": "message_text"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Participant age relative to 59½",
+                    "meaning": "Whether the participant is under age 59½ for purposes of explaining the possible early withdrawal penalty on a cash distribution.",
+                    "example_values": [
+                        "Under age 59½",
+                        "Age 59½ or older"
+                    ],
+                    "why_needed": "Helps explain whether the article's possible 10% early withdrawal penalty warning is relevant.",
+                    "source_note": "Supported by article section: Tax implications",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Current account balance range",
+                    "meaning": "Whether the participant's balance is below $1,000, between $1,000 and $7,000, or at least $7,000.",
+                    "example_values": [
+                        "Less than $1,000 (may receive mandatory cash-out)",
+                        "Between $1,000 and $7,000 (may be automatically rolled into an IRA chosen by the plan provider)",
+                        "$7,000 or more (may be able to leave funds in the plan)"
+                    ],
+                    "why_needed": "Helps explain the minimum balance rules that may affect whether funds can remain in the plan.",
+                    "source_note": "Supported by article section: Minimum Balance Rule. Use if the participant shares it or direct them to support to confirm the balance if they want to leave funds in the plan but have not shared the balance or the balance is close to the thresholds.",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Destination IRA or qualified plan information",
+                    "meaning": "The receiving IRA or plan account information needed if the participant chooses a rollover.",
+                    "example_values": [
+                        "Traditional IRA at Fidelity",
+                        "Roth IRA at Vanguard",
+                        "New employer's 401(k) plan"
+                    ],
+                    "why_needed": "Helps explain where rollover funds would be sent by check or wire.",
+                    "source_note": "Supported by article section: How rollovers are typically completed",
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Specific wire instructions",
+                    "meaning": "The transfer instructions needed if the participant wants the rollover completed by wire transfer.",
+                    "example_values": [
+                        "ABA routing number, receiving account number, account title or FBO name",
+                        "Bank name, wire routing number, beneficiary account number, beneficiary name"
+                    ],
+                    "why_needed": "The article states wire transfer requires specific instructions.",
+                    "source_note": "Supported by article section: How rollovers are typically completed. Redirect to support if the participant wants a wire transfer but has not provided the necessary instructions.",
+                    "source_type": "agent_input"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Chosen 401(k) option",
+                    "ask_participant": "Which option would you like to take with your 401(k): leave the funds in the plan, take a cash distribution, or complete a rollover?",
+                    "agent_note": "Ask this when tailored next-step guidance is needed. Do not block general education about the article's options if the participant has not chosen an option yet."
+                },
+                {
+                    "missing_data_point": "Distribution option for each account source",
+                    "ask_participant": "If you have both Roth and pre-tax funds, what distribution option would you like for each source?",
+                    "agent_note": "Ask this when tailored next-step guidance is needed. Do not assume the same option applies to both Roth and pre-tax funds."
+                },
+                {
+                    "missing_data_point": "Payment method for each account source",
+                    "ask_participant": "For each source, would you like the payment or transfer completed by check or by wire, if applicable?",
+                    "agent_note": "Ask this when tailored next-step guidance is needed. Do not assume a payment method when the participant has not stated one."
+                }
+            ],
+            "disambiguation_notes": [
+                "The article uses both cash distribution and cash-out language. Cash distribution is the direct payment option, while mandatory cash-out is described as a possible outcome for balances under $1,000.",
+                "The article uses conditional language for leaving funds in the plan, so that option should not be treated as guaranteed in every case.",
+                "Roth and pre-tax sources must be treated separately when the participant is choosing distribution options and payment methods.",
+                "The article distinguishes between leaving funds in the plan and rolling funds over to an IRA or another qualified retirement plan. These are separate options and should not be described as the same outcome.",
+                "The article distinguishes between a direct rollover and a rollover where funds are paid to the participant first. The 60-day rule is only mentioned for the case where funds are paid to the participant first.",
+                "The article uses may apply language for the 10% early withdrawal penalty, so it should not be described as automatic in every cash distribution case.",
+                "The article uses may also be withheld language for state taxes, so state withholding should not be described as universal.",
+                "The article presents check and wire as payment methods, not as separate distribution types.",
+                "The article explains that Roth and pre-tax funds are automatically separated during the distribution request, so each source should be discussed individually when explaining options.",
+                "The article uses the phrase if done properly when describing rollover tax treatment, so the tax outcome should not be described as unconditional.",
+                "The article distinguishes between immediate tax withholding on a cash distribution and reporting on a 1099-R. These are related but not the same thing.",
+                "The article says a 1099-R is issued for both cash distributions and rollovers, so receiving a 1099-R should not be used to imply that the participant took cash instead of completing a rollover.",
+                "The article describes leaving funds in the plan as convenient for someone who is happy with current investments and wants to delay making a decision, which is different from saying it is always the recommended option.",
+                "The participant's chosen option and any per-source preferences are needed for tailored next-step guidance, but not for general education about the article's options."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "The article applies to a participant who has recently left their job or is planning to leave and is deciding what to do with a 401(k)."
+            ],
+            "blocking_conditions": [
+                "A balance under $1,000 may result in a mandatory cash-out minus taxes and potential penalties if that plan outcome is already known.",
+                "A balance between $1,000 and $7,000 may result in an automatic rollover to an IRA chosen by the plan provider if that plan outcome is already known."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "Tailored next-step guidance is needed and the participant has not said which 401(k) option they want to take.",
+                    "missing_data_point": "Chosen 401(k) option",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Which option would you like to take with your 401(k): leave the funds in the plan, take a cash distribution, or complete a rollover?"
+                },
+                {
+                    "condition": "Tailored next-step guidance is needed, the participant has both Roth and pre-tax funds, and they have not said what distribution option they want for each source.",
+                    "missing_data_point": "Distribution option for each account source",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "If you have both Roth and pre-tax funds, what distribution option would you like for each source?"
+                },
+                {
+                    "condition": "Tailored next-step guidance is needed and the participant has not said which payment method they want for each source when a payment method is needed.",
+                    "missing_data_point": "Payment method for each account source",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "For each source, would you like the payment or transfer completed by check or by wire, if applicable?"
+                }
+            ],
+            "allowed_conclusions": [
+                "The participant's 401(k) savings remain theirs after leaving the job.",
+                "The participant may be able to leave funds in the plan, subject to the minimum balance rules described in the article.",
+                "A cash distribution typically involves 20% federal withholding and may involve state withholding.",
+                "If the participant is under age 59½, a 10% early withdrawal penalty may apply when taxes are filed unless an exception applies.",
+                "A rollover to an IRA or another qualified retirement plan can avoid immediate taxes and penalties if done properly.",
+                "Roth and pre-tax funds are automatically separated and can have different distribution options and payment methods.",
+                "If the participant wants to cash out due to an emergency or because they really need the money, the agent can explain the tax consequences and long-term impact and explain how to request a cash distribution."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee the participant can keep funds in the former employer's plan.",
+                "Do not guarantee that a cash distribution will be free of penalties or additional tax consequences.",
+                "Do not guarantee that a rollover will avoid taxes or penalties unless it is done properly.",
+                "Do not state that state tax withholding always applies.",
+                "Do not conclude that a participant qualifies for an exception to the early withdrawal penalty based on this article alone.",
+                "Do not conclude that the participant can continue contributing to the plan after leaving the job."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "You have three options described in this article: leave the funds in the plan, take a cash distribution, or complete a rollover.",
+                    "The best explanation depends on which option you want and whether you have both Roth and pre-tax sources.",
+                    "If you choose a rollover and it is done properly, the article says immediate taxes and penalties can be avoided.",
+                    "You have three options described in the article: leave the funds in the plan, take a cash distribution, or complete a rollover.",
+                    "Leaving the funds in the plan may allow the account to stay invested according to the current selections.",
+                    "A cash distribution sends the funds directly to the participant, typically by check or wire.",
+                    "A cash distribution may involve 20% federal tax withholding, and state taxes may also be withheld when required.",
+                    "Participants under age 59½ may also have a 10% early withdrawal penalty when taking a cash distribution, unless an exception applies.",
+                    "A rollover moves the funds to an IRA or another qualified retirement plan and can avoid immediate taxes and penalties when done properly.",
+                    "Rollovers are typically completed either by check or by wire transfer to the new account.",
+                    "When rollover funds are paid to the participant first rather than sent directly to the new account, the rollover generally must be completed within 60 days to avoid taxes and penalties.",
+                    "Roth and pre-tax funds are automatically separated during the distribution request.",
+                    "Each source in the account can have its own distribution option and payment method.",
+                    "A 1099-R is issued for reporting purposes after a cash distribution or rollover.",
+                    "Balances under $7,000 may affect whether the funds can remain in the plan after employment ends.",
+                    "Support is available by email, phone, or a 1-on-1 advisory session for participants who want help deciding which option is best.",
+                    "If the participant wants to cash out due to an emergency or because they really need the money, explain the tax consequences and long-term impact and explain how to request a cash distribution."
+                ],
+                "next_steps": [
+                    "Confirm the participant's chosen option when tailored next-step guidance is needed.",
+                    "If Roth and pre-tax sources are present, confirm the option and payment method for each source separately when tailored next-step guidance is needed.",
+                    "If the participant wants more help deciding, provide the support contact options listed in the article."
+                ],
+                "warnings": [
+                    "Cashing out can significantly impact long-term retirement savings and growth potential.",
+                    "If funds are paid to the participant first instead of being sent directly in a rollover, the article says the rollover generally must be completed within 60 days to avoid taxes and penalties."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not promise that leaving funds in the plan is guaranteed.",
+                    "Do not promise that a rollover will avoid taxes in every circumstance without the article's done properly condition.",
+                    "Do not promise that leaving funds in the plan is guaranteed.",
+                    "Do not say the participant can always keep the account in the former employer's plan.",
+                    "Do not say the former employer must allow the funds to stay in the plan.",
+                    "Do not say balances under $7,000 can remain in the plan without mentioning the article's minimum balance rule.",
+                    "Do not say balances under $1,000 will stay in the plan.",
+                    "Do not say balances between $1,000 and $7,000 will stay in the plan without mentioning that they may be automatically rolled over into an IRA chosen by the plan provider.",
+                    "Do not present a cash distribution as tax-free.",
+                    "Do not present a cash distribution as penalty-free.",
+                    "Do not say 20% federal withholding never applies to a cash distribution.",
+                    "Do not say state taxes always apply or never apply; the article says they may also be withheld if the state mandates it.",
+                    "Do not say the 10% early withdrawal penalty always applies in every case.",
+                    "Do not say the participant is exempt from the 10% early withdrawal penalty unless that exception is actually confirmed outside this article.",
+                    "Do not promise that a rollover will avoid taxes in every circumstance without the article's done properly condition.",
+                    "Do not describe a rollover as automatically tax-free without qualification.",
+                    "Do not say a rollover can be completed without following the conditions described in the article.",
+                    "Do not ignore the 60-day rule when the funds are paid to the participant first.",
+                    "Do not say the 60-day rule applies to every rollover in the same way; the article ties it to cases where funds are paid to the participant first.",
+                    "Do not say a rollover can only go to one type of account; the article says it can go to an IRA or another qualified retirement plan.",
+                    "Do not say check is the only rollover method.",
+                    "Do not say wire transfer is the only rollover method.",
+                    "Do not say wire transfer can be completed without the specific instructions mentioned in the article.",
+                    "Do not say Roth and pre-tax funds remain combined during the distribution request.",
+                    "Do not say the same distribution option must be used for both Roth and pre-tax funds.",
+                    "Do not say the same payment method must be used for both Roth and pre-tax funds.",
+                    "Do not say pre-tax funds should be rolled to a Roth IRA; the article's example pairs pre-tax funds with a Traditional IRA.",
+                    "Do not say Roth funds should be rolled to a Traditional IRA; the article's example pairs Roth funds with a Roth IRA.",
+                    "Do not say the participant can keep contributing to the plan after leaving the job.",
+                    "Do not omit that a 1099-R is issued for reporting purposes after a cash distribution.",
+                    "Do not omit that a 1099-R is issued for reporting purposes after a rollover.",
+                    "Do not recommend cashing out as the preferred option; if the participant wants to cash out due to an emergency or because they really need the money, explain the tax consequences and long-term impact and explain how to request a cash distribution.",
+                    "Do not tell the participant that the article determines which option is best for their personal financial situation.",
+                    "Do not provide tax advice beyond the tax consequences explicitly stated in the article.",
+                    "Do not invent processing timelines, mailing timelines, or transfer timelines not stated in the article.",
+                    "Do not mention portal steps, online workflows, or system behavior that the article does not describe.",
+                    "Do not say support is unavailable when the article provides email, phone, and advisory session contact options."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "I can explain the right rules and tax impact once your intended option is clear.",
+                    "If you have both Roth and pre-tax funds, the article says those sources can be handled separately."
+                ],
+                "next_steps": [
+                    "Ask which option the participant wants to take when tailored next-step guidance is needed.",
+                    "Ask for the intended distribution option and payment method for each source if Roth and pre-tax funds are involved and tailored next-step guidance is needed."
+                ],
+                "warnings": [
+                    "Do not give tailored option-specific next-step conclusions until the participant's intended path is known.",
+                    "General education about the article's options can still be provided before the participant chooses an option."
+                ],
+                "questions_to_ask": [
+                    "Which option would you like to take with your 401(k): leave the funds in the plan, take a cash distribution, or complete a rollover?",
+                    "If you have both Roth and pre-tax funds, what option would you like for each source?",
+                    "For each source, would you like the payment or transfer completed by check or by wire, if applicable?"
+                ],
+                "what_not_to_say": [
+                    "Do not assume the participant wants a rollover or a cash distribution.",
+                    "Do not assume the same option or payment method applies to both Roth and pre-tax funds."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "This article explains that a specific outcome may apply when the plan has already determined that a mandatory cash-out or automatic IRA rollover applies under the minimum balance rules.",
+                    "The participant's funds still remain theirs, but the article describes other outcomes such as a mandatory cash-out or automatic IRA rollover for certain balance ranges."
+                ],
+                "next_steps": [
+                    "Explain which specific mandatory outcome from the article is already known to apply.",
+                    "Reframe the discussion around the remaining options described in the article."
+                ],
+                "warnings": [
+                    "Do not present leaving funds in the plan as available when a specific mandatory outcome is already known."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not say the participant can always stay in the plan regardless of balance.",
+                    "Do not invent any additional eligibility thresholds beyond the balance rules stated in the article."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "The article uses conditional language for some outcomes, especially whether funds can stay in the plan after leaving employment.",
+                    "Where the article says may, the participant should not be given a guaranteed answer.",
+                    "If the balance is under $7,000, describe the possible outcomes as plan-dependent unless a specific mandatory outcome is already known."
+                ],
+                "next_steps": [
+                    "Explain the article's conditional language exactly as written.",
+                    "If the participant needs more help understanding which option is best, provide the support contact methods listed in the article."
+                ],
+                "warnings": [
+                    "Do not convert conditional article language into a guaranteed plan rule."
+                ],
+                "questions_to_ask": [
+                    "Are you trying to leave the funds in the account, take a cash distribution, or roll them over?",
+                    "If you have both Roth and pre-tax funds, do you want the same option for both or a different option for each source?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee the plan allows leaving the funds in place.",
+                    "Do not guarantee that state withholding, penalties, or rollover outcomes will apply the same way in every case."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        }
+    }
+}

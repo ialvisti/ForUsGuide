@@ -8,15 +8,11 @@
     "plan_type": "401(k)",
     "scope": "recordkeeper-specific",
     "tags": [
-      "Withdrawal Request",
-      "Termination Distribution",
-      "Distribution",
+      "Withdrawal Request --> Terminated Distribution",
       "Taxes",
-      "Rollover",
-      "Participant Advisory",
-      "Fee-Out",
-      "Small Balance",
-      "Participant Dashboard"
+      "Participant Dashboard",
+      "MFA",
+      "RightSignature Completed"
     ],
     "language": "en-US",
     "last_updated": null,

@@ -767,17 +767,32 @@ class KBChunker:
         # Chunk: Additional Notes
         additional_notes = details.get("additional_notes", [])
         if additional_notes:
-            for note_group in additional_notes:
-                category = note_group.get("category", "general")
-                content = self._format_additional_notes(note_group)
+            # Handle both list-of-dicts and list-of-strings formats
+            if additional_notes and isinstance(additional_notes[0], str):
+                content = self._format_additional_notes({
+                    "category": "general",
+                    "notes": additional_notes
+                })
                 chunks.append(self._create_chunk(
                     content=content,
                     base_metadata=base_metadata,
                     chunk_type="additional_notes",
-                    chunk_category=category,
+                    chunk_category="general",
                     tier="low",
-                    topics=["notes", "additional_info", category]
+                    topics=["notes", "additional_info", "general"]
                 ))
+            else:
+                for note_group in additional_notes:
+                    category = note_group.get("category", "general")
+                    content = self._format_additional_notes(note_group)
+                    chunks.append(self._create_chunk(
+                        content=content,
+                        base_metadata=base_metadata,
+                        chunk_type="additional_notes",
+                        chunk_category=category,
+                        tier="low",
+                        topics=["notes", "additional_info", category]
+                    ))
         
         # Chunk: References
         references = details.get("references", {})

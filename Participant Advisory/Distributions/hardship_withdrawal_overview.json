@@ -8,8 +8,9 @@
         "plan_type": "401(k)",
         "scope": "global",
         "tags": [
-            "Participant Advisory",
-            "Distribution"
+            "Hardship Request",
+            "Taxes",
+            "RightSignature Completed"
         ],
         "language": "en-US",
         "last_updated": null,
@@ -101,8 +102,8 @@
                 "step_number": 3,
                 "type": "participant-facing",
                 "visibility": "both",
-                "description": "Agent sends a secure RightSignature link to complete the hardship withdrawal form.",
-                "notes": null
+                "description": "Agent sends the secure RightSignature link to complete the hardship withdrawal form.",
+                "notes": "Provide the participant with this link: https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133 — This is the Hardship Withdrawal Request Form. Always share this link when the participant is ready to proceed with the request."
             },
             {
                 "step_number": 4,
@@ -184,7 +185,7 @@
             },
             {
                 "question": "How does the participant start the request?",
-                "answer": "The participant contacts ForUsAll Support. ForUsAll confirms the participant reviewed the Hardship Distribution Guidelines and then sends a secure RightSignature link to complete the form."
+                "answer": "The participant contacts ForUsAll Support. ForUsAll confirms the participant reviewed the Hardship Distribution Guidelines and then provides the following secure RightSignature link to complete the Hardship Withdrawal Request Form: https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133"
             }
         ],
         "definitions": [
@@ -252,7 +253,13 @@
                 "can_i_take_a_distribution_while_employed",
                 "when_will_i_receive_my_401k_withdrawal_or_rollover"
             ],
-            "external_links": [],
+            "external_links": [
+                {
+                    "label": "Hardship Withdrawal RightSignature Request Form",
+                    "url": "https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133",
+                    "purpose": "Provide this link to the participant so they can complete and submit their hardship withdrawal request after they have reviewed the Hardship Distribution Guidelines."
+                }
+            ],
             "contact": {
                 "email": "help@forusall.com",
                 "phone": "844-401-2253",
@@ -362,7 +369,7 @@
             "blocking_conditions": [],
             "missing_data_conditions": [],
             "allowed_conclusions": [
-                "After setting expectations and providing the Hardship Distribution Guidelines, send a RightSignature link to complete the form if the participant requests it.",
+                "After setting expectations and providing the Hardship Distribution Guidelines, send the participant the Hardship Withdrawal RightSignature Request Form link to complete the form: https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133",
                 "Standard processing has a $75 fee, with an additional +$35 for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.",
                 "Funds are subject to federal income taxes, and a 10% early withdrawal penalty may apply if the participant is under age 59.5.",
                 "ForUsAll does not collect supporting documents; the participant must retain documentation in case of an IRS audit."
@@ -381,7 +388,7 @@
                     "The amount you request should be limited to the amount necessary to cover your hardship expense and should not exceed your documented hardship expenses."
                 ],
                 "next_steps": [
-                    "Send the participant a secure RightSignature link to complete the hardship withdrawal form."
+                    "Send the participant the Hardship Withdrawal RightSignature Request Form link: https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133"
                 ],
                 "warnings": [
                     "Do not promise an exact funding date beyond the estimated timelines listed in this article."

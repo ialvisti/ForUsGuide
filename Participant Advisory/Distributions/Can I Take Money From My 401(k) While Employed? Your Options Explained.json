@@ -1,0 +1,1003 @@
+{
+    "metadata": {
+        "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+        "title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+        "description": "Covers all four ways a participant may access 401(k) funds while still employed: (1) in-service distributions (typically age 59½ or older, if the plan allows), (2) hardship withdrawals (IRS-defined qualifying reasons, self-certification, documentation retention for audit), (3) rollover source withdrawals (available if rollover assets exist in the plan), and (4) 401(k) loans (eligibility based on vested balance, $50,000 or 50% cap, $1,000 minimum, payroll deduction repayment). Details plan-rule variability across employers, tax treatment for pre-tax vs. Roth funds (including the Roth 5-year rule on earnings), the 10% early withdrawal penalty for participants under 59½, loan default consequences, processing and disbursal timelines, and the loan contingent amount rule for withdrawals when active loans exist. Includes internal agent procedures for checking eligibility status, Maximum Number of Loans, account balance thresholds, and rollover source screening. Requests are initiated via the ForUsAll account Loans and Distributions tab or through Participant Support.",
+        "topic": "in_service_withdrawal_options",
+        "subtopics": [
+            "in_service_distributions",
+            "hardship_withdrawals",
+            "rollover_source_withdrawals",
+            "401k_loans",
+            "taxes_and_penalties"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": "401(k)",
+        "scope": "global",
+        "tags": [
+            "401k",
+            "in-service distribution",
+            "hardship withdrawal",
+            "rollover withdrawal",
+            "401k loan",
+            "taxes",
+            "early withdrawal penalty",
+            "plan rules",
+            "participant support",
+            "Loan Request",
+            "Hardship Request",
+            "RMD AT --> In Service Distribution",
+            "Taxes",
+            "Incoming Rollover"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-03-03",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "plan_variability",
+                "rules": [
+                    "Access to 401(k) funds while employed is limited and subject to the employer's plan rules.",
+                    "Not every employer plan allows in-service distributions.",
+                    "Hardship withdrawals are available only if the plan allows hardship withdrawals.",
+                    "Rollover source withdrawals may be available if the participant has rolled over funds into the current plan.",
+                    "401(k) loans are available only if the plan allows loans.",
+                    "Loan availability and terms depend on plan rules."
+                ]
+            },
+            {
+                "category": "eligibility",
+                "rules": [
+                    "In-service distributions are typically available if the participant is age 59 1/2 or older, if the plan allows.",
+                    "Hardship withdrawals require an immediate and serious financial need and a qualifying hardship under IRS guidelines; plans may allow self-certification.",
+                    "Rollover source withdrawals may be available for assets rolled over from another retirement account into the current plan.",
+                    "401(k) loans require the participant to be an active employee with an available vested balance."
+                ]
+            },
+            {
+                "category": "limits",
+                "rules": [
+                    "Hardship withdrawal amount is limited to the amount necessary to meet the financial need.",
+                    "401(k) loan amount is the lesser of $50,000 or 50% of the participant's vested balance.",
+                    "401(k) loan minimum amount is $1,000.",
+                    "To take a $1,000 minimum loan, the participant must have $2,000 as vested balance.",
+                    "Rollover Sources are limited to the amount rolled over from another retirement account into the current plan."
+                ]
+            },
+            {
+                "category": "tax_and_penalty",
+                "rules": [
+                    "In-service distributions are typically penalty-free but may be subject to ordinary income tax for pre-tax funds or for Roth funds where it has been less than 5 years; for Roth in that case, taxes would apply only to earnings.",
+                    "Hardship withdrawals are subject to ordinary income tax.",
+                    "A 10% early withdrawal penalty typically applies to hardship withdrawals and rollover sources (Depending on Pre tax or Roth) if the participant is under age 59 1/2, unless an exception is met.",
+                    "Taxes may apply to rollover source withdrawals depending on whether the funds are pre-tax or Roth.",
+                    "For 401(k) loans, there is no early withdrawal penalty as long as the loan is repaid properly through payroll deductions or paid off in full via a one-time payment for the outstanding balance. If the participant terminates employment and requests a cash distribution or a rollover, it is recommended that the loan be paid off first to avoid the outstanding loan amount becoming taxable; if it is not paid off before the cash-out or rollover, the outstanding loan amount will become taxable.",
+                    "Failure to repay a 401(k) loan may result in the loan being treated as a taxable distribution.",
+                    "Loans are not taxable as they are taken through payroll deductions, unless they default when the participant terminates employment and requests the 401(k) funds out through a cash distribution or through a rollover to an IRA or new retirement plan."
+                ]
+            },
+            {
+                "category": "repayment_and_reversibility",
+                "rules": [
+                    "Hardship withdrawal funds cannot be repaid.",
+                    "Rollover funds withdrawals cannot be repaid.",
+                    "401(k) loans are repaid through payroll deductions over a fixed term and can be paid off in full in a one time payment only at any time with no penalties.",
+                    "401(k) loan interest is repaid to the participant's own account."
+                ]
+            },
+            {
+                "category": "qualifying_hardship_reasons",
+                "rules": [
+                    "Medical expenses",
+                    "Purchase of a primary residence",
+                    "Tuition and education expenses",
+                    "Preventing foreclosure or eviction",
+                    "Funeral expenses",
+                    "Repair of damage to the primary residence"
+                ]
+            },
+            {
+                "category": "documentation_and_record_retention",
+                "rules": [
+                    "Supporting documentation for hardship withdrawals is recommended.",
+                    "Documentation is often required for hardship withdrawals.",
+                    "Plans may allow participants to self-certify, but participants must retain documentation that supports their hardship request in case of an IRS audit."
+                ]
+            },
+            {
+                "category": "internal_procedure_loans",
+                "rules": [
+                    "Loan availability must be confirmed internally by checking the participant profile Loans section and the Maximum Number of Loans value (0, 1, 2, or 3).",
+                    "If Maximum Number of Loans is 0, the employer plan does not allow loans.",
+                    "If Maximum Number of Loans is 1, only one loan can be taken at a time; the agent must confirm whether there is an active loan or whether the profile shows No loan history found.",
+                    "If Maximum Number of Loans is 2 or 3, the agent must confirm how many active loans exist to determine whether another loan may be available under the plan limit.",
+                    "The agent must check the participant profile for current loan status in the Loans section; if no loan is on file, the profile will say No loan history found.",
+                    "If there are active loans, the profile may show Start Date, End Date, Repayment Amount, Principal, Outstanding Balance, and Balance as of Date. The agent must focus on Outstanding Balance to determine active loan amounts.",
+                    "Account balance must be checked internally in the participant profile Savings Rate section under Account Balance. The agent must not share the account balance amount with the participant.",
+                    "The agent may only tell the participant that a loan may be possible if there is a balance above $2,000 and the plan allows loans based on Maximum Number of Loans."
+                ]
+            },
+            {
+                "category": "internal_procedure_hardship_and_in_service_with_active_loans",
+                "rules": [
+                    "For hardship withdrawals and in-service distributions, the agent must check internally whether the participant has active loans as shown in the Loans section.",
+                    "If the participant has an active loan or loans, the participant must leave a contingent amount equal to 2 times the sum of all Outstanding Balance amounts in the account, and may request the remaining amount as a hardship withdrawal or in-service distribution.",
+                    "If the contingent amount is greater than the Account Balance, the participant may not qualify and must contact support to confirm.",
+                    "If the contingent amount is lower than the Account Balance, the participant may qualify and must contact support to confirm.",
+                    "Account balance used for this check must be confirmed internally in the participant profile Savings Rate section under Account Balance, and must not be shared with the participant."
+                ]
+            },
+            {
+                "category": "rollover_source_withdrawal_screen",
+                "rules": [
+                    "For rollover source withdrawals, the agent can ask the participant whether they remember bringing money into their current employer plan.",
+                    "If the participant answers YES, the participant may qualify.",
+                    "If the participant answers NO, the participant does not qualify, but should contact support to double check.",
+                    "If the participant answers NOT SURE or DO NOT REMEMBER, the participant must contact support to confirm."
+                ]
+            },
+            {
+                "category": "forusall_internal_rule_visibility",
+                "rules": [
+                    "These internal checks and thresholds are ForUsAll internal procedure rules and must not be presented to the participant as a record keeper-specific rule."
+                ]
+            }
+        ],
+        "fees": [],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Identify which option the participant is trying to use while employed: in-service distribution, hardship withdrawal, rollover source withdrawal, or 401(k) loan.",
+                "notes": "Access is limited and depends on the employer's plan rules."
+            },
+            {
+                "step_number": 2,
+                "type": "internal-check",
+                "visibility": "agent-only",
+                "description": "Confirm the participant Eligibility Status is Active in the participant profile Census section under Eligibility Status before proceeding with any distribution or loan guidance.",
+                "notes": "Internal check only. Do not ask the participant for this value; if it cannot be confirmed internally, direct the participant to contact support to review eligibility."
+            },
+            {
+                "step_number": 3,
+                "type": "internal-check",
+                "visibility": "agent-only",
+                "description": "Check the participant profile Loans section for current loan status. If the profile shows No loan history found, treat as no active loans on file. If loans exist, review Outstanding Balance values to determine how many active loans are present.",
+                "notes": "If loans exist, the Loans section may display Start Date, End Date, Repayment Amount, Principal, Outstanding Balance, and Balance as of Date; focus on Outstanding Balance for active loan amounts."
+            },
+            {
+                "step_number": 4,
+                "type": "internal-check",
+                "visibility": "agent-only",
+                "description": "Check the participant profile Savings Rate section for Account Balance (Total Vested Balance available) to confirm there is a balance above $2,000 before indicating a loan may be possible.",
+                "notes": "Do not share the Account Balance amount with the participant."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If Maximum Number of Loans (found in the participant profile Loans section) is 0, explain that the employer plan does not allow loans. Maximum Number of Loans is general plan information and can be shared, but if the participant is unsure, direct them to contact support to double check.",
+                "notes": "Do not mention record keeper-specific rules. If the participant is unsure about other options, direct them to support."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If Maximum Number of Loans (found in the participant profile Loans section) is 1, confirm internally whether there is an active loan on file. If there is no active loan and the balance is above $2,000, explain that a loan may be possible and the participant may start the request from the Loans and Distributions tab or contact support if unsure. Maximum Number of Loans is general plan information and can be shared, but do not share any account balance values.",
+                "notes": "Do not share account balance values."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If Maximum Number of Loans (found in the participant profile Loans section) is 2 or 3, confirm internally how many active loans exist. If the participant has not reached the plan limit and the balance is above $2,000, explain that a loan may be possible and the participant may start the request from the Loans and Distributions tab or contact support if unsure. Maximum Number of Loans is general plan information and can be shared, but do not share any account balance values or specific loan balances.",
+                "notes": "Do not share account balance values or specific loan balances."
+            },
+            {
+                "step_number": 8,
+                "type": "internal-check",
+                "visibility": "agent-only",
+                "description": "For hardship withdrawals or in-service distributions, check internally for active loans and calculate the loan contingent amount as 2 times the sum of all Outstanding Balance amounts.",
+                "notes": "Use Account Balance from the Savings Rate section (Account Balance) for comparison. Do not share amounts with the participant."
+            },
+            {
+                "step_number": 9,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If active loans exist, explain that eligibility for hardship withdrawal or in-service distribution depends on leaving a required contingent amount tied to outstanding loan balances, and advise the participant to contact support to confirm.",
+                "notes": "Do not provide the participant with the internal calculation or any dollar amounts from the profile."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant is unsure which options are available under their employer plan.",
+                "resolution": "Advise the participant to reach out to the ForUsAll Participant Support Team for help reviewing eligibility and next steps, as plan rules vary."
+            },
+            {
+                "issue": "Participant expects hardship withdrawal documentation is not needed because the request is self-certified.",
+                "resolution": "Explain that plans may allow self-certification, but the participant must retain documentation supporting the hardship request in case of an IRS audit; documentation is often required and supporting documentation is recommended."
+            },
+            {
+                "issue": "Participant believes a hardship withdrawal or in-service distribution can be repaid to restore the account.",
+                "resolution": "Clarify that hardship withdrawal funds cannot be repaid and that withdrawals permanently reduce retirement savings; a loan is the option described as repaid over time."
+            },
+            {
+                "issue": "Participant assumes loans are always available or always non-taxable.",
+                "resolution": "Explain that loans are available only if the plan allows and that failure to repay may result in the loan being treated as a taxable distribution; loans can be taxable if they default when the participant terminates employment and requests funds out via cash distribution or rollover."
+            },
+            {
+                "issue": "Participant thinks turning 59 1/2 automatically guarantees they can take an in-service distribution.",
+                "resolution": "Explain that in-service distributions are typically available at age 59 1/2 or older, but plan-specific rules apply and not every employer plan allows in-service distributions; direct them to confirm plan availability via their online ForUsAll account process or by contacting Participant Support."
+            },
+            {
+                "issue": "Participant asks for a specific tax amount or guaranteed tax outcome for an in-service distribution or hardship withdrawal.",
+                "resolution": "State only what the article supports: distributions may be subject to ordinary income tax depending on whether funds are pre-tax or Roth, and hardship withdrawals are subject to ordinary income tax; do not quote specific tax amounts or guarantees. If needed, advise them to consider tax implications before proceeding."
+            },
+            {
+                "issue": "Participant believes a Roth in-service distribution is always tax-free.",
+                "resolution": "Clarify that taxes may apply to Roth funds where it has been less than 5 years, and in that case taxes would apply only to earnings as stated in the article."
+            },
+            {
+                "issue": "Participant expects hardship withdrawals are automatically penalty-free if they have a qualifying reason.",
+                "resolution": "Explain that the 10% early withdrawal penalty typically applies if under age 59 1/2 unless an exception is met, and the distribution is subject to ordinary income tax; avoid claiming any specific exception applies unless the participant has one confirmed outside this article."
+            },
+            {
+                "issue": "Participant wants to withdraw more than needed for a hardship (for example, to create extra savings).",
+                "resolution": "Explain that the hardship withdrawal amount is limited to the amount necessary to meet the financial need, as stated in the article."
+            },
+            {
+                "issue": "Participant says they can self-certify a hardship and therefore does not need to keep any records after the withdrawal.",
+                "resolution": "Explain that even if the plan allows self-certification, participants must retain documentation that supports their request in case of an IRS audit, and supporting documentation is recommended."
+            },
+            {
+                "issue": "Participant asks for hardship reasons not listed in the article and wants confirmation they qualify.",
+                "resolution": "Provide only the IRS-defined reasons listed in the article and explain that the hardship must be a qualifying hardship under IRS guidelines; do not confirm eligibility for reasons not included in the article."
+            },
+            {
+                "issue": "Participant expects rollover source withdrawals are available even if they have never rolled funds into the plan.",
+                "resolution": "Explain that rollover source withdrawals apply when the participant has rolled over funds from another retirement account into their current plan; if they have no rollover assets in the plan, this option may not apply."
+            },
+            {
+                "issue": "Participant thinks rollover source withdrawals have the same tax treatment in all cases.",
+                "resolution": "Explain that taxes may apply depending on whether the rollover funds are pre-tax or Roth, and do not claim a single tax outcome for all rollover withdrawals."
+            },
+            {
+                "issue": "Participant wants a 401(k) loan but does not understand the loan limit calculation and asks for the maximum they can borrow.",
+                "resolution": "Explain the limits stated in the article: the loan amount is the lesser of $50,000 or 50% of the participant's vested balance, with a $1,000 minimum loan amount, and that they must have $2,000 as vested balance to take the $1,000 minimum loan."
+            },
+            {
+                "issue": "Participant asks if their plan allows loans.",
+                "resolution": "Check the participant profile Loans section for Maximum Number of Loans (0, 1, 2, or 3). If 0, explain the plan does not allow loans; otherwise explain loan availability depends on plan limits and current active loans, and the participant may start the request from the Loans and Distributions tab or contact support if unsure."
+            },
+            {
+                "issue": "Maximum Number of Loans is 0 but the participant insists they should be able to take a loan.",
+                "resolution": "Explain the employer plan does not allow loans based on internal plan settings (Maximum Number of Loans = 0). Recommend contacting support to confirm if they have questions."
+            },
+            {
+                "issue": "Maximum Number of Loans is 1 and the participant is unsure whether they already have a loan.",
+                "resolution": "Check the Loans section. If it shows No loan history found, treat as no loan on file. If an active loan exists, explain they may be limited to one loan at a time under the plan setting and recommend contacting support if unsure."
+            },
+            {
+                "issue": "Maximum Number of Loans is 2 or 3 and the participant wants another loan but may already be at the plan limit.",
+                "resolution": "Check the Loans section for how many active loans exist by reviewing Outstanding Balance entries. If the participant is at the limit, explain they may not qualify for another loan and suggest contacting support to confirm."
+            },
+            {
+                "issue": "Participant asks for their exact account balance or exact vested balance amount.",
+                "resolution": "Do not share the account balance amount from the participant profile. You may only indicate at a high level whether the balance appears above $2,000 for loan possibility, and direct them to use their online account or contact support for more guidance."
+            },
+            {
+                "issue": "Participant wants to know whether they meet the $2,000 requirement for the $1,000 minimum loan.",
+                "resolution": "Check Account Balance internally. If it is above $2,000 and the plan allows loans based on Maximum Number of Loans, explain a loan may be possible. Do not share the exact balance value."
+            },
+            {
+                "issue": "Participant has active loans and asks if they can still take a hardship withdrawal or in-service distribution.",
+                "resolution": "Check for active loans and Outstanding Balance values internally. Explain that eligibility depends on leaving a contingent amount tied to outstanding loan balances and advise contacting support to confirm, without sharing calculations or dollar amounts."
+            },
+            {
+                "issue": "Participant has active loans and expects they can withdraw the full account balance through hardship or in-service distribution.",
+                "resolution": "Explain that with active loans, they may need to leave a required contingent amount tied to outstanding loan balances and that support must confirm eligibility. Do not provide internal numbers."
+            },
+            {
+                "issue": "The contingent amount calculation appears to exceed the account balance.",
+                "resolution": "Explain the participant may not qualify and must contact support to confirm. Do not share internal account balance, loan balances, or the computed contingent amount."
+            },
+            {
+                "issue": "Participant asks whether rollover source withdrawals apply but does not remember if they rolled funds into the plan.",
+                "resolution": "Ask if they remember bringing money into the current employer plan. If YES, say they may qualify; if NO, say they do not qualify but recommend contacting support to double check; if NOT SURE, advise contacting support to confirm."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant age 60 asks how to withdraw money while still employed.",
+                "outcome": "They may be eligible for an in-service distribution if their plan allows it, and they can initiate the process via the online ForUsAll account or by contacting Participant Support."
+            },
+            {
+                "scenario": "A participant under age 59 1/2 wants funds for medical expenses and asks for a hardship withdrawal.",
+                "outcome": "Medical expenses are listed as a qualifying hardship reason; hardship withdrawals are subject to ordinary income tax and typically a 10% early withdrawal penalty if under 59 1/2 unless an exception is met, and the participant must retain supporting documentation for potential IRS audit."
+            },
+            {
+                "scenario": "A participant wants $1,000 as a 401(k) loan but has only $1,500 vested.",
+                "outcome": "The minimum loan amount is $1,000, and the participant must have $2,000 as vested balance to take the $1,000 minimum loan; they would be blocked based on the stated minimum balance requirement."
+            },
+            {
+                "scenario": "A participant rolled over an old retirement account into the current plan and asks if they can withdraw just those funds while employed.",
+                "outcome": "They may be able to withdraw rollover assets even while still employed, depending on plan rules; taxes may apply depending on whether the funds are pre-tax or Roth."
+            },
+            {
+                "scenario": "A participant age 58 asks whether they can take an in-service distribution while still employed.",
+                "outcome": "Explain that in-service distributions are typically allowed at age 59 1/2 or older if the plan allows; since they are under 59 1/2, they would typically not qualify for this option as described, and plan-specific rules still apply."
+            },
+            {
+                "scenario": "A participant age 62 asks if an in-service distribution will be penalty-free and whether taxes apply.",
+                "outcome": "State that in-service distributions are typically penalty-free at age 59 1/2+ if the plan allows, but may be subject to ordinary income tax depending on whether funds are pre-tax or Roth, and for Roth where it has been less than 5 years taxes apply only to earnings."
+            },
+            {
+                "scenario": "A participant requests a hardship withdrawal for tuition and education expenses.",
+                "outcome": "Tuition and education expenses are listed as a qualifying hardship reason; the hardship amount is limited to the amount necessary to meet the need, is subject to ordinary income tax, and typically has a 10% early withdrawal penalty if under 59 1/2 unless an exception is met; the participant must retain supporting documentation for IRS audit purposes."
+            },
+            {
+                "scenario": "A participant asks for a hardship withdrawal to prevent eviction and wants the money quickly.",
+                "outcome": "Preventing foreclosure or eviction is listed as a qualifying hardship reason; approval is generally within 1-2 days if the plan allows hardship withdrawals, and disbursal is typically within 1 to 3 weeks; taxes and potential penalties apply as described."
+            },
+            {
+                "scenario": "A participant asks whether they can repay a hardship withdrawal after their situation improves.",
+                "outcome": "Clarify that hardship withdrawal funds cannot be repaid and that hardship distributions permanently reduce retirement savings."
+            },
+            {
+                "scenario": "A participant wants a 401(k) loan and asks how repayment works and whether they can pay it off early.",
+                "outcome": "Explain that repayment is typically through payroll deductions over a fixed term (typically 1 to 5 years), and the participant can pay off the total outstanding loan balance in full at any time with no penalties; interest is repaid to the participant’s own account, if the plan allows loans."
+            },
+            {
+                "scenario": "A participant requests a 401(k) loan and asks if there is a credit check.",
+                "outcome": "State that no credit check is required for a 401(k) loan as described, assuming the plan allows loans."
+            },
+            {
+                "scenario": "A participant wants to borrow $60,000 from their 401(k) as a loan.",
+                "outcome": "Explain that the maximum loan amount is the lesser of $50,000 or 50% of the participant’s vested balance, so $60,000 would exceed the stated maximum; actual availability still depends on plan rules."
+            },
+            {
+                "scenario": "A participant under age 59 1/2 says they will avoid the 10% penalty by taking a loan instead of a hardship withdrawal.",
+                "outcome": "Explain that loans are not taxable if repaid on time and do not have early withdrawal penalties if repaid properly before requesting the money out, but loan availability depends on plan rules and failure to repay may result in taxable treatment as described."
+            },
+            {
+                "scenario": "A participant asks what could happen if they stop making payments on a 401(k) loan.",
+                "outcome": "Explain that failure to repay may result in the loan being treated as a taxable distribution, and that loans can become taxable if they default when the participant terminates employment and requests the 401(k) funds out through a cash distribution or through a rollover to an IRA or new retirement plan."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "processing_times",
+                "notes": [
+                    "Hardship withdrawal approval is generally within 1-2 days if the plan allows hardship withdrawals.",
+                    "Hardship withdrawal disbursal is typically within 1 to 3 weeks. To avoid any financial delays, we recommend submitting your request at least 3-4 weeks before you actually need the funds to ensure all processing and bank transfer times are covered.",
+                    "401(k) loan approval is generally within 1-2 days if the plan allows loans.",
+                    "401(k) loan disbursal is typically within 1 to 3 weeks. To avoid any financial delays, we recommend submitting your request at least 3-4 weeks before you actually need the funds to ensure all processing and bank transfer times are covered."
+                ]
+            },
+            {
+                "category": "considerations",
+                "notes": [
+                    "Before making any withdrawal or loan request, consider tax implications and potential penalties, the long-term impact on retirement savings, and other financial alternatives.",
+                    "Hardship distributions permanently reduce retirement savings.",
+                    "401(k) loans are described as a temporary impact if repaid."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "Can I take money from my 401(k) while still employed?",
+                "answer": "Access is limited while employed and depends on the employer's plan rules. The article describes four potential options: in-service distributions (typically age 59 1/2+ if the plan allows), hardship withdrawals (if the plan allows and the participant has a qualifying hardship), rollover source withdrawals (if the participant has rollover assets in the plan), and 401(k) loans (if the plan allows loans)."
+            },
+            {
+                "question": "How do I request an in-service distribution?",
+                "answer": "The article states you can initiate the process via your online ForUsAll account or by contacting Participant Support, and that plan-specific rules apply."
+            },
+            {
+                "question": "What are qualifying hardship reasons?",
+                "answer": "The article lists IRS-defined qualifying hardship reasons as: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, and repair of damage to the primary residence."
+            },
+            {
+                "question": "Do I need documentation for a hardship withdrawal?",
+                "answer": "The article states supporting documentation is recommended and documentation is often required. It also notes plans may allow self-certification, but participants must retain documentation supporting the request in case of an IRS audit."
+            },
+            {
+                "question": "What are the 401(k) loan limits described in the article?",
+                "answer": "The loan amount is the lesser of $50,000 or 50% of the participant's vested balance. The minimum loan amount is $1,000, and the article states the participant must have $2,000 as vested balance to take the $1,000 minimum loan."
+            },
+            {
+                "question": "Are withdrawals or loans taxed or penalized?",
+                "answer": "The article explains that in-service distributions are typically penalty-free but may be taxed depending on whether funds are pre-tax or Roth and, for Roth, whether it has been less than 5 years (taxes apply only to earnings in that case). Hardship withdrawals are subject to ordinary income tax and typically a 10% early withdrawal penalty applies if under age 59 1/2 unless an exception is met. Rollover source withdrawals may be taxed depending on whether the funds are pre-tax or Roth. Loans are not taxable if repaid on time, but failure to repay may result in the loan being treated as a taxable distribution, and loans can be taxable if they default when the participant terminates employment and requests funds out via cash distribution or rollover."
+            },
+            {
+                "question": "Are in-service distributions available in every employer plan?",
+                "answer": "No. The article states plan-specific rules apply and not every employer plan allows in-service distributions."
+            },
+            {
+                "question": "If I am 59 1/2 or older, does that mean I can automatically take an in-service distribution?",
+                "answer": "Not automatically. The article says many plans allow in-service distributions at age 59 1/2 or older, but plan-specific rules apply and not every employer plan allows them."
+            },
+            {
+                "question": "Are in-service distributions always tax-free?",
+                "answer": "No. The article explains they may be subject to ordinary income tax if taken from pre-tax funds or out of Roth funds where it has been less than 5 years; for Roth in that case, taxes would apply only to earnings."
+            },
+            {
+                "question": "How much can I take for a hardship withdrawal?",
+                "answer": "The article states the amount is limited to the amount necessary to meet the financial need."
+            },
+            {
+                "question": "Can I repay a hardship withdrawal later?",
+                "answer": "No. The article states hardship withdrawal funds cannot be repaid."
+            },
+            {
+                "question": "How long does hardship withdrawal approval usually take?",
+                "answer": "The article states approval is generally within 1-2 days if the plan allows hardship withdrawals."
+            },
+            {
+                "question": "How long does it usually take to receive funds from a hardship withdrawal?",
+                "answer": "The article states disbursal is typically within 1 to 3 weeks."
+            },
+            {
+                "question": "What are the typical repayment terms for a 401(k) loan?",
+                "answer": "The article states repayment is through payroll deductions over a fixed term, typically 1 to 5 years, and the participant can pay off the total outstanding loan balance in full at any time with no penalties."
+            },
+            {
+                "question": "Do 401(k) loans require a credit check?",
+                "answer": "No. The article states no credit check is required."
+            },
+            {
+                "question": "How long does loan approval and disbursal usually take?",
+                "answer": "The article states loan approval is generally within 1-2 days if the plan allows loans, and disbursal is typically within 1 to 3 weeks."
+            },
+            {
+                "question": "Does my employer allow 401(k) loans?",
+                "answer": "The plan rules determine whether loans are available. Agents can check Maximum Number of Loans in the participant profile Loans section as general plan information. If you are unsure, contact the ForUsAll Participant Support Team to confirm what is available and the next steps."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "In-service distribution",
+                "definition": "A withdrawal taken from a 401(k) while the participant is still employed, typically available at age 59 1/2 or older if the employer plan allows it."
+            },
+            {
+                "term": "Hardship withdrawal",
+                "definition": "A withdrawal that may allow a participant to access a portion of 401(k) funds without a loan when facing an immediate and serious financial need, limited to the amount necessary to meet the need, and subject to plan rules and IRS guidelines."
+            },
+            {
+                "term": "Rollover source withdrawals",
+                "definition": "Withdrawals of assets that were rolled over from another retirement account into the current plan, which may be available while still employed depending on plan rules."
+            },
+            {
+                "term": "401(k) loan",
+                "definition": "A loan that lets a participant borrow against their vested 401(k) account balance and repay the funds with interest over time, usually through payroll deductions, if the plan allows loans."
+            },
+            {
+                "term": "Vested balance",
+                "definition": "The portion of a participant's account balance that is available for borrowing under the plan rules, as referenced by the article for loan eligibility and limits."
+            },
+            {
+                "term": "In-service distribution age threshold (59 1/2+)",
+                "definition": "The age referenced in the article at which many plans may allow in-service distributions while the participant remains employed, subject to employer plan rules."
+            },
+            {
+                "term": "Pre-tax funds",
+                "definition": "401(k) funds described in the article as potentially subject to ordinary income tax when distributed."
+            },
+            {
+                "term": "Roth funds",
+                "definition": "401(k) funds described in the article where tax treatment for a distribution may depend on whether the funds have been in the account for less than 5 years; in that case, taxes would apply only to earnings."
+            },
+            {
+                "term": "Roth 5-year rule (as described)",
+                "definition": "The article's statement that if Roth funds have been in the account for less than 5 years, taxes may apply only to earnings when a distribution is taken."
+            },
+            {
+                "term": "Ordinary income tax",
+                "definition": "Tax treatment referenced in the article that may apply to distributions, including hardship withdrawals and certain in-service distributions depending on the type of funds."
+            },
+            {
+                "term": "Early withdrawal penalty (10%)",
+                "definition": "A penalty the article says typically applies to hardship withdrawals if the participant is under age 59 1/2, unless an exception is met."
+            },
+            {
+                "term": "Qualifying hardship",
+                "definition": "A hardship that meets IRS guidelines, which the article says must be demonstrated for a hardship withdrawal even if the request is self-certified."
+            },
+            {
+                "term": "Self-certified hardship request",
+                "definition": "A hardship withdrawal process described in the article where plans may allow participants to self-certify, while still requiring that the participant demonstrate a qualifying hardship and retain supporting documentation."
+            },
+            {
+                "term": "Supporting documentation",
+                "definition": "Records referenced in the article that are recommended and often required for hardship withdrawals, and that participants must retain in case of an IRS audit."
+            },
+            {
+                "term": "IRS audit (documentation retention context)",
+                "definition": "A situation referenced in the article where the participant may need to produce retained documentation supporting a hardship withdrawal request."
+            },
+            {
+                "term": "Loan repayment via payroll deductions",
+                "definition": "A repayment method described in the article where 401(k) loan repayments are usually made through payroll deductions over a fixed term."
+            },
+            {
+                "term": "Loan interest paid to participant's account",
+                "definition": "The article's statement that interest paid on a 401(k) loan is repaid to the participant’s own account."
+            },
+            {
+                "term": "Loan default (failure to repay)",
+                "definition": "A situation described in the article where failing to repay a 401(k) loan may result in the loan being treated as a taxable distribution."
+            },
+            {
+                "term": "Taxable distribution (loan default treatment)",
+                "definition": "A tax outcome described in the article where a defaulted 401(k) loan may be treated as a taxable distribution."
+            },
+            {
+                "term": "Loan payoff in full (early payoff)",
+                "definition": "The article's statement that a participant can pay off the total outstanding loan balance in full at any time with no penalties."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not guarantee that any specific employer plan allows in-service distributions, hardship withdrawals, or 401(k) loans; plan rules vary.",
+                "Do not state a participant is eligible for an option without confirming the relevant criteria described in the article (for example, age 59 1/2+ for in-service distributions, qualifying hardship reason for hardship withdrawals, or vested balance requirements for loans).",
+                "Do not provide processing or disbursal timelines beyond what is stated in the article.",
+                "Do not claim that hardship withdrawal funds can be repaid.",
+                "Do not claim taxes or penalties will or will not apply beyond the conditions described in the article.",
+                "Do not claim a specific portal URL for the ForUsAll account because the article does not provide one.",
+                "Do not guarantee that an in-service distribution will be penalty-free in all cases; only state it is typically penalty-free as described and only if the plan allows and the participant meets the age threshold.",
+                "Do not claim that Roth distributions are always tax-free; only state the article's rule that taxes may apply to earnings if the Roth funds have been in the account for less than 5 years.",
+                "Do not confirm that a participant meets an IRS exception to the 10% early withdrawal penalty, because the article only says an exception may exist and does not define which exceptions apply.",
+                "Do not expand the list of qualifying hardship reasons beyond the reasons explicitly listed in the article.",
+                "Do not claim that supporting documentation is never required for hardship withdrawals; the article says documentation is often required and that participants must retain it for potential IRS audit.",
+                "Do not guarantee a hardship withdrawal will be approved within 1-2 days; only state approval is generally within 1-2 days if the plan allows hardship withdrawals.",
+                "Do not guarantee funds will be received within 1 to 3 weeks for a hardship withdrawal or loan; only state disbursal is typically within 1 to 3 weeks as described.",
+                "Do not state that rollover source withdrawals are always available; only state they may be available if the participant has rollover assets and depending on plan rules.",
+                "Do not promise a participant can borrow any requested amount from a 401(k) loan; the article caps the loan amount at the lesser of $50,000 or 50% of the vested balance and sets a $1,000 minimum with a $2,000 vested balance requirement for the minimum loan.",
+                "Do not state that a 401(k) loan can never become taxable; the article says failure to repay may cause taxable treatment and that loans can be taxable if they default when the participant terminates employment and requests funds out via cash distribution or rollover.",
+                "Do not share the participant profile Account Balance amount with the participant.",
+                "Do not share any loan details from the participant profile, including Start Date, End Date, Repayment Amount, Principal, Outstanding Balance, or Balance as of Date.",
+                "Do not present internal ForUsAll procedure rules as record keeper-specific rules.",
+                "Do not provide the participant with the calculated loan contingent amount or the calculated maximum withdrawal amount; direct them to support to confirm.",
+                "Do not conclude a participant qualifies for a loan without confirming Maximum Number of Loans and whether active loans already exist under the plan limit.",
+                "Do not conclude a participant qualifies for a hardship withdrawal or in-service distribution when active loans exist without applying the contingent amount rule and directing to support to confirm."
+            ],
+            "must_do_if_unsure": [
+                "If plan availability for a withdrawal or loan type is unclear, direct the participant to contact the ForUsAll Participant Support Team for eligibility review and next steps."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [],
+            "external_links": [
+                "https://www.calendly.com/forusalladvisory",
+                "https://www.irs.gov/retirement-plans/hardships-early-withdrawals-and-loans"
+            ],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Mon-Fri, 7am-5pm PST"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Eligibility Status",
+                    "meaning": "The participant's Eligibility Status shown in the participant profile under the Census section.",
+                    "example_values": [
+                        "Active",
+                        "Terminated",
+                        "Ineligible",
+                        "Deceased",
+                        "Unknown"
+                    ],
+                    "why_needed": "Required to confirm the participant is Active before proceeding with any distribution or loan request described in this article.",
+                    "source_note": "Internal check only. Confirm in the participant profile Census section under Eligibility Status. Do not ask the participant to provide this; if it cannot be confirmed internally, direct the participant to contact support to review eligibility.",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Requested option type",
+                    "meaning": "Which access method the participant wants to use while employed: in-service distribution, hardship withdrawal, rollover source withdrawal, or 401(k) loan.",
+                    "example_values": [
+                        "In-service distribution",
+                        "Hardship withdrawal",
+                        "Rollover source withdrawal",
+                        "401(k) loan"
+                    ],
+                    "why_needed": "Determines which eligibility rules, tax considerations, and process steps apply.",
+                    "source_note": null,
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Maximum Number of Loans",
+                    "meaning": "Plan setting that indicates whether loans are allowed and how many loans can be active at a time (0, 1, 2, or 3).",
+                    "example_values": [
+                        "0",
+                        "1",
+                        "2",
+                        "3"
+                    ],
+                    "why_needed": "Determines whether the plan allows loans and whether the participant can take an additional loan under the plan limit.",
+                    "source_note": "Internal check only. Confirm in the participant profile. If it cannot be confirmed in the participant profile, direct the participant to contact support to double check.",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Employer plan allows the requested option",
+                    "meaning": "Whether the participant's employer plan permits the selected distribution or loan type.",
+                    "example_values": [
+                        "Plan allows",
+                        "Plan does not allow"
+                    ],
+                    "why_needed": "The article states these options depend on employer plan rules and may not be available in every plan.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant age",
+                    "meaning": "The participant's age, used to assess the typical age-based threshold for in-service distributions and to contextualize early withdrawal penalty discussions.",
+                    "example_values": [
+                        "59 1/2 or older",
+                        "Under 59 1/2"
+                    ],
+                    "why_needed": "In-service distributions are typically available at age 59 1/2+ if the plan allows; penalty considerations are described for those under 59 1/2 for hardship withdrawals.",
+                    "source_note": "Must be determined from the participant profile. If not confirmed, ask participant or advise them to contact support for eligibility review.",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Qualifying hardship reason",
+                    "meaning": "The IRS-defined hardship reason that matches the participant's immediate and serious financial need.",
+                    "example_values": [
+                        "Medical expenses",
+                        "Purchase of a primary residence",
+                        "Tuition and education expenses",
+                        "Preventing foreclosure or eviction",
+                        "Funeral expenses",
+                        "Repair of damage to the primary residence"
+                    ],
+                    "why_needed": "Hardship withdrawals require a qualifying hardship under IRS guidelines.",
+                    "source_note": null,
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Hardship amount needed",
+                    "meaning": "The dollar amount the participant needs to meet the financial need for a hardship withdrawal.",
+                    "example_values": [
+                        "$5,000.00",
+                        "$0.00"
+                    ],
+                    "why_needed": "The article states the hardship withdrawal amount is limited to the amount necessary to meet the financial need.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Rollover assets exist in the plan",
+                    "meaning": "Whether the participant has assets rolled over from another retirement account into the current plan.",
+                    "example_values": [
+                        "Yes",
+                        "No"
+                    ],
+                    "why_needed": "Rollover source withdrawals are described as potentially available for rollover assets while employed.",
+                    "source_note": "Support must confirm first or advise participant to contact support if unsure",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Available vested balance amount",
+                    "meaning": "The participant's available vested balance used for 401(k) loan eligibility and loan limit calculations.",
+                    "example_values": [
+                        "$2,000.00",
+                        "$50,000.00"
+                    ],
+                    "why_needed": "Loans require an available vested balance; the article provides loan limits based on vested balance and states a $2,000 vested balance is needed to take the $1,000 minimum loan.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Account tax type for the funds being accessed",
+                    "meaning": "Whether the funds are pre-tax or Roth for determining how taxes may apply as described in the article.",
+                    "example_values": [
+                        "Pre-tax",
+                        "Roth"
+                    ],
+                    "why_needed": "The article explains taxes may apply differently depending on whether funds are pre-tax or Roth.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Roth holding period context",
+                    "meaning": "Whether Roth funds have been in the account for less than 5 years, which affects whether taxes may apply to earnings as described in the article.",
+                    "example_values": [
+                        "Less than 5 years",
+                        "5 years or more"
+                    ],
+                    "why_needed": "The article states Roth distributions may be taxed on earnings if taken when it has been less than 5 years.",
+                    "source_note": "Support must confirm first or advise participant to contact support if unsure.",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Maximum Number of Loans",
+                    "meaning": "Plan setting that indicates whether loans are allowed and how many loans can be active at a time (0, 1, 2, or 3).",
+                    "example_values": [
+                        "0",
+                        "1",
+                        "2",
+                        "3"
+                    ],
+                    "why_needed": "Determines whether the plan allows loans and whether the participant can take an additional loan under the plan limit.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Loan history status",
+                    "meaning": "Whether the participant profile shows an existing loan record or displays No loan history found.",
+                    "example_values": [
+                        "No loan history found",
+                        "Loan record present"
+                    ],
+                    "why_needed": "Used to confirm whether the participant has active loans on file when evaluating loan eligibility and withdrawal contingent requirements.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Outstanding Balance values for active loan(s)",
+                    "meaning": "Outstanding Balance amounts shown for existing loan(s) in the participant profile.",
+                    "example_values": [
+                        "$1,000.00",
+                        "$10,000.00"
+                    ],
+                    "why_needed": "Used internally to determine the number of active loans and to calculate the loan contingent amount for hardship or in-service withdrawals.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Account Balance",
+                    "meaning": "Account Balance shown in the participant profile Savings Rate section under Account Balance, used internally as Total Vested Balance available.",
+                    "example_values": [
+                        "$0.00",
+                        "$148,485.04"
+                    ],
+                    "why_needed": "Used internally to confirm whether balance is above $2,000 for potential loan availability, and to compare against the loan contingent amount for hardship or in-service withdrawals.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Balance as of Date",
+                    "meaning": "Date associated with loan balance values in the participant profile Loans section.",
+                    "example_values": [
+                        "2026-03-04"
+                    ],
+                    "why_needed": "Provides internal context for when the Outstanding Balance value applies.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant statement about bringing money into the plan",
+                    "meaning": "Whether the participant remembers rolling funds into the current employer plan for rollover source withdrawal screening.",
+                    "example_values": [
+                        "YES",
+                        "NO",
+                        "NOT SURE"
+                    ],
+                    "why_needed": "Used to determine the correct rollover source withdrawal response per internal guidance.",
+                    "source_note": null,
+                    "source_type": "message_text"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Participant Status",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Confirm in the participant profile Census section under Eligibility Status, must show Active. If it cannot be confirmed internally, direct the participant to contact support to review eligibility."
+                },
+                {
+                    "missing_data_point": "Requested option type",
+                    "ask_participant": "Which option are you trying to use while employed: an in-service distribution, a hardship withdrawal, a rollover source withdrawal, or a 401(k) loan?",
+                    "agent_note": "Do not provide option-specific eligibility or steps until the requested option is identified."
+                },
+                {
+                    "missing_data_point": "Employer plan allows the requested option",
+                    "ask_participant": null,
+                    "agent_note": "Check the participant profile. If it cannot be confirmed in the participant profile, direct the participant to contact support to double check."
+                }
+            ],
+            "disambiguation_notes": [
+                "Plan-specific rules apply for in-service distributions, hardship withdrawals, and loans; do not assume availability without confirmation.",
+                "The article distinguishes between withdrawals (generally permanent impact) and loans (repayable, temporary impact if repaid).",
+                "Maximum Number of Loans is an internal plan setting used to determine whether loans are allowed and how many can be active at once.",
+                "Account Balance and loan Outstanding Balance values are internal-only and must not be shared with the participant.",
+                "For hardship withdrawals and in-service distributions with active loans, eligibility depends on leaving a contingent amount equal to 2 times the sum of Outstanding Balance amounts; support must confirm."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "For in-service distributions: participant is typically age 59 1/2 or older and the plan allows in-service distributions.",
+                "For hardship withdrawals: participant has an immediate and serious financial need, has a qualifying hardship under IRS guidelines, and the plan allows hardship withdrawals.",
+                "For rollover source withdrawals: participant has rollover assets in the plan and the plan allows withdrawal of those rollover assets while employed.",
+                "For 401(k) loans: participant is an active employee with an available vested balance and the plan allows loans.",
+                "For loans: Maximum Number of Loans must be greater than 0, the participant must have an Account Balance above $2,000, and the participant must not already have the maximum number of active loans allowed.",
+                "For hardship withdrawals and in-service distributions when active loans exist: the participant must leave a contingent amount equal to 2 times the sum of all Outstanding Balance amounts; support must confirm eligibility."
+            ],
+            "blocking_conditions": [
+                "The employer plan does not allow the requested option. Must contact support to confirm plan rules.",
+                "For a 401(k) loan request: the participant does not meet the stated minimum vested balance requirement to take the $1,000 minimum loan.",
+                "For loans: Maximum Number of Loans is 0.",
+                "For loans: The participant already has the maximum number of active loans allowed based on Maximum Number of Loans.",
+                "For hardship withdrawals or in-service distributions with active loans: the calculated contingent amount is greater than the Account Balance; support must confirm and the participant may not qualify."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "The participant has not stated which option they want to use while employed.",
+                    "missing_data_point": "Requested option type",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Which option are you trying to use while employed: an in-service distribution, a hardship withdrawal, a rollover source withdrawal, or a 401(k) loan?"
+                },
+                {
+                    "condition": "It is not confirmed whether the employer plan allows the requested option.",
+                    "missing_data_point": "Employer plan allows the requested option",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                }
+            ],
+            "allowed_conclusions": [
+                "The participant may be able to access funds while employed through one of the options described, depending on employer plan rules.",
+                "If the plan allows and the participant meets the stated criteria, the participant can initiate an in-service distribution via the online ForUsAll account or by contacting Participant Support.",
+                "Hardship withdrawals, if allowed by the plan and supported by a qualifying hardship, are subject to ordinary income tax and may be subject to a 10% early withdrawal penalty if under age 59 1/2 unless an exception is met, and funds cannot be repaid.",
+                "401(k) loans, if allowed by the plan, are repaid through payroll deductions, can be paid off early, and failure to repay may result in taxable treatment as described.",
+                "If the participant is age 59 1/2 or older and the employer plan allows it, an in-service distribution is one possible way to access funds while still employed.",
+                "If the participant takes a distribution from pre-tax funds, the article states it may be subject to ordinary income tax.",
+                "If the participant takes a distribution from Roth funds that have been in the account for less than 5 years, the article states taxes may apply only to earnings.",
+                "A hardship withdrawal is intended for an immediate and serious financial need and is limited to the amount necessary to meet that need, as described in the article.",
+                "The article lists specific IRS-defined qualifying hardship reasons that can be referenced when evaluating whether the participant's stated need aligns with a qualifying category.",
+                "Even when a hardship request is self-certified, the article states the participant must demonstrate a qualifying hardship under IRS guidelines and retain supporting documentation for potential IRS audit.",
+                "If the employer plan allows hardship withdrawals, the article states approval is generally within 1-2 days and disbursal is typically within 1 to 3 weeks.",
+                "If the participant has rolled over funds from another retirement account into the current plan, the article states they may be able to withdraw those rollover assets while still employed, depending on plan rules.",
+                "For a 401(k) loan, the article states the maximum loan amount is the lesser of $50,000 or 50% of the participant's vested balance, with a $1,000 minimum loan amount and a $2,000 vested balance requirement to take the $1,000 minimum loan.",
+                "If the employer plan allows loans, the article states there is no credit check required and that loan interest is repaid to the participant's own account.",
+                "If Maximum Number of Loans is 0, the plan does not allow loans.",
+                "If Maximum Number of Loans is 1, a loan may be possible only if there is no active loan on file and the internal balance check shows an Account Balance above $2,000.",
+                "If Maximum Number of Loans is 2 or 3, a loan may be possible only if the participant has fewer active loans than the plan limit and the internal balance check shows an Account Balance above $2,000.",
+                "If the participant has active loans, eligibility for a hardship withdrawal or in-service distribution depends on leaving a required contingent amount tied to outstanding loan balances, and support must confirm."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee the plan allows in-service distributions, hardship withdrawals, rollover source withdrawals, or 401(k) loans.",
+                "Do not guarantee that taxes or penalties will not apply beyond the specific conditions described in the article.",
+                "Do not claim a specific portal URL or portal behavior not stated in the article.",
+                "Do not state an approval or disbursal timeline different from what is stated in the article.",
+                "Do not conclude that a participant qualifies for an in-service distribution solely because they are employed; the article ties eligibility to age (typically 59 1/2+) and plan rules.",
+                "Do not conclude that a participant under age 59 1/2 can take an in-service distribution under this article\u2019s guidance; the article describes in-service distributions as typically age 59 1/2+ if the plan allows.",
+                "Do not conclude that a hardship withdrawal will be approved just because the participant reports financial stress; the article requires an immediate and serious financial need and a qualifying hardship under IRS guidelines, and plan rules must allow it.",
+                "Do not conclude that any hardship reason not listed in the article is qualifying; the article provides a specific list of IRS-defined reasons.",
+                "Do not conclude that a hardship withdrawal can be repaid or reversed later; the article states funds cannot be repaid.",
+                "Do not conclude that a hardship withdrawal will be penalty-free for participants under age 59 1/2; the article says the 10% penalty typically applies unless an exception is met, without defining exceptions.",
+                "Do not conclude that Roth distributions are always tax-free; the article says taxes may apply to earnings if Roth funds have been in the account for less than 5 years.",
+                "Do not conclude that a participant can borrow more than the stated loan limits (lesser of $50,000 or 50% of vested balance) or that the minimum loan amount can be waived; the article states a $1,000 minimum and a $2,000 vested balance requirement to take the minimum loan.",
+                "Do not conclude that a 401(k) loan can never become taxable; the article states failure to repay may result in the loan being treated as a taxable distribution and notes taxable outcomes tied to default when terminating employment and requesting funds out via cash distribution or rollover.",
+                "Do not conclude that rollover source withdrawals are available without confirming the participant has rollover assets in the plan; the article frames this option as applicable when rollover funds exist and subject to plan rules.",
+                "Do not state or imply specific dollar amounts from the participant profile (Account Balance, Outstanding Balance, or any computed contingent amount).",
+                "Do not confirm the participant qualifies for a loan without confirming Maximum Number of Loans and active loan count internally.",
+                "Do not confirm the participant qualifies for a hardship withdrawal or in-service distribution with active loans without directing them to support to confirm contingent requirements."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "Based on what you shared, this option may be available while you are employed if your employer plan allows it.",
+                    "Here are the key considerations the article highlights: plan rules vary, taxes may apply depending on the type of funds, and withdrawals can permanently reduce retirement savings."
+                ],
+                "next_steps": [
+                    "Initiate the request via your online ForUsAll account or contact the ForUsAll Participant Support Team for help reviewing eligibility and next steps."
+                ],
+                "warnings": [
+                    "Tax implications and potential penalties may apply depending on the option and your situation.",
+                    "Withdrawals can have a long-term impact on your retirement savings.",
+                    "If you have an active loan or loans, you may need to leave a required amount in the account before requesting a hardship withdrawal or in-service distribution; Participant Support must confirm eligibility.",
+                    "Loan availability depends on your plan settings and whether you already have active loans; Participant Support can confirm if you are unsure."
+                ],
+                "questions_to_ask": [
+                    "Which option are you trying to use while employed: a 401(k) loan, a hardship withdrawal, an in-service distribution, or a rollover source withdrawal?",
+                    "If this is a hardship withdrawal, which qualifying reason applies: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, or repair of damage to the primary residence?",
+                    "If this is a rollover source withdrawal, do you remember bringing money into your current employer plan from another retirement account (YES, NO, or NOT SURE)?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee the plan allows the option without confirmation.",
+                    "Do not promise specific tax results or penalty exceptions not stated in the article.",
+                    "Do not share any account balance or vested balance amounts.",
+                    "Do not share any loan details (including outstanding balance) or any internal calculations.",
+                    "Do not state or imply exact maximum amounts the participant can withdraw based on internal contingent calculations; direct them to support to confirm.",
+                    "Do not present internal ForUsAll procedure rules as record keeper-specific rules."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "To help you accurately, I need a couple of details to identify which option applies and what is available for your plan.",
+                    "Availability depends on plan rules, and we may also need to confirm your eligibility status before proceeding."
+                ],
+                "next_steps": [
+                    "If you want help reviewing eligibility and next steps, you can reach out to the ForUsAll Participant Support Team."
+                ],
+                "warnings": [
+                    "I cannot confirm availability or eligibility for a specific option until the missing information is clarified.",
+                    "Some eligibility details must be verified internally (for example, eligibility status and certain plan settings), and I may not be able to confirm availability until those checks are completed.",
+                    "I cannot share internal account balance or loan detail information."
+                ],
+                "questions_to_ask": [
+                    "Which option are you trying to use while employed: a 401(k) loan, a hardship withdrawal, an in-service distribution, or a rollover source withdrawal?",
+                    "If this is a hardship withdrawal, which qualifying reason applies: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, or repair of damage to the primary residence?",
+                    "If this is a rollover source withdrawal, do you remember bringing money into your current employer plan from another retirement account (YES, NO, or NOT SURE)?"
+                ],
+                "what_not_to_say": [
+                    "Do not confirm an option is available without confirming plan rules and required internal eligibility checks.",
+                    "Do not state or imply any account balance, vested balance, loan balances, or internal calculations.",
+                    "Do not present internal ForUsAll procedure rules as record keeper-specific rules.",
+                    "Do not claim a specific portal URL or portal behavior that is not stated in the article."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "Based on the criteria described, it does not look like you meet the requirements for this option right now.",
+                    "Options while employed are limited and can also depend on what your employer plan allows."
+                ],
+                "next_steps": [
+                    "If you want to explore a different option, we can review the other options described and what your plan allows.",
+                    "You may be able to start a loan request from the Loans and Distributions tab if your plan allows loans, or contact the ForUsAll Participant Support Team to confirm eligibility and next steps."
+                ],
+                "warnings": [
+                    "Withdrawals can permanently reduce retirement savings, and taxes or penalties may apply depending on the option.",
+                    "If you have active loans, additional eligibility conditions may apply for hardship withdrawals or in-service distributions; Participant Support must confirm.",
+                    "I cannot share internal account balance or loan detail information."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not suggest the participant can proceed with the blocked option if the stated requirements are not met.",
+                    "Do not invent alternative eligibility exceptions, thresholds, or hardship reasons not stated.",
+                    "Do not state or imply any internal account balance, vested balance, loan balances, or internal calculations.",
+                    "Do not guarantee another option is available without confirming plan rules and required internal eligibility checks."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Your options depend on your employer plan rules, and not every plan allows each type of withdrawal or loan.",
+                    "We may also need to confirm your eligibility status and certain plan settings before we can confirm what is available."
+                ],
+                "next_steps": [
+                    "Reach out to the ForUsAll Participant Support Team for help reviewing eligibility and next steps.",
+                    "If your plan allows it, you may be able to start a request from the Loans and Distributions tab.",
+                    "If you want guidance choosing an option, you can schedule a 1-on-1 session with an expert advisor using the link provided in the article."
+                ],
+                "warnings": [
+                    "Do not assume availability of an option without confirmation from plan rules.",
+                    "Some eligibility details must be verified internally, and I cannot share internal account balance or loan detail information."
+                ],
+                "questions_to_ask": [
+                    "Which option are you trying to use while employed: a 401(k) loan, a hardship withdrawal, an in-service distribution, or a rollover source withdrawal?",
+                    "If you are considering a loan, are you looking for something you repay through payroll deductions?",
+                    "If this is a hardship request, which qualifying reason applies: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, or repair of damage to the primary residence?",
+                    "If this is a rollover source withdrawal, do you remember bringing money into your current employer plan from another retirement account (YES, NO, or NOT SURE)?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee the plan allows the requested option.",
+                    "Do not provide timelines beyond what the article states.",
+                    "Do not state or imply any internal account balance, vested balance, loan balances, or internal calculations.",
+                    "Do not present internal ForUsAll procedure rules as record keeper-specific rules."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        }
+    }
+}

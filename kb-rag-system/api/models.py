@@ -437,7 +437,9 @@ class SourceArticle(BaseModel):
     """Artículo fuente referenciado en la respuesta."""
     
     article_id: Optional[str] = Field(None, description="ID del artículo")
-    title: Optional[str] = Field(None, description="Título del artículo")
+    title: Optional[str] = Field(None, description="Título del artículo (legacy)")
+    article_title: Optional[str] = Field(None, description="Título del artículo padre")
+    chunk_type: Optional[str] = Field(None, description="Tipo de chunk (faqs, business_rules, etc.)")
     relevance: Optional[str] = Field(None, description="Por qué este artículo es relevante")
 
 

@@ -425,17 +425,25 @@
             border: 1px solid var(--border);
         }
 
-        .source-card .source-title {
+        .source-card .source-article-name {
+            font-size: 0.8125rem;
             font-weight: 600;
-            font-size: 0.875rem;
-            margin-bottom: 0.25rem;
-            color: var(--text-primary);
+            color: var(--primary);
+            margin-bottom: 0.375rem;
+            line-height: 1.4;
         }
 
-        .source-card .source-id {
-            font-size: 0.75rem;
+        .source-card .source-chunk-type {
+            display: inline-block;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
             color: var(--text-muted);
-            font-family: 'Monaco', 'Courier New', monospace;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
             margin-bottom: 0.375rem;
         }
 
@@ -732,8 +740,8 @@
                         <div class="source-articles">
                             ${data.source_articles.map(sa => `
                                 <div class="source-card">
-                                    <div class="source-title">${escapeHtml(sa.title || 'Unknown Article')}</div>
-                                    <div class="source-id">${escapeHtml(sa.article_id || '')}</div>
+                                    <div class="source-article-name">${escapeHtml(sa.article_title || sa.title || 'Unknown Article')}</div>
+                                    <div class="source-chunk-type">${escapeHtml(formatChunkType(sa.chunk_type || sa.article_id || ''))}</div>
                                     <div class="source-relevance">${escapeHtml(sa.relevance || '')}</div>
                                 </div>
                             `).join('')}
@@ -803,6 +811,22 @@
                 btn.textContent = 'Copied!';
                 setTimeout(() => btn.textContent = orig, 2000);
             });
+        }
+
+        function formatChunkType(raw) {
+            if (!raw) return '';
+            const labels = {
+                'faqs': 'FAQ',
+                'business_rules': 'Business Rules',
+                'eligibility': 'Eligibility',
+                'steps': 'Steps / Process',
+                'common_issues': 'Common Issues',
+                'decision_guide': 'Decision Guide',
+                'required_data_must_have': 'Required Data',
+                'required_data_nice_to_have': 'Additional Data',
+                'content': 'Content'
+            };
+            return labels[raw] || raw.replace(/_/g, ' ');
         }
 
         function escapeHtml(str) {

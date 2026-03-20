@@ -1,10 +1,10 @@
 #!/bin/bash
-# Script para actualizar la configuración a GPT-5.2
+# Script para actualizar la configuración a GPT-5.4
 
 set -e
 
 echo "=========================================="
-echo "🚀 Actualización a GPT-5.2"
+echo "🚀 Actualización a GPT-5.4"
 echo "=========================================="
 echo ""
 
@@ -17,9 +17,9 @@ fi
 
 echo "📋 Selecciona el modelo que quieres usar:"
 echo ""
-echo "1) GPT-5.2 (Thinking) - Razonamiento profundo [RECOMENDADO]"
-echo "2) GPT-5.2 Chat (Instant) - Respuestas rápidas"
-echo "3) GPT-5.2 Pro - Máxima capacidad"
+echo "1) GPT-5.4 (Thinking) - Razonamiento profundo [RECOMENDADO]"
+echo "2) GPT-5.4 Chat (Instant) - Respuestas rápidas"
+echo "3) GPT-5.4 Pro - Máxima capacidad"
 echo "4) GPT-4o - Modelo anterior confiable"
 echo "5) Mantener configuración actual"
 echo ""
@@ -27,19 +27,19 @@ read -p "Selecciona una opción (1-5): " option
 
 case $option in
     1)
-        MODEL="gpt-5.2"
+        MODEL="gpt-5.4"
         EFFORT="medium"
-        echo "✅ Seleccionado: GPT-5.2 (Thinking) con effort=medium"
+        echo "✅ Seleccionado: GPT-5.4 (Thinking) con effort=medium"
         ;;
     2)
-        MODEL="gpt-5.2-chat-latest"
+        MODEL="gpt-5.4-chat-latest"
         EFFORT="low"
-        echo "✅ Seleccionado: GPT-5.2 Chat (Instant) con effort=low"
+        echo "✅ Seleccionado: GPT-5.4 Chat (Instant) con effort=low"
         ;;
     3)
-        MODEL="gpt-5.2-pro"
+        MODEL="gpt-5.4-pro"
         EFFORT="high"
-        echo "✅ Seleccionado: GPT-5.2 Pro con effort=high"
+        echo "✅ Seleccionado: GPT-5.4 Pro con effort=high"
         ;;
     4)
         MODEL="gpt-4o"

@@ -116,7 +116,7 @@ class RAGEngine:
             openai_api_key: API key de OpenAI (usa .env si no se provee)
             model: Modelo de OpenAI a usar (default: gpt-4o-mini)
             temperature: Temperature para generación (default: 0.1)
-            reasoning_effort: Esfuerzo de razonamiento para GPT-5.2 (none, low, medium, high, xhigh)
+            reasoning_effort: Esfuerzo de razonamiento para GPT-5.4 (none, low, medium, high, xhigh)
             pinecone_uploader: Pre-configured PineconeUploader instance.
                                If None, creates a new one (standalone usage).
         """
@@ -130,7 +130,7 @@ class RAGEngine:
         self.temperature = temperature
         self.reasoning_effort = reasoning_effort
         
-        # Detectar si es modelo GPT-5.2
+        # Detectar si es modelo GPT-5.4
         self.is_gpt5 = "gpt-5" in model.lower()
         
         # Pinecone uploader para búsquedas (sync SDK, wrapped with asyncio.to_thread).
@@ -471,19 +471,23 @@ class RAGEngine:
                     "confidence_note": "limited_coverage"
                 }
             
-            # 6. Extract source articles from chunks if not provided by LLM
-            source_articles = parsed.get("source_articles", [])
-            if not source_articles:
-                seen_articles = set()
-                for chunk in selected_chunks:
-                    aid = chunk['metadata'].get('article_id')
-                    if aid and aid not in seen_articles:
-                        seen_articles.add(aid)
-                        source_articles.append({
-                            "article_id": aid,
-                            "title": chunk['metadata'].get('article_title'),
-                            "relevance": f"Contains {chunk['metadata'].get('chunk_type', 'content')} about {chunk['metadata'].get('topic', 'this topic')}"
-                        })
+            # 6. Build source articles from actual chunk metadata
+            #    (always from chunks for reliable article attribution)
+            source_articles = []
+            seen_chunks = set()
+            for chunk in selected_chunks:
+                chunk_id = chunk.get('id', '')
+                if chunk_id in seen_chunks:
+                    continue
+                seen_chunks.add(chunk_id)
+                chunk_type = chunk['metadata'].get('chunk_type', 'content')
+                topic = chunk['metadata'].get('topic', 'this topic')
+                source_articles.append({
+                    "article_id": chunk['metadata'].get('article_id', ''),
+                    "article_title": chunk['metadata'].get('article_title', 'Unknown Article'),
+                    "chunk_type": chunk_type,
+                    "relevance": f"Contains {chunk_type.replace('_', ' ')} about {topic}"
+                })
             
             return KnowledgeQuestionResult(
                 answer=parsed.get("answer", ""),
@@ -1031,7 +1035,7 @@ class RAGEngine:
     # Helper Methods - LLM
     # ========================================================================
     
-    # Multiplicador para GPT-5.2: los reasoning tokens se consumen dentro
+    # Multiplicador para GPT-5.4: los reasoning tokens se consumen dentro
     # de max_completion_tokens, así que necesitamos presupuesto extra.
     # Con reasoning_effort="medium", el modelo puede usar ~60-70% en reasoning.
     GPT5_REASONING_MULTIPLIER = 4
@@ -1050,7 +1054,7 @@ class RAGEngine:
             system_prompt: System prompt
             user_prompt: User prompt
             max_tokens: Máximo de tokens para el contenido de la respuesta.
-                        Para GPT-5.2, se escala automáticamente para incluir
+                        Para GPT-5.4, se escala automáticamente para incluir
                         headroom para reasoning tokens.
         
         Returns:
@@ -1073,7 +1077,7 @@ class RAGEngine:
                 )
                 params["max_completion_tokens"] = scaled_tokens
                 logger.info(
-                    f"Llamando GPT-5.2 | requested={max_tokens} "
+                    f"Llamando GPT-5.4 | requested={max_tokens} "
                     f"| scaled max_completion_tokens={scaled_tokens}"
                 )
                 

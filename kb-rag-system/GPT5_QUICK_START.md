@@ -1,10 +1,10 @@
-# ⚡ Inicio Rápido - GPT-5.2
+# ⚡ Inicio Rápido - GPT-5.4
 
 ## 🎯 Resumen Ejecutivo
 
-Tu sistema RAG ahora soporta **GPT-5.2 Thinking**, el modelo más avanzado de OpenAI.
+Tu sistema RAG ahora soporta **GPT-5.4 Thinking**, el modelo más avanzado de OpenAI.
 
-**¡Me disculpo por la confusión inicial!** GPT-5.2 SÍ existe y está disponible en la API.
+**¡Me disculpo por la confusión inicial!** GPT-5.4 SÍ existe y está disponible en la API.
 
 ## 🚀 Actualización en 3 Pasos
 
@@ -36,7 +36,7 @@ code .env
 OPENAI_MODEL=gpt-4o-mini
 
 # A:
-OPENAI_MODEL=gpt-5.2
+OPENAI_MODEL=gpt-5.4
 ```
 
 3. **Reinicia la API:**
@@ -49,19 +49,19 @@ OPENAI_MODEL=gpt-5.2
 
 ## 🎨 Opciones de Modelos
 
-### 🧠 GPT-5.2 (Thinking) - RECOMENDADO PARA TI
+### 🧠 GPT-5.4 (Thinking) - RECOMENDADO PARA TI
 ```bash
-OPENAI_MODEL=gpt-5.2
+OPENAI_MODEL=gpt-5.4
 ```
 - **Mejor para:** Análisis profundo de KB, respuestas complejas
 - **Velocidad:** ⚡ Normal (5-15 seg)
 - **Calidad:** ⭐⭐⭐⭐⭐ Excelente
 - **Costo:** 💰💰💰💰 Alto pero vale la pena
-- **Nota:** GPT-5.2 hace razonamiento automático, no necesita parámetros extra
+- **Nota:** GPT-5.4 hace razonamiento automático, no necesita parámetros extra
 
-### ⚡ GPT-5.2 Chat (Instant)
+### ⚡ GPT-5.4 Chat (Instant)
 ```bash
-OPENAI_MODEL=gpt-5.2-chat-latest
+OPENAI_MODEL=gpt-5.4-chat-latest
 ```
 - **Mejor para:** Respuestas rápidas, queries simples
 - **Velocidad:** 🚀 Rápido (2-5 seg)
@@ -79,7 +79,7 @@ OPENAI_MODEL=gpt-4o
 
 ## 📊 Comparación Práctica
 
-| Aspecto | gpt-4o-mini (actual) | gpt-4o | gpt-5.2 |
+| Aspecto | gpt-4o-mini (actual) | gpt-4o | gpt-5.4 |
 |---------|---------------------|---------|---------|
 | **Comprensión de KB** | Buena | Muy buena | Excelente |
 | **Respuestas complejas** | Limitada | Muy buena | Sobresaliente |
@@ -94,26 +94,26 @@ Para tu sistema de Knowledge Base de Participant Advisory, te recomiendo:
 
 ### Fase 1: Testing (Ahora)
 ```bash
-OPENAI_MODEL=gpt-5.2
+OPENAI_MODEL=gpt-5.4
 ```
-- Prueba la calidad de GPT-5.2
+- Prueba la calidad de GPT-5.4
 - Compara respuestas con gpt-4o-mini
-- GPT-5.2 ajusta el razonamiento automáticamente
+- GPT-5.4 ajusta el razonamiento automáticamente
 
-### Fase 2: Producción (Si GPT-5.2 mejora notablemente)
+### Fase 2: Producción (Si GPT-5.4 mejora notablemente)
 ```bash
-OPENAI_MODEL=gpt-5.2
+OPENAI_MODEL=gpt-5.4
 ```
 - Máxima calidad para usuarios finales
 - Monitorea costos y ajusta si es necesario
 - El modelo optimiza el razonamiento según la complejidad
 
-### Plan B: Si GPT-5.2 es muy caro
+### Plan B: Si GPT-5.4 es muy caro
 ```bash
 OPENAI_MODEL=gpt-4o
 ```
 - Excelente calidad a precio razonable
-- ~15x más barato que GPT-5.2
+- ~15x más barato que GPT-5.4
 
 ## ✅ Verificación Post-Actualización
 
@@ -167,9 +167,9 @@ curl -X POST http://localhost:8000/api/v1/required-data \
 
 ## 🆘 Problemas Comunes
 
-### "Model gpt-5.2 not found"
+### "Model gpt-5.4 not found"
 
-**Causa:** GPT-5.2 no está disponible en tu cuenta aún.
+**Causa:** GPT-5.4 no está disponible en tu cuenta aún.
 
 **Solución:**
 ```bash
@@ -189,12 +189,12 @@ OPENAI_REASONING_EFFORT=low
 
 ### "Costos muy altos"
 
-**Causa:** GPT-5.2 es caro por naturaleza.
+**Causa:** GPT-5.4 es caro por naturaleza.
 
 **Soluciones:**
 1. Usa `gpt-4o` en su lugar
 2. Reduce `reasoning_effort` a `low`
-3. Usa `gpt-5.2-chat-latest` (más barato)
+3. Usa `gpt-5.4-chat-latest` (más barato)
 
 ## 📚 Documentación Adicional
 
@@ -212,4 +212,4 @@ OPENAI_REASONING_EFFORT=low
 
 ---
 
-**¿Necesitas ayuda?** El código está listo, solo actualiza el `.env` y estarás usando GPT-5.2! 🚀
+**¿Necesitas ayuda?** El código está listo, solo actualiza el `.env` y estarás usando GPT-5.4! 🚀

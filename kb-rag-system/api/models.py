@@ -409,3 +409,59 @@ class IndexStatsResponse(BaseModel):
     
     total_vectors: int = Field(..., description="Total de vectores en el índice")
     namespaces: Dict[str, Any] = Field(..., description="Información de namespaces")
+
+
+# ============================================================================
+# Knowledge Question Models
+# ============================================================================
+
+class KnowledgeQuestionRequest(BaseModel):
+    """Request para el endpoint /knowledge-question."""
+    
+    question: str = Field(
+        ...,
+        min_length=10,
+        max_length=2000,
+        description="General knowledge question about 401(k) plans, processes, or rules"
+    )
+    
+    @field_validator('question')
+    @classmethod
+    def validate_question(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Question cannot be empty")
+        return v.strip()
+
+
+class SourceArticle(BaseModel):
+    """Artículo fuente referenciado en la respuesta."""
+    
+    article_id: Optional[str] = Field(None, description="ID del artículo")
+    title: Optional[str] = Field(None, description="Título del artículo")
+    relevance: Optional[str] = Field(None, description="Por qué este artículo es relevante")
+
+
+class KnowledgeQuestionResponse(BaseModel):
+    """Response del endpoint /knowledge-question."""
+    
+    answer: str = Field(..., description="Respuesta completa basada en la KB")
+    
+    key_points: List[str] = Field(
+        default_factory=list,
+        description="Puntos clave extraídos de la respuesta"
+    )
+    
+    source_articles: List[SourceArticle] = Field(
+        default_factory=list,
+        description="Artículos fuente usados para la respuesta"
+    )
+    
+    confidence_note: str = Field(
+        ...,
+        description="Nivel de cobertura: well_covered, partially_covered, limited_coverage"
+    )
+    
+    metadata: Dict[str, Any] = Field(
+        ...,
+        description="Metadata del procesamiento (chunks_used, tokens, modelo)"
+    )

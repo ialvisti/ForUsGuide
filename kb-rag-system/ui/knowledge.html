@@ -1,0 +1,912 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KB Knowledge Q&A</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --primary-light: #eef2ff;
+            --secondary: #64748b;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --error: #ef4444;
+            --error-light: #fee2e2;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-code: #1e293b;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --text-code: #e2e8f0;
+            --border: #e2e8f0;
+            --border-focus: #4f46e5;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-secondary);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .nav-btn {
+            text-decoration: none;
+            color: var(--primary);
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            background: var(--primary-light);
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: inherit;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-badge.healthy {
+            background: var(--success-light);
+            color: #065f46;
+        }
+
+        .status-badge.unhealthy {
+            background: var(--error-light);
+            color: #991b1b;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .hero {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .hero h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .question-section {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+        }
+
+        .question-input-wrapper {
+            position: relative;
+        }
+
+        .question-input {
+            width: 100%;
+            padding: 1rem 1.25rem;
+            padding-right: 7rem;
+            border: 2px solid var(--border);
+            border-radius: 10px;
+            font-size: 1rem;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 80px;
+            transition: all 0.2s;
+            background: var(--bg-primary);
+            line-height: 1.6;
+        }
+
+        .question-input:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .question-input::placeholder {
+            color: var(--text-muted);
+        }
+
+        .submit-btn {
+            position: absolute;
+            right: 0.75rem;
+            bottom: 0.75rem;
+            padding: 0.625rem 1.25rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+
+        .submit-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
+        }
+
+        .spinner {
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .example-questions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .example-chip {
+            padding: 0.375rem 0.875rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-chip:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Answer Section */
+        .answer-section {
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .answer-section.show {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .answer-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .answer-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .answer-card-header h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        .coverage-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .coverage-badge.well_covered {
+            background: var(--success-light);
+            color: #065f46;
+        }
+
+        .coverage-badge.partially_covered {
+            background: var(--warning-light);
+            color: #92400e;
+        }
+
+        .coverage-badge.limited_coverage {
+            background: var(--error-light);
+            color: #991b1b;
+        }
+
+        .answer-text {
+            font-size: 0.9375rem;
+            line-height: 1.8;
+            color: var(--text-primary);
+        }
+
+        .answer-text p {
+            margin-bottom: 1rem;
+        }
+
+        .answer-text p:last-child {
+            margin-bottom: 0;
+        }
+
+        .answer-text strong {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .answer-text em {
+            font-style: italic;
+        }
+
+        .answer-text h3 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin: 1.25rem 0 0.5rem;
+            color: var(--text-primary);
+        }
+
+        .answer-text h3:first-child {
+            margin-top: 0;
+        }
+
+        .answer-text h4 {
+            font-size: 0.975rem;
+            font-weight: 600;
+            margin: 1rem 0 0.375rem;
+            color: var(--text-primary);
+        }
+
+        .answer-text ul, .answer-text ol {
+            margin: 0.5rem 0 1rem 1.5rem;
+            padding: 0;
+        }
+
+        .answer-text li {
+            margin-bottom: 0.375rem;
+            line-height: 1.7;
+        }
+
+        .answer-text li::marker {
+            color: var(--primary);
+        }
+
+        .answer-text code {
+            background: var(--bg-secondary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .answer-text hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 1rem 0;
+        }
+
+        .key-points-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 0.5rem;
+        }
+
+        .key-points-list li {
+            padding: 0.625rem 0.875rem;
+            padding-left: 2rem;
+            position: relative;
+            font-size: 0.9375rem;
+            border-bottom: 1px solid var(--bg-secondary);
+        }
+
+        .key-points-list li:last-child {
+            border-bottom: none;
+        }
+
+        .key-points-list li::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 1rem;
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        .source-articles {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .source-card {
+            padding: 0.875rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .source-card .source-title {
+            font-weight: 600;
+            font-size: 0.875rem;
+            margin-bottom: 0.25rem;
+            color: var(--text-primary);
+        }
+
+        .source-card .source-id {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            font-family: 'Monaco', 'Courier New', monospace;
+            margin-bottom: 0.375rem;
+        }
+
+        .source-card .source-relevance {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        /* Raw JSON toggle */
+        .raw-toggle {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+        }
+
+        .raw-toggle button {
+            padding: 0.375rem 0.875rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .raw-toggle button:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .raw-json {
+            display: none;
+            background: var(--bg-code);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-top: 1rem;
+            max-height: 500px;
+            overflow-y: auto;
+        }
+
+        .raw-json.show {
+            display: block;
+        }
+
+        .raw-json pre {
+            margin: 0;
+            color: var(--text-code);
+            font-size: 0.8125rem;
+            line-height: 1.6;
+            font-family: 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .copy-btn {
+            padding: 0.375rem 0.75rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: var(--text-code);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .error-card {
+            background: var(--error-light);
+            border: 1px solid var(--error);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .error-card h3 {
+            color: #991b1b;
+            margin-bottom: 0.5rem;
+        }
+
+        .error-card p {
+            color: #991b1b;
+            font-size: 0.9375rem;
+        }
+
+        .metadata-row {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .metadata-item {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+        }
+
+        .metadata-item strong {
+            color: var(--text-secondary);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                padding: 1rem;
+            }
+
+            .header {
+                padding: 1rem;
+            }
+
+            .header-content {
+                flex-direction: column;
+                gap: 1rem;
+                align-items: flex-start;
+            }
+
+            .header-nav {
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .question-section, .answer-card {
+                padding: 1.25rem;
+            }
+
+            .submit-btn {
+                position: static;
+                width: 100%;
+                justify-content: center;
+                margin-top: 0.75rem;
+            }
+
+            .question-input {
+                padding-right: 1.25rem;
+            }
+
+            .source-articles {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <h1>KB Knowledge Q&A</h1>
+            <div class="header-nav">
+                <button class="nav-btn" onclick="window.location.href='/ui'">
+                    API Tester
+                </button>
+                <button class="nav-btn" onclick="window.location.href='/ui/chunks'">
+                    View Chunks
+                </button>
+                <div id="statusBadge" class="status-badge unhealthy">
+                    <div class="status-dot"></div>
+                    <span>Checking...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="hero">
+            <h2>Ask the Knowledge Base</h2>
+            <p>Ask any question about 401(k) plans, processes, distributions, rollovers, and more. No participant data needed.</p>
+        </div>
+
+        <div class="question-section">
+            <form id="questionForm">
+                <div class="question-input-wrapper">
+                    <textarea
+                        id="questionInput"
+                        class="question-input"
+                        placeholder="Ask a question... e.g. What are the steps for a direct rollover?"
+                        rows="3"
+                        required
+                        minlength="10"
+                    ></textarea>
+                    <button type="submit" class="submit-btn" id="submitBtn">
+                        <span>Ask</span>
+                    </button>
+                </div>
+            </form>
+            <div class="example-questions">
+                <span class="example-chip" data-q="What are the steps for a direct rollover from a 401(k)?">Direct rollover steps</span>
+                <span class="example-chip" data-q="What fees are involved in a cash distribution?">Distribution fees</span>
+                <span class="example-chip" data-q="What happens to my 401(k) if my balance is under $1,000 after leaving my job?">Small balance force-out</span>
+                <span class="example-chip" data-q="What are the tax implications of a Roth 401(k) distribution?">Roth 401(k) taxes</span>
+                <span class="example-chip" data-q="How does the hardship withdrawal process work?">Hardship withdrawal</span>
+                <span class="example-chip" data-q="What is the difference between a direct rollover and an indirect rollover?">Direct vs indirect rollover</span>
+            </div>
+        </div>
+
+        <div id="answerSection" class="answer-section">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            checkHealth();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('questionForm').addEventListener('submit', handleSubmit);
+
+            document.querySelectorAll('.example-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    const input = document.getElementById('questionInput');
+                    input.value = chip.dataset.q;
+                    input.focus();
+                });
+            });
+
+            document.getElementById('questionInput').addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    document.getElementById('questionForm').requestSubmit();
+                }
+            });
+        }
+
+        async function handleSubmit(e) {
+            e.preventDefault();
+
+            const question = document.getElementById('questionInput').value.trim();
+            if (!question || question.length < 10) {
+                alert('Please enter a question with at least 10 characters.');
+                return;
+            }
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div><span>Thinking...</span>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/v1/knowledge-question`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ question })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    renderAnswer(data);
+                } else {
+                    renderError(data);
+                }
+            } catch (error) {
+                renderError({ error: 'network_error', message: error.message });
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>Ask</span>';
+            }
+        }
+
+        function renderAnswer(data) {
+            const section = document.getElementById('answerSection');
+            const coverageClass = data.confidence_note || 'partially_covered';
+            const coverageLabel = coverageClass.replace(/_/g, ' ');
+
+            let keyPointsHtml = '';
+            if (data.key_points && data.key_points.length > 0) {
+                keyPointsHtml = `
+                    <div class="answer-card">
+                        <div class="answer-card-header">
+                            <h3>Key Points</h3>
+                        </div>
+                        <ul class="key-points-list">
+                            ${data.key_points.map(kp => `<li>${renderInline(kp)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            let sourcesHtml = '';
+            if (data.source_articles && data.source_articles.length > 0) {
+                sourcesHtml = `
+                    <div class="answer-card">
+                        <div class="answer-card-header">
+                            <h3>Source Articles</h3>
+                        </div>
+                        <div class="source-articles">
+                            ${data.source_articles.map(sa => `
+                                <div class="source-card">
+                                    <div class="source-title">${escapeHtml(sa.title || 'Unknown Article')}</div>
+                                    <div class="source-id">${escapeHtml(sa.article_id || '')}</div>
+                                    <div class="source-relevance">${escapeHtml(sa.relevance || '')}</div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            let metadataHtml = '';
+            if (data.metadata) {
+                const m = data.metadata;
+                metadataHtml = `
+                    <div class="metadata-row">
+                        ${m.chunks_used != null ? `<div class="metadata-item"><strong>Chunks used:</strong> ${m.chunks_used}</div>` : ''}
+                        ${m.context_tokens != null ? `<div class="metadata-item"><strong>Context tokens:</strong> ${m.context_tokens}</div>` : ''}
+                        ${m.model ? `<div class="metadata-item"><strong>Model:</strong> ${m.model}</div>` : ''}
+                    </div>
+                `;
+            }
+
+            section.innerHTML = `
+                <div class="answer-card">
+                    <div class="answer-card-header">
+                        <h3>Answer</h3>
+                        <span class="coverage-badge ${coverageClass}">${coverageLabel}</span>
+                    </div>
+                    <div class="answer-text">${renderMarkdown(data.answer)}</div>
+                    ${metadataHtml}
+                </div>
+                ${keyPointsHtml}
+                ${sourcesHtml}
+                <div class="raw-toggle">
+                    <button onclick="toggleRawJson()">Show Raw JSON</button>
+                </div>
+                <div id="rawJson" class="raw-json">
+                    <div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem;">
+                        <button class="copy-btn" onclick="copyRawJson()">Copy</button>
+                    </div>
+                    <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+                </div>
+            `;
+
+            section.classList.add('show');
+            section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function renderError(data) {
+            const section = document.getElementById('answerSection');
+            section.innerHTML = `
+                <div class="error-card">
+                    <h3>Error</h3>
+                    <p>${escapeHtml(data.message || data.detail || JSON.stringify(data))}</p>
+                </div>
+            `;
+            section.classList.add('show');
+        }
+
+        function toggleRawJson() {
+            document.getElementById('rawJson').classList.toggle('show');
+        }
+
+        function copyRawJson() {
+            const text = document.querySelector('#rawJson pre').textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = orig, 2000);
+            });
+        }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function renderInline(str) {
+            if (!str) return '';
+            let text = escapeHtml(str);
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+            text = text.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>');
+            text = text.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<em>$1</em>');
+            text = text.replace(/`([^`]+?)`/g, '<code>$1</code>');
+            return text;
+        }
+
+        function renderMarkdown(str) {
+            if (!str) return '';
+            let text = escapeHtml(str);
+
+            // Headings: ### H3, ## H4 (map down since we're inside a card)
+            text = text.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+            text = text.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+            text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+            text = text.replace(/^# (.+)$/gm, '<h3>$1</h3>');
+
+            // Horizontal rules
+            text = text.replace(/^---+$/gm, '<hr>');
+
+            // Bold: **text** or __text__
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+
+            // Italic: *text* or _text_ (but not inside words with underscores)
+            text = text.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>');
+            text = text.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<em>$1</em>');
+
+            // Inline code: `code`
+            text = text.replace(/`([^`]+?)`/g, '<code>$1</code>');
+
+            // Unordered lists: lines starting with - or *
+            text = text.replace(
+                /(^|\n)((?:[ \t]*[-*] .+(?:\n|$))+)/g,
+                function(match, prefix, block) {
+                    const items = block.trim().split('\n')
+                        .map(line => line.replace(/^[ \t]*[-*] /, '').trim())
+                        .filter(Boolean)
+                        .map(item => `<li>${item}</li>`)
+                        .join('');
+                    return `${prefix}<ul>${items}</ul>`;
+                }
+            );
+
+            // Ordered lists: lines starting with 1. 2. etc.
+            text = text.replace(
+                /(^|\n)((?:[ \t]*\d+\. .+(?:\n|$))+)/g,
+                function(match, prefix, block) {
+                    const items = block.trim().split('\n')
+                        .map(line => line.replace(/^[ \t]*\d+\. /, '').trim())
+                        .filter(Boolean)
+                        .map(item => `<li>${item}</li>`)
+                        .join('');
+                    return `${prefix}<ol>${items}</ol>`;
+                }
+            );
+
+            // Paragraphs: split by double newlines, wrap non-block content in <p>
+            const blocks = text.split(/\n{2,}/);
+            text = blocks.map(block => {
+                block = block.trim();
+                if (!block) return '';
+                if (/^<(h[1-6]|ul|ol|hr|p|div|blockquote)/.test(block)) return block;
+                return `<p>${block}</p>`;
+            }).join('\n');
+
+            // Single newlines within paragraphs → <br>
+            text = text.replace(/<p>([\s\S]*?)<\/p>/g, function(match, inner) {
+                return '<p>' + inner.replace(/\n/g, '<br>') + '</p>';
+            });
+
+            return text;
+        }
+
+        async function checkHealth() {
+            const badge = document.getElementById('statusBadge');
+            try {
+                const res = await fetch(`${API_URL}/health`);
+                const data = await res.json();
+                if (data.status === 'healthy') {
+                    badge.className = 'status-badge healthy';
+                    badge.innerHTML = '<div class="status-dot"></div><span>Connected</span>';
+                } else {
+                    badge.className = 'status-badge unhealthy';
+                    badge.innerHTML = '<div class="status-dot"></div><span>Degraded</span>';
+                }
+            } catch {
+                badge.className = 'status-badge unhealthy';
+                badge.innerHTML = '<div class="status-dot"></div><span>Disconnected</span>';
+            }
+        }
+    </script>
+</body>
+</html>

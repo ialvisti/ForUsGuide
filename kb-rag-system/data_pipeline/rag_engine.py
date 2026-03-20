@@ -24,7 +24,8 @@ from .pinecone_uploader import PineconeUploader
 from .token_manager import TokenManager
 from .prompts import (
     build_required_data_prompt,
-    build_generate_response_prompt
+    build_generate_response_prompt,
+    build_knowledge_question_prompt
 )
 
 logger = logging.getLogger(__name__)
@@ -70,6 +71,16 @@ class GenerateResponseResult:
     decision: str  # "can_proceed", "uncertain", "out_of_scope"
     confidence: float
     response: Dict[str, Any]
+    metadata: Dict[str, Any]
+
+
+@dataclass
+class KnowledgeQuestionResult:
+    """Respuesta del endpoint /knowledge-question."""
+    answer: str
+    key_points: List[str]
+    source_articles: List[Dict[str, Any]]
+    confidence_note: str
     metadata: Dict[str, Any]
 
 
@@ -383,6 +394,117 @@ class RAGEngine:
             return self._build_uncertain_response(
                 "An internal error occurred while generating the response",
                 confidence=0.0
+            )
+    
+    # ========================================================================
+    # ENDPOINT 3: Knowledge Question
+    # ========================================================================
+    
+    async def ask_knowledge_question(
+        self,
+        question: str
+    ) -> KnowledgeQuestionResult:
+        """
+        Answer a general knowledge question using the KB — no participant data required.
+        
+        Performs a broad semantic search across all articles, builds context,
+        and generates a comprehensive answer via the LLM.
+        
+        Args:
+            question: The knowledge question to answer
+        
+        Returns:
+            KnowledgeQuestionResult with answer, key points, and sources
+        """
+        logger.info(f"ask_knowledge_question() - Question: {question[:80]}...")
+        
+        try:
+            # 1. Broad semantic search (no RK/topic/plan filters)
+            chunks = await self._cached_query(
+                query_text=question,
+                top_k=20,
+                filter_dict=None
+            )
+            
+            if not chunks:
+                logger.warning("No chunks found for knowledge question")
+                return KnowledgeQuestionResult(
+                    answer="I couldn't find relevant information in the knowledge base to answer this question.",
+                    key_points=[],
+                    source_articles=[],
+                    confidence_note="limited_coverage",
+                    metadata={"chunks_used": 0, "model": self.model}
+                )
+            
+            # 2. Build context (generous budget for knowledge answers)
+            context_budget = 3500
+            context, selected_chunks, tokens_used = self._build_context_from_chunks(
+                chunks=chunks,
+                budget=context_budget,
+                prioritize_types=['business_rules', 'eligibility', 'steps', 'faqs']
+            )
+            
+            logger.info(f"Context built: {len(selected_chunks)} chunks, {tokens_used} tokens")
+            
+            # 3. Build prompts
+            system_prompt, user_prompt = build_knowledge_question_prompt(
+                context=context,
+                question=question
+            )
+            
+            # 4. Call LLM
+            llm_response = await self._call_llm(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=2000
+            )
+            
+            # 5. Parse response
+            try:
+                parsed = json.loads(llm_response)
+            except json.JSONDecodeError as e:
+                logger.error(f"Error parsing knowledge question JSON: {e}")
+                parsed = {
+                    "answer": llm_response[:2000] if llm_response else "Unable to generate a structured answer.",
+                    "key_points": [],
+                    "source_articles": [],
+                    "confidence_note": "limited_coverage"
+                }
+            
+            # 6. Extract source articles from chunks if not provided by LLM
+            source_articles = parsed.get("source_articles", [])
+            if not source_articles:
+                seen_articles = set()
+                for chunk in selected_chunks:
+                    aid = chunk['metadata'].get('article_id')
+                    if aid and aid not in seen_articles:
+                        seen_articles.add(aid)
+                        source_articles.append({
+                            "article_id": aid,
+                            "title": chunk['metadata'].get('article_title'),
+                            "relevance": f"Contains {chunk['metadata'].get('chunk_type', 'content')} about {chunk['metadata'].get('topic', 'this topic')}"
+                        })
+            
+            return KnowledgeQuestionResult(
+                answer=parsed.get("answer", ""),
+                key_points=parsed.get("key_points", []),
+                source_articles=source_articles,
+                confidence_note=parsed.get("confidence_note", "partially_covered"),
+                metadata={
+                    "chunks_used": len(selected_chunks),
+                    "context_tokens": tokens_used,
+                    "model": self.model
+                }
+            )
+        
+        except Exception as e:
+            logger.exception("Error in ask_knowledge_question")
+            return KnowledgeQuestionResult(
+                answer="An internal error occurred while processing your question.",
+                key_points=[],
+                source_articles=[],
+                confidence_note="limited_coverage",
+                metadata={"error": str(e), "chunks_used": 0, "model": self.model}
             )
     
     # ========================================================================

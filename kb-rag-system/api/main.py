@@ -6,6 +6,7 @@ API REST para el sistema RAG de Knowledge Base de Participant Advisory.
 Endpoints:
 - POST /api/v1/required-data - Determina qué datos se necesitan
 - POST /api/v1/generate-response - Genera respuesta contextualizada
+- POST /api/v1/knowledge-question - Responde preguntas generales de KB (sin datos requeridos)
 - GET /health - Health check
 """
 
@@ -34,7 +35,10 @@ from .models import (
     ListChunksResponse,
     Chunk,
     ChunkMetadata,
-    IndexStatsResponse
+    IndexStatsResponse,
+    KnowledgeQuestionRequest,
+    KnowledgeQuestionResponse,
+    SourceArticle
 )
 from .config import settings, validate_settings
 from .middleware import (
@@ -214,6 +218,19 @@ async def chunks_ui():
         )
 
 
+@app.get("/ui/knowledge")
+async def knowledge_ui():
+    """Serve the knowledge question interface."""
+    knowledge_file = Path(__file__).parent.parent / "ui" / "knowledge.html"
+    if knowledge_file.exists():
+        return FileResponse(knowledge_file)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Knowledge question UI not found"
+        )
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check(
     pinecone: PineconeUploader = Depends(get_pinecone)
@@ -364,6 +381,56 @@ async def generate_response_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while generating the response."
+        )
+
+
+@app.post(
+    "/api/v1/knowledge-question",
+    response_model=KnowledgeQuestionResponse,
+    tags=["RAG Endpoints"]
+)
+async def knowledge_question_endpoint(
+    request: KnowledgeQuestionRequest,
+    engine: RAGEngine = Depends(get_rag_engine)
+):
+    """
+    Endpoint 3: Answer a general knowledge question using the KB.
+    
+    This endpoint takes a plain question and returns an answer based on
+    the knowledge base articles. No participant data, record keeper, or
+    plan type is required — it performs a broad semantic search.
+    
+    **Use cases:**
+    - Support agents looking up general 401(k) rules or processes
+    - Quick knowledge base lookups via the UI
+    - Testing KB coverage for a given topic
+    
+    **No autenticación requerida** (endpoint público para UI)
+    """
+    try:
+        logger.info(f"Knowledge question request | Q: {request.question[:80]}...")
+        
+        result = await engine.ask_knowledge_question(
+            question=request.question
+        )
+        
+        logger.info(f"Knowledge question completed | Coverage: {result.confidence_note}")
+        
+        return KnowledgeQuestionResponse(
+            answer=result.answer,
+            key_points=result.key_points,
+            source_articles=[
+                SourceArticle(**sa) for sa in result.source_articles
+            ],
+            confidence_note=result.confidence_note,
+            metadata=result.metadata
+        )
+    
+    except Exception as e:
+        logger.exception("Error in knowledge_question endpoint")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while processing the knowledge question."
         )
 
 

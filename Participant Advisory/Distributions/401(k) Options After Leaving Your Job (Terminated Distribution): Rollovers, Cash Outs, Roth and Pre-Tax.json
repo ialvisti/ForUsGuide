@@ -2,7 +2,7 @@
     "metadata": {
         "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
         "title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
-        "description": "General education article for participants who have left, quit, been terminated, or separated from service and need to understand their 401(k) options. Covers three paths: leaving funds in the plan, taking a cash distribution (check or wire), or completing a rollover (direct or indirect) to an IRA or another qualified retirement plan. Explains minimum balance rules including mandatory cash-out for balances under $1,000 and automatic IRA rollover for balances between $1,000 and $7,000. Details tax consequences including 20% federal withholding, possible state withholding, the 10% early withdrawal penalty for participants under age 59½, 1099-R reporting, and the 60-day indirect rollover deadline. Also explains how Roth and pre-tax sources are automatically separated so different distribution options and payment methods (check or wire) can be selected for each source. This article is not record-keeper-specific and does not include portal steps or processing timelines.",
+        "description": "General education article for participants who have left, quit, been terminated, or separated from service and need to understand their 401(k) options. Covers three paths: leaving funds in the plan, taking a cash distribution (check or wire), or completing a rollover (direct or indirect) to an IRA or another qualified retirement plan. Explains minimum balance rules, including mandatory cash-out for balances under $1,000 and automatic IRA rollover for balances between $1,000 and $7,000. Details tax consequences, including 20% federal withholding, possible state withholding, the 10% early withdrawal penalty for participants under age 59½, 1099-R reporting, and the 60-day indirect rollover deadline. Also explains how Roth and pre-tax sources are automatically separated, so different distribution options and payment methods (check or wire) can be selected for each source. This article is not record-keeper-specific and does not include portal steps or processing timelines.",
         "topic": "distribution",
         "subtopics": [
             "rollover",
@@ -34,7 +34,7 @@
         "schema_version": "kb_article_v2",
         "transformed_at": "2026-03-11",
         "source_last_updated": null,
-        "source_system": null
+        "source_system": "DevRev"
     },
     "details": {
         "business_rules": [
@@ -362,7 +362,11 @@
             },
             {
                 "term": "IRA",
-                "definition": "An account that may receive rolled over 401(k) funds, including an IRA chosen by the plan provider or a new IRA selected for a rollover."
+                "definition": "An Individual Retirement Account that may receive rolled over 401(k) funds, including an IRA chosen by the plan provider or a new IRA selected for a rollover."
+            },
+            {
+                "term": "Qualified plan",
+                "definition": "Are Qualified 401(k) plans, 403(b) plan (tax-sheltered annuity), Governmental 457(b) plan, 403(a) annuity plan, SIMPLE IRA, Traditional IRA, Roth IRA and SEP IRA."
             },
             {
                 "term": "Wire transfer",
@@ -469,10 +473,14 @@
                     "data_point": "Distribution option for each account source",
                     "meaning": "Which distribution option the participant wants for each source in the account when Roth and pre-tax funds are involved and tailored next-step guidance is needed.",
                     "example_values": [
-                        "Roll pre-tax funds to a Traditional IRA",
-                        "Roll Roth funds to a Roth IRA",
+                        "Roll over pre-tax funds to a Traditional IRA",
+                        "Roll over Roth funds to a Roth IRA",
+                        "Roll over pre-tax funds to a Traditional IRA and Roth funds to                a new qualified plan.",
+                        "Roll over pre-tax funds to a qualified plan and Roth funds to                a Roth IRA.",
                         "Cash distribution for pre-tax funds, rollover for Roth funds",
-                        "Rollover for both sources to separate IRAs"
+                        "Cash distribution for Roth funds, rollover for pre-tax funds",
+                        "Rollover for both sources to separate IRAs",
+                        "Rollover for both sources to separate qualified plans."
                     ],
                     "why_needed": "Needed because the article says Roth and pre-tax funds are automatically separated and can each have their own distribution option when giving tailored guidance. It is not required for general education.",
                     "source_note": "Supported by article section: Can I Roll Over Roth 401(k) Funds Separately From Pre-Tax Funds?",
@@ -482,8 +490,9 @@
                     "data_point": "Payment method for each account source",
                     "meaning": "How the participant wants each source paid or transferred, such as by check or wire when applicable, when tailored next-step guidance is needed.",
                     "example_values": [
-                        "Check mailed to the new IRA or plan provider",
-                        "Wire transfer directly to the new account",
+                        "Rollover Check mailed to the new IRA or plan provider",
+                        "Rollover Check mailed to the participant and then the participant will mail the check to the new IRA or plan provider",
+                        "Wire transfer directly to the new account provider",
                         "Check for pre-tax rollover, wire for Roth rollover",
                         "Check mailed to participant (cash distribution)"
                     ],

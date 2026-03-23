@@ -22,10 +22,13 @@ from cachetools import TTLCache
 
 from .pinecone_uploader import PineconeUploader
 from .token_manager import TokenManager
+from collections import defaultdict
+
 from .prompts import (
     build_required_data_prompt,
     build_generate_response_prompt,
-    build_knowledge_question_prompt
+    build_knowledge_question_prompt,
+    build_decompose_question_prompt
 )
 
 logger = logging.getLogger(__name__)
@@ -400,6 +403,16 @@ class RAGEngine:
     # ENDPOINT 3: Knowledge Question
     # ========================================================================
     
+    # Knowledge Question settings
+    KQ_CONTEXT_BUDGET = 4000
+    KQ_TOP_K_PER_QUERY = 15
+    KQ_MAX_CHUNKS_PER_ARTICLE = 6
+    KQ_SOURCE_MIN_SCORE = 0.20
+    KQ_PRIORITIZED_TYPES = [
+        'business_rules', 'eligibility', 'steps', 'faqs',
+        'guardrails', 'fees_details'
+    ]
+
     async def ask_knowledge_question(
         self,
         question: str
@@ -407,8 +420,13 @@ class RAGEngine:
         """
         Answer a general knowledge question using the KB — no participant data required.
         
-        Performs a broad semantic search across all articles, builds context,
-        and generates a comprehensive answer via the LLM.
+        Pipeline:
+        1. Decompose question into focused sub-queries (LLM)
+        2. Parallel semantic search for each sub-query + original
+        3. Merge, deduplicate, and rank all retrieved chunks
+        4. Build context with article diversity enforcement
+        5. Generate answer via LLM
+        6. Engine-calculated confidence and source articles
         
         Args:
             question: The knowledge question to answer
@@ -419,12 +437,32 @@ class RAGEngine:
         logger.info(f"ask_knowledge_question() - Question: {question[:80]}...")
         
         try:
-            # 1. Broad semantic search (no RK/topic/plan filters)
-            chunks = await self._cached_query(
-                query_text=question,
-                top_k=20,
-                filter_dict=None
-            )
+            # 1. Decompose question into sub-queries
+            sub_queries = await self._decompose_question(question)
+            logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+            
+            # 2. Parallel search: sub-queries + original question
+            search_tasks = [
+                self._cached_query(
+                    query_text=sq,
+                    top_k=self.KQ_TOP_K_PER_QUERY,
+                    filter_dict=None
+                )
+                for sq in sub_queries
+            ]
+            if question not in sub_queries:
+                search_tasks.append(
+                    self._cached_query(
+                        query_text=question,
+                        top_k=self.KQ_TOP_K_PER_QUERY,
+                        filter_dict=None
+                    )
+                )
+            
+            results = await asyncio.gather(*search_tasks)
+            
+            # 3. Merge, deduplicate, rank by score
+            chunks = self._merge_and_rank_chunks(*results)
             
             if not chunks:
                 logger.warning("No chunks found for knowledge question")
@@ -433,71 +471,60 @@ class RAGEngine:
                     key_points=[],
                     source_articles=[],
                     confidence_note="limited_coverage",
-                    metadata={"chunks_used": 0, "model": self.model}
+                    metadata={"chunks_used": 0, "model": self.model, "sub_queries": sub_queries}
                 )
             
-            # 2. Build context (generous budget for knowledge answers)
-            context_budget = 3500
-            context, selected_chunks, tokens_used = self._build_context_from_chunks(
+            # 4. Build context with article diversity
+            context, selected_chunks, tokens_used = self._build_context_with_diversity(
                 chunks=chunks,
-                budget=context_budget,
-                prioritize_types=['business_rules', 'eligibility', 'steps', 'faqs']
+                budget=self.KQ_CONTEXT_BUDGET,
+                prioritize_types=self.KQ_PRIORITIZED_TYPES,
+                max_per_article=self.KQ_MAX_CHUNKS_PER_ARTICLE
             )
             
             logger.info(f"Context built: {len(selected_chunks)} chunks, {tokens_used} tokens")
             
-            # 3. Build prompts
+            # 5. Build prompts and call LLM
             system_prompt, user_prompt = build_knowledge_question_prompt(
                 context=context,
                 question=question
             )
             
-            # 4. Call LLM
             llm_response = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_tokens=2000
             )
             
-            # 5. Parse response
+            # 6. Parse response
             try:
                 parsed = json.loads(llm_response)
             except json.JSONDecodeError as e:
                 logger.error(f"Error parsing knowledge question JSON: {e}")
                 parsed = {
                     "answer": llm_response[:2000] if llm_response else "Unable to generate a structured answer.",
-                    "key_points": [],
-                    "source_articles": [],
-                    "confidence_note": "limited_coverage"
+                    "key_points": []
                 }
             
-            # 6. Build source articles from actual chunk metadata
-            #    (always from chunks for reliable article attribution)
-            source_articles = []
-            seen_chunks = set()
-            for chunk in selected_chunks:
-                chunk_id = chunk.get('id', '')
-                if chunk_id in seen_chunks:
-                    continue
-                seen_chunks.add(chunk_id)
-                chunk_type = chunk['metadata'].get('chunk_type', 'content')
-                topic = chunk['metadata'].get('topic', 'this topic')
-                source_articles.append({
-                    "article_id": chunk['metadata'].get('article_id', ''),
-                    "article_title": chunk['metadata'].get('article_title', 'Unknown Article'),
-                    "chunk_type": chunk_type,
-                    "relevance": f"Contains {chunk_type.replace('_', ' ')} about {topic}"
-                })
+            # 7. Engine-calculated confidence and source articles
+            confidence_note = self._calculate_knowledge_confidence(selected_chunks)
+            source_articles = self._build_source_articles(selected_chunks)
+            
+            unique_articles = set(
+                c['metadata'].get('article_id') for c in selected_chunks
+            )
             
             return KnowledgeQuestionResult(
                 answer=parsed.get("answer", ""),
                 key_points=parsed.get("key_points", []),
                 source_articles=source_articles,
-                confidence_note=parsed.get("confidence_note", "partially_covered"),
+                confidence_note=confidence_note,
                 metadata={
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
-                    "model": self.model
+                    "model": self.model,
+                    "sub_queries": sub_queries,
+                    "unique_articles": len(unique_articles)
                 }
             )
         
@@ -951,6 +978,38 @@ class RAGEngine:
         return True
     
     # ========================================================================
+    # Helper Methods - Query Decomposition
+    # ========================================================================
+    
+    async def _decompose_question(self, question: str) -> List[str]:
+        """
+        Decompose a multi-part question into focused sub-queries for parallel search.
+        
+        Uses a lightweight LLM call to identify distinct 401(k) concepts in the
+        question. Falls back to the original question on any error.
+        
+        Returns:
+            List of 1-3 focused sub-queries
+        """
+        try:
+            system_prompt, user_prompt = build_decompose_question_prompt(question)
+            response = await self._call_llm(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=150
+            )
+            parsed = json.loads(response)
+            sub_queries = parsed.get("sub_queries", [])
+            
+            if not sub_queries or not isinstance(sub_queries, list):
+                return [question]
+            
+            return [sq for sq in sub_queries[:3] if isinstance(sq, str) and sq.strip()]
+        except Exception as e:
+            logger.warning(f"Question decomposition failed, using original: {e}")
+            return [question]
+    
+    # ========================================================================
     # Helper Methods - Contexto
     # ========================================================================
     
@@ -1001,6 +1060,117 @@ class RAGEngine:
             content = chunk['metadata'].get('content', '')
             chunk_type = chunk['metadata'].get('chunk_type', 'unknown')
             context_parts.append(f"--- Section {i} ({chunk_type}) ---\n{content}\n")
+        
+        context = "\n".join(context_parts)
+        return context, selected, tokens_used
+    
+    def _build_context_with_diversity(
+        self,
+        chunks: List[Dict[str, Any]],
+        budget: int,
+        prioritize_types: Optional[List[str]] = None,
+        max_per_article: int = 6
+    ) -> tuple:
+        """
+        Build context ensuring representation from multiple articles.
+        
+        Uses a two-phase approach:
+        Phase 1: Include the best chunk from each unique article (guarantees diversity).
+        Phase 2: Fill remaining budget by type-priority ordering with a per-article cap.
+        
+        This prevents a single dominant article from consuming all context budget,
+        which is critical for cross-article questions.
+        
+        Args:
+            chunks: Ranked chunks (best score first)
+            budget: Token budget for context
+            prioritize_types: Chunk types to prioritize in phase 2
+            max_per_article: Maximum chunks from any single article
+        
+        Returns:
+            (context_string, selected_chunks, tokens_used)
+        """
+        if not chunks:
+            return "", [], 0
+        
+        # Type-based ordering for phase 2
+        if prioritize_types:
+            priority = [
+                c for c in chunks
+                if c['metadata'].get('chunk_type') in prioritize_types
+            ]
+            other = [
+                c for c in chunks
+                if c['metadata'].get('chunk_type') not in prioritize_types
+            ]
+            type_ordered = priority + other
+        else:
+            type_ordered = list(chunks)
+        
+        # ── Phase 1: Best chunk from each article ──
+        article_best: Dict[str, Dict[str, Any]] = {}
+        for chunk in chunks:
+            aid = chunk['metadata'].get('article_id', 'unknown')
+            if aid not in article_best or chunk.get('score', 0) > article_best[aid].get('score', 0):
+                article_best[aid] = chunk
+        
+        selected = []
+        selected_ids: set = set()
+        tokens_used = 0
+        article_counts: Dict[str, int] = defaultdict(int)
+        
+        for _aid, chunk in sorted(
+            article_best.items(),
+            key=lambda x: x[1].get('score', 0),
+            reverse=True
+        ):
+            content = chunk['metadata'].get('content', '')
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens <= budget:
+                selected.append(chunk)
+                selected_ids.add(chunk.get('id'))
+                tokens_used += chunk_tokens
+                aid = chunk['metadata'].get('article_id', 'unknown')
+                article_counts[aid] += 1
+        
+        logger.debug(
+            f"Diversity phase 1: {len(selected)} chunks from "
+            f"{len(article_counts)} articles, {tokens_used} tokens"
+        )
+        
+        # ── Phase 2: Fill remaining budget by type priority ──
+        for chunk in type_ordered:
+            cid = chunk.get('id')
+            if cid in selected_ids:
+                continue
+            aid = chunk['metadata'].get('article_id', 'unknown')
+            if article_counts[aid] >= max_per_article:
+                continue
+            content = chunk['metadata'].get('content', '')
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens <= budget:
+                selected.append(chunk)
+                selected_ids.add(cid)
+                tokens_used += chunk_tokens
+                article_counts[aid] += 1
+        
+        # Sort selected by score for consistent context ordering
+        selected.sort(key=lambda c: c.get('score', 0), reverse=True)
+        
+        logger.debug(
+            f"Diversity phase 2 total: {len(selected)} chunks from "
+            f"{len(article_counts)} articles, {tokens_used} tokens"
+        )
+        
+        # Format context with article attribution
+        context_parts = []
+        for i, chunk in enumerate(selected, 1):
+            content = chunk['metadata'].get('content', '')
+            chunk_type = chunk['metadata'].get('chunk_type', 'unknown')
+            article_title = chunk['metadata'].get('article_title', '')
+            context_parts.append(
+                f"--- Section {i} ({chunk_type} | Source: {article_title}) ---\n{content}\n"
+            )
         
         context = "\n".join(context_parts)
         return context, selected, tokens_used
@@ -1271,6 +1441,110 @@ class RAGEngine:
             return "uncertain"
         else:
             return "out_of_scope"
+    
+    # ========================================================================
+    # Helper Methods - Knowledge Question
+    # ========================================================================
+    
+    # Chunk types that carry high informational value for knowledge answers
+    _KQ_HIGH_VALUE_TYPES = frozenset({
+        'business_rules', 'eligibility', 'steps', 'faqs', 'guardrails'
+    })
+    
+    def _calculate_knowledge_confidence(
+        self,
+        selected_chunks: List[Dict[str, Any]]
+    ) -> str:
+        """
+        Calculate confidence_note for knowledge questions based on retrieval quality.
+        
+        Uses three signals:
+        1. Semantic similarity (avg score of top chunks)
+        2. Article diversity (number of unique source articles)
+        3. Chunk type coverage (how many high-value types are represented)
+        
+        Returns:
+            "well_covered", "partially_covered", or "limited_coverage"
+        """
+        if not selected_chunks:
+            return "limited_coverage"
+        
+        top_scores = [c.get('score', 0) for c in selected_chunks[:5]]
+        avg_score = sum(top_scores) / len(top_scores)
+        
+        unique_articles = set(
+            c['metadata'].get('article_id') for c in selected_chunks
+        )
+        
+        chunk_types_present = set(
+            c['metadata'].get('chunk_type') for c in selected_chunks
+        )
+        covered_high_value = chunk_types_present & self._KQ_HIGH_VALUE_TYPES
+        
+        logger.info(
+            f"Knowledge confidence: avg_score={avg_score:.3f}, "
+            f"articles={len(unique_articles)}, "
+            f"high_value_types={len(covered_high_value)}/{len(self._KQ_HIGH_VALUE_TYPES)}"
+        )
+        
+        if avg_score >= 0.35 and len(covered_high_value) >= 3:
+            return "well_covered"
+        elif avg_score >= 0.22 and len(covered_high_value) >= 2:
+            return "partially_covered"
+        else:
+            return "limited_coverage"
+    
+    def _build_source_articles(
+        self,
+        selected_chunks: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Build deduplicated source articles list from selected chunks.
+        
+        Groups by article_id (not chunk_id) so each article appears once,
+        with a summary of which chunk types contributed.
+        """
+        article_info: Dict[str, Dict[str, Any]] = {}
+        
+        for chunk in selected_chunks:
+            score = chunk.get('score', 0)
+            if score < self.KQ_SOURCE_MIN_SCORE:
+                continue
+            
+            article_id = chunk['metadata'].get('article_id', '')
+            if not article_id:
+                continue
+            
+            if article_id in article_info:
+                article_info[article_id]['types'].add(
+                    chunk['metadata'].get('chunk_type', '')
+                )
+                article_info[article_id]['score'] = max(
+                    article_info[article_id]['score'], score
+                )
+            else:
+                article_info[article_id] = {
+                    'article_title': chunk['metadata'].get('article_title', 'Unknown Article'),
+                    'topic': chunk['metadata'].get('topic', ''),
+                    'types': {chunk['metadata'].get('chunk_type', '')},
+                    'score': score
+                }
+        
+        source_articles = []
+        for article_id, info in sorted(
+            article_info.items(),
+            key=lambda x: x[1]['score'],
+            reverse=True
+        ):
+            types_str = ", ".join(sorted(info['types'] - {''}))
+            source_articles.append({
+                "article_id": article_id,
+                "article_title": info['article_title'],
+                "chunk_types_used": types_str,
+                "relevance": f"Covers {info['topic']} ({types_str})"
+            })
+        
+        return source_articles
     
     # ========================================================================
     # Helper Methods - Fallbacks

@@ -284,6 +284,8 @@ RULES:
 4. Do NOT provide personalized financial advice or legal recommendations.
 5. When relevant, reference specific processes, fees, timelines, or eligibility rules from the context.
 6. If multiple topics are covered in the context, synthesize the most relevant information.
+7. When the context includes guardrails (what NOT to say or promise), respect them strictly.
+8. When a question touches multiple 401(k) concepts (e.g., balance thresholds, rollover rules, tax treatment), address EACH concept separately using the relevant context sections. Do not omit a concept just because another concept dominates the context.
 
 Output must be valid JSON with this structure:
 {
@@ -291,16 +293,10 @@ Output must be valid JSON with this structure:
   "key_points": [
     "Important fact or takeaway 1",
     "Important fact or takeaway 2"
-  ],
-  "source_articles": [
-    {
-      "article_id": "the_article_id",
-      "title": "The Article Title",
-      "relevance": "Brief explanation of why this article is relevant"
-    }
-  ],
-  "confidence_note": "How well the KB context covers this question (well_covered | partially_covered | limited_coverage)"
-}"""
+  ]
+}
+
+IMPORTANT: Only output "answer" and "key_points". Source articles and confidence are tracked separately."""
 
 USER_PROMPT_KNOWLEDGE_QUESTION_TEMPLATE = """KNOWLEDGE BASE CONTEXT:
 {context}
@@ -329,3 +325,49 @@ def build_knowledge_question_prompt(
     )
     
     return SYSTEM_PROMPT_KNOWLEDGE_QUESTION, user_prompt
+
+
+# ============================================================================
+# Sub-Query Decomposition (used by Knowledge Question)
+# ============================================================================
+
+SYSTEM_PROMPT_DECOMPOSE_QUESTION = """You are a query decomposition assistant for a 401(k) knowledge base search system.
+
+Your task: Break a complex question into 1-3 focused search queries that each target a DISTINCT 401(k) topic or rule.
+
+Rules:
+1. Each sub-query should target a DIFFERENT concept, threshold, rule, or process.
+2. Preserve critical details: dollar amounts, ages, time periods, account types, recordkeepers.
+3. Sub-queries should be 10-25 words, specific enough for semantic search in a vector database.
+4. If the question only covers ONE topic, return exactly 1 sub-query.
+5. Focus on the underlying 401(k) concepts and rules, not the participant's personal narrative.
+6. Never return more than 3 sub-queries.
+
+Examples:
+- "I left my job with $900 and got a check. It's been 65 days since I planned to roll it over."
+  → ["missed 60-day indirect rollover deadline tax consequences IRS exceptions", "terminated 401k balance under $1000 mandatory cash-out force-out rules"]
+
+- "What's the difference between a direct and indirect rollover?"
+  → ["direct rollover vs indirect rollover 401k differences rules"]
+
+- "I'm 58 with a hardship withdrawal request for tuition and I have an outstanding loan."
+  → ["hardship withdrawal tuition education IRS-approved reason eligibility", "active 401k loan effect on hardship withdrawal contingent amount rule"]
+
+Output valid JSON:
+{"sub_queries": ["query 1", "query 2"]}"""
+
+USER_PROMPT_DECOMPOSE_TEMPLATE = """QUESTION:
+{question}
+
+Break this into focused search sub-queries. Return ONLY the JSON object."""
+
+
+def build_decompose_question_prompt(question: str) -> tuple:
+    """
+    Construye los prompts para descomponer una pregunta en sub-queries.
+    
+    Returns:
+        (system_prompt, user_prompt)
+    """
+    user_prompt = USER_PROMPT_DECOMPOSE_TEMPLATE.format(question=question)
+    return SYSTEM_PROMPT_DECOMPOSE_QUESTION, user_prompt

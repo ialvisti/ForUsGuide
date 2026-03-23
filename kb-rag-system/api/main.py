@@ -38,7 +38,8 @@ from .models import (
     IndexStatsResponse,
     KnowledgeQuestionRequest,
     KnowledgeQuestionResponse,
-    SourceArticle
+    SourceArticle,
+    UsedChunk
 )
 from .config import settings, validate_settings
 from .middleware import (
@@ -421,6 +422,9 @@ async def knowledge_question_endpoint(
             key_points=result.key_points,
             source_articles=[
                 SourceArticle(**sa) for sa in result.source_articles
+            ],
+            used_chunks=[
+                UsedChunk(**uc) for uc in result.used_chunks
             ],
             confidence_note=result.confidence_note,
             metadata=result.metadata

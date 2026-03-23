@@ -434,13 +434,28 @@ class KnowledgeQuestionRequest(BaseModel):
 
 
 class SourceArticle(BaseModel):
-    """Artículo fuente referenciado en la respuesta."""
+    """Artículo fuente referenciado en la respuesta (deduplicated by article_id)."""
     
     article_id: Optional[str] = Field(None, description="ID del artículo")
-    title: Optional[str] = Field(None, description="Título del artículo (legacy)")
-    article_title: Optional[str] = Field(None, description="Título del artículo padre")
-    chunk_type: Optional[str] = Field(None, description="Tipo de chunk (faqs, business_rules, etc.)")
+    article_title: Optional[str] = Field(None, description="Título del artículo")
+    chunk_types_used: Optional[str] = Field(
+        None,
+        description="Comma-separated chunk types that contributed (e.g. 'business_rules, steps, faqs')"
+    )
     relevance: Optional[str] = Field(None, description="Por qué este artículo es relevante")
+
+
+class UsedChunk(BaseModel):
+    """Individual chunk used by the LLM to generate the knowledge answer."""
+    
+    chunk_id: str = Field(..., description="Pinecone vector ID")
+    score: float = Field(..., description="Pinecone similarity score")
+    chunk_type: str = Field(..., description="Chunk type (faqs, business_rules, steps, etc.)")
+    chunk_tier: str = Field(..., description="Chunk tier (critical, high, medium, low)")
+    article_id: str = Field(..., description="Parent article ID")
+    article_title: str = Field(..., description="Parent article title")
+    content_preview: str = Field(..., description="First ~200 characters of content")
+    content: str = Field(..., description="Full chunk content")
 
 
 class KnowledgeQuestionResponse(BaseModel):
@@ -456,6 +471,11 @@ class KnowledgeQuestionResponse(BaseModel):
     source_articles: List[SourceArticle] = Field(
         default_factory=list,
         description="Artículos fuente usados para la respuesta"
+    )
+    
+    used_chunks: List[UsedChunk] = Field(
+        default_factory=list,
+        description="Individual chunks fed to the LLM, ordered by score descending"
     )
     
     confidence_note: str = Field(

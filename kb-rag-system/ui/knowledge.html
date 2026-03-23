@@ -534,6 +534,346 @@
             font-size: 0.9375rem;
         }
 
+        /* Coverage Gaps */
+        .coverage-gaps-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            border-left: 4px solid var(--warning);
+        }
+
+        .coverage-gaps-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 0.5rem;
+        }
+
+        .coverage-gaps-list li {
+            padding: 0.5rem 0.75rem;
+            padding-left: 2rem;
+            position: relative;
+            font-size: 0.9375rem;
+            color: #92400e;
+            border-bottom: 1px solid var(--warning-light);
+        }
+
+        .coverage-gaps-list li:last-child {
+            border-bottom: none;
+        }
+
+        .coverage-gaps-list li::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0.875rem;
+            width: 10px;
+            height: 10px;
+            border: 2px solid var(--warning);
+            border-radius: 50%;
+            background: var(--warning-light);
+        }
+
+        /* Search Strategy */
+        .strategy-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .sub-queries-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .sub-query-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.625rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            gap: 1rem;
+        }
+
+        .sub-query-text {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            flex: 1;
+            font-style: italic;
+        }
+
+        .sub-query-score {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.625rem;
+            border-radius: 12px;
+            white-space: nowrap;
+            min-width: 4rem;
+            text-align: center;
+        }
+
+        .sub-query-score.good {
+            background: var(--success-light);
+            color: #065f46;
+        }
+
+        .sub-query-score.fair {
+            background: var(--warning-light);
+            color: #92400e;
+        }
+
+        .sub-query-score.weak {
+            background: var(--error-light);
+            color: #991b1b;
+        }
+
+        /* Multi-type badges for source articles */
+        .source-types-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            margin-bottom: 0.375rem;
+        }
+
+        .source-type-badge {
+            display: inline-block;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        /* Used Chunks Section */
+        .chunks-section-toggle {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            transition: all 0.2s;
+            margin-bottom: 0.75rem;
+        }
+
+        .chunks-section-toggle:hover {
+            background: var(--bg-secondary);
+            border-color: var(--primary);
+        }
+
+        .chunks-section-toggle .toggle-arrow {
+            transition: transform 0.2s;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .chunks-section-toggle.open .toggle-arrow {
+            transform: rotate(90deg);
+        }
+
+        .chunks-section-body {
+            display: none;
+        }
+
+        .chunks-section-body.open {
+            display: block;
+        }
+
+        .article-group {
+            margin-bottom: 1rem;
+        }
+
+        .article-group-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: var(--primary-light);
+            border: 1px solid var(--border);
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .article-group-header:hover {
+            background: #dde3fd;
+        }
+
+        .article-group-header .group-arrow {
+            font-size: 0.625rem;
+            color: var(--primary);
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .article-group-header.open .group-arrow {
+            transform: rotate(90deg);
+        }
+
+        .article-group-title {
+            flex: 1;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .article-group-count {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 0.125rem 0.5rem;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+
+        .article-group-chunks {
+            display: none;
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+        }
+
+        .article-group-chunks.open {
+            display: block;
+        }
+
+        .chunk-card {
+            padding: 0.875rem 1rem;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chunk-card:last-child {
+            border-bottom: none;
+        }
+
+        .chunk-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.5rem;
+        }
+
+        .chunk-score {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            font-family: 'Monaco', 'Courier New', monospace;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            min-width: 3.5rem;
+            text-align: center;
+        }
+
+        .chunk-score.good { background: var(--success-light); color: #065f46; }
+        .chunk-score.fair { background: var(--warning-light); color: #92400e; }
+        .chunk-score.weak { background: var(--error-light); color: #991b1b; }
+
+        .chunk-type-pill {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            background: var(--bg-secondary);
+        }
+
+        .chunk-tier-pill {
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .chunk-tier-pill.critical { background: #fce4ec; color: #b71c1c; border: 1px solid #ef9a9a; }
+        .chunk-tier-pill.high { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+        .chunk-tier-pill.medium { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+        .chunk-tier-pill.low { background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); }
+
+        .chunk-id {
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            font-family: 'Monaco', 'Courier New', monospace;
+            margin-left: auto;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chunk-preview {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .chunk-full-content {
+            display: none;
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            color: var(--text-primary);
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+        }
+
+        .chunk-full-content.open {
+            display: block;
+        }
+
+        .chunk-expand-btn {
+            display: inline-block;
+            margin-top: 0.375rem;
+            padding: 0.25rem 0.625rem;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.6875rem;
+            color: var(--primary);
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .chunk-expand-btn:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+        }
+
         .metadata-row {
             display: flex;
             gap: 1.5rem;
@@ -715,7 +1055,9 @@
             const section = document.getElementById('answerSection');
             const coverageClass = data.confidence_note || 'partially_covered';
             const coverageLabel = coverageClass.replace(/_/g, ' ');
+            const m = data.metadata || {};
 
+            // Key Points
             let keyPointsHtml = '';
             if (data.key_points && data.key_points.length > 0) {
                 keyPointsHtml = `
@@ -730,36 +1072,138 @@
                 `;
             }
 
+            // Coverage Gaps
+            const gaps = m.coverage_gaps || [];
+            let coverageGapsHtml = '';
+            if (gaps.length > 0) {
+                coverageGapsHtml = `
+                    <div class="coverage-gaps-card">
+                        <div class="answer-card-header" style="border-bottom-color: var(--warning-light);">
+                            <h3>Coverage Gaps</h3>
+                            <span class="coverage-badge limited_coverage">${gaps.length} topic${gaps.length > 1 ? 's' : ''} not covered</span>
+                        </div>
+                        <ul class="coverage-gaps-list">
+                            ${gaps.map(g => `<li>${escapeHtml(g)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            // Search Strategy (sub-queries + per-query scores)
+            const subQueries = m.sub_queries || [];
+            const perQueryScores = m.per_query_scores || {};
+            let strategyHtml = '';
+            if (subQueries.length > 0) {
+                strategyHtml = `
+                    <div class="strategy-card">
+                        <div class="answer-card-header">
+                            <h3>Search Strategy</h3>
+                            <span style="font-size:0.8125rem;color:var(--text-muted);">${subQueries.length} sub-quer${subQueries.length > 1 ? 'ies' : 'y'}</span>
+                        </div>
+                        <div class="sub-queries-list">
+                            ${subQueries.map(sq => {
+                                const score = perQueryScores[sq];
+                                const scoreDisplay = score != null ? score.toFixed(4) : '—';
+                                const scoreClass = score >= 0.35 ? 'good' : score >= 0.22 ? 'fair' : 'weak';
+                                return `
+                                    <div class="sub-query-row">
+                                        <span class="sub-query-text">"${escapeHtml(sq)}"</span>
+                                        <span class="sub-query-score ${score != null ? scoreClass : ''}">${scoreDisplay}</span>
+                                    </div>
+                                `;
+                            }).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Source Articles (with multi-type badges)
             let sourcesHtml = '';
             if (data.source_articles && data.source_articles.length > 0) {
                 sourcesHtml = `
                     <div class="answer-card">
                         <div class="answer-card-header">
                             <h3>Source Articles</h3>
+                            ${m.unique_articles != null ? `<span style="font-size:0.8125rem;color:var(--text-muted);">${m.unique_articles} unique article${m.unique_articles !== 1 ? 's' : ''}</span>` : ''}
                         </div>
                         <div class="source-articles">
-                            ${data.source_articles.map(sa => `
-                                <div class="source-card">
-                                    <div class="source-article-name">${escapeHtml(sa.article_title || sa.title || 'Unknown Article')}</div>
-                                    <div class="source-chunk-type">${escapeHtml(formatChunkType(sa.chunk_type || sa.article_id || ''))}</div>
-                                    <div class="source-relevance">${escapeHtml(sa.relevance || '')}</div>
-                                </div>
-                            `).join('')}
+                            ${data.source_articles.map(sa => {
+                                const types = (sa.chunk_types_used || '').split(',').map(t => t.trim()).filter(Boolean);
+                                const typeBadges = types.length > 0
+                                    ? `<div class="source-types-row">${types.map(t => `<span class="source-type-badge">${escapeHtml(formatChunkType(t))}</span>`).join('')}</div>`
+                                    : '';
+                                return `
+                                    <div class="source-card">
+                                        <div class="source-article-name">${escapeHtml(sa.article_title || 'Unknown Article')}</div>
+                                        ${typeBadges}
+                                        <div class="source-relevance">${escapeHtml(sa.relevance || '')}</div>
+                                    </div>
+                                `;
+                            }).join('')}
                         </div>
                     </div>
                 `;
             }
 
-            let metadataHtml = '';
-            if (data.metadata) {
-                const m = data.metadata;
-                metadataHtml = `
-                    <div class="metadata-row">
-                        ${m.chunks_used != null ? `<div class="metadata-item"><strong>Chunks used:</strong> ${m.chunks_used}</div>` : ''}
-                        ${m.context_tokens != null ? `<div class="metadata-item"><strong>Context tokens:</strong> ${m.context_tokens}</div>` : ''}
-                        ${m.model ? `<div class="metadata-item"><strong>Model:</strong> ${m.model}</div>` : ''}
+            // Used Chunks (grouped by article, collapsed by default)
+            const usedChunks = data.used_chunks || [];
+            let chunksHtml = '';
+            if (usedChunks.length > 0) {
+                const grouped = groupChunksByArticle(usedChunks);
+                const articleGroupsHtml = grouped.map((group, gi) => {
+                    const chunksInGroup = group.chunks.map((uc, ci) => {
+                        const sClass = uc.score >= 0.35 ? 'good' : uc.score >= 0.22 ? 'fair' : 'weak';
+                        const contentId = `chunk-content-${gi}-${ci}`;
+                        return `
+                            <div class="chunk-card">
+                                <div class="chunk-card-header">
+                                    <span class="chunk-score ${sClass}">${uc.score.toFixed(4)}</span>
+                                    <span class="chunk-type-pill">${escapeHtml(formatChunkType(uc.chunk_type))}</span>
+                                    <span class="chunk-tier-pill ${uc.chunk_tier}">${escapeHtml(uc.chunk_tier)}</span>
+                                    <span class="chunk-id" title="${escapeHtml(uc.chunk_id)}">${escapeHtml(uc.chunk_id)}</span>
+                                </div>
+                                <div class="chunk-preview">${escapeHtml(uc.content_preview)}</div>
+                                <button class="chunk-expand-btn" onclick="toggleChunkContent('${contentId}', this)">Show full content</button>
+                                <div id="${contentId}" class="chunk-full-content">${escapeHtml(uc.content)}</div>
+                            </div>
+                        `;
+                    }).join('');
+
+                    const groupId = `article-group-${gi}`;
+                    return `
+                        <div class="article-group">
+                            <div class="article-group-header" onclick="toggleArticleGroup('${groupId}', this)">
+                                <span class="group-arrow">&#9654;</span>
+                                <span class="article-group-title">${escapeHtml(group.article_title)}</span>
+                                <span class="article-group-count">${group.chunks.length} chunk${group.chunks.length > 1 ? 's' : ''}</span>
+                            </div>
+                            <div id="${groupId}" class="article-group-chunks">
+                                ${chunksInGroup}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+
+                chunksHtml = `
+                    <button class="chunks-section-toggle" id="chunksSectionToggle" onclick="toggleChunksSection()">
+                        <span>Used Chunks (${usedChunks.length})</span>
+                        <span class="toggle-arrow">&#9654;</span>
+                    </button>
+                    <div id="chunksSectionBody" class="chunks-section-body">
+                        ${articleGroupsHtml}
                     </div>
                 `;
+            }
+
+            // Metadata
+            let metadataHtml = '';
+            const metaParts = [];
+            if (m.chunks_used != null) metaParts.push(`<div class="metadata-item"><strong>Chunks:</strong> ${m.chunks_used}</div>`);
+            if (m.unique_articles != null) metaParts.push(`<div class="metadata-item"><strong>Articles:</strong> ${m.unique_articles}</div>`);
+            if (m.context_tokens != null) metaParts.push(`<div class="metadata-item"><strong>Context tokens:</strong> ${m.context_tokens}</div>`);
+            if (m.model) metaParts.push(`<div class="metadata-item"><strong>Model:</strong> ${m.model}</div>`);
+            if (metaParts.length > 0) {
+                metadataHtml = `<div class="metadata-row">${metaParts.join('')}</div>`;
             }
 
             section.innerHTML = `
@@ -772,7 +1216,10 @@
                     ${metadataHtml}
                 </div>
                 ${keyPointsHtml}
+                ${coverageGapsHtml}
                 ${sourcesHtml}
+                ${chunksHtml}
+                ${strategyHtml}
                 <div class="raw-toggle">
                     <button onclick="toggleRawJson()">Show Raw JSON</button>
                 </div>
@@ -801,6 +1248,42 @@
 
         function toggleRawJson() {
             document.getElementById('rawJson').classList.toggle('show');
+        }
+
+        function groupChunksByArticle(chunks) {
+            const map = {};
+            const order = [];
+            for (const uc of chunks) {
+                if (!map[uc.article_id]) {
+                    map[uc.article_id] = {
+                        article_id: uc.article_id,
+                        article_title: uc.article_title,
+                        chunks: []
+                    };
+                    order.push(uc.article_id);
+                }
+                map[uc.article_id].chunks.push(uc);
+            }
+            return order.map(id => map[id]);
+        }
+
+        function toggleChunksSection() {
+            const toggle = document.getElementById('chunksSectionToggle');
+            const body = document.getElementById('chunksSectionBody');
+            toggle.classList.toggle('open');
+            body.classList.toggle('open');
+        }
+
+        function toggleArticleGroup(groupId, headerEl) {
+            const body = document.getElementById(groupId);
+            headerEl.classList.toggle('open');
+            body.classList.toggle('open');
+        }
+
+        function toggleChunkContent(contentId, btn) {
+            const el = document.getElementById(contentId);
+            const isOpen = el.classList.toggle('open');
+            btn.textContent = isOpen ? 'Hide full content' : 'Show full content';
         }
 
         function copyRawJson() {

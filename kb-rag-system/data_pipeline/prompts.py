@@ -286,6 +286,7 @@ RULES:
 6. If multiple topics are covered in the context, synthesize the most relevant information.
 7. When the context includes guardrails (what NOT to say or promise), respect them strictly.
 8. When a question touches multiple 401(k) concepts (e.g., balance thresholds, rollover rules, tax treatment), address EACH concept separately using the relevant context sections. Do not omit a concept just because another concept dominates the context.
+9. In the "coverage_gaps" field, list ONLY core topics the question is fundamentally about that are ENTIRELY ABSENT from the context. Do NOT report as gaps: (a) specific fine-grained details when the general topic IS covered, (b) exact form numbers or codes when the broader subject is discussed, (c) tangential or secondary topics the question mentions but is not primarily about. If the context addresses the main subject matter, even imperfectly, return an empty list for coverage_gaps.
 
 Output must be valid JSON with this structure:
 {
@@ -293,10 +294,13 @@ Output must be valid JSON with this structure:
   "key_points": [
     "Important fact or takeaway 1",
     "Important fact or takeaway 2"
+  ],
+  "coverage_gaps": [
+    "Specific topic or concept asked about but NOT covered in the context"
   ]
 }
 
-IMPORTANT: Only output "answer" and "key_points". Source articles and confidence are tracked separately."""
+IMPORTANT: Output "answer", "key_points", and "coverage_gaps". Source articles and confidence are tracked separately."""
 
 USER_PROMPT_KNOWLEDGE_QUESTION_TEMPLATE = """KNOWLEDGE BASE CONTEXT:
 {context}

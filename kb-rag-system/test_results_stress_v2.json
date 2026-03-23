@@ -1,0 +1,853 @@
+[
+  {
+    "id": "S1",
+    "category": "Out-of-Scope (Loans)",
+    "question": "I currently have a $15,000 outstanding 401(k) loan with LT Trust. I just got laid off and I know I have a grace period to repay it. How long is that grace period exactly, what happens if I can't repay, and can I roll over the remaining balance minus the loan to my Fidelity IRA?",
+    "expected_topics": [
+      "loan repayment after termination (NOT in KB)",
+      "rollover of remaining balance (IN KB)",
+      "should acknowledge limited coverage on loans"
+    ],
+    "response": {
+      "answer": "The knowledge base does not provide the exact length of any post-termination loan repayment grace period, so I can’t confirm how long that period is.\n\nWhat the context does say is:\n\n1. What happens if you do not repay the loan\n- A 401(k) loan is not taxable as long as it is repaid properly through payroll deductions, or paid off in full with a one-time payment of the outstanding balance.\n- If you terminate employment and then request a cash distribution or a rollover, it is recommended that the loan be paid off first.\n- If the loan is not paid off before the cash-out or rollover, the outstanding loan amount will become taxable.\n- More generally, failure to repay a 401(k) loan may result in the loan being treated as a taxable distribution.\n\n2. Can you roll over the remaining balance to a Fidelity IRA?\n- Yes, the context indicates that after leaving your job, a rollover distribution can move 401(k) funds to an IRA without immediate taxes or penalties if done properly.\n- The rollover can be completed by check mailed to the new IRA provider or by wire directly to the new account.\n- The example in the knowledge base specifically references rolling 100% to a Traditional IRA at Fidelity using a full rollover by check or wire.\n- However, if you still have an outstanding loan and do not pay it off first, the unpaid loan amount becomes taxable when you request the rollover or cash-out.\n\n3. Important tax treatment to understand\n- A direct rollover to an IRA is generally not immediately taxable if done properly.\n- If funds are paid to you first instead of directly to the IRA, the rollover generally must be completed within 60 days to avoid taxes and penalties.\n- The 60-day rule does not apply to direct rollovers between providers.\n- A 1099-R will be issued the following year for rollover reporting purposes.\n\n4. Eligibility and process after layoff\n- To request a termination distribution or rollover, the participant must have Terminated status and a Termination date in the system.\n- Only vested balances are eligible for distribution.\n- For LT Trust plans, processes are handled by ForUsAll or through the ForUsAll portal.\n- The online path in the portal is: log in at forusall.com/login > Loans & Distributions > Separation of Service under Termination Distribution.\n- If the portal shows “Default” instead of “Separation of Service,” the context says to select “Default,” since it is the same option.\n\nSo, based on the knowledge base: you may be able to roll over your vested remaining balance to your Fidelity IRA, but if the $15,000 loan is still outstanding and not repaid first, that unpaid loan amount becomes taxable. The exact length of the repayment grace period is not stated in the provided context.",
+      "key_points": [
+        "The knowledge base does not state the exact post-termination grace period for repaying a 401(k) loan.",
+        "If the loan is not paid off before a cash distribution or rollover after termination, the outstanding loan amount becomes taxable.",
+        "A rollover to a Fidelity IRA is generally allowed after termination for vested balances and can be done by direct check or wire.",
+        "A direct rollover avoids the 60-day indirect rollover rule; if funds are paid to the participant first, the rollover generally must be completed within 60 days."
+      ],
+      "source_articles": [
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (business_rules, faqs)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (business_rules, eligibility, example, faqs)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (business_rules, example, faqs, steps)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, faqs, steps)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, example, fees_details, steps)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "title": null,
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "chunk_type": null,
+          "relevance": "Covers excess_contribution_refund (decision_guide)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 26,
+        "context_tokens": 3965,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "terminated employee 401k loan repayment grace period after layoff LT Trust plan loan offset deadline",
+          "outstanding $15,000 401k loan after termination unable to repay deemed distribution taxes penalties Form 1099-R",
+          "roll over remaining 401k balance minus unpaid loan offset to Fidelity IRA direct rollover rules"
+        ],
+        "unique_articles": 6,
+        "coverage_gaps": [
+          "Exact length of the post-termination 401(k) loan repayment grace period"
+        ],
+        "per_query_scores": {
+          "terminated employee 401k loan repayment grace period after layoff LT Trust plan loan offset deadline": 0.45,
+          "outstanding $15,000 401k loan after termination unable to repay deemed distribution taxes penalties Form 1099-R": 0.5149,
+          "roll over remaining 401k balance minus unpaid loan offset to Fidelity IRA direct rollover rules": 0.4889,
+          "I currently have a $15,000 outstanding 401(k) loan with LT Trust. I just got laid off and I know I have a grace period to repay it. How long is that grace period exactly, what happens if I can't repay, and can I roll over the remaining balance minus the loan to my Fidelity IRA?": 0.5075
+        }
+      }
+    },
+    "elapsed_seconds": 28.05
+  },
+  {
+    "id": "S2",
+    "category": "Wrong Plan Type",
+    "question": "I'm a government employee with a 457(b) plan, not a 401(k). My balance is $3,200 and I'm leaving my job. Do the same force-out rules and $5,000 threshold apply to my 457(b)? Can I roll it into a 401(k) at my new employer?",
+    "expected_topics": [
+      "457(b) NOT in KB",
+      "should NOT apply 401(k) rules to 457(b)",
+      "should state outside KB coverage"
+    ],
+    "response": {
+      "answer": "The knowledge base does **not** specifically cover **governmental 457(b) plans**, so I can’t confirm whether the **same force-out rules** apply to your 457(b) or whether a **$5,000 threshold** is relevant for that type of plan.\n\nWhat the context **does** say is this for **401(k) plans** after employment ends:\n\n1. **Force-out eligibility (401(k) only in this context)**\n   - Force-outs apply only to **former employees** with **vested balances under $7,000**.\n   - The employer can initiate this only **after employment ends**.\n   - Participants must receive **advance written notice** and an opportunity to act before an involuntary distribution occurs.\n\n2. **401(k) balance thresholds in the context**\n   - **$80 or less:** the balance may be fully absorbed by an administrative fee, resulting in account closure with no funds transferred.\n   - **More than $80 and under $1,000:** the plan may issue a **cash distribution** with **mandatory 20% withholding**.\n   - **$1,000 to $7,000:** the plan must **automatically roll the balance into a safe harbor IRA**, unless the participant elects otherwise.\n\nSo, if this were a **401(k)** with a **$3,200** vested balance after termination, the context says that amount falls in the **$1,000 to $7,000** range, where it would generally be subject to an **automatic safe harbor IRA rollover unless the participant makes another election**.\n\n3. **Rolling money into another retirement plan**\n   - The context says a **rollover distribution** allows a participant to move **401(k) funds** to an **IRA or another qualified retirement plan** without immediate taxes or penalties if done properly.\n   - A rollover can be completed by **check** or **wire** sent to the receiving account/provider.\n   - If the funds are sent **directly** from one provider to another, the **60-day rollover rule does not apply**.\n   - If the funds are paid to the participant first, the rollover generally must be completed within **60 days** to avoid taxes and penalties.\n\nHowever, because your question is about a **457(b)**, the context does **not** let me confirm whether your specific 457(b) can be rolled into your new employer’s **401(k)**. The knowledge base only gives those rollover rules in the context of **401(k) distributions**.\n\nIn short:\n- The context does **not** support saying that a **457(b)** follows the same force-out rules.\n- The context does **not** support a **$5,000 threshold**; the threshold discussed here for 401(k) force-outs is **under $7,000**.\n- The context does say that **401(k) money** can be rolled to an **IRA or another qualified retirement plan**, but it does **not** specifically address whether a **governmental 457(b)** can be rolled into a new employer’s **401(k)**.",
+      "key_points": [
+        "The knowledge base does not cover governmental 457(b) plans, so it cannot confirm whether 401(k) force-out rules apply to a 457(b).",
+        "In this context, 401(k) force-outs apply only after termination and only for vested balances under $7,000, not $5,000.",
+        "For a 401(k), balances from $1,000 to $7,000 are generally rolled into a safe harbor IRA unless the participant elects otherwise.",
+        "The context says 401(k) funds can be rolled to an IRA or another qualified retirement plan, but it does not specifically address 457(b)-to-401(k) rollovers."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, eligibility, faqs, guardrails, required_data_disambiguation)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (additional_notes, business_rules, eligibility, required_data_disambiguation)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (business_rules, example, faqs)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, example, faqs, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (business_rules, eligibility)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 25,
+        "context_tokens": 3816,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "governmental 457(b) terminated employee balance $3,200 mandatory cash-out force-out rules $5,000 threshold",
+          "governmental 457(b) distribution rollover eligibility into new employer 401(k) direct rollover accepted plan rules"
+        ],
+        "unique_articles": 5,
+        "coverage_gaps": [
+          "Governmental 457(b) force-out rules and thresholds",
+          "Whether a governmental 457(b) can be rolled into a new employer's 401(k)"
+        ],
+        "per_query_scores": {
+          "governmental 457(b) terminated employee balance $3,200 mandatory cash-out force-out rules $5,000 threshold": 0.6119,
+          "governmental 457(b) distribution rollover eligibility into new employer 401(k) direct rollover accepted plan rules": 0.4767,
+          "I'm a government employee with a 457(b) plan, not a 401(k). My balance is $3,200 and I'm leaving my job. Do the same force-out rules and $5,000 threshold apply to my 457(b)? Can I roll it into a 401(k) at my new employer?": 0.4698
+        }
+      }
+    },
+    "elapsed_seconds": 28.21
+  },
+  {
+    "id": "S3",
+    "category": "Fabricated Rule Trap",
+    "question": "My tax advisor told me there's a new IRS rule from 2025 that allows a one-time 'emergency withdrawal' of up to $1,000 from my 401(k) without any penalty or taxes, even while still employed. Is this true? If so, how do I request it through ForUsAll?",
+    "expected_topics": [
+      "SECURE 2.0 provision KB may not cover",
+      "should NOT confirm unless KB says so",
+      "should not fabricate ForUsAll process"
+    ],
+    "response": {
+      "answer": "The knowledge base provided does not mention a 2025 IRS rule for a one-time $1,000 \"emergency withdrawal,\" and it does not include any ForUsAll process for requesting that type of distribution. So based on this context alone, I cannot confirm that this option is available through ForUsAll or that it would be penalty-free or tax-free.\n\nWhat the context does say is that while you are still employed, access to 401(k) money is limited and depends on your employer's plan rules. The options described in the knowledge base are:\n\n1. In-service distributions\n- May be available while employed if your plan allows it.\n- The article says these are typically available at age 59 1/2+ if the plan allows.\n- They are typically penalty-free, but ordinary income tax may apply to pre-tax funds, and taxes may apply to Roth earnings if the Roth money has been in the plan less than 5 years.\n- You can initiate the process through your online ForUsAll account or by contacting Participant Support.\n\n2. Hardship withdrawals\n- May be available while employed if your plan allows it and you have a qualifying hardship reason.\n- IRS-approved hardship reasons listed in the context are: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, and repair of damage to the primary residence.\n- Hardship withdrawals are subject to federal income taxes.\n- If you are under age 59.5, a 10% early withdrawal penalty may apply.\n- The amount is limited to the amount necessary to meet the financial need.\n- To request one, you contact ForUsAll Support first at help@forusall.com or 844-401-2253. After confirming you reviewed the Hardship Distribution Guidelines, Support sends a RightSignature form link to complete the request.\n- Standard hardship processing fee is $75. Wire transfer or overnight check adds $35. ACH and standard mail check do not add an extra fee beyond the $75.\n\n3. Rollover source withdrawals\n- These may be available if you previously rolled money from another retirement account into your current plan.\n- Taxes may apply depending on whether the money is pre-tax or Roth.\n- A 10% early withdrawal penalty typically applies if you are under age 59 1/2, depending on the funds and whether an exception applies.\n\n4. 401(k) loans\n- May be available if your plan allows loans.\n- Loans are not taxable and do not have an early withdrawal penalty as long as they are repaid properly through payroll deductions or paid off in full.\n- If not repaid and the loan defaults, it may become a taxable distribution.\n- Loan amount limits in the context are generally the lesser of $50,000 or 50% of vested balance, with a $1,000 minimum loan.\n\nSo, if you are asking specifically about a special \"emergency withdrawal\" that is both tax-free and penalty-free, that option is not covered in the provided knowledge base, and I cannot verify it from this context.\n\nIf you want to pursue a while-employed withdrawal through ForUsAll based on the options that are documented here:\n- For an in-service distribution: start in your online ForUsAll account or contact Participant Support.\n- For a hardship withdrawal: contact ForUsAll Support at help@forusall.com or 844-401-2253.\n\nSupport hours listed in the context are Monday to Friday, 7 AM to 5 PM Pacific Time.",
+      "key_points": [
+        "The provided knowledge base does not mention a 2025 IRS $1,000 emergency withdrawal rule, so it cannot be confirmed from this context.",
+        "While employed, the documented ForUsAll options are in-service distributions, hardship withdrawals, rollover source withdrawals, and 401(k) loans, all subject to plan rules.",
+        "Hardship withdrawals are taxable and may also have a 10% early withdrawal penalty if under age 59.5; they are requested by contacting ForUsAll Support first.",
+        "In-service distributions can be initiated through the online ForUsAll account or by contacting Participant Support, but availability depends on the employer's plan."
+      ],
+      "source_articles": [
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (faqs, steps)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "title": null,
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "chunk_type": null,
+          "relevance": "Covers hardship_withdrawal (business_rules, faqs, guardrails, steps)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (business_rules, faqs, response_frames)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "title": null,
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "chunk_type": null,
+          "relevance": "Covers distribution (references)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "title": null,
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "chunk_type": null,
+          "relevance": "Covers excess_contribution_refund (faqs)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (example)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 17,
+        "context_tokens": 3994,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "SECURE 2.0 emergency personal expense distribution 401k one-time $1000 annual limit effective 2024 2025 in-service availability",
+          "emergency personal expense distribution tax treatment 10% early withdrawal penalty exception taxable income three-year repayment restriction",
+          "ForUsAll 401k emergency withdrawal request process emergency personal expense distribution availability participant steps plan sponsor approval"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "2025 IRS emergency withdrawal rule allowing a one-time $1,000 distribution",
+          "ForUsAll request process for an emergency withdrawal option"
+        ],
+        "per_query_scores": {
+          "SECURE 2.0 emergency personal expense distribution 401k one-time $1000 annual limit effective 2024 2025 in-service availability": 0.4266,
+          "emergency personal expense distribution tax treatment 10% early withdrawal penalty exception taxable income three-year repayment restriction": 0.4909,
+          "ForUsAll 401k emergency withdrawal request process emergency personal expense distribution availability participant steps plan sponsor approval": 0.5931,
+          "My tax advisor told me there's a new IRS rule from 2025 that allows a one-time 'emergency withdrawal' of up to $1,000 from my 401(k) without any penalty or taxes, even while still employed. Is this true? If so, how do I request it through ForUsAll?": 0.516
+        }
+      }
+    },
+    "elapsed_seconds": 23.88
+  },
+  {
+    "id": "S4",
+    "category": "Impossible Transaction",
+    "question": "I want to roll over $10,000 from my terminated 401(k) directly into a 529 education savings plan for my daughter's college tuition. Is this allowed? If not, what's the most tax-efficient way to use my 401(k) funds for her education?",
+    "expected_topics": [
+      "401(k) to 529 NOT allowed (not in KB)",
+      "hardship for education IS in KB",
+      "should NOT fabricate 401(k)-to-529 path"
+    ],
+    "response": {
+      "answer": "Based on the knowledge base provided, I cannot confirm that a terminated 401(k) can be rolled directly into a 529 education savings plan. The rollover destinations listed in the context are: IRA, Qualified Plan, Roth IRA, and Roth Qualified Plan. A 529 plan is not listed as an available rollover destination in the provided materials.\n\nWhat the context does clearly say:\n\n1. Direct rollover options from a terminated 401(k)\n- A rollover distribution can move 401(k) funds to an IRA or another qualified retirement plan without immediate taxes or penalties if done properly.\n- Available rollover payment methods are check or wire.\n- Traditional funds can be rolled to a Traditional-type account or a Roth-type account (with possible tax implications for a Roth conversion).\n- Roth funds must be rolled to a Roth-type account.\n\n2. If you take the money as cash instead of rolling it over\n- A cash distribution is paid directly to you, typically by check or wire.\n- It typically has 20% federal tax withholding.\n- State taxes may also be withheld if required by your state.\n- If you are under age 59½, an additional 10% early withdrawal penalty may apply when you file taxes unless an exception applies.\n- A 1099-R will be issued and must be reported on your tax return.\n\n3. Direct rollover vs. indirect rollover\n- If the funds are sent directly to the receiving provider, the 60-day rollover rule does not apply.\n- If the funds are paid to you first, the rollover generally must be completed within 60 days to avoid taxes and penalties.\n- If that 60-day deadline is missed, the distribution is generally treated as taxable income and may also be subject to the 10% early withdrawal penalty if you are under 59½.\n\nMost tax-efficient approach described in the context\n- Based only on this knowledge base, the most tax-efficient option described is a direct rollover from the terminated 401(k) to an IRA or another qualified retirement plan, because that can avoid immediate taxes and penalties if done properly.\n- By contrast, using the 401(k) funds through a cash distribution for tuition would generally be less tax-efficient under the rules provided, because it typically triggers withholding, taxable income, and possibly the 10% early withdrawal penalty if you are under 59½.\n\nImportant limitation\n- The context does not provide rules on whether a 401(k) can be moved directly to a 529 plan, and it does not describe any education-specific exception for terminated 401(k) cash distributions.\n- The only education-related rule in the materials is that tuition can be a qualifying hardship reason, but that appears in the context of while-employed hardship withdrawals, not terminated-account rollover rules.\n\nSo, strictly from the provided materials: a direct rollover to an IRA or another qualified retirement plan is the clearly supported tax-efficient path, while a direct rollover from a 401(k) to a 529 plan is not established by this context.",
+      "key_points": [
+        "The knowledge base lists rollover destinations as IRA, Qualified Plan, Roth IRA, and Roth Qualified Plan; it does not list 529 plans.",
+        "A direct rollover to an IRA or another qualified retirement plan can avoid immediate taxes and penalties if done properly.",
+        "A cash distribution typically has 20% federal withholding, possible state withholding, and may also trigger a 10% early withdrawal penalty if under age 59½.",
+        "If funds are paid to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties."
+      ],
+      "source_articles": [
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (business_rules, definitions, example, faqs)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (business_rules, example, steps)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, example, faqs, steps)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "title": null,
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "chunk_type": null,
+          "relevance": "Covers hardship_withdrawal (business_rules)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (additional_notes, business_rules, example, faqs)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "title": null,
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "chunk_type": null,
+          "relevance": "Covers excess_contribution_refund (business_rules)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, example)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 27,
+        "context_tokens": 3987,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "eligible rollover destinations for terminated 401k direct rollover whether 529 education savings plan is permitted",
+          "401k distribution used for daughter's college tuition tax consequences 10% early withdrawal penalty education exception",
+          "roll terminated 401k to traditional IRA then qualified higher education expense withdrawal penalty exception rules"
+        ],
+        "unique_articles": 7,
+        "coverage_gaps": [
+          "Whether a terminated 401(k) can be rolled directly into a 529 education savings plan",
+          "Any education-specific tax exception or special rule for using terminated 401(k) funds for college expenses"
+        ],
+        "per_query_scores": {
+          "eligible rollover destinations for terminated 401k direct rollover whether 529 education savings plan is permitted": 0.4555,
+          "401k distribution used for daughter's college tuition tax consequences 10% early withdrawal penalty education exception": 0.5859,
+          "roll terminated 401k to traditional IRA then qualified higher education expense withdrawal penalty exception rules": 0.4845,
+          "I want to roll over $10,000 from my terminated 401(k) directly into a 529 education savings plan for my daughter's college tuition. Is this allowed? If not, what's the most tax-efficient way to use my 401(k) funds for her education?": 0.4767
+        }
+      }
+    },
+    "elapsed_seconds": 30.05
+  },
+  {
+    "id": "S5",
+    "category": "Beneficiary/Death (Not in KB)",
+    "question": "My father passed away last month and I'm the named beneficiary on his 401(k) with ForUsAll/LT Trust. The balance is $45,000. What are my options? Do I have to take it all out immediately, or can I stretch it over 10 years? Will I owe the 10% early withdrawal penalty since I'm only 35?",
+    "expected_topics": [
+      "inherited 401(k) NOT in KB",
+      "10-year rule NOT in KB",
+      "should clearly state KB doesn't cover beneficiary distributions"
+    ],
+    "response": {
+      "answer": "I don’t have enough information in the provided knowledge base to answer the beneficiary-specific parts of your question.\n\nWhat the context does NOT cover:\n- It does not explain distribution options for a named beneficiary after a participant’s death.\n- It does not state whether a non-spouse beneficiary can withdraw inherited 401(k) assets immediately or over 10 years.\n- It does not explain whether the 10% early withdrawal penalty applies, or does not apply, to inherited 401(k) distributions.\n\nWhat I can confirm from the context:\n- Because the recordkeeper is LT Trust, this is a ForUsAll plan, and ForUsAll handles the related processes through its portal and support team.\n- ForUsAll participant portal: https://account.forusall.com/login\n- Support contact: help@forusall.com | 844-401-2253 | Mon-Fri, 07:00-17:00 PST\n\nA few important cautions based on the available context:\n- The knowledge base does discuss taxes and early withdrawal penalties for certain participant transactions such as hardship withdrawals, in-service distributions, rollover source withdrawals, loans, and termination cash distributions, but it does not say those same rules apply to beneficiary payouts.\n- Because of that, I should not tell you that you must take the money immediately, that you can stretch it over 10 years, or that the 10% penalty definitely will or will not apply.\n\nThe best next step is to contact ForUsAll so they can provide the beneficiary distribution rules and process for this LT Trust account.",
+      "key_points": [
+        "The provided context does not cover inherited 401(k) beneficiary distribution rules after a participant’s death.",
+        "The context does not say whether a non-spouse beneficiary can use a 10-year distribution period or must take the balance immediately.",
+        "The context does not state whether the 10% early withdrawal penalty applies to beneficiary distributions.",
+        "LT Trust means the plan is with ForUsAll; beneficiary questions should be directed to ForUsAll support or handled through the ForUsAll portal."
+      ],
+      "source_articles": [
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (faqs, references, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (business_rules, faqs)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "title": null,
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "chunk_type": null,
+          "relevance": "Covers distribution (guardrails, response_frames)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (references)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "title": null,
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "chunk_type": null,
+          "relevance": "Covers hardship_withdrawal (business_rules, references)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (required_data_disambiguation)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (steps)"
+        }
+      ],
+      "confidence_note": "limited_coverage",
+      "metadata": {
+        "chunks_used": 14,
+        "context_tokens": 3995,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll LT Trust inherited 401k beneficiary distribution process nonspouse adult child available payout or inherited IRA options",
+          "SECURE Act nonspouse inherited 401k 10-year rule adult child beneficiary immediate lump sum versus distribution by end of tenth year",
+          "inherited 401k beneficiary distributions 10% early withdrawal penalty exemption for nonspouse beneficiary age 35"
+        ],
+        "unique_articles": 7,
+        "coverage_gaps": [
+          "Inherited 401(k) distribution options for a named beneficiary after the participant's death",
+          "Whether a non-spouse beneficiary can distribute inherited 401(k) assets over 10 years",
+          "Early withdrawal penalty rules for inherited 401(k) beneficiary distributions"
+        ],
+        "per_query_scores": {
+          "ForUsAll LT Trust inherited 401k beneficiary distribution process nonspouse adult child available payout or inherited IRA options": 0.4842,
+          "SECURE Act nonspouse inherited 401k 10-year rule adult child beneficiary immediate lump sum versus distribution by end of tenth year": 0.4156,
+          "inherited 401k beneficiary distributions 10% early withdrawal penalty exemption for nonspouse beneficiary age 35": 0.4567,
+          "My father passed away last month and I'm the named beneficiary on his 401(k) with ForUsAll/LT Trust. The balance is $45,000. What are my options? Do I have to take it all out immediately, or can I stretch it over 10 years? Will I owe the 10% early withdrawal penalty since I'm only 35?": 0.4937
+        }
+      }
+    },
+    "elapsed_seconds": 26.88
+  },
+  {
+    "id": "S6",
+    "category": "QDRO/Divorce (Not in KB)",
+    "question": "I'm going through a divorce and my ex-spouse's attorney sent a QDRO (Qualified Domestic Relations Order) to divide my 401(k). I have $80,000 in the plan with LT Trust. How does ForUsAll process QDROs? Can my ex-spouse roll her portion into her own IRA without penalty? How long does this take?",
+    "expected_topics": [
+      "QDRO NOT in KB",
+      "should not fabricate ForUsAll QDRO details",
+      "should recommend contacting ForUsAll"
+    ],
+    "response": {
+      "answer": "Because your plan’s recordkeeper is LT Trust, this is a ForUsAll plan, and LT Trust-related processes are handled by ForUsAll or through the ForUsAll portal. However, the knowledge base provided does not include a QDRO-specific process, requirements, or timeline, so I can’t describe exactly how ForUsAll reviews or implements a divorce-related QDRO.\n\nWhat the knowledge base does say about rollovers generally:\n- A rollover distribution moves 401(k) money to an IRA or another qualified retirement plan.\n- If done properly, a rollover can avoid immediate taxes and penalties.\n- Rollovers can be sent by check to the new IRA/plan provider or by wire directly to the new account.\n- If funds are paid to the person first instead of sent directly to the receiving retirement account, the rollover generally must be completed within 60 days to avoid taxes and penalties.\n- If that 60-day deadline is missed, the amount is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if the recipient is under age 59½, and is reported on Form 1099-R.\n\nSo, based on the context alone, if your ex-spouse’s portion is handled as a proper rollover to her own IRA, rollovers generally avoid immediate taxes and penalties. But the knowledge base does not provide QDRO-specific tax or penalty rules for an ex-spouse/alternate payee, so I can’t confirm any special divorce-related treatment beyond the general rollover rules above.\n\nOn timing, the knowledge base does not give a QDRO processing timeline. The only timing information provided is for other distribution types:\n- ForUsAll reviews certain distribution requests in about 2 business days.\n- After approval, wires typically complete in about 1–2 weeks.\n- Standard checks typically arrive in about 2–3 weeks.\n- For indirect rollovers or participant-paid distributions, the 60-day rollover rule applies once the funds are received.\n\nImportant distinction: those timelines are stated for distribution/rollover processing generally, not specifically for QDRO review or implementation.\n\nIn short:\n1. LT Trust means the plan is with ForUsAll.\n2. The KB does not describe the QDRO workflow itself.\n3. A properly completed rollover to an IRA generally avoids immediate taxes and penalties.\n4. If funds are first paid out to the recipient, the 60-day rollover deadline generally applies.\n5. No QDRO-specific timing is provided in the context.\n\nIf you need operational help from ForUsAll, the knowledge base lists:\n- help@forusall.com\n- 844-401-2253",
+      "key_points": [
+        "The knowledge base does not include QDRO-specific processing steps, documentation requirements, or a QDRO timeline.",
+        "LT Trust indicates the plan is with ForUsAll, and LT Trust-related processes are handled by ForUsAll or through the ForUsAll portal.",
+        "A properly completed rollover to an IRA generally avoids immediate taxes and penalties.",
+        "If funds are paid to the recipient first, the rollover generally must be completed within 60 days to avoid taxes and possible penalties.",
+        "General distribution timing in the KB is about 2 business days for review, then roughly 1–2 weeks for wires or 2–3 weeks for standard checks after approval, but this is not stated as a QDRO timeline."
+      ],
+      "source_articles": [
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (additional_notes, business_rules, faqs)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (business_rules, example, faqs, steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (additional_notes, faqs, steps)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, definitions, steps)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "title": null,
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "chunk_type": null,
+          "relevance": "Covers hardship_withdrawal (business_rules, steps)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "title": null,
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "chunk_type": null,
+          "relevance": "Covers excess_contribution_refund (business_rules)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (steps)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "title": null,
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "chunk_type": null,
+          "relevance": "Covers distribution (references)"
+        }
+      ],
+      "confidence_note": "limited_coverage",
+      "metadata": {
+        "chunks_used": 24,
+        "context_tokens": 3993,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll and LT Trust 401k QDRO processing steps required documents review approval alternate payee account setup",
+          "QDRO alternate payee ex-spouse 401k distribution direct rollover to own IRA tax withholding 10% early withdrawal penalty rules",
+          "Typical timeline for 401k QDRO qualification processing and distribution after divorce order submission with ForUsAll recordkeeper"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "QDRO-specific processing steps and requirements",
+          "QDRO-specific tax and penalty treatment for an ex-spouse or alternate payee",
+          "QDRO-specific processing timeline"
+        ],
+        "per_query_scores": {
+          "ForUsAll and LT Trust 401k QDRO processing steps required documents review approval alternate payee account setup": 0.443,
+          "QDRO alternate payee ex-spouse 401k distribution direct rollover to own IRA tax withholding 10% early withdrawal penalty rules": 0.5082,
+          "Typical timeline for 401k QDRO qualification processing and distribution after divorce order submission with ForUsAll recordkeeper": 0.5677,
+          "I'm going through a divorce and my ex-spouse's attorney sent a QDRO (Qualified Domestic Relations Order) to divide my 401(k). I have $80,000 in the plan with LT Trust. How does ForUsAll process QDROs? Can my ex-spouse roll her portion into her own IRA without penalty? How long does this take?": 0.5102
+        }
+      }
+    },
+    "elapsed_seconds": 26.01
+  },
+  {
+    "id": "S7",
+    "category": "Vesting + Termination Mix",
+    "question": "I was terminated after 2 years and 8 months of service. My 401(k) shows a Total Vested Balance of $12,000 but my total account balance is $18,000. My plan uses a 6-year graded vesting schedule. Will the unvested $6,000 be forfeited? Does the force-out process apply to my vested balance only? Can I dispute the vesting calculation?",
+    "expected_topics": [
+      "vesting NOT in KB",
+      "force-out on vested balance IS in KB",
+      "should acknowledge partial coverage"
+    ],
+    "response": {
+      "answer": "Based on the knowledge base context:\n\n1. **Force-out is based on the vested balance, not the total account balance.**  \nThe force-out rules apply only to **former employees with vested account balances under $7,000**. Your question states a **Total Vested Balance of $12,000**, so based on the provided rules, the **force-out process would not apply**. The context is clear that force-outs apply only after employment ends and only when the **vested balance** is below $7,000.\n\n2. **Only vested balances are eligible for distribution.**  \nThe KB states that **only vested balances are eligible** for distribution requests. It also says the portal shows account sources and vesting percentages, and if the vesting looks incorrect, the participant should **contact ForUsAll Support before submitting**.\n\n3. **The KB does not say whether the unvested $6,000 will be forfeited.**  \nThe provided context does **not** explain what happens to an unvested balance after termination under a **6-year graded vesting schedule**, and it does not provide forfeiture rules. So I cannot confirm from this context alone whether the unvested $6,000 would be forfeited.\n\n4. **If you think the vesting calculation is wrong, the KB says to contact ForUsAll Support.**  \nThe context specifically says that when reviewing account sources and vesting, **if vesting looks incorrect, the participant must contact ForUsAll Support before submitting**. So while the KB does not describe a formal dispute or appeal process, it does clearly direct participants to Support when the vesting percentage appears incorrect.\n\nIn short: **force-out uses the vested balance only**, and with a **$12,000 vested balance**, the force-out thresholds in the KB would **not apply**. The KB also confirms that **only vested funds are distributable**. However, the KB does **not** state whether unvested funds are forfeited after termination under your plan’s vesting schedule.",
+      "key_points": [
+        "Force-out rules apply only to terminated participants with vested balances under $7,000.",
+        "A vested balance of $12,000 would not meet the KB force-out threshold.",
+        "Only vested balances are eligible for distribution.",
+        "If vesting appears incorrect, the KB directs the participant to contact ForUsAll Support.",
+        "The KB does not explain whether unvested balances are forfeited under a 6-year graded vesting schedule."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, eligibility, faqs, guardrails, steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (business_rules, eligibility, faqs, guardrails, steps)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, faqs)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (definitions)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 15,
+        "context_tokens": 3971,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "6-year graded vesting schedule calculation after 2 years 8 months of service for terminated 401(k) participant",
+          "Unvested 401(k) balance forfeiture after termination timing of forfeiture and whether unvested employer contributions are lost",
+          "Mandatory force-out rules use vested balance only, and plan procedures to dispute vested balance calculation"
+        ],
+        "unique_articles": 4,
+        "coverage_gaps": [
+          "What happens to unvested 401(k) balances after termination under a 6-year graded vesting schedule"
+        ],
+        "per_query_scores": {
+          "6-year graded vesting schedule calculation after 2 years 8 months of service for terminated 401(k) participant": 0.4516,
+          "Unvested 401(k) balance forfeiture after termination timing of forfeiture and whether unvested employer contributions are lost": 0.509,
+          "Mandatory force-out rules use vested balance only, and plan procedures to dispute vested balance calculation": 0.4925,
+          "I was terminated after 2 years and 8 months of service. My 401(k) shows a Total Vested Balance of $12,000 but my total account balance is $18,000. My plan uses a 6-year graded vesting schedule. Will the unvested $6,000 be forfeited? Does the force-out process apply to my vested balance only? Can I dispute the vesting calculation?": 0.5171
+        }
+      }
+    },
+    "elapsed_seconds": 24.27
+  },
+  {
+    "id": "S8",
+    "category": "Multi-System Mix (HSA + IRA + 401k)",
+    "question": "I'm 62, still working, and I want to optimize my retirement strategy. Can I take an in-service distribution from my 401(k) and split it three ways: roll part into a Traditional IRA, convert part to a Roth IRA, and use part to fund my HSA? What are the tax implications of each?",
+    "expected_topics": [
+      "in-service at 62 IS in KB",
+      "rollover to IRA IS in KB",
+      "HSA funding NOT in KB",
+      "should separate covered vs not"
+    ],
+    "response": {
+      "answer": "Based on the knowledge base, you are typically old enough to be eligible for an in-service distribution because you are 62, but it is only available if your employer’s plan allows it. The KB says in-service distributions are typically available at age 59 1/2 or older, if the plan allows, and that access to 401(k) funds while employed is always subject to plan-specific rules. You can start the process through your online ForUsAll account or by contacting Participant Support.\n\nHere is how the KB applies to each part of your question:\n\n1. In-service distribution eligibility\n- At age 62, you meet the age threshold the KB describes for a typical in-service distribution.\n- However, this is not automatic. Not every employer plan allows in-service distributions, even after age 59 1/2.\n\n2. Splitting the distribution\n- The KB does show that distributions can be split in some situations. For terminated distributions, it gives an example of sending part to an IRA and part as cash, and it says Roth and pre-tax sources are automatically separated so the participant can choose a distribution option and payment method for each source individually.\n- However, the KB does not specifically confirm that an in-service distribution can be split into those exact three destinations at the same time. Because in-service access is plan-specific, you would need to confirm whether your employer’s plan permits that structure.\n\n3. Rolling part into a Traditional IRA\n- The KB says a rollover distribution to an IRA or another qualified retirement plan can avoid immediate taxes and penalties if done properly.\n- It also says pre-tax 401(k) funds can be rolled to a Traditional IRA as an example.\n- If the rollover is done as a direct rollover, the 60-day rollover rule does not apply.\n- If the money is paid to you first instead of sent directly to the receiving account, the rollover generally must be completed within 60 days of receiving the funds to avoid taxes and penalties.\n- A 1099-R will be issued the following year for reporting purposes.\n\n4. Converting part to a Roth IRA\n- The KB says Traditional funds can be rolled into a Roth-type account, but notes that a Roth conversion may have tax implications.\n- The KB does not provide the exact tax calculation for that conversion, so I cannot say more than that based on the provided context.\n- If you have Roth 401(k) funds already, the KB says Roth funds must be rolled into a Roth-type account.\n- The KB also notes that Roth 401(k) RMDs are exempt starting in 2024, so rolling Roth 401(k) funds to a Roth IRA is no longer necessary just to avoid RMDs.\n\n5. Using part to fund an HSA\n- The KB does not address moving 401(k) money to an HSA or the HSA-specific tax treatment of doing so.\n- What the KB does say is that if part of a distribution is taken as cash, a cash distribution pays funds directly to you and typically requires immediate tax withholding.\n- The definitions section says federal tax withholding may be 20% for a cash distribution, and state taxes may also apply if required by your state.\n- The KB’s 10% early withdrawal penalty discussion applies when someone is under age 59 1/2. Since you are 62, that specific age-based penalty described in the KB would not be the issue it identifies.\n\n6. General tax points from the KB\n- In-service distributions are not always tax-free.\n- The KB says distributions from pre-tax funds may be subject to ordinary income tax.\n- If taken from Roth funds where it has been less than 5 years, taxes would apply only to earnings.\n- If a rollover is not completed within the 60-day window when the funds were first paid to you, the distribution is generally treated as taxable income and reported on Form 1099-R.\n\nBottom line:\n- Yes, based on age alone, you are typically eligible to request an in-service distribution, but only if your plan allows it.\n- A direct rollover of part of your balance to a Traditional IRA is generally described in the KB as a way to avoid immediate taxes and penalties when done properly.\n- Sending pre-tax funds to a Roth IRA is described as a Roth conversion, and the KB says that can have tax implications, but does not provide the detailed tax treatment.\n- The KB does not cover whether 401(k) funds can be used to fund an HSA or the tax rules for that step.\n- Because in-service distributions and distribution options are plan-specific, the exact split you want should be confirmed through ForUsAll or Participant Support.",
+      "key_points": [
+        "At age 62, you typically meet the age threshold for an in-service distribution, but only if your employer’s plan allows it.",
+        "A rollover to a Traditional IRA can avoid immediate taxes and penalties if done properly, especially as a direct rollover.",
+        "Moving Traditional 401(k) funds to a Roth-type account is described as a Roth conversion and may have tax implications, but the KB does not provide the exact tax treatment.",
+        "If funds are paid to you first, the rollover generally must be completed within 60 days to avoid taxes and penalties.",
+        "The KB does not cover using 401(k) money to fund an HSA or HSA-specific tax rules."
+      ],
+      "source_articles": [
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (business_rules, eligibility, example, faqs)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "title": null,
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, eligibility, required_data_disambiguation)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, definitions, faqs, steps)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (additional_notes, business_rules, example, faqs, steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (business_rules, example, steps)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 25,
+        "context_tokens": 3933,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "in-service 401k distribution eligibility while still employed after age 59½ plan rules and restrictions",
+          "partial in-service 401k distribution rolled to Traditional IRA and converted to Roth IRA tax withholding and taxable amount",
+          "using 401k distribution to fund an HSA HSA contribution eligibility rollover limits and tax consequences"
+        ],
+        "unique_articles": 5,
+        "coverage_gaps": [
+          "Using 401(k) distribution proceeds to fund an HSA, including HSA-specific eligibility and tax treatment"
+        ],
+        "per_query_scores": {
+          "in-service 401k distribution eligibility while still employed after age 59½ plan rules and restrictions": 0.6855,
+          "partial in-service 401k distribution rolled to Traditional IRA and converted to Roth IRA tax withholding and taxable amount": 0.4843,
+          "using 401k distribution to fund an HSA HSA contribution eligibility rollover limits and tax consequences": 0.5082,
+          "I'm 62, still working, and I want to optimize my retirement strategy. Can I take an in-service distribution from my 401(k) and split it three ways: roll part into a Traditional IRA, convert part to a Roth IRA, and use part to fund my HSA? What are the tax implications of each?": 0.4791
+        }
+      }
+    },
+    "elapsed_seconds": 53.44
+  },
+  {
+    "id": "S9",
+    "category": "Extreme Detail Tax Trap",
+    "question": "I took a hardship withdrawal of $8,000 from my 401(k) at age 45. I need to know: exactly what line on Form 1040 do I report this, what is the exact IRS form number for the 10% penalty, can I use Form 5329 to claim an exception, and what is the specific exception code for medical expenses exceeding 7.5% of AGI?",
+    "expected_topics": [
+      "hardship taxability IS in KB",
+      "exact IRS form lines NOT in KB",
+      "should refer to tax professional"
+    ],
+    "response": {
+      "answer": "The knowledge base does not provide the exact Form 1040 line number, the exact IRS form number used to calculate/report the 10% early withdrawal penalty, whether Form 5329 can be used to claim a hardship-withdrawal exception, or the specific IRS exception code for medical expenses exceeding 7.5% of AGI.\n\nWhat the knowledge base does confirm is:\n\n1. Tax treatment of your hardship withdrawal\n- Hardship withdrawals are subject to federal income taxes.\n- Because you took the withdrawal at age 45, a 10% early withdrawal penalty may apply, unless an exception is met.\n\n2. General penalty rule\n- The context states that hardship withdrawals are subject to ordinary income tax.\n- It also states that a 10% early withdrawal penalty typically applies if the participant is under age 59 1/2, unless an exception is met.\n\n3. Documentation / reporting context\n- The knowledge base discusses Form 1099-R as the tax reporting form for certain distributions, but it does not give the exact individual income tax return line-item instructions you asked for.\n\nBecause your question is asking for exact IRS return-entry details and exception coding, the knowledge base is not sufficient to answer those parts precisely. Based on the context, the safest guidance is that the hardship withdrawal is taxable, the 10% early withdrawal penalty may apply at age 45 unless an exception is met, and you should consult a qualified tax professional for the exact IRS form, line, and exception-code reporting.",
+      "key_points": [
+        "A hardship withdrawal is subject to federal income taxes.",
+        "At age 45, a 10% early withdrawal penalty may apply unless an exception is met.",
+        "The knowledge base does not include the exact Form 1040 line, Form 5329 details, or specific IRS exception codes."
+      ],
+      "source_articles": [
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "title": null,
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_type": null,
+          "relevance": "Covers rollover (additional_notes, business_rules, example, steps)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "title": null,
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "chunk_type": null,
+          "relevance": "Covers hardship_withdrawal (business_rules, eligibility, faqs, references, required_data_nice_to_have)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (business_rules, definitions, example, faqs)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "title": null,
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "title": null,
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "chunk_type": null,
+          "relevance": "Covers excess_contribution_refund (business_rules, faqs)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "title": null,
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_type": null,
+          "relevance": "Covers termination_distribution_request (additional_notes)"
+        }
+      ],
+      "confidence_note": "limited_coverage",
+      "metadata": {
+        "chunks_used": 22,
+        "context_tokens": 3991,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "401k hardship withdrawal age 45 Form 1040 reporting line for taxable distribution from Form 1099-R",
+          "10% early distribution tax on 401k hardship withdrawal IRS form number Form 5329 additional tax reporting",
+          "Form 5329 exception code for unreimbursed medical expenses exceeding 7.5% of AGI early 401k distribution"
+        ],
+        "unique_articles": 6,
+        "coverage_gaps": [
+          "Exact Form 1040 line number for reporting a hardship withdrawal",
+          "Exact IRS form used to report/calculate the 10% early withdrawal penalty",
+          "Whether Form 5329 can be used to claim a hardship-withdrawal exception",
+          "Specific IRS exception code for medical expenses exceeding 7.5% of AGI"
+        ],
+        "per_query_scores": {
+          "401k hardship withdrawal age 45 Form 1040 reporting line for taxable distribution from Form 1099-R": 0.5291,
+          "10% early distribution tax on 401k hardship withdrawal IRS form number Form 5329 additional tax reporting": 0.517,
+          "Form 5329 exception code for unreimbursed medical expenses exceeding 7.5% of AGI early 401k distribution": 0.4078,
+          "I took a hardship withdrawal of $8,000 from my 401(k) at age 45. I need to know: exactly what line on Form 1040 do I report this, what is the exact IRS form number for the 10% penalty, can I use Form 5329 to claim an exception, and what is the specific exception code for medical expenses exceeding 7.5% of AGI?": 0.5258
+        }
+      }
+    },
+    "elapsed_seconds": 22.37
+  },
+  {
+    "id": "S10",
+    "category": "Contradictory Premises",
+    "question": "I'm 72 years old, still employed at the company that sponsors my 401(k) with LT Trust, and I own 6% of the company. I was told I don't need to take RMDs because of the still-working exception. But I also want to do a Roth conversion of my entire $200,000 balance this year. Can I skip the RMD AND do the full Roth conversion?",
+    "expected_topics": [
+      "5%+ owner exception IN KB",
+      "RMD before conversion IN KB",
+      "should catch contradiction"
+    ],
+    "response": {
+      "answer": "Based on the context you provided, the answer is:\n\n- **This year, at age 72, you generally would not have an RMD yet**, because the context says 401(k) RMDs generally begin at **age 73** (or **age 75 if born in 1960 or later**).\n- **You should not rely on the still-working exception in your case once you do reach RMD age**, because the context says that exception **does not apply if you own 5% or more of the sponsoring business**. Since you said you own **6%**, the still-working exception would not be available to you when RMDs otherwise begin.\n- **If no RMD is required for this year, there is no RMD that must be taken first**, so the context does not indicate an RMD-based barrier to converting your balance this year.\n\n### How the rules fit together\n\n#### 1) Still-working exception\nThe context says a participant who is still employed may be able to delay RMDs from the current employer's plan **only if**:\n- the plan permits it, **and**\n- the participant is **not** a 5% owner.\n\nBecause you own **6%**, the context says the still-working exception **does not apply** to you once you reach the age when RMDs are otherwise required.\n\n#### 2) Are you required to take an RMD this year at age 72?\nBased on the context alone, **no RMD is generally required yet at age 72**. The stated starting age is:\n- **73** for most participants, or\n- **75** if born in 1960 or later.\n\nSo, for this year, your ability to avoid an RMD appears to come from **not yet reaching the applicable RMD age**, not from the still-working exception.\n\n#### 3) Can you do a full Roth conversion?\nThe context says:\n- converting pre-tax 401(k) funds to Roth reduces the pre-tax balance and can lower future taxable RMDs,\n- funds converted to Roth within a 401(k) are exempt from RMDs during the account owner's lifetime starting in 2024,\n- **RMD amounts cannot be converted to Roth**; if an RMD applies for a year, it must be **taken separately and first**.\n\nSo, **if no RMD is required for this year**, the context does not identify an RMD portion that must be carved out first. In that situation, your question about doing a **full Roth conversion this year** is not blocked by the RMD-first rule.\n\n### Important future point\nOnce you reach your applicable RMD age, because you are a **more-than-5% owner**, you should expect that the still-working exception would **not** protect you. In any year when an RMD is required:\n- you must take that year's RMD first, and\n- **that RMD amount cannot be converted to Roth**.\n\n### Additional Roth conversion notes from the context\n- Converted Roth amounts are exempt from RMDs during your lifetime starting in 2024.\n- Converted funds must be held for **at least 5 years** to qualify for tax-free Roth withdrawals.\n- The context does **not** say whether a Roth conversion is the right choice for you personally; that depends on individual tax circumstances.",
+      "key_points": [
+        "At age 72, the context says RMDs generally have not started yet; they generally begin at age 73, or age 75 if born in 1960 or later.",
+        "The still-working exception would not apply once you reach RMD age because you own 6%, and the exception does not apply to 5% owners or greater.",
+        "If a year has no required RMD, the RMD-first rule does not block a Roth conversion that year.",
+        "In any year an RMD is required, that RMD must be taken separately first and cannot be converted to Roth.",
+        "Starting in 2024, Roth 401(k) funds are exempt from RMDs during the account owner's lifetime."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "title": null,
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules, eligibility, faqs, guardrails, steps)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "title": null,
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_type": null,
+          "relevance": "Covers distribution (business_rules)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "title": null,
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "chunk_type": null,
+          "relevance": "Covers in_service_withdrawal_options (example)"
+        }
+      ],
+      "confidence_note": "well_covered",
+      "metadata": {
+        "chunks_used": 8,
+        "context_tokens": 1569,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "401k still-working RMD exception age 72 current employee owning more than 5% of sponsoring company eligibility",
+          "401k Roth conversion of entire $200,000 balance when RMD is due, including rule that RMD amount cannot be converted"
+        ],
+        "unique_articles": 3,
+        "coverage_gaps": [],
+        "per_query_scores": {
+          "401k still-working RMD exception age 72 current employee owning more than 5% of sponsoring company eligibility": 0.6489,
+          "401k Roth conversion of entire $200,000 balance when RMD is due, including rule that RMD amount cannot be converted": 0.5486,
+          "I'm 72 years old, still employed at the company that sponsors my 401(k) with LT Trust, and I own 6% of the company. I was told I don't need to take RMDs because of the still-working exception. But I also want to do a Roth conversion of my entire $200,000 balance this year. Can I skip the RMD AND do the full Roth conversion?": 0.5607
+        }
+      }
+    },
+    "elapsed_seconds": 41.24
+  }
+]

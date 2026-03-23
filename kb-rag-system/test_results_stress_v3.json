@@ -1,0 +1,948 @@
+[
+  {
+    "id": "ST01",
+    "category": "Fake Recordkeeper",
+    "question": "My plan is with Vanguard Retirement Services through ForUsAll. I want to transfer my Roth 401(k) balance to my Vanguard IRA. Can ForUsAll process this for me, and what is the specific Vanguard-to-Vanguard transfer procedure?",
+    "traps": [
+      "Vanguard is NOT a recordkeeper in the KB",
+      "Should NOT invent Vanguard-specific transfer procedures",
+      "Should acknowledge that KB info is for LT Trust / ForUsAll plans"
+    ],
+    "expected_behavior": "Acknowledge no Vanguard-specific info; may offer general rollover info",
+    "response": {
+      "answer": "The knowledge base does not provide a Vanguard-specific “Vanguard-to-Vanguard” transfer procedure, so I can’t confirm any special process that applies specifically to Vanguard Retirement Services plans or to moving funds from a Roth 401(k) directly into a Vanguard IRA.\n\nWhat the knowledge base does say is:\n\n1. ForUsAll can process termination rollovers through its standard distribution process.\n   - A participant can choose a full direct rollover to an IRA or qualified plan, or a partial direct rollover with the rest taken as cash.\n   - Rollovers can be sent by check or wire.\n   - ForUsAll reviews submitted requests in about 2 business days.\n   - After approval, wires typically complete in about 1–2 weeks depending on the receiving institution, and standard checks typically arrive in about 2–3 weeks.\n\n2. Roth 401(k) money must go to a Roth-type destination.\n   - The knowledge base states that Roth funds must be rolled into a Roth type account.\n   - In the rollover workflow, Roth and pre-tax funds are automatically separated, and the participant can choose a separate distribution option and payment method for each source.\n\n3. If the rollover is direct, it can avoid immediate taxes and penalties if done properly.\n   - The knowledge base explains that a rollover to an IRA or another qualified retirement plan can avoid immediate taxes or penalties if done properly.\n   - If funds are paid to the participant first instead of sent directly to the new account, the rollover generally must be completed within 60 days to avoid taxes and penalties.\n\n4. The information needed depends on whether the rollover is sent by check or wire.\n   - For a rollover by check: receiving institution, mailing address, rollover destination type, and if the destination is an IRA or Roth IRA, the IRA account number.\n   - For a rollover by wire: bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution receiving the wire on behalf of the provider. The participant must use wire-specific instructions, not ACH instructions.\n\n5. Tax reporting still applies.\n   - A 1099-R will be issued the following year for reporting purposes.\n\nSo, based on the knowledge base, if your plan is using the standard ForUsAll termination rollover process, ForUsAll can process an outgoing rollover request for Roth 401(k) funds to a Roth IRA through the portal, using either check or wire, as long as the required destination information is provided.\n\nHowever, the knowledge base does not include:\n- a Vanguard-specific rollover workflow,\n- any special “Vanguard-to-Vanguard” shortcut or internal transfer method,\n- or confirmation that a plan described as “Vanguard Retirement Services through ForUsAll” follows a different procedure than the standard one above.\n\nIf you need help confirming the correct receiving instructions or whether your setup follows the standard ForUsAll process, the knowledge base lists ForUsAll support at help@forusall.com or 844-401-2253.",
+      "key_points": [
+        "Roth 401(k) funds must be rolled into a Roth-type account, such as a Roth IRA.",
+        "ForUsAll’s standard termination rollover process supports direct rollovers by check or wire, but the knowledge base does not provide a Vanguard-specific transfer procedure.",
+        "For rollover checks, participants provide the receiving institution, mailing address, destination type, and IRA account number if applicable; for wires, they provide wire-specific banking details.",
+        "If funds are paid to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties.",
+        "A 1099-R is issued the following year for rollover reporting."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (business_rules, definitions, example, faqs, steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (business_rules, faqs, steps)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (additional_notes, business_rules, faqs, steps)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (steps)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (faqs)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (references)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (guardrails)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 20,
+        "context_tokens": 3972,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll versus Vanguard Retirement Services responsibilities for processing Roth 401(k) rollover or transfer requests from the employer plan",
+          "Vanguard Retirement Services to Vanguard Roth IRA direct rollover procedure for Roth 401(k) assets, required forms, and transfer method"
+        ],
+        "unique_articles": 7,
+        "coverage_gaps": [
+          "Specific Vanguard-to-Vanguard transfer procedure",
+          "Whether a plan with Vanguard Retirement Services through ForUsAll follows any Vanguard-specific rollover process different from the standard ForUsAll procedure"
+        ],
+        "per_query_scores": {
+          "ForUsAll versus Vanguard Retirement Services responsibilities for processing Roth 401(k) rollover or transfer requests from the employer plan": 0.4684,
+          "Vanguard Retirement Services to Vanguard Roth IRA direct rollover procedure for Roth 401(k) assets, required forms, and transfer method": 0.5029,
+          "My plan is with Vanguard Retirement Services through ForUsAll. I want to transfer my Roth 401(k) balance to my Vanguard IRA. Can ForUsAll process this for me, and what is the specific Vanguard-to-Vanguard transfer procedure?": 0.5252
+        }
+      }
+    },
+    "elapsed_seconds": 29.13
+  },
+  {
+    "id": "ST02",
+    "category": "Out-of-Scope (QDRO/Divorce)",
+    "question": "I'm going through a divorce and the court issued a QDRO (Qualified Domestic Relations Order) for my 401(k) with ForUsAll. How does ForUsAll process QDROs, what percentage of my balance does my ex-spouse receive, and how long does the QDRO review take?",
+    "traps": [
+      "QDRO processing is NOT in the KB",
+      "Should NOT invent a QDRO procedure or timeline",
+      "Should NOT state percentages for ex-spouse share"
+    ],
+    "expected_behavior": "Clearly state QDRO is not covered; suggest contacting Support",
+    "response": {
+      "answer": "The knowledge base provided does not include any QDRO-specific guidance, so I can’t confirm how ForUsAll processes QDROs, what share of a participant’s balance an ex-spouse would receive, or how long a QDRO review takes.\n\nWhat I can say from the context is:\n- ForUsAll is the servicing team for LT Trust plans, and plan-related processes are handled through ForUsAll or the ForUsAll portal.\n- For general plan assistance, ForUsAll Support can be contacted at help@forusall.com or 844-401-2253.\n- The support hours listed in the context are Monday–Friday, generally 7 AM–5 PM PT in one article and 8 AM–5 PM PST in another article.\n\nBecause QDROs are not covered in the provided materials, the percentage awarded to an ex-spouse would need to come from the actual court order and/or direct confirmation from ForUsAll Support. Likewise, the review timeline is not stated anywhere in this knowledge base.",
+      "key_points": [
+        "The provided knowledge base does not contain QDRO procedures, QDRO review timelines, or rules for how much an alternate payee receives.",
+        "ForUsAll Support is the appropriate contact for QDRO-related operational questions: help@forusall.com or 844-401-2253."
+      ],
+      "source_articles": [
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (additional_notes, faqs, steps)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (business_rules, steps)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (steps)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (common_issues)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (additional_notes, faqs, references, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (additional_notes, faqs)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (business_rules, eligibility, references)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (business_rules, steps)"
+        }
+      ],
+      "confidence_note": "limited_coverage",
+      "metadata": {
+        "chunks_used": 26,
+        "context_tokens": 3990,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll 401k QDRO processing steps required documents court order review and implementation procedure",
+          "QDRO alternate payee award percentage or amount determined by divorce order 401k ex-spouse allocation rules",
+          "ForUsAll QDRO review timeline how long qualification approval and account distribution typically take"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "QDRO processing procedure",
+          "How the ex-spouse's share is determined under a QDRO",
+          "QDRO review timeline"
+        ],
+        "per_query_scores": {
+          "ForUsAll 401k QDRO processing steps required documents court order review and implementation procedure": 0.4585,
+          "QDRO alternate payee award percentage or amount determined by divorce order 401k ex-spouse allocation rules": 0.3588,
+          "ForUsAll QDRO review timeline how long qualification approval and account distribution typically take": 0.5208,
+          "I'm going through a divorce and the court issued a QDRO (Qualified Domestic Relations Order) for my 401(k) with ForUsAll. How does ForUsAll process QDROs, what percentage of my balance does my ex-spouse receive, and how long does the QDRO review take?": 0.5219
+        }
+      }
+    },
+    "elapsed_seconds": 15.57
+  },
+  {
+    "id": "ST03",
+    "category": "Fake Recordkeeper + Real Topic",
+    "question": "I have my 401(k) with Principal Financial Group through ForUsAll. My balance is $4,500 and I was just terminated last week. What are the force-out rules for Principal plans specifically, and will Principal automatically roll my balance to a safe harbor IRA?",
+    "traps": [
+      "Principal is NOT in the KB",
+      "Force-out rules ARE in the KB but not Principal-specific",
+      "Should NOT invent Principal-specific procedures",
+      "Should apply general force-out rules if appropriate"
+    ],
+    "expected_behavior": "Apply general force-out rules; note no Principal-specific info",
+    "response": {
+      "answer": "The knowledge base does not provide any Principal Financial Group-specific force-out rules, so I cannot confirm whether Principal has any special process beyond the general force-out rules described here.\n\nWhat the context does say is:\n\n1. General force-out eligibility\n- Force-outs apply only after employment ends.\n- They apply only to former employees with vested balances under $7,000.\n- A plan sponsor can initiate a force-out only after employment ends and the vested balance is under $7,000.\n\n2. Balance thresholds under the force-out rules\n- $80 or less: the $80 administrative fee may fully absorb the balance, resulting in account closure with no funds transferred.\n- Greater than $80 and under $1,000: the plan may issue a cash distribution, minus mandatory 20% withholding.\n- $1,000 to $7,000: the balance must be automatically rolled into a safe harbor IRA unless the participant elects otherwise.\n\n3. Notice requirement\n- Before any involuntary distribution happens, the participant must receive advance written notice and an opportunity to act.\n\n4. Sponsor participation matters\n- The force-out process includes internal coordination with the plan sponsor to confirm whether the sponsor is participating in the annual force-out process. That means the fact that a participant is eligible does not, by itself, guarantee that a force-out will happen immediately.\n\nApplying those general rules to a $4,500 balance:\n- A $4,500 vested balance falls in the $1,000 to $7,000 range.\n- Under the force-out rules in the context, if a force-out is initiated, that balance must be rolled into a safe harbor IRA unless the participant elects otherwise.\n- However, based on the context alone, I cannot say whether Principal specifically will do that for your plan, because Principal-specific rules are not provided.\n\nOne related note from the context: there is also a separate small-balance fee-out process for certain terminated participants with balances of $75 or less in the ForUsAll/LT Trust termination distribution process. That does not apply to a $4,500 balance.\n\nSo, based only on the knowledge base: your balance amount is within the general force-out range where an automatic rollover to a safe harbor IRA would be the required outcome if a force-out is initiated, but the context does not confirm any Principal-specific rule or whether your particular plan sponsor is participating in that process.",
+      "key_points": [
+        "The knowledge base does not include Principal-specific force-out rules.",
+        "Under the general rules, former employees with vested balances from $1,000 to $7,000 must be rolled into a safe harbor IRA unless they elect otherwise.",
+        "Advance written notice is required before any involuntary distribution.",
+        "Eligibility for force-out does not guarantee it will happen immediately, because sponsor participation in the force-out process matters."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (business_rules, eligibility, faqs, guardrails, steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (additional_notes, business_rules, definitions, faqs, required_data_disambiguation)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (example, steps)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 14,
+        "context_tokens": 3145,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "terminated 401k balance $4500 force-out rules mandatory distribution thresholds under $5000 after termination",
+          "Principal Financial Group automatic rollover to safe harbor IRA process for terminated participants balances between $1000 and $5000"
+        ],
+        "unique_articles": 3,
+        "coverage_gaps": [
+          "Principal Financial Group-specific force-out policies and procedures"
+        ],
+        "per_query_scores": {
+          "terminated 401k balance $4500 force-out rules mandatory distribution thresholds under $5000 after termination": 0.6362,
+          "Principal Financial Group automatic rollover to safe harbor IRA process for terminated participants balances between $1000 and $5000": 0.5314,
+          "I have my 401(k) with Principal Financial Group through ForUsAll. My balance is $4,500 and I was just terminated last week. What are the force-out rules for Principal plans specifically, and will Principal automatically roll my balance to a safe harbor IRA?": 0.5803
+        }
+      }
+    },
+    "elapsed_seconds": 25.62
+  },
+  {
+    "id": "ST04",
+    "category": "Wrong Plan Type (403b)",
+    "question": "I have a 403(b) plan with TIAA through my university employer which uses ForUsAll as the platform. I'm facing a financial hardship and need to take a withdrawal from my 403(b). What are the 403(b)-specific hardship rules, and are they different from 401(k) hardship rules?",
+    "traps": [
+      "403(b) plans are NOT covered in the KB",
+      "TIAA is NOT a recordkeeper in the KB",
+      "Should NOT conflate 401(k) hardship rules with 403(b) rules",
+      "Hardship withdrawal rules ARE in KB but only for 401(k)"
+    ],
+    "expected_behavior": "Acknowledge KB is for 401(k); may note general hardship info with caveat",
+    "response": {
+      "answer": "The provided knowledge base does not include 403(b)-specific hardship withdrawal rules, and it does not compare 403(b) hardship rules to 401(k) hardship rules. It also does not contain any TIAA-specific rules. So, based on this context alone, I cannot tell you whether your university’s 403(b) hardship rules are different from 401(k) hardship rules.\n\nWhat the context does say about hardship withdrawals generally is:\n\n1. A hardship withdrawal may be available only if the plan allows hardship withdrawals.\n2. The request must meet an IRS-approved hardship reason listed in the article.\n3. The amount is limited to what is necessary to meet the financial need and cannot exceed the documented hardship expense.\n4. Hardship withdrawals are subject to ordinary income tax.\n5. A 10% early withdrawal penalty typically applies if the participant is under age 59 1/2, unless an exception is met.\n6. Hardship withdrawal funds cannot be repaid.\n7. Supporting documentation is often required or recommended, and participants must retain documentation in case of an IRS audit; the article advises retaining it for 7 years.\n8. Approval is generally within 1–2 days if the plan allows hardship withdrawals.\n\nThe IRS-approved hardship reasons listed in the context are:\n- Post-secondary education expenses\n- Purchase of a primary residence (down payment and closing costs)\n- Preventing eviction or foreclosure on a primary residence\n- Medical expenses for you, your spouse, or dependents that are not covered by insurance\n- Funeral or burial expenses for a parent, spouse, child, or dependent\n- Damage to a primary residence due to a qualifying casualty loss\n\nThe context also includes ForUsAll hardship request steps and fees for the process described there:\n- Start by contacting ForUsAll Support\n- Review the Hardship Distribution Guidelines\n- Complete the hardship request through RightSignature\n- Standard processing fee: $75\n- Wire transfer or overnight check: additional $35\n- ACH and standard mail check: no fee beyond the $75 processing fee\n\nBecause the knowledge base does not include 403(b)-specific rules or a 403(b) vs. 401(k) comparison, the safest answer from this context is: I can describe the hardship rules listed above, but I cannot confirm whether your 403(b) follows the same rules or whether there are differences without plan-specific review.",
+      "key_points": [
+        "The knowledge base does not provide 403(b)-specific hardship rules or a comparison between 403(b) and 401(k) hardship rules.",
+        "From the context, hardship withdrawals are available only if the plan allows them and must fit one of the listed IRS-approved hardship reasons.",
+        "The hardship amount is limited to the amount necessary to meet the financial need and cannot exceed the documented expense.",
+        "The context says hardship withdrawals are subject to ordinary income tax, may typically trigger a 10% early withdrawal penalty if under age 59 1/2 unless an exception is met, and cannot be repaid.",
+        "Supporting documentation should be retained for possible IRS audit; the article advises keeping it for 7 years."
+      ],
+      "source_articles": [
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (business_rules, eligibility, faqs, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (business_rules, faqs, guardrails)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (definitions)"
+        }
+      ],
+      "confidence_note": "limited_coverage",
+      "metadata": {
+        "chunks_used": 13,
+        "context_tokens": 2821,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "403(b) hardship withdrawal IRS rules safe harbor reasons amount limited to immediate financial need",
+          "403(b) hardship withdrawal source restrictions compared with 401(k) elective deferrals earnings employer contributions differences",
+          "TIAA ForUsAll university 403(b) hardship withdrawal request process documentation plan administrator approval requirements"
+        ],
+        "unique_articles": 3,
+        "coverage_gaps": [
+          "403(b)-specific hardship withdrawal rules",
+          "Whether and how 403(b) hardship rules differ from 401(k) hardship rules",
+          "TIAA-specific hardship withdrawal procedures or rules"
+        ],
+        "per_query_scores": {
+          "403(b) hardship withdrawal IRS rules safe harbor reasons amount limited to immediate financial need": 0.554,
+          "403(b) hardship withdrawal source restrictions compared with 401(k) elective deferrals earnings employer contributions differences": 0.4891,
+          "TIAA ForUsAll university 403(b) hardship withdrawal request process documentation plan administrator approval requirements": 0.5634,
+          "I have a 403(b) plan with TIAA through my university employer which uses ForUsAll as the platform. I'm facing a financial hardship and need to take a withdrawal from my 403(b). What are the 403(b)-specific hardship rules, and are they different from 401(k) hardship rules?": 0.5616
+        }
+      }
+    },
+    "elapsed_seconds": 27.32
+  },
+  {
+    "id": "ST05",
+    "category": "Invented Feature",
+    "question": "I heard ForUsAll launched a new 'Emergency Savings Account' feature linked to my 401(k) where I can withdraw up to $1,000 penalty-free per year under the new SECURE 2.0 provisions. How do I access this feature in the ForUsAll portal, and is there a waiting period?",
+    "traps": [
+      "No 'Emergency Savings Account' feature in the KB",
+      "Should NOT confirm this feature exists",
+      "Should NOT invent portal navigation steps for a non-existent feature",
+      "SECURE 2.0 provisions may not be in KB"
+    ],
+    "expected_behavior": "State this feature is not found in KB; do not confirm or deny its existence",
+    "response": {
+      "answer": "The knowledge base does not mention a ForUsAll \"Emergency Savings Account\" feature linked to a 401(k), and it does not include any instructions for accessing a SECURE 2.0 $1,000 emergency withdrawal feature in the portal or any waiting-period rules for that feature. Because of that, I can’t confirm from the provided context whether this feature is available, where it would appear in the portal, or how long you would need to wait before using it.\n\nWhat the knowledge base does say is:\n- Access to 401(k) money while you are still employed is limited and depends on your employer’s plan rules.\n- The article on while-employed access lists four possible options: in-service distributions, hardship withdrawals, rollover source withdrawals, and 401(k) loans.\n- For in-service distributions, the KB says you can initiate the process through your online ForUsAll account or by contacting Participant Support, but plan-specific rules apply.\n- If you are still employed and want to roll over eligible funds such as rollover-source balances, you must contact ForUsAll Support first to confirm eligibility.\n- For hardship withdrawals, the process starts by contacting ForUsAll Support, reviewing the Hardship Distribution Guidelines, and then completing the RightSignature form. The KB says hardship withdrawal disbursal is typically within 1 to 3 weeks.\n\nSo, based on the provided context, the safest answer is: the KB does not document the emergency savings feature you described, and it does not provide a portal path or waiting period for it. If you need confirmation of availability or next steps, the KB directs participants to ForUsAll Support:\n- Email: help@forusall.com\n- Phone: 844-401-2253\n- Hours: Monday to Friday, 7 AM to 5 PM Pacific Time",
+      "key_points": [
+        "The provided knowledge base does not cover a ForUsAll SECURE 2.0 Emergency Savings Account feature, portal access steps, or any waiting period for it.",
+        "While-employed access options that are covered in the KB are in-service distributions, hardship withdrawals, rollover source withdrawals, and 401(k) loans, all subject to plan rules.",
+        "If feature availability or eligibility is unclear, the KB says to contact ForUsAll Support for review and next steps."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (business_rules, references, steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (business_rules, eligibility, references, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (faqs, guardrails, references, steps)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (faqs)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (guardrails, references, steps)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (faqs)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (references)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (business_rules)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 20,
+        "context_tokens": 3982,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll portal Emergency Savings Account feature access steps availability linked 401k participant website",
+          "SECURE 2.0 $1,000 emergency personal expense distribution annual limit waiting period repayment three-year rule"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "ForUsAll Emergency Savings Account feature availability and portal access instructions",
+          "SECURE 2.0 $1,000 emergency withdrawal feature rules and waiting period"
+        ],
+        "per_query_scores": {
+          "ForUsAll portal Emergency Savings Account feature access steps availability linked 401k participant website": 0.4864,
+          "SECURE 2.0 $1,000 emergency personal expense distribution annual limit waiting period repayment three-year rule": 0.3611,
+          "I heard ForUsAll launched a new 'Emergency Savings Account' feature linked to my 401(k) where I can withdraw up to $1,000 penalty-free per year under the new SECURE 2.0 provisions. How do I access this feature in the ForUsAll portal, and is there a waiting period?": 0.5069
+        }
+      }
+    },
+    "elapsed_seconds": 27.72
+  },
+  {
+    "id": "ST06",
+    "category": "Out-of-Scope (Investments)",
+    "question": "I'm unhappy with my 401(k) investment returns with ForUsAll. How do I change my investment allocations, what are the available fund options in ForUsAll plans, and can I move everything to a target-date fund? Also, what are the expense ratios?",
+    "traps": [
+      "Investment management/allocation is NOT in the KB",
+      "Fund options and expense ratios are NOT in the KB",
+      "Should NOT invent fund options or expense ratios",
+      "Should NOT provide investment advice"
+    ],
+    "expected_behavior": "Acknowledge investment info is not in KB; direct to portal or Support",
+    "response": {
+      "answer": "The knowledge base provided does not include the information needed to answer the main parts of your question.\n\nWhat is not covered in the context:\n- how to change investment allocations in a ForUsAll plan\n- the available investment fund lineup in ForUsAll plans\n- whether you can move your entire balance into a target-date fund\n- the expense ratios for the available funds\n\nWhat I can confirm from the context:\n- If a plan uses LT Trust as the recordkeeper, it is a ForUsAll plan.\n- Processes associated with LT Trust are handled by ForUsAll or through the ForUsAll portal.\n- If you want help understanding your options, the knowledge base says you can contact ForUsAll at help@forusall.com or 844-401-2253, Monday through Friday, 7 AM to 5 PM Pacific Time.\n- The context also says you can schedule a 1-on-1 advisory session at www.calendly.com/forusalladvisory.\n\nBecause the fund menu and fees are not included in the provided knowledge base, I can’t confirm which funds are available, whether a target-date fund election is allowed for all assets, or what the expense ratios are.",
+      "key_points": [
+        "The provided knowledge base does not include investment allocation change steps, fund lineup details, target-date fund rules, or expense ratios.",
+        "LT Trust plans are ForUsAll plans, and related processes are handled by ForUsAll or through the ForUsAll portal.",
+        "For further help, the context provides ForUsAll support at help@forusall.com or 844-401-2253, Monday-Friday, 7 AM-5 PM PST.",
+        "The context also provides a 1-on-1 advisory scheduling link: www.calendly.com/forusalladvisory."
+      ],
+      "source_articles": [
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (common_issues, faqs, steps)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (faqs)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (faqs, steps)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (references)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (additional_notes, business_rules, faqs)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (guardrails, references)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (common_issues, guardrails)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (additional_notes)"
+        }
+      ],
+      "confidence_note": "limited_coverage",
+      "metadata": {
+        "chunks_used": 18,
+        "context_tokens": 3944,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll 401(k) how to change investment allocations, rebalance current balance, and update future contribution investment elections",
+          "ForUsAll 401(k) available investment options, fund lineup, and whether participants can invest 100% in a target-date fund",
+          "ForUsAll 401(k) expense ratios and fund-level fees for available investment options, including target-date funds"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "How to change investment allocations in a ForUsAll plan",
+          "Available fund options in ForUsAll plans",
+          "Whether all assets can be moved into a target-date fund",
+          "Expense ratios for the available funds"
+        ],
+        "per_query_scores": {
+          "ForUsAll 401(k) how to change investment allocations, rebalance current balance, and update future contribution investment elections": 0.4755,
+          "ForUsAll 401(k) available investment options, fund lineup, and whether participants can invest 100% in a target-date fund": 0.4558,
+          "ForUsAll 401(k) expense ratios and fund-level fees for available investment options, including target-date funds": 0.4307,
+          "I'm unhappy with my 401(k) investment returns with ForUsAll. How do I change my investment allocations, what are the available fund options in ForUsAll plans, and can I move everything to a target-date fund? Also, what are the expense ratios?": 0.4858
+        }
+      }
+    },
+    "elapsed_seconds": 21.64
+  },
+  {
+    "id": "ST07",
+    "category": "Fabricated Legal Rule",
+    "question": "My attorney told me that under the SECURE 2.0 Act, I can take penalty-free distributions up to $22,000 for any reason whatsoever as long as I'm over 50. I'm 52 and still employed. Can ForUsAll confirm this is true and process my $22,000 distribution immediately?",
+    "traps": [
+      "This is a FABRICATED interpretation of SECURE 2.0",
+      "Should NOT validate this made-up rule",
+      "Should NOT process a distribution based on false premises",
+      "In-service withdrawals ARE partially covered but not this scenario"
+    ],
+    "expected_behavior": "Do not confirm fabricated rule; reference actual in-service withdrawal rules if available",
+    "response": {
+      "answer": "ForUsAll cannot confirm that statement based on the knowledge base provided.\n\nThe context does **not** include any rule saying that, under SECURE 2.0, a participant who is over age 50 can take **up to $22,000 penalty-free for any reason whatsoever** while still employed. Because that rule is not in the provided materials, it would not be appropriate to confirm it as true.\n\nWhat the knowledge base *does* say is that access to a 401(k) while you are still employed is generally limited and depends on your employer's plan rules. The possible in-service options described are:\n\n1. **In-service distributions** — typically available at **age 59 1/2 or older**, **if the plan allows**.\n   - At age 52, you would **typically not qualify** for this option as described in the knowledge base.\n   - Even at 59 1/2 or older, it is **not automatic** because plan-specific rules apply.\n\n2. **Hardship withdrawals** — only if the plan allows them and you have an **immediate and serious financial need** that fits a qualifying IRS hardship reason.\n   - The listed qualifying reasons are: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, and repair of damage to the primary residence.\n   - The context does **not** say hardship withdrawals are available “for any reason whatsoever.”\n\n3. **Rollover source withdrawals** — may be available if you have assets in the plan that were previously rolled in from another retirement account.\n\n4. **401(k) loans** — may be available if the plan allows loans and you are an active employee with an available vested balance.\n\nOn the tax/penalty point, the knowledge base does **not** authorize ForUsAll to confirm that your requested distribution would be penalty-free. It specifically says not to confirm whether a participant meets an IRS exception to the 10% early withdrawal penalty unless the context supports it, and this context does not provide the rule you referenced.\n\nOn timing, ForUsAll also should **not promise immediate processing** here. The provided materials do not support saying that a $22,000 distribution can be processed immediately. If a withdrawal type is available under the plan, the article says you can generally start the request through your online ForUsAll account or by contacting Participant Support, but plan-specific rules still apply.\n\nSo, based on the knowledge base alone:\n- **No, ForUsAll cannot confirm the specific SECURE 2.0 / age-50 / $22,000 / any-reason rule you mentioned.**\n- **No, the context does not support promising immediate processing of that request.**\n- Because you are **still employed** and **under age 59 1/2**, an ordinary in-service distribution would typically **not** be available as described.\n- Your available options would depend on whether your plan allows a hardship withdrawal, rollover source withdrawal, or loan.\n\nIf plan availability for a withdrawal or loan type is unclear, the knowledge base says to direct you to the **ForUsAll Participant Support Team** for an eligibility review and next steps.",
+      "key_points": [
+        "The provided knowledge base does not confirm any SECURE 2.0 rule allowing $22,000 penalty-free distributions for any reason at age 50+.",
+        "While still employed, 401(k) access is limited and depends on plan rules.",
+        "In-service distributions are typically available only at age 59 1/2 or older if the plan allows, so a 52-year-old would typically not qualify for that option as described.",
+        "Other possible while-employed options in the context are hardship withdrawals, rollover source withdrawals, and 401(k) loans, each subject to plan rules and eligibility conditions.",
+        "The context does not support promising that such a distribution would be penalty-free or processed immediately."
+      ],
+      "source_articles": [
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (business_rules, eligibility, example, faqs, guardrails)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (business_rules, eligibility)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (steps)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (steps)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (response_frames)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (common_issues)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (faqs)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (steps)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 14,
+        "context_tokens": 3977,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "SECURE 2.0 penalty-free 401k distribution limits $22,000 age 50+ any reason claim",
+          "active employee 401k in-service withdrawal rules age 52 before 59½ plan-permitted distributions",
+          "ForUsAll recordkeeper authority to confirm eligibility and process immediate 401k distribution requests"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "The specific SECURE 2.0 provision the user references: a claimed age-50+ right to take up to $22,000 penalty-free for any reason while still employed"
+        ],
+        "per_query_scores": {
+          "SECURE 2.0 penalty-free 401k distribution limits $22,000 age 50+ any reason claim": 0.4553,
+          "active employee 401k in-service withdrawal rules age 52 before 59½ plan-permitted distributions": 0.6031,
+          "ForUsAll recordkeeper authority to confirm eligibility and process immediate 401k distribution requests": 0.4733,
+          "My attorney told me that under the SECURE 2.0 Act, I can take penalty-free distributions up to $22,000 for any reason whatsoever as long as I'm over 50. I'm 52 and still employed. Can ForUsAll confirm this is true and process my $22,000 distribution immediately?": 0.4691
+        }
+      }
+    },
+    "elapsed_seconds": 38.68
+  },
+  {
+    "id": "ST08",
+    "category": "Out-of-Scope (Beneficiary)",
+    "question": "My spouse, who was my 401(k) beneficiary, passed away recently. I need to update my beneficiary designation to my daughter. How do I change my beneficiary on the ForUsAll portal, is my daughter automatically the contingent beneficiary, and do I need notarization for the change?",
+    "traps": [
+      "Beneficiary designation/changes are NOT in the KB",
+      "Should NOT invent a beneficiary change process",
+      "Should NOT claim daughter is automatic contingent beneficiary",
+      "Notarization requirements are NOT in KB"
+    ],
+    "expected_behavior": "Acknowledge beneficiary changes not covered; direct to Support",
+    "response": {
+      "answer": "The knowledge base context provided does not include instructions for changing a beneficiary designation, rules about whether a daughter would automatically become a contingent beneficiary, or whether notarization is required for a beneficiary update.\n\nWhat I can confirm from the context is:\n- For plans using LT Trust, plan-related processes are handled by ForUsAll or through the ForUsAll portal.\n- If you need help with a plan-related process and the available guidance is unclear, ForUsAll support can be contacted at help@forusall.com or 844-401-2253, Monday through Friday, 7 AM to 5 PM Pacific Time.\n\nBecause the beneficiary-change process itself is not covered in the provided context, I should not give portal steps or notarization requirements that are not documented here. The safest next step is to contact ForUsAll Support to confirm:\n1. how to update your beneficiary in the portal,\n2. whether your daughter must be affirmatively added or would be listed in any contingent role,\n3. and whether any signature, spousal consent, witness, or notarization requirement applies under your plan or the portal workflow.",
+      "key_points": [
+        "The provided context does not contain beneficiary update steps, automatic contingent beneficiary rules, or notarization requirements.",
+        "For LT Trust / ForUsAll plans, plan processes are handled by ForUsAll or through the ForUsAll portal.",
+        "For clarification, contact ForUsAll Support at help@forusall.com or 844-401-2253 during Monday-Friday, 7 AM to 5 PM Pacific Time."
+      ],
+      "source_articles": [
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (business_rules, eligibility, faqs, steps)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (business_rules, eligibility, guardrails, references)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (example, steps)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (additional_notes, business_rules, faqs, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (business_rules, eligibility, example, guardrails)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (business_rules)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (definitions)"
+        }
+      ],
+      "confidence_note": "limited_coverage",
+      "metadata": {
+        "chunks_used": 23,
+        "context_tokens": 3979,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll portal beneficiary designation change steps update primary beneficiary after spouse beneficiary death",
+          "401k beneficiary rules whether child becomes contingent beneficiary automatically when spouse beneficiary dies",
+          "ForUsAll beneficiary change notarization requirements spousal consent witness notary for naming daughter as beneficiary"
+        ],
+        "unique_articles": 7,
+        "coverage_gaps": [
+          "How to change a beneficiary designation in the ForUsAll portal",
+          "Whether a daughter automatically becomes the contingent beneficiary after a spouse beneficiary dies",
+          "Whether notarization is required for a beneficiary change"
+        ],
+        "per_query_scores": {
+          "ForUsAll portal beneficiary designation change steps update primary beneficiary after spouse beneficiary death": 0.3947,
+          "401k beneficiary rules whether child becomes contingent beneficiary automatically when spouse beneficiary dies": 0.3905,
+          "ForUsAll beneficiary change notarization requirements spousal consent witness notary for naming daughter as beneficiary": 0.3008,
+          "My spouse, who was my 401(k) beneficiary, passed away recently. I need to update my beneficiary designation to my daughter. How do I change my beneficiary on the ForUsAll portal, is my daughter automatically the contingent beneficiary, and do I need notarization for the change?": 0.4232
+        }
+      }
+    },
+    "elapsed_seconds": 17.01
+  },
+  {
+    "id": "ST09",
+    "category": "Multi-Topic (Mixed Coverage)",
+    "question": "I want to do three things with my ForUsAll 401(k): (1) set up automatic contribution increases of 1% per year, (2) do a mega backdoor Roth conversion of my after-tax contributions, and (3) take a hardship withdrawal for medical bills. Can you walk me through all three?",
+    "traps": [
+      "Auto-contribution increases are NOT in KB",
+      "Mega backdoor Roth is NOT in KB",
+      "Hardship withdrawal IS in KB",
+      "Should correctly identify which topics are and aren't covered",
+      "coverage_gaps should list the uncovered topics"
+    ],
+    "expected_behavior": "Answer hardship part; acknowledge other two are not in KB",
+    "response": {
+      "answer": "Here is a topic-by-topic walkthrough based only on the knowledge base context.\n\n1) Automatic contribution increases of 1% per year\nThe current context does not include instructions for setting up automatic annual contribution increases (auto-escalation), so I can’t walk you through the exact setup steps.\n\nWhat I can say from the context:\n- ForUsAll plans using LT Trust are handled by ForUsAll or through the ForUsAll portal.\n- If you need help with plan actions or want guidance on available options, the context lists these support channels:\n  - Email: help@forusall.com\n  - Phone: 844-401-2253\n  - Advisory scheduling: https://www.calendly.com/forusalladvisory\n\n2) Mega backdoor Roth conversion of after-tax contributions\nThe context does not provide the process, eligibility rules, or plan-permission details for a mega backdoor Roth conversion of after-tax contributions, so I can’t confirm whether your plan allows it or give step-by-step instructions.\n\nWhat the context does say about Roth conversion generally:\n- An in-plan Roth conversion is the conversion of pre-tax 401(k) funds to Roth funds within the same plan.\n- The amount converted is taxable in the year of conversion.\n- Future qualified withdrawals from the Roth portion are tax-free.\n- There is a 5-year holding rule: Roth-converted funds must be held for at least 5 years from the year of conversion before earnings qualify as tax-free.\n\nImportant limitation:\n- The context does not say whether after-tax contribution sources can be converted, whether a mega backdoor process exists in your plan, or how to submit that request.\n\n3) Hardship withdrawal for medical bills\nThis is the one area the context covers in detail.\n\nMedical bills as a qualifying hardship reason:\n- Medical expenses are listed as an IRS-approved hardship reason.\n- The article describes this as costs for you, your spouse, or dependents that are not covered by insurance.\n\nEligibility rules described in the context:\n- The hardship request must meet one of the IRS-approved hardship reasons.\n- The withdrawal amount must be necessary to meet the financial need.\n- The amount requested cannot exceed the documented hardship expenses.\n- Only one request per hardship reason is allowed at a time.\n- The process is described as self-certification, and the participant selects the applicable IRS-approved hardship reason.\n\nHow much you can request:\n- You can request up to the amount of the documented hardship expenses.\n- You should request only the amount necessary to relieve the financial burden.\n\nHow to submit it:\n- The context says that after expectations are set and the hardship guidelines are provided, the participant is sent the Hardship Withdrawal RightSignature Request Form:\n  - https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133\n- Step 4 says the participant completes and submits the hardship withdrawal request through the RightSignature platform.\n\nDocumentation rules:\n- ForUsAll does not collect supporting documents for hardship withdrawals.\n- You must retain supporting documentation in case of an IRS audit.\n- The article advises retaining it for 7 years.\n\nFees:\n- Standard processing fee: $75\n- Additional fee for wire transfer: +$35\n- Additional fee for overnight check: +$35\n- ACH bank transfer: no additional fee beyond the $75 standard processing fee\n- Standard mail check: no additional fee beyond the $75 standard processing fee\n\nTaxes and penalties:\n- Hardship withdrawal funds are subject to federal income taxes.\n- A 10% early withdrawal penalty may apply if you are under age 59.5.\n\nTiming:\n- The context says timelines start once the request is approved and you receive an executed confirmation email through RightSignature.\n- The exact delivery timeline is not provided in the context you shared, so I can’t give a precise timeframe.\n\nImportant guardrails from the context:\n- I can’t guarantee employer match or other employer-contributed money is eligible for hardship withdrawal; that depends on plan documents.\n- I can’t guarantee a specific dollar amount will be available.\n- I can’t promise an exact delivery date.\n\nBottom line:\n- I do not have enough information from the context to walk you through setting up 1% annual auto-increases.\n- I also do not have enough information from the context to walk you through a mega backdoor Roth conversion of after-tax contributions, although the context does explain general Roth conversion tax treatment and the 5-year holding rule.\n- I can walk you through the hardship withdrawal piece: medical expenses not covered by insurance are an IRS-approved hardship reason, the process uses self-certification and a RightSignature form, the standard fee is $75, you must keep your own documentation, and taxes plus a possible early withdrawal penalty may apply.",
+      "key_points": [
+        "The knowledge base does not include setup steps for automatic 1% annual contribution increases.",
+        "The knowledge base does not provide plan-specific rules or submission steps for a mega backdoor Roth conversion of after-tax contributions, but it does explain general in-plan Roth conversion tax treatment and the 5-year holding rule.",
+        "Medical expenses not covered by insurance are an IRS-approved hardship reason, and the amount requested must be only what is necessary and cannot exceed documented hardship expenses.",
+        "Hardship withdrawals are submitted through RightSignature, cost $75 standard processing, require the participant to retain documentation, and are subject to federal income taxes with a possible 10% early withdrawal penalty if under age 59.5."
+      ],
+      "source_articles": [
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (business_rules, decision_guide, eligibility, faqs, guardrails, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (business_rules, eligibility, faqs, references)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (additional_notes, decision_guide)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (definitions)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (decision_guide, faqs)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (guardrails)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (steps)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 18,
+        "context_tokens": 3998,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll 401k automatic contribution increase setup annual 1% auto-escalation election process",
+          "Mega backdoor Roth conversion of after-tax 401k contributions eligibility in-plan Roth rollover versus in-service distribution rules",
+          "401k hardship withdrawal for medical bills IRS eligibility documentation amount limits and process with ForUsAll"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "How to set up automatic annual contribution increases (auto-escalation)"
+        ],
+        "per_query_scores": {
+          "ForUsAll 401k automatic contribution increase setup annual 1% auto-escalation election process": 0.4317,
+          "Mega backdoor Roth conversion of after-tax 401k contributions eligibility in-plan Roth rollover versus in-service distribution rules": 0.5199,
+          "401k hardship withdrawal for medical bills IRS eligibility documentation amount limits and process with ForUsAll": 0.6149,
+          "I want to do three things with my ForUsAll 401(k): (1) set up automatic contribution increases of 1% per year, (2) do a mega backdoor Roth conversion of my after-tax contributions, and (3) take a hardship withdrawal for medical bills. Can you walk me through all three?": 0.5157
+        }
+      }
+    },
+    "elapsed_seconds": 70.79
+  },
+  {
+    "id": "ST10",
+    "category": "Contradictory Recordkeeper Info",
+    "question": "My company uses Fidelity as our 401(k) recordkeeper, but my HR department told me to log into the ForUsAll portal at forusall.com/login for my distribution request. This doesn't make sense — if Fidelity is my recordkeeper, why would I use ForUsAll? Is my HR wrong, or does ForUsAll handle Fidelity plans too?",
+    "traps": [
+      "Fidelity is NOT a ForUsAll recordkeeper",
+      "Should NOT claim ForUsAll handles Fidelity plans",
+      "Should correctly explain LT Trust / ForUsAll relationship",
+      "Should handle contradiction gracefully without inventing explanations"
+    ],
+    "expected_behavior": "Explain ForUsAll uses LT Trust; cannot confirm Fidelity arrangement; suggest checking with HR",
+    "response": {
+      "answer": "Based on the provided context, the clearest rule is this: if the plan’s recordkeeper is **LT Trust**, that means the plan belongs to **ForUsAll**, and the related processes are handled by **ForUsAll or through the ForUsAll portal**.\n\nSo, if your plan is truly recordkept by **Fidelity**, the knowledge base does **not** say that ForUsAll also handles those plans or that Fidelity plans should use **forusall.com/login** for distributions. The portal instructions in the context are specifically for the ForUsAll/LT Trust process, including logging in at **forusall.com/login** and using **Loans & Distributions**.\n\nBecause of that, I can’t confirm from the context that your HR department is wrong, but I also can’t confirm that ForUsAll handles Fidelity-recordkept plans. The context simply does not provide that information.\n\nWhat I *can* say from the context:\n- **ForUsAll portal distribution requests are the documented process for LT Trust / ForUsAll plans.**\n- Participants use **forusall.com/login** and then go to **Loans & Distributions** when following that process.\n- If there is confusion about the correct process or plan setup, the context directs participants to contact **ForUsAll Support**.\n\nIf you want to resolve the mismatch between “Fidelity recordkeeper” and “use the ForUsAll portal,” the best next step from the context is to confirm with **ForUsAll Support** at **help@forusall.com** or **844-401-2253**.",
+      "key_points": [
+        "If a plan’s recordkeeper is LT Trust, it belongs to ForUsAll and related processes are handled through ForUsAll.",
+        "The knowledge base does not say that ForUsAll handles Fidelity-recordkept plans.",
+        "The forusall.com/login distribution flow is documented for the ForUsAll/LT Trust process.",
+        "If there is a mismatch or uncertainty about the correct portal/process, contact ForUsAll Support."
+      ],
+      "source_articles": [
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (faqs)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (business_rules, faqs, guardrails, steps)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (references)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (additional_notes, business_rules, references)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (additional_notes, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (common_issues)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (references)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 13,
+        "context_tokens": 3962,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "ForUsAll role versus Fidelity recordkeeper in 401k plans administrator portal integration distribution processing",
+          "Can ForUsAll handle distribution requests for Fidelity-recordkept 401k plans employer uses multiple service providers"
+        ],
+        "unique_articles": 7,
+        "coverage_gaps": [
+          "Whether ForUsAll services plans whose recordkeeper is Fidelity"
+        ],
+        "per_query_scores": {
+          "ForUsAll role versus Fidelity recordkeeper in 401k plans administrator portal integration distribution processing": 0.4438,
+          "Can ForUsAll handle distribution requests for Fidelity-recordkept 401k plans employer uses multiple service providers": 0.5232,
+          "My company uses Fidelity as our 401(k) recordkeeper, but my HR department told me to log into the ForUsAll portal at forusall.com/login for my distribution request. This doesn't make sense — if Fidelity is my recordkeeper, why would I use ForUsAll? Is my HR wrong, or does ForUsAll handle Fidelity plans too?": 0.5513
+        }
+      }
+    },
+    "elapsed_seconds": 23.31
+  },
+  {
+    "id": "ST11",
+    "category": "Real Rule, Possibly Not In KB",
+    "question": "I'm 56 years old and just separated from service. My financial advisor said the 'Rule of 55' lets me take penalty-free withdrawals from THIS employer's 401(k) since I left after turning 55. But he also said I can take partial withdrawals over multiple years, not just a lump sum. Can ForUsAll confirm the Rule of 55 applies to my plan and process multiple partial withdrawals?",
+    "traps": [
+      "Rule of 55 is a real IRS rule but may not be in KB",
+      "Partial withdrawal availability depends on plan terms (not in KB)",
+      "Should NOT confirm plan-specific features not in KB",
+      "Should acknowledge what IS known from KB about post-55 distributions"
+    ],
+    "expected_behavior": "Share what KB says about separation-of-service distributions; acknowledge Rule of 55 specifics may not be covered",
+    "response": {
+      "answer": "Based on the provided knowledge base, ForUsAll cannot confirm that the Rule of 55 applies to your plan, and it also does not provide enough information to confirm whether your plan allows multiple partial post-separation withdrawals over several years.\n\nWhat the knowledge base does confirm is:\n\n1. After separation from service, you can request a termination distribution or rollover through the ForUsAll participant portal.\n   - Go to the \"Loans & Distributions\" area.\n   - Select \"Separation of Service\" as the reason.\n   - If the portal shows \"Default\" instead, that is a known website issue and you should select \"Default\" because it is treated as the same option.\n\n2. Only vested balances are eligible.\n   - The portal will show your account sources and vesting percentages.\n   - If the vesting shown appears incorrect, you should contact ForUsAll Support before submitting.\n\n3. Funds can be sent either to you or to another institution.\n   - The knowledge base describes termination distributions as money moving out of the ForUsAll plan to the participant or another institution as a distribution or outgoing rollover.\n\n4. Estimated processing and delivery timing is available.\n   - ForUsAll review is about 2 business days.\n   - Standard checks typically arrive about 2–3 weeks after approval via USPS.\n   - Wires typically complete about 1–2 weeks after approval, depending on the receiving institution.\n   - Overnight checks typically complete in about 1–2 weeks after approval.\n\n5. If you take a cash distribution, there can be tax consequences.\n   - The knowledge base says cash distributions typically have 20% federal withholding.\n   - State withholding may also apply.\n   - A 10% early withdrawal penalty may apply if you are under age 59½, unless an exception applies.\n   - A 1099-R will be issued for tax reporting.\n\nHowever, the knowledge base does not state:\n- whether the Rule of 55 is available under your plan,\n- whether ForUsAll can validate that exception for you,\n- or whether your plan supports repeated partial termination withdrawals instead of a single distribution.\n\nSo the most accurate answer from the provided context is: ForUsAll can support a termination distribution or rollover request through the portal, but this knowledge base does not let us confirm Rule of 55 treatment or confirm that multiple partial withdrawals are permitted under your plan.",
+      "key_points": [
+        "The knowledge base confirms how to request a post-separation distribution or rollover through the ForUsAll portal, but it does not confirm Rule of 55 eligibility.",
+        "Only vested balances are eligible for a termination distribution.",
+        "Cash distributions typically have 20% federal withholding, possible state withholding, and a possible 10% early withdrawal penalty if under age 59½ unless an exception applies.",
+        "The provided context does not say whether a separated participant can take multiple partial withdrawals over time instead of one lump-sum distribution."
+      ],
+      "source_articles": [
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (faqs, steps)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (business_rules, eligibility, example, faqs)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (guardrails)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (business_rules, eligibility, response_frames)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (response_frames)"
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (steps)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 12,
+        "context_tokens": 3987,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "Rule of 55 age 55 separation from service penalty-free withdrawals from current employer 401k eligibility",
+          "ForUsAll 401k post-separation distribution options multiple partial withdrawals over time versus lump sum processing rules"
+        ],
+        "unique_articles": 6,
+        "coverage_gaps": [
+          "Rule of 55 eligibility or confirmation for a specific 401(k) plan",
+          "Whether a terminated participant can take multiple partial withdrawals over multiple years from the plan"
+        ],
+        "per_query_scores": {
+          "Rule of 55 age 55 separation from service penalty-free withdrawals from current employer 401k eligibility": 0.4858,
+          "ForUsAll 401k post-separation distribution options multiple partial withdrawals over time versus lump sum processing rules": 0.4963,
+          "I'm 56 years old and just separated from service. My financial advisor said the 'Rule of 55' lets me take penalty-free withdrawals from THIS employer's 401(k) since I left after turning 55. But he also said I can take partial withdrawals over multiple years, not just a lump sum. Can ForUsAll confirm the Rule of 55 applies to my plan and process multiple partial withdrawals?": 0.4955
+        }
+      }
+    },
+    "elapsed_seconds": 21.83
+  },
+  {
+    "id": "ST12",
+    "category": "Multi-Recordkeeper Consolidation",
+    "question": "I have 401(k) accounts with THREE different former employers — one through LT Trust/ForUsAll with $50,000, one through Empower with $30,000, and one through ADP TotalSource with $20,000. I want to consolidate all three into my Schwab IRA via direct rollover. Can ForUsAll coordinate the rollovers from the Empower and ADP accounts too, or only the LT Trust one? What are the combined tax implications?",
+    "traps": [
+      "Empower and ADP are NOT ForUsAll recordkeepers",
+      "Should NOT claim ForUsAll can handle Empower/ADP rollovers",
+      "LT Trust rollover process IS in KB",
+      "Should only answer for LT Trust portion",
+      "Should NOT invent combined tax implications"
+    ],
+    "expected_behavior": "Answer LT Trust rollover portion; clearly state ForUsAll cannot handle Empower/ADP; no combined tax advice",
+    "response": {
+      "answer": "Based on the knowledge base, ForUsAll can clearly support the rollover process for the account held through LT Trust, because LT Trust is the recordkeeper used by ForUsAll and processes associated with LT Trust are handled by ForUsAll or through the ForUsAll portal.\n\nFor the Empower and ADP TotalSource accounts, the knowledge base does not say that ForUsAll can initiate or coordinate rollovers from accounts held with other recordkeepers. It only confirms ForUsAll’s process for LT Trust accounts. The context also says that for rollover requests, some required information must come directly from the other financial institution, and ForUsAll cannot supply or verify information that must come from an external company. So, from the provided context, the safest answer is:\n- ForUsAll can handle the LT Trust / ForUsAll account rollover process.\n- The knowledge base does not confirm that ForUsAll can coordinate rollovers out of Empower or ADP TotalSource accounts.\n\nOn the tax side, a direct rollover to an IRA or another qualified retirement plan can avoid immediate taxes and penalties if done properly. That is the main tax benefit described in the context. If your goal is to consolidate by direct rollover, the general tax treatment described in the knowledge base is:\n\n1. Direct rollover tax treatment\n- A rollover distribution allows 401(k) funds to move to an IRA or another qualified retirement plan without immediate taxes or penalties if done properly.\n- This helps preserve retirement savings and continued tax-advantaged growth.\n- A 1099-R will still be issued the following year for reporting purposes, even when the rollover is completed properly.\n\n2. Pre-tax vs. Roth money\n- The knowledge base says Roth and pre-tax funds are handled separately during a distribution request.\n- Traditional funds can be rolled into a Traditional-type account or a Roth-type account, but rolling traditional funds to a Roth-type account is a Roth conversion and may have tax implications.\n- Roth funds must be rolled into a Roth-type account.\n\nBecause of that, the tax result of consolidating all three accounts depends in part on what type of money is in each account and what type of Schwab IRA is receiving it:\n- Pre-tax 401(k) money rolled to a Traditional IRA is described as avoiding immediate taxes if done properly.\n- Roth 401(k) money rolled to a Roth IRA is also described as a rollover option.\n- Pre-tax money rolled to a Roth account may have tax implications.\n\n3. What would create taxes or penalties instead\nIf any part of the transfer is not done as a direct rollover and the money is paid to you first:\n- the rollover generally must be completed within 60 days to avoid taxes and penalties,\n- if it is not completed within 60 days, the distribution is generally treated as taxable income,\n- if you are under age 59½, you may also owe a 10% early withdrawal penalty,\n- and depositing the money later generally does not qualify as a rollover unless certain exceptions are met.\n\n4. Cash distribution rules are different\nIf any portion is taken as cash instead of rolled over:\n- 20% federal withholding typically applies,\n- state withholding may also apply,\n- it is taxable income for the year processed,\n- and participants under age 59½ may also face a 10% early withdrawal penalty unless an exception applies.\n\n5. Practical LT Trust / ForUsAll process notes\nFor the LT Trust account, the knowledge base says a participant can request:\n- a full direct rollover to an IRA or qualified plan, or\n- a partial direct rollover with the remainder as cash.\n\nFor a direct rollover, the payment methods described are:\n- check mailed to the new IRA or plan provider, or\n- wire sent directly to the new account.\n\nThe context also says participants should confirm with the receiving provider how they prefer to receive rollovers, and that wire instructions must be wire-specific rather than ACH details.\n\nIn short: the knowledge base supports ForUsAll handling the LT Trust account rollover, but it does not confirm that ForUsAll can coordinate the Empower and ADP TotalSource rollovers. Tax-wise, properly completed direct rollovers generally avoid immediate taxes and penalties, but pre-tax and Roth amounts must be matched to the proper IRA type, and a Roth conversion may have tax implications.",
+      "key_points": [
+        "ForUsAll clearly handles rollover processes for LT Trust accounts, but the knowledge base does not confirm that it can coordinate rollovers from outside recordkeepers like Empower or ADP TotalSource.",
+        "A properly completed direct rollover to an IRA or another qualified retirement plan generally avoids immediate taxes and penalties, though a 1099-R is still issued for reporting.",
+        "Pre-tax and Roth funds must be treated separately: Roth funds must go to a Roth-type account, while traditional funds rolled to a Roth-type account may have tax implications.",
+        "If funds are paid to the participant first instead of sent directly, the rollover generally must be completed within 60 days or it may become taxable and potentially subject to a 10% early withdrawal penalty if under age 59½."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "relevance": "Covers distribution (business_rules, definitions, faqs, steps)"
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "relevance": "Covers termination_distribution_request (business_rules, faqs, references, steps)"
+        },
+        {
+          "article_id": "adp_acp_refund_checks_unexpected_checks_taxes_timing_and_prevention",
+          "article_title": "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+          "relevance": "Covers excess_contribution_refund (business_rules, faqs)"
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "relevance": "Covers rollover (business_rules, faqs, steps)"
+        },
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "relevance": "Covers distribution (steps)"
+        },
+        {
+          "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+          "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+          "relevance": "Covers distribution (references)"
+        },
+        {
+          "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+          "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+          "relevance": "Covers in_service_withdrawal_options (references)"
+        },
+        {
+          "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+          "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+          "relevance": "Covers hardship_withdrawal (references)"
+        }
+      ],
+      "confidence_note": "partially_covered",
+      "metadata": {
+        "chunks_used": 21,
+        "context_tokens": 3983,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "direct rollover of multiple former employer 401k accounts into one Schwab IRA tax withholding 1099-R and taxable consequences",
+          "can ForUsAll or LT Trust coordinate rollovers from unrelated Empower and ADP TotalSource 401k plans or only its own plan",
+          "process for consolidating three former employer 401k accounts into one IRA separate rollover requests required for each recordkeeper"
+        ],
+        "unique_articles": 8,
+        "coverage_gaps": [
+          "Whether ForUsAll can directly initiate or coordinate rollovers out of non-LT Trust accounts held with external recordkeepers such as Empower or ADP TotalSource"
+        ],
+        "per_query_scores": {
+          "direct rollover of multiple former employer 401k accounts into one Schwab IRA tax withholding 1099-R and taxable consequences": 0.5206,
+          "can ForUsAll or LT Trust coordinate rollovers from unrelated Empower and ADP TotalSource 401k plans or only its own plan": 0.4775,
+          "process for consolidating three former employer 401k accounts into one IRA separate rollover requests required for each recordkeeper": 0.4588,
+          "I have 401(k) accounts with THREE different former employers — one through LT Trust/ForUsAll with $50,000, one through Empower with $30,000, and one through ADP TotalSource with $20,000. I want to consolidate all three into my Schwab IRA via direct rollover. Can ForUsAll coordinate the rollovers from the Empower and ADP accounts too, or only the LT Trust one? What are the combined tax implications?": 0.4854
+        }
+      }
+    },
+    "elapsed_seconds": 38.91
+  }
+]

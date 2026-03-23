@@ -83,6 +83,7 @@ class KnowledgeQuestionResult:
     answer: str
     key_points: List[str]
     source_articles: List[Dict[str, Any]]
+    used_chunks: List[Dict[str, Any]]
     confidence_note: str
     metadata: Dict[str, Any]
 
@@ -461,6 +462,15 @@ class RAGEngine:
             
             results = await asyncio.gather(*search_tasks)
             
+            # 2b. Compute per-sub-query best scores (for confidence & metadata)
+            query_labels = list(sub_queries)
+            if question not in sub_queries:
+                query_labels.append(question)
+            per_query_scores = {}
+            for label, result_list in zip(query_labels, results):
+                best = max((c.get('score', 0) for c in result_list), default=0)
+                per_query_scores[label] = round(best, 4)
+            
             # 3. Merge, deduplicate, rank by score
             chunks = self._merge_and_rank_chunks(*results)
             
@@ -470,6 +480,7 @@ class RAGEngine:
                     answer="I couldn't find relevant information in the knowledge base to answer this question.",
                     key_points=[],
                     source_articles=[],
+                    used_chunks=[],
                     confidence_note="limited_coverage",
                     metadata={"chunks_used": 0, "model": self.model, "sub_queries": sub_queries}
                 )
@@ -503,28 +514,42 @@ class RAGEngine:
                 logger.error(f"Error parsing knowledge question JSON: {e}")
                 parsed = {
                     "answer": llm_response[:2000] if llm_response else "Unable to generate a structured answer.",
-                    "key_points": []
+                    "key_points": [],
+                    "coverage_gaps": []
                 }
             
-            # 7. Engine-calculated confidence and source articles
-            confidence_note = self._calculate_knowledge_confidence(selected_chunks)
+            # 7. Extract LLM-reported coverage gaps
+            coverage_gaps = parsed.get("coverage_gaps", [])
+            if not isinstance(coverage_gaps, list):
+                coverage_gaps = []
+            coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
+            
+            # 8. Engine-calculated confidence (uses LLM gaps + retrieval signals)
+            confidence_note = self._calculate_knowledge_confidence(
+                selected_chunks, coverage_gaps
+            )
             source_articles = self._build_source_articles(selected_chunks)
             
             unique_articles = set(
                 c['metadata'].get('article_id') for c in selected_chunks
             )
             
+            used_chunks = self._serialize_used_chunks(selected_chunks)
+            
             return KnowledgeQuestionResult(
                 answer=parsed.get("answer", ""),
                 key_points=parsed.get("key_points", []),
                 source_articles=source_articles,
+                used_chunks=used_chunks,
                 confidence_note=confidence_note,
                 metadata={
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
                     "model": self.model,
                     "sub_queries": sub_queries,
-                    "unique_articles": len(unique_articles)
+                    "unique_articles": len(unique_articles),
+                    "coverage_gaps": coverage_gaps,
+                    "per_query_scores": per_query_scores
                 }
             )
         
@@ -534,6 +559,7 @@ class RAGEngine:
                 answer="An internal error occurred while processing your question.",
                 key_points=[],
                 source_articles=[],
+                used_chunks=[],
                 confidence_note="limited_coverage",
                 metadata={"error": str(e), "chunks_used": 0, "model": self.model}
             )
@@ -1453,15 +1479,19 @@ class RAGEngine:
     
     def _calculate_knowledge_confidence(
         self,
-        selected_chunks: List[Dict[str, Any]]
+        selected_chunks: List[Dict[str, Any]],
+        coverage_gaps: Optional[List[str]] = None
     ) -> str:
         """
-        Calculate confidence_note for knowledge questions based on retrieval quality.
+        Calculate confidence_note for knowledge questions.
         
-        Uses three signals:
-        1. Semantic similarity (avg score of top chunks)
-        2. Article diversity (number of unique source articles)
-        3. Chunk type coverage (how many high-value types are represented)
+        Primary signal: LLM-reported coverage_gaps (topics the question asked
+        about that the KB context does NOT cover). The LLM sees both the
+        context and the question, so it reliably detects when the KB lacks
+        information on a specific topic.
+        
+        Secondary signal (when no gaps reported): retrieval quality metrics
+        (avg score, chunk type coverage) as a baseline.
         
         Returns:
             "well_covered", "partially_covered", or "limited_coverage"
@@ -1469,12 +1499,11 @@ class RAGEngine:
         if not selected_chunks:
             return "limited_coverage"
         
+        coverage_gaps = coverage_gaps or []
+        n_gaps = len(coverage_gaps)
+        
         top_scores = [c.get('score', 0) for c in selected_chunks[:5]]
         avg_score = sum(top_scores) / len(top_scores)
-        
-        unique_articles = set(
-            c['metadata'].get('article_id') for c in selected_chunks
-        )
         
         chunk_types_present = set(
             c['metadata'].get('chunk_type') for c in selected_chunks
@@ -1483,10 +1512,21 @@ class RAGEngine:
         
         logger.info(
             f"Knowledge confidence: avg_score={avg_score:.3f}, "
-            f"articles={len(unique_articles)}, "
-            f"high_value_types={len(covered_high_value)}/{len(self._KQ_HIGH_VALUE_TYPES)}"
+            f"high_value_types={len(covered_high_value)}/{len(self._KQ_HIGH_VALUE_TYPES)}, "
+            f"coverage_gaps={n_gaps} {coverage_gaps}"
         )
         
+        # Primary signal: LLM-reported coverage gaps (core topics entirely absent)
+        if n_gaps >= 3:
+            return "limited_coverage"
+        if n_gaps == 2:
+            return "partially_covered"
+        if n_gaps == 1:
+            if avg_score >= 0.35 and len(covered_high_value) >= 3:
+                return "partially_covered"
+            return "limited_coverage"
+        
+        # No gaps reported — use retrieval quality as baseline
         if avg_score >= 0.35 and len(covered_high_value) >= 3:
             return "well_covered"
         elif avg_score >= 0.22 and len(covered_high_value) >= 2:
@@ -1545,6 +1585,38 @@ class RAGEngine:
             })
         
         return source_articles
+    
+    CONTENT_PREVIEW_LENGTH = 200
+    
+    def _serialize_used_chunks(
+        self,
+        selected_chunks: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """
+        Serialize selected chunks for the API response.
+        
+        Returns a lightweight representation of each chunk with a truncated
+        content_preview and the full content for optional UI expansion.
+        """
+        serialized = []
+        for chunk in selected_chunks:
+            meta = chunk.get('metadata', {})
+            full_content = meta.get('content', '')
+            preview = full_content[:self.CONTENT_PREVIEW_LENGTH]
+            if len(full_content) > self.CONTENT_PREVIEW_LENGTH:
+                preview += '...'
+            
+            serialized.append({
+                "chunk_id": chunk.get('id', ''),
+                "score": round(chunk.get('score', 0), 4),
+                "chunk_type": meta.get('chunk_type', 'unknown'),
+                "chunk_tier": meta.get('chunk_tier', 'low'),
+                "article_id": meta.get('article_id', ''),
+                "article_title": meta.get('article_title', 'Unknown Article'),
+                "content_preview": preview,
+                "content": full_content
+            })
+        return serialized
     
     # ========================================================================
     # Helper Methods - Fallbacks

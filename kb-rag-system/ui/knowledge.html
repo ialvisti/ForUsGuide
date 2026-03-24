@@ -423,6 +423,18 @@
             background: var(--bg-secondary);
             border-radius: 8px;
             border: 1px solid var(--border);
+            position: relative;
+            transition: opacity 0.15s;
+        }
+
+        .source-card.source-used {
+            border-color: var(--primary);
+            border-width: 1.5px;
+        }
+
+        .source-card.source-consulted {
+            opacity: 0.55;
+            border-style: dashed;
         }
 
         .source-card .source-article-name {
@@ -431,6 +443,33 @@
             color: var(--primary);
             margin-bottom: 0.375rem;
             line-height: 1.4;
+        }
+
+        .source-card.source-consulted .source-article-name {
+            color: var(--text-secondary);
+        }
+
+        .source-info-badge {
+            display: inline-block;
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.375rem;
+        }
+
+        .source-info-badge.badge-used {
+            color: #1a7f37;
+            background: #dafbe1;
+            border: 1px solid #aceebb;
+        }
+
+        .source-info-badge.badge-consulted {
+            color: #6e7781;
+            background: #f6f8fa;
+            border: 1px solid var(--border);
         }
 
         .source-card .source-chunk-type {
@@ -1120,20 +1159,32 @@
             // Source Articles (with multi-type badges)
             let sourcesHtml = '';
             if (data.source_articles && data.source_articles.length > 0) {
+                const totalArticles = m.unique_articles ?? data.source_articles.length;
+                const relevantArticles = m.relevant_articles ?? data.source_articles.filter(sa => sa.used_info).length;
+                const subtitleParts = [];
+                subtitleParts.push(`${totalArticles} consulted`);
+                subtitleParts.push(`${relevantArticles} relevant`);
+                const subtitle = subtitleParts.join(' · ');
+
                 sourcesHtml = `
                     <div class="answer-card">
                         <div class="answer-card-header">
                             <h3>Source Articles</h3>
-                            ${m.unique_articles != null ? `<span style="font-size:0.8125rem;color:var(--text-muted);">${m.unique_articles} unique article${m.unique_articles !== 1 ? 's' : ''}</span>` : ''}
+                            <span style="font-size:0.8125rem;color:var(--text-muted);">${subtitle}</span>
                         </div>
                         <div class="source-articles">
                             ${data.source_articles.map(sa => {
+                                const isUsed = sa.used_info === true;
+                                const cardClass = isUsed ? 'source-used' : 'source-consulted';
+                                const badgeClass = isUsed ? 'badge-used' : 'badge-consulted';
+                                const badgeLabel = isUsed ? 'Info used' : 'Consulted';
                                 const types = (sa.chunk_types_used || '').split(',').map(t => t.trim()).filter(Boolean);
                                 const typeBadges = types.length > 0
                                     ? `<div class="source-types-row">${types.map(t => `<span class="source-type-badge">${escapeHtml(formatChunkType(t))}</span>`).join('')}</div>`
                                     : '';
                                 return `
-                                    <div class="source-card">
+                                    <div class="source-card ${cardClass}">
+                                        <span class="source-info-badge ${badgeClass}">${badgeLabel}</span>
                                         <div class="source-article-name">${escapeHtml(sa.article_title || 'Unknown Article')}</div>
                                         ${typeBadges}
                                         <div class="source-relevance">${escapeHtml(sa.relevance || '')}</div>

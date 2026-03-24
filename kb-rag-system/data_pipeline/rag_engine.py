@@ -54,6 +54,9 @@ class RequiredDataResponse:
     article_reference: Dict[str, Any]
     required_fields: Dict[str, List[Dict[str, Any]]]
     confidence: float
+    source_articles: List[Dict[str, Any]]
+    used_chunks: List[Dict[str, Any]]
+    coverage_gaps: List[str]
     metadata: Dict[str, Any]
 
 
@@ -69,11 +72,17 @@ class GenerateResponseResult:
         response: Respuesta estructurada del LLM con schema outcome-driven.
                   Contiene: outcome, outcome_reason, response_to_participant,
                   questions_to_ask, escalation, guardrails_applied, data_gaps.
+        source_articles: Deduplicated list of KB articles consulted.
+        used_chunks: Individual chunks fed to the LLM, ordered by score descending.
+        coverage_gaps: Core topics entirely absent from KB context.
         metadata: Info de diagnóstico (chunks_used, tokens, modelo).
     """
     decision: str  # "can_proceed", "uncertain", "out_of_scope"
     confidence: float
     response: Dict[str, Any]
+    source_articles: List[Dict[str, Any]]
+    used_chunks: List[Dict[str, Any]]
+    coverage_gaps: List[str]
     metadata: Dict[str, Any]
 
 
@@ -172,9 +181,14 @@ class RAGEngine:
         """
         Determina qué datos se necesitan para responder una inquiry.
         
-        Este es el Endpoint 1 del sistema. Busca en la KB chunks relevantes
-        de tipo 'required_data', 'eligibility', y 'business_rules', y usa
-        el LLM para extraer campos específicos necesarios.
+        Pipeline:
+        1. Decompose inquiry into focused sub-queries (LLM)
+        2. Parallel multi-query search with RK cascade
+        3. Merge, deduplicate, and rank all retrieved chunks
+        4. Build context with article diversity enforcement
+        5. Generate required fields via LLM (with coverage gap detection)
+        6. Hybrid confidence (retrieval + LLM gap signal)
+        7. Source articles and used chunks transparency
         
         Args:
             inquiry: La consulta del participante
@@ -189,9 +203,19 @@ class RAGEngine:
         logger.info(f"get_required_data() - Topic: {topic}, RK: {record_keeper}")
         
         try:
-            # 1. Buscar chunks relevantes con filtros
-            chunks = await self._search_for_required_data(
-                inquiry=inquiry,
+            # 1. Decompose inquiry into sub-queries
+            sub_queries = await self._decompose_question(inquiry)
+            enriched_queries = [f"{sq} {topic}" for sq in sub_queries]
+            
+            # Include original inquiry as fallback if decomposition didn't preserve it
+            if inquiry not in sub_queries:
+                enriched_queries.append(f"{inquiry} {topic}")
+            
+            logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+            
+            # 2. Parallel multi-query search with RK cascade
+            chunks, per_query_scores = await self._search_for_required_data(
+                enriched_queries=enriched_queries,
                 record_keeper=record_keeper,
                 plan_type=plan_type,
                 topic=topic
@@ -203,17 +227,17 @@ class RAGEngine:
                     "No relevant articles found for this topic"
                 )
             
-            # 2. Construir contexto (CPU-bound, no async needed)
-            context_budget = 2500
-            context, selected_chunks, tokens_used = self._build_context_from_chunks(
+            # 3. Build context with article diversity
+            context, selected_chunks, tokens_used = self._build_context_with_diversity(
                 chunks=chunks,
-                budget=context_budget,
-                prioritize_types=['required_data_must_have', 'eligibility', 'business_rules']
+                budget=self.RD_CONTEXT_BUDGET,
+                prioritize_types=['required_data_must_have', 'eligibility', 'business_rules'],
+                max_per_article=self.RD_MAX_CHUNKS_PER_ARTICLE
             )
             
             logger.info(f"Context construido: {len(selected_chunks)} chunks, {tokens_used} tokens")
             
-            # 3. Generar prompts
+            # 4. Generate prompts and call LLM
             system_prompt, user_prompt = build_required_data_prompt(
                 context=context,
                 inquiry=inquiry,
@@ -222,37 +246,65 @@ class RAGEngine:
                 topic=topic
             )
             
-            # 4. Llamar LLM (async)
             llm_response = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_tokens=800
             )
             
-            # 5. Parsear respuesta
+            # 5. Parse LLM response + extract coverage gaps
             try:
                 parsed = json.loads(llm_response)
             except json.JSONDecodeError as e:
                 logger.error(f"Error parseando JSON del LLM: {e}")
                 logger.error(f"Respuesta: {llm_response[:500]}")
-                parsed = {"participant_data": [], "plan_data": []}
+                parsed = {"participant_data": [], "plan_data": [], "coverage_gaps": []}
             
-            # 6. Calcular confidence
-            confidence = self._calculate_required_data_confidence(chunks, query_topic=topic)
+            coverage_gaps = parsed.get("coverage_gaps", [])
+            if not isinstance(coverage_gaps, list):
+                coverage_gaps = []
+            coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
             
-            # 7. Construir respuesta
+            # Remove coverage_gaps from required_fields (it's a separate response field)
+            required_fields = {k: v for k, v in parsed.items() if k != "coverage_gaps"}
+            
+            # 6. Hybrid confidence (retrieval + LLM gap signal)
+            confidence = self._calculate_required_data_confidence(
+                chunks, query_topic=topic, coverage_gaps=coverage_gaps
+            )
+            
+            # 7. Build source articles and used chunks
+            source_articles = self._build_source_articles(selected_chunks)
+            used_chunks = self._serialize_used_chunks(selected_chunks)
+            
+            total_articles = len(source_articles)
+            relevant_articles = sum(
+                1 for sa in source_articles if sa.get("used_info", False)
+            )
+            
+            # Remap per_query_scores keys to original sub-queries for readability
+            pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
+            
             return RequiredDataResponse(
                 article_reference={
                     "article_id": chunks[0]['metadata'].get('article_id'),
                     "title": chunks[0]['metadata'].get('article_title'),
                     "confidence": confidence
                 },
-                required_fields=parsed,
+                required_fields=required_fields,
                 confidence=confidence,
+                source_articles=source_articles,
+                used_chunks=used_chunks,
+                coverage_gaps=coverage_gaps,
                 metadata={
                     "chunks_used": len(selected_chunks),
-                    "tokens_used": tokens_used,
-                    "model": self.model
+                    "context_tokens": tokens_used,
+                    "model": self.model,
+                    "sub_queries": sub_queries,
+                    "per_query_scores": pqs,
+                    "unique_articles": total_articles,
+                    "relevant_articles": relevant_articles,
+                    "coverage_gaps": coverage_gaps
                 }
             )
         
@@ -279,8 +331,14 @@ class RAGEngine:
         """
         Genera respuesta contextualizada usando la KB y datos recolectados.
         
-        Este es el Endpoint 2 del sistema. Busca chunks relevantes, construye
-        contexto respetando token budget, y genera respuesta estructurada.
+        Pipeline:
+        1. Decompose inquiry into focused sub-queries (LLM)
+        2. Parallel multi-query search with RK cascade + topic strategies
+        3. Merge, deduplicate, and rank all retrieved chunks
+        4. Build context with article diversity + tier priority
+        5. Generate structured response via LLM (with coverage gap detection)
+        6. Hybrid confidence (retrieval + LLM gap signal)
+        7. Source article transparency in metadata
         
         Args:
             inquiry: La consulta del participante
@@ -297,18 +355,38 @@ class RAGEngine:
         logger.info(f"generate_response() - Topic: {topic}, Budget: {max_response_tokens} tokens")
         
         try:
-            # 1. Calcular presupuesto de contexto
-            context_budget = max_response_tokens - self.RESPONSE_MIN_TOKENS
+            # 1. Context budget with minimum floor
+            context_budget = max(
+                self.RESPONSE_MIN_CONTEXT_TOKENS,
+                max_response_tokens - self.RESPONSE_MIN_TOKENS
+            )
             
             logger.info(f"Context budget: {context_budget} tokens (de {max_response_tokens} total, reservando {self.RESPONSE_MIN_TOKENS} para response)")
             
-            # 2. Buscar chunks relevantes (async)
-            chunks = await self._search_for_response(
-                inquiry=inquiry,
+            # 2. Decompose inquiry into sub-queries
+            sub_queries = await self._decompose_question(inquiry)
+            logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+            
+            # Build enriched queries per sub-query
+            enriched_queries = []
+            for sq in sub_queries:
+                parts = [sq, topic]
+                if collected_data and "participant_data" in collected_data:
+                    for key, value in list(collected_data["participant_data"].items())[:3]:
+                        parts.append(f"{key}: {value}")
+                enriched_queries.append(" ".join(parts))
+            
+            # Include original inquiry as fallback if decomposition didn't preserve it
+            if inquiry not in sub_queries:
+                fallback_parts = [inquiry, topic]
+                enriched_queries.append(" ".join(fallback_parts))
+            
+            # 3. Parallel multi-query search with topic strategies
+            chunks, per_query_scores = await self._search_for_response(
+                enriched_queries=enriched_queries,
                 record_keeper=record_keeper,
                 plan_type=plan_type,
-                topic=topic,
-                collected_data=collected_data
+                topic=topic
             )
             
             if not chunks:
@@ -318,22 +396,18 @@ class RAGEngine:
                     confidence=0.0
                 )
             
-            # 3. Organizar chunks por tier (CPU-bound, no async needed)
-            chunks_by_tier = self._organize_chunks_by_tier(chunks)
-            
-            # 4. Construir contexto priorizando por tier
-            context, selected_chunks, tokens_used = self.token_manager.build_context_with_tiers(
-                chunks_by_tier=chunks_by_tier,
+            # 4. Build context with diversity + tier priority
+            context, selected_chunks, tokens_used = self._build_context_with_diversity_and_tiers(
+                chunks=chunks,
                 budget=context_budget,
-                tier_priority=['critical', 'high', 'medium', 'low']
+                max_per_article=self.GR_MAX_CHUNKS_PER_ARTICLE
             )
             
             logger.info(f"Context: {len(selected_chunks)} chunks, {tokens_used} tokens")
             
-            # 5. Calcular tokens para completion
+            # 5. Compute completion budget and generate prompts
             completion_budget = max(self.RESPONSE_MIN_TOKENS, max_response_tokens - tokens_used)
             
-            # 6. Generar prompts
             system_prompt, user_prompt = build_generate_response_prompt(
                 context=context,
                 inquiry=inquiry,
@@ -344,14 +418,14 @@ class RAGEngine:
                 max_tokens=completion_budget
             )
             
-            # 7. Llamar LLM (async)
+            # 6. Call LLM
             llm_response = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_tokens=completion_budget
             )
             
-            # 8. Parsear respuesta
+            # 7. Parse LLM response + extract coverage gaps
             try:
                 parsed = json.loads(llm_response)
             except json.JSONDecodeError as e:
@@ -372,24 +446,48 @@ class RAGEngine:
                         "reason": "Response parsing failed. Please contact Support for assistance."
                     },
                     "guardrails_applied": [],
-                    "data_gaps": ["LLM response was not valid JSON"]
+                    "data_gaps": ["LLM response was not valid JSON"],
+                    "coverage_gaps": []
                 }
             
-            # 9. Calcular confidence y decision
-            confidence = self._calculate_confidence(chunks)
+            coverage_gaps = parsed.get("coverage_gaps", [])
+            if not isinstance(coverage_gaps, list):
+                coverage_gaps = []
+            coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
+            
+            # 8. Hybrid confidence (retrieval + LLM gap signal)
+            confidence = self._calculate_confidence(chunks, coverage_gaps=coverage_gaps)
             decision = self._determine_decision(confidence)
             
-            # 10. Construir respuesta
+            # 9. Build source articles and used chunks
+            source_articles = self._build_source_articles(selected_chunks)
+            used_chunks = self._serialize_used_chunks(selected_chunks)
+            total_articles = len(source_articles)
+            relevant_articles = sum(
+                1 for sa in source_articles if sa.get("used_info", False)
+            )
+            
+            # Remap per_query_scores keys to original sub-queries for readability
+            pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
+            
             return GenerateResponseResult(
                 decision=decision,
                 confidence=confidence,
                 response=parsed,
+                source_articles=source_articles,
+                used_chunks=used_chunks,
+                coverage_gaps=coverage_gaps,
                 metadata={
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
                     "response_tokens": self.token_manager.count_tokens(llm_response),
                     "model": self.model,
-                    "total_inquiries": total_inquiries_in_ticket
+                    "total_inquiries": total_inquiries_in_ticket,
+                    "sub_queries": sub_queries,
+                    "per_query_scores": pqs,
+                    "unique_articles": total_articles,
+                    "relevant_articles": relevant_articles,
+                    "coverage_gaps": coverage_gaps
                 }
             )
         
@@ -403,6 +501,15 @@ class RAGEngine:
     # ========================================================================
     # ENDPOINT 3: Knowledge Question
     # ========================================================================
+    
+    # Required Data settings
+    RD_CONTEXT_BUDGET = 3500
+    RD_TOP_K_PER_QUERY = 5
+    RD_MAX_CHUNKS_PER_ARTICLE = 4
+    
+    # Generate Response settings
+    RESPONSE_MIN_CONTEXT_TOKENS = 2000
+    GR_MAX_CHUNKS_PER_ARTICLE = 6
     
     # Knowledge Question settings
     KQ_CONTEXT_BUDGET = 4000
@@ -530,11 +637,12 @@ class RAGEngine:
             )
             source_articles = self._build_source_articles(selected_chunks)
             
-            unique_articles = set(
-                c['metadata'].get('article_id') for c in selected_chunks
-            )
-            
             used_chunks = self._serialize_used_chunks(selected_chunks)
+            
+            total_articles = len(source_articles)
+            relevant_articles = sum(
+                1 for sa in source_articles if sa.get("used_info", False)
+            )
             
             return KnowledgeQuestionResult(
                 answer=parsed.get("answer", ""),
@@ -547,7 +655,8 @@ class RAGEngine:
                     "context_tokens": tokens_used,
                     "model": self.model,
                     "sub_queries": sub_queries,
-                    "unique_articles": len(unique_articles),
+                    "unique_articles": total_articles,
+                    "relevant_articles": relevant_articles,
                     "coverage_gaps": coverage_gaps,
                     "per_query_scores": per_query_scores
                 }
@@ -732,70 +841,74 @@ class RAGEngine:
     
     async def _search_for_required_data(
         self,
-        inquiry: str,
+        enriched_queries: List[str],
         record_keeper: Optional[str],
         plan_type: str,
         topic: str
-    ) -> List[Dict[str, Any]]:
+    ) -> tuple:
         """
-        Busca chunks relevantes para el endpoint required_data.
+        Parallel multi-query search for required_data endpoint.
         
-        Uses a cascading record-keeper strategy:
+        Runs all enriched sub-queries in parallel across the RK cascade,
+        then merges, deduplicates, and ranks results. Tracks per-query
+        best scores for observability.
         
-        When RK provided:
-          Phase 1: Parallel queries — RK-specific + global scope
-                   RK results are prioritized; global supplements.
-          Phase 1 fallback: If neither returned results, cascade to
-                   LT Trust → any.
-        
-        When RK NOT provided:
-          Phase 1: Global scope first.
-          Phase 1 fallback: If insufficient, cascade to LT Trust → any.
-        
-        Phase 2 (always): Context chunks (eligibility, business_rules) from
-          the winning article.
+        Returns:
+            (merged_chunks, per_query_scores)
         """
-        enriched_query = f"{inquiry} {topic}"
         rk_cascade = self._build_rk_cascade(record_keeper)
         required_data_chunks: List[Dict[str, Any]] = []
+        per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
+        top_k = self.RD_TOP_K_PER_QUERY
         
         if record_keeper:
-            # ── RK provided: run first two cascade levels in parallel ──
-            rk_filters = {
-                **rk_cascade[0]["filters"],
-                "plan_type": {"$in": [plan_type, "all"]},
-                "chunk_type": {"$eq": "required_data_must_have"}
-            }
-            global_filters = {
-                **rk_cascade[1]["filters"],
-                "plan_type": {"$in": [plan_type, "all"]},
-                "chunk_type": {"$eq": "required_data_must_have"}
-            }
+            # ── RK provided: run all sub-queries × first two cascade levels in parallel ──
+            search_tasks = []
+            for eq in enriched_queries:
+                rk_filters = {
+                    **rk_cascade[0]["filters"],
+                    "plan_type": {"$in": [plan_type, "all"]},
+                    "chunk_type": {"$eq": "required_data_must_have"}
+                }
+                global_filters = {
+                    **rk_cascade[1]["filters"],
+                    "plan_type": {"$in": [plan_type, "all"]},
+                    "chunk_type": {"$eq": "required_data_must_have"}
+                }
+                search_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=rk_filters))
+                search_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=global_filters))
             
-            rk_chunks, global_chunks = await asyncio.gather(
-                self._cached_query(enriched_query, top_k=3, filter_dict=rk_filters),
-                self._cached_query(enriched_query, top_k=3, filter_dict=global_filters),
-            )
+            results = await asyncio.gather(*search_tasks)
             
-            logger.info(f"Phase 1A ({rk_cascade[0]['label']}): found {len(rk_chunks)} chunks")
-            logger.info(f"Phase 1B ({rk_cascade[1]['label']}): found {len(global_chunks)} chunks")
+            # Track per-query best scores from individual results before merging
+            for i, eq in enumerate(enriched_queries):
+                eq_chunks = results[2 * i] + results[2 * i + 1]
+                best = max((c.get('score', 0) for c in eq_chunks), default=0)
+                per_query_scores[eq] = round(best, 4)
             
-            if rk_chunks:
-                required_data_chunks = self._merge_and_rank_chunks(rk_chunks, global_chunks)
-            elif global_chunks:
-                required_data_chunks = global_chunks
+            required_data_chunks = self._merge_and_rank_chunks(*results)
+            
+            logger.info(f"Phase 1 parallel ({len(search_tasks)} tasks): found {len(required_data_chunks)} unique chunks")
             
             # If parallel levels insufficient, continue cascade from level 2+
             if not self._rk_results_sufficient(required_data_chunks):
                 for level in rk_cascade[2:]:
-                    level_filters = {
-                        **level["filters"],
-                        "plan_type": {"$in": [plan_type, "all"]},
-                        "chunk_type": {"$eq": "required_data_must_have"}
-                    }
-                    level_chunks = await self._cached_query(
-                        enriched_query, top_k=3, filter_dict=level_filters
-                    )
+                    fallback_tasks = []
+                    for eq in enriched_queries:
+                        level_filters = {
+                            **level["filters"],
+                            "plan_type": {"$in": [plan_type, "all"]},
+                            "chunk_type": {"$eq": "required_data_must_have"}
+                        }
+                        fallback_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=level_filters))
+                    
+                    level_results = await asyncio.gather(*fallback_tasks)
+                    
+                    for i, eq in enumerate(enriched_queries):
+                        best = max((c.get('score', 0) for c in level_results[i]), default=0)
+                        per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+                    
+                    level_chunks = self._merge_and_rank_chunks(*level_results)
                     logger.info(f"Cascade ({level['label']}): found {len(level_chunks)} chunks")
                     
                     if self._rk_results_sufficient(level_chunks):
@@ -804,16 +917,24 @@ class RAGEngine:
                         )
                         break
         else:
-            # ── No RK: sequential cascade through all levels ──
+            # ── No RK: run all sub-queries at each cascade level sequentially ──
             for level in rk_cascade:
-                level_filters = {
-                    **level["filters"],
-                    "plan_type": {"$in": [plan_type, "all"]},
-                    "chunk_type": {"$eq": "required_data_must_have"}
-                }
-                level_chunks = await self._cached_query(
-                    enriched_query, top_k=3, filter_dict=level_filters
-                )
+                level_tasks = []
+                for eq in enriched_queries:
+                    level_filters = {
+                        **level["filters"],
+                        "plan_type": {"$in": [plan_type, "all"]},
+                        "chunk_type": {"$eq": "required_data_must_have"}
+                    }
+                    level_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=level_filters))
+                
+                level_results = await asyncio.gather(*level_tasks)
+                
+                for i, eq in enumerate(enriched_queries):
+                    best = max((c.get('score', 0) for c in level_results[i]), default=0)
+                    per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+                
+                level_chunks = self._merge_and_rank_chunks(*level_results)
                 logger.info(f"Cascade ({level['label']}): found {len(level_chunks)} chunks")
                 
                 if self._rk_results_sufficient(level_chunks):
@@ -830,7 +951,7 @@ class RAGEngine:
             )
         else:
             logger.warning("Required data: No required_data_must_have chunks found across all cascade levels")
-            return []
+            return [], per_query_scores
         
         # ── Phase 2: Context chunks from the winning article ──
         best_article_id = required_data_chunks[0]['metadata'].get('article_id')
@@ -842,22 +963,14 @@ class RAGEngine:
         logger.info(f"Phase 2: focusing context on article_id={best_article_id}")
         
         context_chunks = await self._cached_query(
-            enriched_query, top_k=7, filter_dict=context_filters
+            enriched_queries[0], top_k=7, filter_dict=context_filters
         )
         logger.info(f"Phase 2 (context): found {len(context_chunks)} chunks")
         
-        # ── Merge: required_data primero, luego contexto (deduplicado) ──
-        seen_ids = set()
-        merged = []
-        
-        for chunk in required_data_chunks + context_chunks:
-            chunk_id = chunk.get('id')
-            if chunk_id not in seen_ids:
-                seen_ids.add(chunk_id)
-                merged.append(chunk)
+        merged = self._merge_and_rank_chunks(required_data_chunks, context_chunks)
         
         logger.info(f"Total merged chunks for required_data: {len(merged)}")
-        return merged
+        return merged, per_query_scores
     
     def _merge_and_rank_chunks(
         self,
@@ -884,35 +997,24 @@ class RAGEngine:
     
     async def _search_for_response(
         self,
-        inquiry: str,
+        enriched_queries: List[str],
         record_keeper: Optional[str],
         plan_type: str,
-        topic: str,
-        collected_data: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
+        topic: str
+    ) -> tuple:
         """
-        Busca chunks relevantes para generate_response endpoint.
+        Parallel multi-query search for generate_response endpoint.
         
-        Uses a cascading record-keeper strategy combined with topic strategies:
+        For each RK cascade level, runs all enriched sub-queries through
+        topic strategies in parallel, merges results, and stops when
+        sufficient results are found.
         
-        For each RK cascade level (ordered by priority):
-          1. Try topic exact-match filter
-          2. Try tags filter (with case variations)
-          3. Try no-topic filter
-          If any strategy returns sufficient results, stop cascading.
-        
-        RK cascade order depends on whether record_keeper was provided
-        (see _build_rk_cascade for details).
+        Returns:
+            (merged_chunks, per_query_scores)
         """
-        query_parts = [inquiry, topic]
-        
-        if collected_data:
-            if "participant_data" in collected_data:
-                for key, value in list(collected_data["participant_data"].items())[:3]:
-                    query_parts.append(f"{key}: {value}")
-        
-        enriched_query = " ".join(query_parts)
         rk_cascade = self._build_rk_cascade(record_keeper)
+        chunks: List[Dict[str, Any]] = []
+        per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
         
         for level in rk_cascade:
             base_filters = {
@@ -920,9 +1022,19 @@ class RAGEngine:
                 "plan_type": {"$in": [plan_type, "all"]}
             }
             
-            chunks = await self._search_with_topic_strategies(
-                enriched_query, base_filters, topic
-            )
+            # Run topic strategies for all sub-queries in parallel
+            search_tasks = [
+                self._search_with_topic_strategies(eq, base_filters, topic)
+                for eq in enriched_queries
+            ]
+            results = await asyncio.gather(*search_tasks)
+            
+            # Track per-query best scores from individual results before merging
+            for eq, result_list in zip(enriched_queries, results):
+                best = max((c.get('score', 0) for c in result_list), default=0)
+                per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+            
+            chunks = self._merge_and_rank_chunks(*results)
             
             if self._rk_results_sufficient(
                 chunks,
@@ -933,15 +1045,17 @@ class RAGEngine:
                     f"generate_response: found {len(chunks)} chunks "
                     f"at cascade level '{level['label']}'"
                 )
-                return chunks
+                break
             
             logger.info(
                 f"generate_response: cascade level '{level['label']}' "
                 f"insufficient ({len(chunks)} chunks), trying next level"
             )
         
-        logger.warning("generate_response: no sufficient results across all cascade levels")
-        return chunks if chunks else []
+        if not chunks:
+            logger.warning("generate_response: no sufficient results across all cascade levels")
+        
+        return chunks, per_query_scores
     
     async def _search_with_topic_strategies(
         self,
@@ -1201,6 +1315,96 @@ class RAGEngine:
         context = "\n".join(context_parts)
         return context, selected, tokens_used
     
+    def _build_context_with_diversity_and_tiers(
+        self,
+        chunks: List[Dict[str, Any]],
+        budget: int,
+        max_per_article: int = 6
+    ) -> tuple:
+        """
+        Build context combining article diversity with tier-based priority.
+        
+        Phase 1 (diversity): Best chunk from each article, sorted by score.
+        Phase 2 (tier fill): Fill remaining budget from critical -> high ->
+        medium -> low, with a per-article cap.
+        
+        This prevents a single article from dominating while ensuring
+        critical/high-tier chunks are prioritized for the response.
+        
+        Returns:
+            (context_string, selected_chunks, tokens_used)
+        """
+        if not chunks:
+            return "", [], 0
+        
+        # ── Phase 1: Best chunk from each article ──
+        article_best: Dict[str, Dict[str, Any]] = {}
+        for chunk in chunks:
+            aid = chunk['metadata'].get('article_id', 'unknown')
+            if aid not in article_best or chunk.get('score', 0) > article_best[aid].get('score', 0):
+                article_best[aid] = chunk
+        
+        selected = []
+        selected_ids: set = set()
+        tokens_used = 0
+        article_counts: Dict[str, int] = defaultdict(int)
+        
+        for _aid, chunk in sorted(
+            article_best.items(),
+            key=lambda x: x[1].get('score', 0),
+            reverse=True
+        ):
+            content = chunk['metadata'].get('content', '')
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens <= budget:
+                selected.append(chunk)
+                selected_ids.add(chunk.get('id'))
+                tokens_used += chunk_tokens
+                article_counts[chunk['metadata'].get('article_id', 'unknown')] += 1
+        
+        logger.debug(
+            f"Diversity+tiers phase 1: {len(selected)} chunks from "
+            f"{len(article_counts)} articles, {tokens_used} tokens"
+        )
+        
+        # ── Phase 2: Fill by tier priority with per-article cap ──
+        by_tier = self._organize_chunks_by_tier(chunks)
+        for tier in ['critical', 'high', 'medium', 'low']:
+            for chunk in by_tier.get(tier, []):
+                cid = chunk.get('id')
+                if cid in selected_ids:
+                    continue
+                aid = chunk['metadata'].get('article_id', 'unknown')
+                if article_counts[aid] >= max_per_article:
+                    continue
+                content = chunk['metadata'].get('content', '')
+                chunk_tokens = self.token_manager.count_tokens(content)
+                if tokens_used + chunk_tokens <= budget:
+                    selected.append(chunk)
+                    selected_ids.add(cid)
+                    tokens_used += chunk_tokens
+                    article_counts[aid] += 1
+        
+        selected.sort(key=lambda c: c.get('score', 0), reverse=True)
+        
+        logger.debug(
+            f"Diversity+tiers phase 2 total: {len(selected)} chunks from "
+            f"{len(article_counts)} articles, {tokens_used} tokens"
+        )
+        
+        # Format context with article attribution
+        context_parts = []
+        for i, chunk in enumerate(selected, 1):
+            content = chunk['metadata'].get('content', '')
+            chunk_type = chunk['metadata'].get('chunk_type', 'unknown')
+            article_title = chunk['metadata'].get('article_title', '')
+            context_parts.append(
+                f"--- Section {i} ({chunk_type} | Source: {article_title}) ---\n{content}\n"
+            )
+        
+        context = "\n".join(context_parts)
+        return context, selected, tokens_used
+    
     def _organize_chunks_by_tier(
         self,
         chunks: List[Dict[str, Any]]
@@ -1358,21 +1562,18 @@ class RAGEngine:
     def _calculate_required_data_confidence(
         self,
         chunks: List[Dict[str, Any]],
-        query_topic: str
+        query_topic: str,
+        coverage_gaps: Optional[List[str]] = None
     ) -> float:
         """
         Calcula confidence para el endpoint /required-data.
         
-        Combina tres tipos de señales:
+        Combina tres tipos de señales más un LLM gap override:
         
         1. Retrieval + Topic (55%): ¿Encontramos el chunk correcto Y del topic correcto?
-           - must_have encontrado + topic coincide = 50% (match perfecto)
-           - must_have encontrado + topic NO coincide = 15% (artículo equivocado)
-           - must_have NO encontrado = 0%
-           
         2. Soporte contextual (10%): ¿Hay chunks critical y suficiente contexto?
-        
         3. Similitud semántica (35%): ¿Qué tan bien alinea el query con los chunks?
+        4. LLM coverage gaps: Caps confidence when gaps are reported.
         """
         if not chunks:
             return 0.0
@@ -1389,22 +1590,16 @@ class RAGEngine:
         
         if has_must_have:
             if topic_matched:
-                # Match perfecto: artículo correcto con must_have chunk
                 retrieval_score += 0.50
             else:
-                # Must have encontrado pero del topic equivocado.
-                # Bonus reducido — puede ser el artículo incorrecto.
                 retrieval_score += 0.15
         
         # === Componente 2: Soporte Contextual (10%) ===
-        # Señal B: Cobertura de chunks critical (5%)
         critical_count = sum(
             1 for c in chunks
             if c['metadata'].get('chunk_tier') == 'critical'
         )
         retrieval_score += 0.05 * min(1.0, critical_count / 3)
-        
-        # Señal C: Profundidad de contexto (5%)
         retrieval_score += 0.05 * min(1.0, len(chunks) / 5)
         
         # === Componente 3: Similitud Semántica (35%) ===
@@ -1414,45 +1609,104 @@ class RAGEngine:
         
         confidence = retrieval_score + similarity_score
         
+        # === Componente 4: LLM coverage gap override ===
+        coverage_gaps = coverage_gaps or []
+        n_gaps = len(coverage_gaps)
+        if n_gaps >= 2:
+            confidence = min(confidence, 0.40)
+        elif n_gaps == 1:
+            confidence = min(confidence, 0.60)
+        
         logger.info(
             f"Required data confidence: {confidence:.3f} "
             f"(retrieval={retrieval_score:.3f}, similarity={similarity_score:.3f}, "
             f"must_have={'yes' if has_must_have else 'no'}, "
             f"topic_matched={'yes' if topic_matched else 'no'}, "
-            f"critical_chunks={critical_count}, total_chunks={len(chunks)})"
+            f"critical_chunks={critical_count}, total_chunks={len(chunks)}, "
+            f"coverage_gaps={n_gaps})"
         )
         
         return round(min(1.0, confidence), 3)
     
-    def _calculate_confidence(self, chunks: List[Dict[str, Any]]) -> float:
+    # Chunk types that carry high structural value for generate_response
+    _GR_HIGH_VALUE_TYPES = frozenset({
+        'decision_guide', 'business_rules', 'eligibility',
+        'required_data_must_have', 'response_frames'
+    })
+
+    def _calculate_confidence(
+        self,
+        chunks: List[Dict[str, Any]],
+        coverage_gaps: Optional[List[str]] = None
+    ) -> float:
         """
-        Calcula confidence score basado en chunks encontrados.
-        
-        Considera:
-        - Scores de similitud de Pinecone
-        - Presencia de chunks CRITICAL
-        - Número total de chunks
+        Multi-signal confidence for generate_response.
+
+        Combines three weighted components plus an LLM gap override:
+
+        1. Semantic similarity (40%): avg of top-3 Pinecone scores.
+        2. Structural signals  (35%): critical-tier presence, high-value
+           chunk-type diversity, and evidence volume.
+        3. LLM coverage gaps   (25%): positive boost when the LLM confirms
+           zero gaps; reduced/zero when gaps are reported.
+
+        Hard caps are applied when the LLM reports coverage gaps to prevent
+        inflated confidence on incomplete retrievals.
         """
         if not chunks:
             return 0.0
-        
-        # Promedio de top 3 scores
+
+        # === Component 1: Semantic Similarity (40%) ===
         top_scores = [chunk['score'] for chunk in chunks[:3]]
         avg_score = sum(top_scores) / len(top_scores) if top_scores else 0.0
-        
-        # Boost si hay chunks CRITICAL
+        similarity = avg_score * 0.40
+
+        # === Component 2: Structural Signals (35%) ===
+        structural = 0.0
+
         critical_count = sum(
             1 for chunk in chunks
             if chunk['metadata'].get('chunk_tier') == 'critical'
         )
-        
-        confidence = avg_score
-        if critical_count >= 2:
-            confidence = min(1.0, confidence * 1.15)
-        elif critical_count >= 1:
-            confidence = min(1.0, confidence * 1.08)
-        
-        return round(confidence, 3)
+        structural += 0.15 * min(1.0, critical_count / 2)
+
+        types_present = set(
+            c['metadata'].get('chunk_type') for c in chunks
+        )
+        type_coverage = len(types_present & self._GR_HIGH_VALUE_TYPES) / len(self._GR_HIGH_VALUE_TYPES)
+        structural += 0.10 * type_coverage
+
+        structural += 0.10 * min(1.0, len(chunks) / 5)
+
+        # === Component 3: LLM Coverage Gap Signal (25%) ===
+        coverage_gaps = coverage_gaps or []
+        n_gaps = len(coverage_gaps)
+        if n_gaps == 0:
+            gap_score = 0.25
+        elif n_gaps == 1:
+            gap_score = 0.10
+        elif n_gaps == 2:
+            gap_score = 0.05
+        else:
+            gap_score = 0.0
+
+        confidence = similarity + structural + gap_score
+
+        # Hard caps from coverage gaps
+        if n_gaps >= 3:
+            confidence = min(confidence, 0.30)
+        elif n_gaps == 2:
+            confidence = min(confidence, 0.45)
+
+        logger.info(
+            f"generate_response confidence: {confidence:.3f} "
+            f"(similarity={similarity:.3f}, structural={structural:.3f}, "
+            f"gap_score={gap_score:.3f}, critical={critical_count}, "
+            f"type_coverage={type_coverage:.2f}, chunks={len(chunks)}, "
+            f"coverage_gaps={n_gaps})"
+        )
+
+        return round(min(1.0, confidence), 3)
     
     def _determine_decision(self, confidence: float) -> str:
         """
@@ -1461,9 +1715,9 @@ class RAGEngine:
         Returns:
             "can_proceed", "uncertain", o "out_of_scope"
         """
-        if confidence >= 0.70:
+        if confidence >= 0.65:
             return "can_proceed"
-        elif confidence >= 0.50:
+        elif confidence >= 0.45:
             return "uncertain"
         else:
             return "out_of_scope"
@@ -1542,15 +1796,14 @@ class RAGEngine:
         Build deduplicated source articles list from selected chunks.
         
         Groups by article_id (not chunk_id) so each article appears once,
-        with a summary of which chunk types contributed.
+        with a summary of which chunk types contributed.  All consulted
+        articles are returned; ``used_info`` indicates whether the article
+        had chunks with a score >= KQ_SOURCE_MIN_SCORE.
         """
         article_info: Dict[str, Dict[str, Any]] = {}
         
         for chunk in selected_chunks:
             score = chunk.get('score', 0)
-            if score < self.KQ_SOURCE_MIN_SCORE:
-                continue
-            
             article_id = chunk['metadata'].get('article_id', '')
             if not article_id:
                 continue
@@ -1577,11 +1830,14 @@ class RAGEngine:
             reverse=True
         ):
             types_str = ", ".join(sorted(info['types'] - {''}))
+            used_info = info['score'] >= self.KQ_SOURCE_MIN_SCORE
             source_articles.append({
                 "article_id": article_id,
                 "article_title": info['article_title'],
                 "chunk_types_used": types_str,
-                "relevance": f"Covers {info['topic']} ({types_str})"
+                "relevance": f"Covers {info['topic']} ({types_str})",
+                "used_info": used_info,
+                "max_score": round(info['score'], 4)
             })
         
         return source_articles
@@ -1635,9 +1891,17 @@ class RAGEngine:
                 "plan_data": []
             },
             confidence=0.0,
+            source_articles=[],
+            used_chunks=[],
+            coverage_gaps=[],
             metadata={
                 "error": reason,
-                "chunks_used": 0
+                "chunks_used": 0,
+                "sub_queries": [],
+                "per_query_scores": {},
+                "unique_articles": 0,
+                "relevant_articles": 0,
+                "coverage_gaps": []
             }
         )
     
@@ -1661,11 +1925,20 @@ class RAGEngine:
                     "reason": "This inquiry may require human review."
                 },
                 "guardrails_applied": [],
-                "data_gaps": [reason]
+                "data_gaps": [reason],
+                "coverage_gaps": []
             },
+            source_articles=[],
+            used_chunks=[],
+            coverage_gaps=[],
             metadata={
                 "error": reason,
-                "chunks_used": 0
+                "chunks_used": 0,
+                "sub_queries": [],
+                "per_query_scores": {},
+                "unique_articles": 0,
+                "relevant_articles": 0,
+                "coverage_gaps": []
             }
         )
 

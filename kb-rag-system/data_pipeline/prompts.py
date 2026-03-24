@@ -28,9 +28,10 @@ CRITICAL RULES:
    - field: Clear, snake_case name derived from the data point name
    - description: What this field represents (from the "Description" in context)
    - why_needed: Why we need this specific data (from "Why needed" in context)
-   - data_type: One of [text, currency, date, boolean, number, list]
+   - data_type: Use one of [text, currency, date, boolean, number] for scalar fields. For list fields, specify the element type inside brackets: list[text], list[currency], list[date], list[boolean], list[number]. NEVER use bare "list" — always include the element type.
    - required: true (all must-have fields are required)
 7. If the context contains no "Must Have" section, return empty arrays
+8. In the "coverage_gaps" field, list ONLY data points or topics the inquiry asks about that are ENTIRELY ABSENT from the context. Do NOT report as gaps: (a) fine-grained details when the general topic IS covered, (b) tangential topics the inquiry mentions but is not primarily about. If the context addresses the main subject matter, return an empty list.
 
 Output must be valid JSON with this structure:
 {
@@ -39,11 +40,14 @@ Output must be valid JSON with this structure:
       "field": "field_name",
       "description": "what it is",
       "why_needed": "why we need it",
-      "data_type": "text|currency|date|boolean|number|list",
+      "data_type": "text|currency|date|boolean|number|list[text]|list[currency]|list[date]|list[boolean]|list[number]",
       "required": true
     }
   ],
-  "plan_data": [...]
+  "plan_data": [...],
+  "coverage_gaps": [
+    "Data point or topic the inquiry asks about but NOT covered in the context"
+  ]
 }"""
 
 USER_PROMPT_REQUIRED_DATA_TEMPLATE = """KNOWLEDGE BASE CONTEXT:
@@ -153,6 +157,9 @@ RESPONSE SCHEMA
   ],
   "data_gaps": [
     "Information that was not available in the KB context but could be relevant"
+  ],
+  "coverage_gaps": [
+    "Core topic the inquiry asks about that is entirely absent from the KB context"
   ]
 }
 
@@ -165,6 +172,7 @@ FIELD GUIDELINES:
 - "escalation.needed": true when the participant must contact Support to resolve, verify, or proceed. false when the participant can self-serve.
 - "guardrails_applied": List what you deliberately did NOT say based on the "must_not" / "what_not_to_say" rules in context.
 - "data_gaps": List only if the KB context was missing information you expected. Empty array [] if context was sufficient.
+- "coverage_gaps" vs "data_gaps": coverage_gaps are core topics the inquiry fundamentally asks about that are ENTIRELY absent from the context. data_gaps are details that COULD be relevant but are not blocking. If the context covers the main subject, even imperfectly, coverage_gaps should be empty. Do NOT report fine-grained details as coverage_gaps when the general topic IS covered.
 
 TONE: Professional, clear, helpful. Avoid legal/financial advice disclaimers unless explicitly in context."""
 

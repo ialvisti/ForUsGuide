@@ -186,7 +186,7 @@ class RequiredField(BaseModel):
     field: str = Field(..., description="Nombre del campo")
     description: str = Field(..., description="Descripción del campo")
     why_needed: str = Field(..., description="Por qué se necesita este campo")
-    data_type: str = Field(..., description="Tipo de dato: text, currency, date, boolean, number, list")
+    data_type: str = Field(..., description="Tipo de dato: text, currency, date, boolean, number, or list[<element_type>] (e.g. list[text], list[currency])")
     required: bool = Field(..., description="Si el campo es obligatorio")
 
 
@@ -196,6 +196,39 @@ class ArticleReference(BaseModel):
     article_id: Optional[str] = Field(None, description="ID del artículo")
     title: Optional[str] = Field(None, description="Título del artículo")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
+
+
+class SourceArticle(BaseModel):
+    """Artículo fuente referenciado en la respuesta (deduplicated by article_id)."""
+    
+    article_id: Optional[str] = Field(None, description="ID del artículo")
+    article_title: Optional[str] = Field(None, description="Título del artículo")
+    chunk_types_used: Optional[str] = Field(
+        None,
+        description="Comma-separated chunk types that contributed (e.g. 'business_rules, steps, faqs')"
+    )
+    relevance: Optional[str] = Field(None, description="Por qué este artículo es relevante")
+    used_info: bool = Field(
+        True,
+        description="Whether the article had chunks with scores above the relevance threshold"
+    )
+    max_score: Optional[float] = Field(
+        None,
+        description="Highest chunk score for this article"
+    )
+
+
+class UsedChunk(BaseModel):
+    """Individual chunk used by the LLM to generate the answer."""
+    
+    chunk_id: str = Field(..., description="Pinecone vector ID")
+    score: float = Field(..., description="Pinecone similarity score")
+    chunk_type: str = Field(..., description="Chunk type (faqs, business_rules, steps, etc.)")
+    chunk_tier: str = Field(..., description="Chunk tier (critical, high, medium, low)")
+    article_id: str = Field(..., description="Parent article ID")
+    article_title: str = Field(..., description="Parent article title")
+    content_preview: str = Field(..., description="First ~200 characters of content")
+    content: str = Field(..., description="Full chunk content")
 
 
 class RequiredDataResponse(BaseModel):
@@ -213,6 +246,21 @@ class RequiredDataResponse(BaseModel):
         ge=0.0,
         le=1.0,
         description="Confidence score general"
+    )
+    
+    source_articles: List[SourceArticle] = Field(
+        default_factory=list,
+        description="Artículos fuente consultados para la respuesta"
+    )
+    
+    used_chunks: List[UsedChunk] = Field(
+        default_factory=list,
+        description="Individual chunks fed to the LLM, ordered by score descending"
+    )
+    
+    coverage_gaps: List[str] = Field(
+        default_factory=list,
+        description="Core topics the inquiry asks about that are entirely absent from KB context"
     )
     
     metadata: Dict[str, Any] = Field(
@@ -297,6 +345,21 @@ class GenerateResponseResult(BaseModel):
             "response_to_participant, questions_to_ask, escalation, "
             "guardrails_applied, data_gaps"
         )
+    )
+    
+    source_articles: List[SourceArticle] = Field(
+        default_factory=list,
+        description="Artículos fuente consultados para la respuesta"
+    )
+    
+    used_chunks: List[UsedChunk] = Field(
+        default_factory=list,
+        description="Individual chunks fed to the LLM, ordered by score descending"
+    )
+    
+    coverage_gaps: List[str] = Field(
+        default_factory=list,
+        description="Core topics the inquiry asks about that are entirely absent from KB context"
     )
     
     metadata: Dict[str, Any] = Field(
@@ -431,31 +494,6 @@ class KnowledgeQuestionRequest(BaseModel):
         if not v.strip():
             raise ValueError("Question cannot be empty")
         return v.strip()
-
-
-class SourceArticle(BaseModel):
-    """Artículo fuente referenciado en la respuesta (deduplicated by article_id)."""
-    
-    article_id: Optional[str] = Field(None, description="ID del artículo")
-    article_title: Optional[str] = Field(None, description="Título del artículo")
-    chunk_types_used: Optional[str] = Field(
-        None,
-        description="Comma-separated chunk types that contributed (e.g. 'business_rules, steps, faqs')"
-    )
-    relevance: Optional[str] = Field(None, description="Por qué este artículo es relevante")
-
-
-class UsedChunk(BaseModel):
-    """Individual chunk used by the LLM to generate the knowledge answer."""
-    
-    chunk_id: str = Field(..., description="Pinecone vector ID")
-    score: float = Field(..., description="Pinecone similarity score")
-    chunk_type: str = Field(..., description="Chunk type (faqs, business_rules, steps, etc.)")
-    chunk_tier: str = Field(..., description="Chunk tier (critical, high, medium, low)")
-    article_id: str = Field(..., description="Parent article ID")
-    article_title: str = Field(..., description="Parent article title")
-    content_preview: str = Field(..., description="First ~200 characters of content")
-    content: str = Field(..., description="Full chunk content")
 
 
 class KnowledgeQuestionResponse(BaseModel):

@@ -306,6 +306,13 @@ async def required_data_endpoint(
             article_reference=result.article_reference,
             required_fields=result.required_fields,
             confidence=result.confidence,
+            source_articles=[
+                SourceArticle(**sa) for sa in result.source_articles
+            ],
+            used_chunks=[
+                UsedChunk(**uc) for uc in result.used_chunks
+            ],
+            coverage_gaps=result.coverage_gaps,
             metadata=result.metadata
         )
     
@@ -374,6 +381,13 @@ async def generate_response_endpoint(
             decision=result.decision,
             confidence=result.confidence,
             response=result.response,
+            source_articles=[
+                SourceArticle(**sa) for sa in result.source_articles
+            ],
+            used_chunks=[
+                UsedChunk(**uc) for uc in result.used_chunks
+            ],
+            coverage_gaps=result.coverage_gaps,
             metadata=result.metadata
         )
     

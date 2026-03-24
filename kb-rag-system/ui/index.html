@@ -20,6 +20,8 @@
             --success-light: #d1fae5;
             --error: #ef4444;
             --error-light: #fee2e2;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
             --bg-primary: #ffffff;
             --bg-secondary: #f8fafc;
             --bg-code: #1e293b;
@@ -334,64 +336,898 @@
         }
 
         .response-section {
-            background: var(--bg-primary);
-            border-radius: 8px;
-            padding: 1.5rem;
-            box-shadow: var(--shadow);
             display: none;
+            animation: fadeIn 0.4s ease-out;
         }
 
         .response-section.show {
             display: block;
-            animation: fadeIn 0.3s;
         }
 
         @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(-10px); }
+            from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
         }
 
-        .response-header {
+        .hidden {
+            display: none;
+        }
+
+        /* ================================================================
+           Rich Response Styles (ported from knowledge.html + new)
+           ================================================================ */
+
+        .answer-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .answer-card-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 1rem;
+            margin-bottom: 1.25rem;
             padding-bottom: 1rem;
             border-bottom: 1px solid var(--border);
         }
 
-        .response-header h3 {
-            font-size: 1rem;
+        .answer-card-header h3 {
+            font-size: 1.125rem;
             font-weight: 600;
+        }
+
+        .answer-text {
+            font-size: 0.9375rem;
+            line-height: 1.8;
             color: var(--text-primary);
         }
 
-        .response-status {
-            padding: 0.25rem 0.75rem;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            font-weight: 500;
+        .answer-text p { margin-bottom: 1rem; }
+        .answer-text p:last-child { margin-bottom: 0; }
+        .answer-text strong { font-weight: 600; color: var(--text-primary); }
+        .answer-text em { font-style: italic; }
+
+        .answer-text h3 {
+            font-size: 1.05rem;
+            font-weight: 700;
+            margin: 1.25rem 0 0.5rem;
+            color: var(--text-primary);
+        }
+        .answer-text h3:first-child { margin-top: 0; }
+
+        .answer-text h4 {
+            font-size: 0.975rem;
+            font-weight: 600;
+            margin: 1rem 0 0.375rem;
+            color: var(--text-primary);
         }
 
-        .response-status.success {
+        .answer-text ul, .answer-text ol {
+            margin: 0.5rem 0 1rem 1.5rem;
+            padding: 0;
+        }
+
+        .answer-text li {
+            margin-bottom: 0.375rem;
+            line-height: 1.7;
+        }
+
+        .answer-text li::marker { color: var(--primary); }
+
+        .answer-text code {
+            background: var(--bg-secondary);
+            padding: 0.125rem 0.375rem;
+            border-radius: 4px;
+            font-size: 0.85em;
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .answer-text hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 1rem 0;
+        }
+
+        /* Decision badge */
+        .decision-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.375rem 1rem;
+            border-radius: 20px;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .decision-badge.can_proceed {
             background: var(--success-light);
             color: #065f46;
         }
 
-        .response-status.error {
+        .decision-badge.uncertain {
+            background: var(--warning-light);
+            color: #92400e;
+        }
+
+        .decision-badge.out_of_scope {
             background: var(--error-light);
             color: #991b1b;
         }
 
-        .response-content {
-            background: var(--bg-code);
+        /* Outcome badge */
+        .outcome-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.375rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .outcome-badge.can_proceed { background: var(--success-light); color: #065f46; }
+        .outcome-badge.blocked_not_eligible { background: var(--error-light); color: #991b1b; }
+        .outcome-badge.blocked_missing_data { background: var(--warning-light); color: #92400e; }
+        .outcome-badge.ambiguous_plan_rules { background: #ede9fe; color: #5b21b6; }
+
+        /* Confidence bar */
+        .confidence-bar-container {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .confidence-bar {
+            flex: 1;
+            height: 8px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .confidence-bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.6s ease-out;
+        }
+
+        .confidence-bar-fill.high { background: var(--success); }
+        .confidence-bar-fill.medium { background: var(--warning); }
+        .confidence-bar-fill.low { background: var(--error); }
+
+        .confidence-value {
+            font-size: 0.9375rem;
+            font-weight: 700;
+            font-family: 'Monaco', 'Courier New', monospace;
+            min-width: 3.5rem;
+            text-align: right;
+        }
+
+        .confidence-value.high { color: #065f46; }
+        .confidence-value.medium { color: #92400e; }
+        .confidence-value.low { color: #991b1b; }
+
+        /* Coverage badge (well_covered, partially_covered, limited_coverage) */
+        .coverage-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .coverage-badge.well_covered { background: var(--success-light); color: #065f46; }
+        .coverage-badge.partially_covered { background: var(--warning-light); color: #92400e; }
+        .coverage-badge.limited_coverage { background: var(--error-light); color: #991b1b; }
+
+        /* Key points */
+        .key-points-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 0.5rem;
+        }
+
+        .key-points-list li {
+            padding: 0.625rem 0.875rem 0.625rem 2rem;
+            position: relative;
+            font-size: 0.9375rem;
+            border-bottom: 1px solid var(--bg-secondary);
+        }
+
+        .key-points-list li:last-child { border-bottom: none; }
+
+        .key-points-list li::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 1rem;
+            width: 8px;
+            height: 8px;
+            background: var(--primary);
+            border-radius: 50%;
+        }
+
+        /* Required fields table */
+        .fields-category {
+            margin-bottom: 1.5rem;
+        }
+
+        .fields-category:last-child { margin-bottom: 0; }
+
+        .fields-category-header {
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 0.75rem;
+            text-transform: capitalize;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .fields-category-count {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            padding: 0.125rem 0.5rem;
+            border-radius: 10px;
+        }
+
+        .field-row {
+            padding: 0.875rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .field-row:last-child { margin-bottom: 0; }
+
+        .field-row-top {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.375rem;
+        }
+
+        .field-name {
+            font-size: 0.875rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-family: 'Monaco', 'Courier New', monospace;
+        }
+
+        .field-pill {
+            display: inline-block;
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .field-pill.required { background: var(--error-light); color: #991b1b; border: 1px solid #fca5a5; }
+        .field-pill.optional { background: var(--bg-primary); color: var(--text-muted); border: 1px solid var(--border); }
+        .field-pill.type { background: var(--primary-light); color: var(--primary); border: 1px solid #c7d2fe; }
+
+        .field-description {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.25rem;
+        }
+
+        .field-why {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+            font-style: italic;
+        }
+
+        /* Steps */
+        .steps-list {
+            list-style: none;
+            padding: 0;
+            counter-reset: step-counter;
+        }
+
+        .step-item {
+            display: flex;
+            gap: 1rem;
+            padding: 0.875rem 1rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .step-item:last-child { margin-bottom: 0; }
+
+        .step-number {
+            flex-shrink: 0;
+            width: 2rem;
+            height: 2rem;
+            background: var(--primary);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8125rem;
+            font-weight: 700;
+        }
+
+        .step-content { flex: 1; }
+
+        .step-action {
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .step-detail {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* Warnings */
+        .warnings-list {
+            list-style: none;
+            padding: 0;
+        }
+
+        .warnings-list li {
+            padding: 0.625rem 0.875rem 0.625rem 2.25rem;
+            position: relative;
+            font-size: 0.9375rem;
+            color: #92400e;
+            background: var(--warning-light);
             border-radius: 6px;
-            padding: 1rem;
-            max-height: 600px;
+            margin-bottom: 0.5rem;
+            border: 1px solid #fde68a;
+        }
+
+        .warnings-list li:last-child { margin-bottom: 0; }
+
+        .warnings-list li::before {
+            content: '!';
+            position: absolute;
+            left: 0.625rem;
+            top: 0.5rem;
+            width: 1.25rem;
+            height: 1.25rem;
+            background: var(--warning);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6875rem;
+            font-weight: 700;
+        }
+
+        /* Questions to ask */
+        .question-item {
+            padding: 0.875rem 1rem;
+            background: var(--primary-light);
+            border: 1px solid #c7d2fe;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+        }
+
+        .question-item:last-child { margin-bottom: 0; }
+
+        .question-text {
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .question-why {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
+        /* Escalation */
+        .escalation-card {
+            background: var(--error-light);
+            border: 1px solid #fca5a5;
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            border-left: 4px solid var(--error);
+        }
+
+        .escalation-card h3 { color: #991b1b; margin-bottom: 0.5rem; }
+        .escalation-card p { color: #991b1b; font-size: 0.9375rem; }
+
+        /* Guardrails */
+        .guardrails-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.375rem;
+        }
+
+        .guardrail-pill {
+            display: inline-block;
+            font-size: 0.75rem;
+            font-weight: 600;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            background: #ede9fe;
+            color: #5b21b6;
+            border: 1px solid #c4b5fd;
+        }
+
+        /* Data gaps */
+        .data-gaps-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            border-left: 4px solid var(--secondary);
+        }
+
+        .data-gaps-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 0.5rem;
+        }
+
+        .data-gaps-list li {
+            padding: 0.5rem 0.75rem 0.5rem 2rem;
+            position: relative;
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            border-bottom: 1px solid var(--bg-secondary);
+        }
+
+        .data-gaps-list li:last-child { border-bottom: none; }
+
+        .data-gaps-list li::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0.875rem;
+            width: 10px;
+            height: 10px;
+            border: 2px solid var(--secondary);
+            border-radius: 50%;
+            background: var(--bg-secondary);
+        }
+
+        /* Coverage Gaps */
+        .coverage-gaps-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            border-left: 4px solid var(--warning);
+        }
+
+        .coverage-gaps-list {
+            list-style: none;
+            padding: 0;
+            margin-top: 0.5rem;
+        }
+
+        .coverage-gaps-list li {
+            padding: 0.5rem 0.75rem 0.5rem 2rem;
+            position: relative;
+            font-size: 0.9375rem;
+            color: #92400e;
+            border-bottom: 1px solid var(--warning-light);
+        }
+
+        .coverage-gaps-list li:last-child { border-bottom: none; }
+
+        .coverage-gaps-list li::before {
+            content: '';
+            position: absolute;
+            left: 0.5rem;
+            top: 0.875rem;
+            width: 10px;
+            height: 10px;
+            border: 2px solid var(--warning);
+            border-radius: 50%;
+            background: var(--warning-light);
+        }
+
+        /* Source Articles */
+        .source-articles {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 0.75rem;
+            margin-top: 0.5rem;
+        }
+
+        .source-card {
+            padding: 0.875rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            transition: opacity 0.15s;
+        }
+
+        .source-card.source-used {
+            border-color: var(--primary);
+            border-width: 1.5px;
+        }
+
+        .source-card.source-consulted {
+            opacity: 0.55;
+            border-style: dashed;
+        }
+
+        .source-card .source-article-name {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--primary);
+            margin-bottom: 0.375rem;
+            line-height: 1.4;
+        }
+
+        .source-card.source-consulted .source-article-name { color: var(--text-secondary); }
+
+        .source-info-badge {
+            display: inline-block;
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            margin-bottom: 0.375rem;
+        }
+
+        .source-info-badge.badge-used { color: #1a7f37; background: #dafbe1; border: 1px solid #aceebb; }
+        .source-info-badge.badge-consulted { color: #6e7781; background: #f6f8fa; border: 1px solid var(--border); }
+
+        .source-types-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.25rem;
+            margin-bottom: 0.375rem;
+        }
+
+        .source-type-badge {
+            display: inline-block;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .source-card .source-relevance {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        /* Search Strategy */
+        .strategy-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .sub-queries-list {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .sub-query-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.625rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            gap: 1rem;
+        }
+
+        .sub-query-text {
+            font-size: 0.875rem;
+            color: var(--text-primary);
+            flex: 1;
+            font-style: italic;
+        }
+
+        .sub-query-score {
+            font-size: 0.75rem;
+            font-weight: 700;
+            padding: 0.25rem 0.625rem;
+            border-radius: 12px;
+            white-space: nowrap;
+            min-width: 4rem;
+            text-align: center;
+        }
+
+        .sub-query-score.good { background: var(--success-light); color: #065f46; }
+        .sub-query-score.fair { background: var(--warning-light); color: #92400e; }
+        .sub-query-score.weak { background: var(--error-light); color: #991b1b; }
+
+        /* Used Chunks */
+        .chunks-section-toggle {
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1rem 1.25rem;
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            transition: all 0.2s;
+            margin-bottom: 0.75rem;
+        }
+
+        .chunks-section-toggle:hover {
+            background: var(--bg-secondary);
+            border-color: var(--primary);
+        }
+
+        .chunks-section-toggle .toggle-arrow {
+            transition: transform 0.2s;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .chunks-section-toggle.open .toggle-arrow { transform: rotate(90deg); }
+
+        .chunks-section-body { display: none; }
+        .chunks-section-body.open { display: block; }
+
+        .article-group { margin-bottom: 1rem; }
+
+        .article-group-header {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 0.75rem 1rem;
+            background: var(--primary-light);
+            border: 1px solid var(--border);
+            border-radius: 8px 8px 0 0;
+            cursor: pointer;
+            transition: background 0.15s;
+        }
+
+        .article-group-header:hover { background: #dde3fd; }
+
+        .article-group-header .group-arrow {
+            font-size: 0.625rem;
+            color: var(--primary);
+            transition: transform 0.2s;
+            flex-shrink: 0;
+        }
+
+        .article-group-header.open .group-arrow { transform: rotate(90deg); }
+
+        .article-group-title {
+            flex: 1;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .article-group-count {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            color: var(--text-muted);
+            background: var(--bg-primary);
+            border: 1px solid var(--border);
+            padding: 0.125rem 0.5rem;
+            border-radius: 10px;
+            white-space: nowrap;
+        }
+
+        .article-group-chunks {
+            display: none;
+            border: 1px solid var(--border);
+            border-top: none;
+            border-radius: 0 0 8px 8px;
+            overflow: hidden;
+        }
+
+        .article-group-chunks.open { display: block; }
+
+        .chunk-card {
+            padding: 0.875rem 1rem;
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .chunk-card:last-child { border-bottom: none; }
+
+        .chunk-card-header {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 0.5rem;
+        }
+
+        .chunk-score {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            font-family: 'Monaco', 'Courier New', monospace;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            min-width: 3.5rem;
+            text-align: center;
+        }
+
+        .chunk-score.good { background: var(--success-light); color: #065f46; }
+        .chunk-score.fair { background: var(--warning-light); color: #92400e; }
+        .chunk-score.weak { background: var(--error-light); color: #991b1b; }
+
+        .chunk-type-pill {
+            font-size: 0.625rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+            border: 1px solid var(--border);
+            color: var(--text-muted);
+            background: var(--bg-secondary);
+        }
+
+        .chunk-tier-pill {
+            font-size: 0.625rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 0.125rem 0.5rem;
+            border-radius: 4px;
+        }
+
+        .chunk-tier-pill.critical { background: #fce4ec; color: #b71c1c; border: 1px solid #ef9a9a; }
+        .chunk-tier-pill.high { background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+        .chunk-tier-pill.medium { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }
+        .chunk-tier-pill.low { background: var(--bg-secondary); color: var(--text-muted); border: 1px solid var(--border); }
+
+        .chunk-id {
+            font-size: 0.6875rem;
+            color: var(--text-muted);
+            font-family: 'Monaco', 'Courier New', monospace;
+            margin-left: auto;
+            max-width: 200px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        .chunk-preview {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .chunk-full-content {
+            display: none;
+            margin-top: 0.5rem;
+            padding: 0.75rem;
+            background: var(--bg-secondary);
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            color: var(--text-primary);
+            line-height: 1.7;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            max-height: 400px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+        }
+
+        .chunk-full-content.open { display: block; }
+
+        .chunk-expand-btn {
+            display: inline-block;
+            margin-top: 0.375rem;
+            padding: 0.25rem 0.625rem;
+            background: none;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            font-size: 0.6875rem;
+            color: var(--primary);
+            cursor: pointer;
+            font-family: inherit;
+            transition: all 0.15s;
+        }
+
+        .chunk-expand-btn:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+        }
+
+        /* Metadata */
+        .metadata-row {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .metadata-item {
+            font-size: 0.8125rem;
+            color: var(--text-muted);
+        }
+
+        .metadata-item strong { color: var(--text-secondary); }
+
+        /* Raw JSON toggle */
+        .raw-toggle {
+            display: flex;
+            justify-content: flex-end;
+            margin-bottom: 1rem;
+        }
+
+        .raw-toggle button {
+            padding: 0.375rem 0.875rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .raw-toggle button:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .raw-json {
+            display: none;
+            background: var(--bg-code);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-top: 1rem;
+            max-height: 500px;
             overflow-y: auto;
         }
 
-        .response-content pre {
+        .raw-json.show { display: block; }
+
+        .raw-json pre {
             margin: 0;
             color: var(--text-code);
             font-size: 0.8125rem;
@@ -401,42 +1237,72 @@
             word-wrap: break-word;
         }
 
-        .hidden {
-            display: none;
+        /* Error card */
+        .error-card {
+            background: var(--error-light);
+            border: 1px solid var(--error);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
         }
 
+        .error-card h3 { color: #991b1b; margin-bottom: 0.5rem; }
+        .error-card p { color: #991b1b; font-size: 0.9375rem; }
+
+        /* Article reference */
+        .article-ref-card {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            background: var(--primary-light);
+            border: 1px solid #c7d2fe;
+            border-radius: 8px;
+            margin-bottom: 1rem;
+        }
+
+        .article-ref-title {
+            flex: 1;
+            font-size: 0.9375rem;
+            font-weight: 600;
+            color: var(--primary);
+        }
+
+        .article-ref-id {
+            font-size: 0.75rem;
+            font-family: 'Monaco', 'Courier New', monospace;
+            color: var(--text-muted);
+            max-width: 250px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        /* Opening text */
+        .opening-text {
+            font-size: 1rem;
+            line-height: 1.8;
+            color: var(--text-primary);
+            padding: 1rem 1.25rem;
+            background: var(--bg-secondary);
+            border-left: 3px solid var(--primary);
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 1.25rem;
+        }
+
+        /* Responsive */
         @media (max-width: 1024px) {
-            .main-content {
-                grid-template-columns: 1fr;
-            }
-
-            .code-preview {
-                position: static;
-            }
-
-            .config-grid {
-                grid-template-columns: 1fr;
-            }
+            .main-content { grid-template-columns: 1fr; }
+            .code-preview { position: static; }
+            .config-grid { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 640px) {
-            .container {
-                padding: 1rem;
-            }
-
-            .header {
-                padding: 1rem;
-            }
-
-            .header-content {
-                flex-direction: column;
-                gap: 1rem;
-                align-items: flex-start;
-            }
-
-            .endpoint-selector {
-                flex-direction: column;
-            }
+            .container { padding: 1rem; }
+            .header { padding: 1rem; }
+            .header-content { flex-direction: column; gap: 1rem; align-items: flex-start; }
+            .endpoint-selector { flex-direction: column; }
+            .source-articles { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -447,10 +1313,10 @@
             <h1>KB RAG System</h1>
             <div style="display: flex; gap: 1rem; align-items: center;">
                 <button onclick="window.location.href='/ui/knowledge'" style="text-decoration: none; color: var(--primary); font-weight: 500; padding: 0.5rem 1rem; border-radius: 6px; background: var(--primary-light); transition: all 0.2s; border: none; cursor: pointer; font-family: inherit; font-size: inherit;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='var(--primary-light)'; this.style.color='var(--primary)';">
-                    💡 Knowledge Q&A
+                    Knowledge Q&A
                 </button>
                 <button onclick="window.location.href='/ui/chunks'" style="text-decoration: none; color: var(--primary); font-weight: 500; padding: 0.5rem 1rem; border-radius: 6px; background: var(--primary-light); transition: all 0.2s; border: none; cursor: pointer; font-family: inherit; font-size: inherit;" onmouseover="this.style.background='var(--primary)'; this.style.color='white';" onmouseout="this.style.background='var(--primary-light)'; this.style.color='var(--primary)';">
-                    📦 View Chunks
+                    View Chunks
                 </button>
                 <div id="statusBadge" class="status-badge unhealthy">
                     <div class="status-dot"></div>
@@ -524,21 +1390,14 @@
 
         <!-- Response Section -->
         <section id="responseSection" class="response-section">
-            <div class="response-header">
-                <h3>Response</h3>
-                <div>
-                    <span id="responseStatus" class="response-status"></span>
-                    <button type="button" class="copy-btn" onclick="copyResponse()" style="margin-left: 0.5rem;">Copy</button>
-                </div>
-            </div>
-            <div class="response-content">
-                <pre id="responseContent"></pre>
-            </div>
+            <div id="responseContent"></div>
         </section>
     </div>
 
     <script>
+        // ================================================================
         // Field definitions for each endpoint
+        // ================================================================
         const fieldDefinitions = {
             'required-data': [
                 {
@@ -644,24 +1503,22 @@
         let currentEndpoint = 'required-data';
         let formData = {};
 
+        // ================================================================
         // Initialize
+        // ================================================================
         document.addEventListener('DOMContentLoaded', () => {
-            // Auto-detect API URL - always use current origin if served from a server
             const apiUrlInput = document.getElementById('apiUrl');
             if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
-                // Served from a web server, use current origin
                 apiUrlInput.value = window.location.origin;
             }
-            
+
             checkHealth();
             renderForm();
             setupEventListeners();
             updatePayloadPreview();
         });
 
-        // Setup event listeners
         function setupEventListeners() {
-            // Endpoint selector
             document.querySelectorAll('.endpoint-btn').forEach(btn => {
                 btn.addEventListener('click', (e) => {
                     document.querySelectorAll('.endpoint-btn').forEach(b => b.classList.remove('active'));
@@ -673,137 +1530,123 @@
                 });
             });
 
-            // Form submission
             document.getElementById('dynamicForm').addEventListener('submit', handleSubmit);
         }
 
-        // Render form based on selected endpoint
+        // ================================================================
+        // Form rendering (unchanged)
+        // ================================================================
         function renderForm() {
             const container = document.getElementById('formFields');
             const fields = fieldDefinitions[currentEndpoint];
-            
+
             container.innerHTML = '';
-            
+
             fields.forEach(field => {
                 const formGroup = document.createElement('div');
                 formGroup.className = 'form-group';
-                
+
                 const label = document.createElement('label');
                 label.textContent = field.label;
                 if (field.required) {
                     label.innerHTML += ' <span style="color: var(--error);">*</span>';
                 }
-                
+
                 const description = document.createElement('div');
                 description.className = 'description';
                 description.textContent = field.description;
-                
+
                 let input;
-                
+
                 if (field.type === 'textarea') {
                     input = document.createElement('textarea');
                     input.placeholder = field.placeholder || '';
                     input.rows = field.isJson ? 8 : 3;
-                    if (field.value) {
-                        input.value = field.value;
-                    }
+                    if (field.value) input.value = field.value;
                 } else if (field.type === 'select') {
                     input = document.createElement('select');
                     field.options.forEach(option => {
                         const opt = document.createElement('option');
                         opt.value = option;
                         opt.textContent = option;
-                        if (field.value && option === field.value) {
-                            opt.selected = true;
-                        }
+                        if (field.value && option === field.value) opt.selected = true;
                         input.appendChild(opt);
                     });
                 } else {
                     input = document.createElement('input');
                     input.type = field.type;
                     input.placeholder = field.placeholder || '';
-                    
                     if (field.type === 'number') {
                         input.min = field.min;
                         input.max = field.max;
                         input.value = field.value || '';
                     }
                 }
-                
+
                 input.name = field.name;
                 input.id = field.name;
                 if (field.required) input.required = true;
-                
-                // Add input event listener for live preview
+
                 input.addEventListener('input', () => {
                     updateFormData(field.name, input.value, field.isJson);
                 });
-                
+
                 formGroup.appendChild(label);
                 formGroup.appendChild(description);
                 formGroup.appendChild(input);
                 container.appendChild(formGroup);
-                
-                // Initialize form data
+
                 if (field.value) {
                     updateFormData(field.name, field.value, field.isJson);
                 }
             });
         }
 
-        // Update form data and payload preview
         function updateFormData(fieldName, value, isJson = false) {
             if (isJson) {
                 if (value.trim()) {
-                    try {
-                        formData[fieldName] = JSON.parse(value);
-                    } catch (e) {
-                        // Invalid JSON, store as string
-                        formData[fieldName] = value;
-                    }
+                    try { formData[fieldName] = JSON.parse(value); }
+                    catch (e) { formData[fieldName] = value; }
                 } else {
-                    // For JSON fields, use empty object if value is empty
                     formData[fieldName] = {};
                 }
             } else if (value.trim()) {
-                // Try to parse as number if it looks like one
                 const num = Number(value);
-                formData[fieldName] = !isNaN(num) && value.trim() !== '' && 
-                                      (fieldName.includes('token') || fieldName.includes('inquiries')) 
+                formData[fieldName] = !isNaN(num) && value.trim() !== '' &&
+                                      (fieldName.includes('token') || fieldName.includes('inquiries'))
                                       ? num : value;
             } else {
                 delete formData[fieldName];
             }
-            
             updatePayloadPreview();
         }
 
-        // Update payload preview
         function updatePayloadPreview() {
-            const preview = document.getElementById('payloadPreview');
-            preview.textContent = JSON.stringify(formData, null, 2);
+            document.getElementById('payloadPreview').textContent = JSON.stringify(formData, null, 2);
         }
 
-        // Handle form submission
+        // ================================================================
+        // Submit handler
+        // ================================================================
         async function handleSubmit(e) {
             e.preventDefault();
-            
+
             const apiUrl = document.getElementById('apiUrl').value;
             const apiKey = document.getElementById('apiKey').value;
-            
+
             if (!apiKey) {
                 alert('Please enter your API Key in the configuration section');
                 return;
             }
-            
+
             const submitBtn = document.getElementById('submitBtn');
             submitBtn.disabled = true;
             submitBtn.innerHTML = '<div class="spinner"></div><span>Processing...</span>';
-            
-            const endpoint = currentEndpoint === 'required-data' 
-                ? '/api/v1/required-data' 
+
+            const endpoint = currentEndpoint === 'required-data'
+                ? '/api/v1/required-data'
                 : '/api/v1/generate-response';
-            
+
             try {
                 const response = await fetch(`${apiUrl}${endpoint}`, {
                     method: 'POST',
@@ -813,11 +1656,9 @@
                     },
                     body: JSON.stringify(formData)
                 });
-                
+
                 const data = await response.json();
-                
                 showResponse(data, response.ok);
-                
             } catch (error) {
                 showResponse({ error: error.message }, false);
             } finally {
@@ -826,37 +1667,623 @@
             }
         }
 
-        // Show response
+        // ================================================================
+        // Response dispatcher
+        // ================================================================
         function showResponse(data, success) {
             const section = document.getElementById('responseSection');
-            const status = document.getElementById('responseStatus');
             const content = document.getElementById('responseContent');
-            
-            section.classList.add('show');
-            
-            if (success) {
-                status.textContent = 'Success';
-                status.className = 'response-status success';
+
+            if (!success) {
+                content.innerHTML = renderError(data);
+            } else if (currentEndpoint === 'required-data') {
+                content.innerHTML = renderRequiredDataResponse(data);
             } else {
-                status.textContent = 'Error';
-                status.className = 'response-status error';
+                content.innerHTML = renderGenerateResponse(data);
             }
-            
-            content.textContent = JSON.stringify(data, null, 2);
-            
-            // Scroll to response
+
+            section.classList.add('show');
             section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
 
-        // Check API health
+        // ================================================================
+        // Helper functions
+        // ================================================================
+        function escapeHtml(str) {
+            if (!str) return '';
+            const div = document.createElement('div');
+            div.textContent = str;
+            return div.innerHTML;
+        }
+
+        function renderInline(str) {
+            if (!str) return '';
+            let text = escapeHtml(str);
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+            text = text.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>');
+            text = text.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<em>$1</em>');
+            text = text.replace(/`([^`]+?)`/g, '<code>$1</code>');
+            return text;
+        }
+
+        function renderMarkdown(str) {
+            if (!str) return '';
+            let text = escapeHtml(str);
+            text = text.replace(/^#### (.+)$/gm, '<h4>$1</h4>');
+            text = text.replace(/^### (.+)$/gm, '<h4>$1</h4>');
+            text = text.replace(/^## (.+)$/gm, '<h3>$1</h3>');
+            text = text.replace(/^# (.+)$/gm, '<h3>$1</h3>');
+            text = text.replace(/^---+$/gm, '<hr>');
+            text = text.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+            text = text.replace(/__(.+?)__/g, '<strong>$1</strong>');
+            text = text.replace(/(?<!\w)\*([^*]+?)\*(?!\w)/g, '<em>$1</em>');
+            text = text.replace(/(?<!\w)_([^_]+?)_(?!\w)/g, '<em>$1</em>');
+            text = text.replace(/`([^`]+?)`/g, '<code>$1</code>');
+            text = text.replace(
+                /(^|\n)((?:[ \t]*[-*] .+(?:\n|$))+)/g,
+                function(match, prefix, block) {
+                    const items = block.trim().split('\n')
+                        .map(line => line.replace(/^[ \t]*[-*] /, '').trim())
+                        .filter(Boolean)
+                        .map(item => `<li>${item}</li>`).join('');
+                    return `${prefix}<ul>${items}</ul>`;
+                }
+            );
+            text = text.replace(
+                /(^|\n)((?:[ \t]*\d+\. .+(?:\n|$))+)/g,
+                function(match, prefix, block) {
+                    const items = block.trim().split('\n')
+                        .map(line => line.replace(/^[ \t]*\d+\. /, '').trim())
+                        .filter(Boolean)
+                        .map(item => `<li>${item}</li>`).join('');
+                    return `${prefix}<ol>${items}</ol>`;
+                }
+            );
+            const blocks = text.split(/\n{2,}/);
+            text = blocks.map(block => {
+                block = block.trim();
+                if (!block) return '';
+                if (/^<(h[1-6]|ul|ol|hr|p|div|blockquote)/.test(block)) return block;
+                return `<p>${block}</p>`;
+            }).join('\n');
+            text = text.replace(/<p>([\s\S]*?)<\/p>/g, function(match, inner) {
+                return '<p>' + inner.replace(/\n/g, '<br>') + '</p>';
+            });
+            return text;
+        }
+
+        function formatChunkType(raw) {
+            if (!raw) return '';
+            const labels = {
+                'faqs': 'FAQ',
+                'business_rules': 'Business Rules',
+                'eligibility': 'Eligibility',
+                'steps': 'Steps / Process',
+                'common_issues': 'Common Issues',
+                'decision_guide': 'Decision Guide',
+                'required_data_must_have': 'Required Data',
+                'required_data_nice_to_have': 'Additional Data',
+                'content': 'Content',
+                'guardrails': 'Guardrails',
+                'fees_details': 'Fees Details',
+                'example': 'Example',
+                'definitions': 'Definitions',
+                'additional_notes': 'Additional Notes'
+            };
+            return labels[raw] || raw.replace(/_/g, ' ');
+        }
+
+        function formatCategoryName(raw) {
+            if (!raw) return '';
+            return raw.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+        }
+
+        function groupChunksByArticle(chunks) {
+            const map = {};
+            const order = [];
+            for (const uc of chunks) {
+                if (!map[uc.article_id]) {
+                    map[uc.article_id] = { article_id: uc.article_id, article_title: uc.article_title, chunks: [] };
+                    order.push(uc.article_id);
+                }
+                map[uc.article_id].chunks.push(uc);
+            }
+            return order.map(id => map[id]);
+        }
+
+        function confidenceLevel(val) {
+            if (val >= 0.7) return 'high';
+            if (val >= 0.5) return 'medium';
+            return 'low';
+        }
+
+        function scoreClass(val) {
+            if (val >= 0.35) return 'good';
+            if (val >= 0.22) return 'fair';
+            return 'weak';
+        }
+
+        function toggleRawJson(id) {
+            document.getElementById(id).classList.toggle('show');
+        }
+
+        function toggleChunksSection(toggleId, bodyId) {
+            document.getElementById(toggleId).classList.toggle('open');
+            document.getElementById(bodyId).classList.toggle('open');
+        }
+
+        function toggleArticleGroup(groupId, headerEl) {
+            document.getElementById(groupId).classList.toggle('open');
+            headerEl.classList.toggle('open');
+        }
+
+        function toggleChunkContent(contentId, btn) {
+            const el = document.getElementById(contentId);
+            const isOpen = el.classList.toggle('open');
+            btn.textContent = isOpen ? 'Hide full content' : 'Show full content';
+        }
+
+        function copyRawJson(id) {
+            const text = document.querySelector(`#${id} pre`).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => btn.textContent = orig, 2000);
+            });
+        }
+
+        // ================================================================
+        // Shared renderers (source articles, chunks, strategy, etc.)
+        // ================================================================
+        function renderConfidenceBar(value) {
+            const pct = Math.round(value * 100);
+            const level = confidenceLevel(value);
+            return `
+                <div class="confidence-bar-container">
+                    <div class="confidence-bar">
+                        <div class="confidence-bar-fill ${level}" style="width: ${pct}%"></div>
+                    </div>
+                    <span class="confidence-value ${level}">${value.toFixed(3)}</span>
+                </div>
+            `;
+        }
+
+        function renderSourceArticles(sourceArticles, metadata) {
+            if (!sourceArticles || sourceArticles.length === 0) return '';
+            const m = metadata || {};
+            const totalArticles = m.unique_articles ?? sourceArticles.length;
+            const relevantArticles = m.relevant_articles ?? sourceArticles.filter(sa => sa.used_info).length;
+            const subtitle = `${totalArticles} consulted · ${relevantArticles} relevant`;
+
+            return `
+                <div class="answer-card">
+                    <div class="answer-card-header">
+                        <h3>Source Articles</h3>
+                        <span style="font-size:0.8125rem;color:var(--text-muted);">${subtitle}</span>
+                    </div>
+                    <div class="source-articles">
+                        ${sourceArticles.map(sa => {
+                            const isUsed = sa.used_info === true;
+                            const cardClass = isUsed ? 'source-used' : 'source-consulted';
+                            const badgeClass = isUsed ? 'badge-used' : 'badge-consulted';
+                            const badgeLabel = isUsed ? 'Info used' : 'Consulted';
+                            const types = (sa.chunk_types_used || '').split(',').map(t => t.trim()).filter(Boolean);
+                            const typeBadges = types.length > 0
+                                ? `<div class="source-types-row">${types.map(t => `<span class="source-type-badge">${escapeHtml(formatChunkType(t))}</span>`).join('')}</div>`
+                                : '';
+                            return `
+                                <div class="source-card ${cardClass}">
+                                    <span class="source-info-badge ${badgeClass}">${badgeLabel}</span>
+                                    <div class="source-article-name">${escapeHtml(sa.article_title || 'Unknown Article')}</div>
+                                    ${typeBadges}
+                                    <div class="source-relevance">${escapeHtml(sa.relevance || '')}</div>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderUsedChunks(usedChunks, prefix) {
+            if (!usedChunks || usedChunks.length === 0) return '';
+            const grouped = groupChunksByArticle(usedChunks);
+            const toggleId = `${prefix}-chunksToggle`;
+            const bodyId = `${prefix}-chunksBody`;
+
+            const articleGroupsHtml = grouped.map((group, gi) => {
+                const chunksInGroup = group.chunks.map((uc, ci) => {
+                    const sClass = scoreClass(uc.score);
+                    const contentId = `${prefix}-chunk-${gi}-${ci}`;
+                    return `
+                        <div class="chunk-card">
+                            <div class="chunk-card-header">
+                                <span class="chunk-score ${sClass}">${uc.score.toFixed(4)}</span>
+                                <span class="chunk-type-pill">${escapeHtml(formatChunkType(uc.chunk_type))}</span>
+                                <span class="chunk-tier-pill ${uc.chunk_tier}">${escapeHtml(uc.chunk_tier)}</span>
+                                <span class="chunk-id" title="${escapeHtml(uc.chunk_id)}">${escapeHtml(uc.chunk_id)}</span>
+                            </div>
+                            <div class="chunk-preview">${escapeHtml(uc.content_preview)}</div>
+                            <button class="chunk-expand-btn" onclick="toggleChunkContent('${contentId}', this)">Show full content</button>
+                            <div id="${contentId}" class="chunk-full-content">${escapeHtml(uc.content)}</div>
+                        </div>
+                    `;
+                }).join('');
+
+                const groupId = `${prefix}-group-${gi}`;
+                return `
+                    <div class="article-group">
+                        <div class="article-group-header" onclick="toggleArticleGroup('${groupId}', this)">
+                            <span class="group-arrow">&#9654;</span>
+                            <span class="article-group-title">${escapeHtml(group.article_title)}</span>
+                            <span class="article-group-count">${group.chunks.length} chunk${group.chunks.length > 1 ? 's' : ''}</span>
+                        </div>
+                        <div id="${groupId}" class="article-group-chunks">
+                            ${chunksInGroup}
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            return `
+                <button class="chunks-section-toggle" id="${toggleId}" onclick="toggleChunksSection('${toggleId}', '${bodyId}')">
+                    <span>Used Chunks (${usedChunks.length})</span>
+                    <span class="toggle-arrow">&#9654;</span>
+                </button>
+                <div id="${bodyId}" class="chunks-section-body">
+                    ${articleGroupsHtml}
+                </div>
+            `;
+        }
+
+        function renderCoverageGaps(gaps) {
+            if (!gaps || gaps.length === 0) return '';
+            return `
+                <div class="coverage-gaps-card">
+                    <div class="answer-card-header" style="border-bottom-color: var(--warning-light);">
+                        <h3>Coverage Gaps</h3>
+                        <span class="coverage-badge limited_coverage">${gaps.length} topic${gaps.length > 1 ? 's' : ''} not covered</span>
+                    </div>
+                    <ul class="coverage-gaps-list">
+                        ${gaps.map(g => `<li>${escapeHtml(g)}</li>`).join('')}
+                    </ul>
+                </div>
+            `;
+        }
+
+        function renderSearchStrategy(metadata) {
+            const m = metadata || {};
+            const subQueries = m.sub_queries || [];
+            const perQueryScores = m.per_query_scores || {};
+            if (subQueries.length === 0) return '';
+
+            return `
+                <div class="strategy-card">
+                    <div class="answer-card-header">
+                        <h3>Search Strategy</h3>
+                        <span style="font-size:0.8125rem;color:var(--text-muted);">${subQueries.length} sub-quer${subQueries.length > 1 ? 'ies' : 'y'}</span>
+                    </div>
+                    <div class="sub-queries-list">
+                        ${subQueries.map(sq => {
+                            const score = perQueryScores[sq];
+                            const scoreDisplay = score != null ? score.toFixed(4) : '\u2014';
+                            const sc = score != null ? scoreClass(score) : '';
+                            return `
+                                <div class="sub-query-row">
+                                    <span class="sub-query-text">"${escapeHtml(sq)}"</span>
+                                    <span class="sub-query-score ${sc}">${scoreDisplay}</span>
+                                </div>
+                            `;
+                        }).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        function renderMetadata(metadata, extraItems) {
+            const m = metadata || {};
+            const parts = [];
+            if (m.chunks_used != null) parts.push(`<div class="metadata-item"><strong>Chunks:</strong> ${m.chunks_used}</div>`);
+            if (m.unique_articles != null) parts.push(`<div class="metadata-item"><strong>Articles:</strong> ${m.unique_articles}</div>`);
+            if (m.context_tokens != null) parts.push(`<div class="metadata-item"><strong>Context tokens:</strong> ${m.context_tokens}</div>`);
+            if (m.tokens_used != null && m.context_tokens == null) parts.push(`<div class="metadata-item"><strong>Tokens used:</strong> ${m.tokens_used}</div>`);
+            if (m.response_tokens != null) parts.push(`<div class="metadata-item"><strong>Response tokens:</strong> ${m.response_tokens}</div>`);
+            if (m.model) parts.push(`<div class="metadata-item"><strong>Model:</strong> ${m.model}</div>`);
+            if (m.total_inquiries != null) parts.push(`<div class="metadata-item"><strong>Inquiries in ticket:</strong> ${m.total_inquiries}</div>`);
+            if (extraItems) parts.push(...extraItems);
+            if (parts.length === 0) return '';
+            return `<div class="metadata-row">${parts.join('')}</div>`;
+        }
+
+        function renderRawJsonToggle(data, id) {
+            return `
+                <div class="raw-toggle">
+                    <button onclick="toggleRawJson('${id}')">Show Raw JSON</button>
+                </div>
+                <div id="${id}" class="raw-json">
+                    <div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem;">
+                        <button class="copy-btn" onclick="copyRawJson('${id}')">Copy</button>
+                    </div>
+                    <pre>${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+                </div>
+            `;
+        }
+
+        // ================================================================
+        // Required Data Response Renderer
+        // ================================================================
+        function renderRequiredDataResponse(data) {
+            const m = data.metadata || {};
+
+            // Confidence bar
+            const confidenceHtml = `
+                <div class="answer-card">
+                    <div class="answer-card-header">
+                        <h3>Required Data Analysis</h3>
+                        <span style="font-size:0.8125rem;color:var(--text-muted);">Confidence</span>
+                    </div>
+                    ${renderConfidenceBar(data.confidence || 0)}
+                    ${renderMetadata(m)}
+                </div>
+            `;
+
+            // Article reference
+            let articleRefHtml = '';
+            if (data.article_reference) {
+                const ref = data.article_reference;
+                articleRefHtml = `
+                    <div class="article-ref-card">
+                        <div style="flex:1;">
+                            <div class="article-ref-title">${escapeHtml(ref.title || 'Unknown Article')}</div>
+                            <div class="article-ref-id" title="${escapeHtml(ref.article_id || '')}">${escapeHtml(ref.article_id || '')}</div>
+                        </div>
+                        <span class="confidence-value ${confidenceLevel(ref.confidence || 0)}">${(ref.confidence || 0).toFixed(3)}</span>
+                    </div>
+                `;
+            }
+
+            // Required fields by category
+            let fieldsHtml = '';
+            if (data.required_fields && Object.keys(data.required_fields).length > 0) {
+                const categories = Object.entries(data.required_fields);
+                fieldsHtml = `
+                    <div class="answer-card">
+                        <div class="answer-card-header">
+                            <h3>Required Fields</h3>
+                            <span style="font-size:0.8125rem;color:var(--text-muted);">${categories.reduce((sum, [, fields]) => sum + fields.length, 0)} fields</span>
+                        </div>
+                        ${articleRefHtml}
+                        ${categories.map(([category, fields]) => `
+                            <div class="fields-category">
+                                <div class="fields-category-header">
+                                    ${escapeHtml(formatCategoryName(category))}
+                                    <span class="fields-category-count">${fields.length}</span>
+                                </div>
+                                ${fields.map(f => `
+                                    <div class="field-row">
+                                        <div class="field-row-top">
+                                            <span class="field-name">${escapeHtml(f.field)}</span>
+                                            <span class="field-pill type">${escapeHtml(f.data_type)}</span>
+                                            <span class="field-pill ${f.required ? 'required' : 'optional'}">${f.required ? 'Required' : 'Optional'}</span>
+                                        </div>
+                                        <div class="field-description">${escapeHtml(f.description)}</div>
+                                        <div class="field-why">${escapeHtml(f.why_needed)}</div>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            const coverageGapsHtml = renderCoverageGaps(data.coverage_gaps);
+            const sourceArticlesHtml = renderSourceArticles(data.source_articles, m);
+            const usedChunksHtml = renderUsedChunks(data.used_chunks, 'rd');
+            const strategyHtml = renderSearchStrategy(m);
+            const rawJsonHtml = renderRawJsonToggle(data, 'rdRawJson');
+
+            return confidenceHtml + fieldsHtml + coverageGapsHtml + sourceArticlesHtml + usedChunksHtml + strategyHtml + rawJsonHtml;
+        }
+
+        // ================================================================
+        // Generate Response Renderer
+        // ================================================================
+        function renderGenerateResponse(data) {
+            const m = data.metadata || {};
+            const resp = data.response || {};
+            const rtp = resp.response_to_participant || {};
+
+            // Decision + Confidence header
+            const decisionClass = data.decision || 'uncertain';
+            const decisionLabel = (data.decision || 'unknown').replace(/_/g, ' ');
+            const headerHtml = `
+                <div class="answer-card">
+                    <div class="answer-card-header">
+                        <h3>RAG Decision</h3>
+                        <span class="decision-badge ${decisionClass}">${decisionLabel}</span>
+                    </div>
+                    ${renderConfidenceBar(data.confidence || 0)}
+                    ${renderMetadata(m)}
+                </div>
+            `;
+
+            // Outcome card
+            let outcomeHtml = '';
+            if (resp.outcome) {
+                const outcomeClass = resp.outcome || '';
+                const outcomeLabel = (resp.outcome || '').replace(/_/g, ' ');
+                outcomeHtml = `
+                    <div class="answer-card">
+                        <div class="answer-card-header">
+                            <h3>Participant Outcome</h3>
+                            <span class="outcome-badge ${outcomeClass}">${outcomeLabel}</span>
+                        </div>
+                        ${resp.outcome_reason ? `<p style="font-size:0.9375rem;color:var(--text-secondary);line-height:1.7;">${renderInline(resp.outcome_reason)}</p>` : ''}
+                    </div>
+                `;
+            }
+
+            // Response to Participant
+            let responseToParticipantHtml = '';
+            if (rtp.opening || (rtp.key_points && rtp.key_points.length) || (rtp.steps && rtp.steps.length) || (rtp.warnings && rtp.warnings.length)) {
+                let openingHtml = '';
+                if (rtp.opening) {
+                    openingHtml = `<div class="opening-text">${renderInline(rtp.opening)}</div>`;
+                }
+
+                let keyPointsHtml = '';
+                if (rtp.key_points && rtp.key_points.length > 0) {
+                    keyPointsHtml = `
+                        <h4 style="font-size:0.9375rem;font-weight:600;margin-bottom:0.5rem;margin-top:0.5rem;">Key Points</h4>
+                        <ul class="key-points-list">
+                            ${rtp.key_points.map(kp => `<li>${renderInline(kp)}</li>`).join('')}
+                        </ul>
+                    `;
+                }
+
+                let stepsHtml = '';
+                if (rtp.steps && rtp.steps.length > 0) {
+                    stepsHtml = `
+                        <h4 style="font-size:0.9375rem;font-weight:600;margin:1rem 0 0.5rem;">Steps</h4>
+                        <div class="steps-list">
+                            ${rtp.steps.map(s => `
+                                <div class="step-item">
+                                    <div class="step-number">${s.step_number}</div>
+                                    <div class="step-content">
+                                        <div class="step-action">${renderInline(s.action)}</div>
+                                        ${s.detail ? `<div class="step-detail">${renderInline(s.detail)}</div>` : ''}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
+                let warningsHtml = '';
+                if (rtp.warnings && rtp.warnings.length > 0) {
+                    warningsHtml = `
+                        <h4 style="font-size:0.9375rem;font-weight:600;margin:1rem 0 0.5rem;">Warnings</h4>
+                        <ul class="warnings-list">
+                            ${rtp.warnings.map(w => `<li>${renderInline(w)}</li>`).join('')}
+                        </ul>
+                    `;
+                }
+
+                responseToParticipantHtml = `
+                    <div class="answer-card">
+                        <div class="answer-card-header">
+                            <h3>Response to Participant</h3>
+                        </div>
+                        ${openingHtml}
+                        ${keyPointsHtml}
+                        ${stepsHtml}
+                        ${warningsHtml}
+                    </div>
+                `;
+            }
+
+            // Questions to Ask
+            let questionsHtml = '';
+            const questions = resp.questions_to_ask || [];
+            if (questions.length > 0) {
+                questionsHtml = `
+                    <div class="answer-card">
+                        <div class="answer-card-header">
+                            <h3>Questions to Ask</h3>
+                            <span style="font-size:0.8125rem;color:var(--text-muted);">${questions.length} question${questions.length > 1 ? 's' : ''}</span>
+                        </div>
+                        ${questions.map(q => `
+                            <div class="question-item">
+                                <div class="question-text">${renderInline(q.question)}</div>
+                                <div class="question-why">${renderInline(q.why)}</div>
+                            </div>
+                        `).join('')}
+                    </div>
+                `;
+            }
+
+            // Escalation
+            let escalationHtml = '';
+            const esc = resp.escalation;
+            if (esc && esc.needed) {
+                escalationHtml = `
+                    <div class="escalation-card">
+                        <h3>Escalation Required</h3>
+                        <p>${renderInline(esc.reason || 'No reason provided')}</p>
+                    </div>
+                `;
+            }
+
+            // Guardrails
+            let guardrailsHtml = '';
+            const guardrails = resp.guardrails_applied || [];
+            if (guardrails.length > 0) {
+                guardrailsHtml = `
+                    <div class="answer-card">
+                        <div class="answer-card-header">
+                            <h3>Guardrails Applied</h3>
+                        </div>
+                        <div class="guardrails-list">
+                            ${guardrails.map(g => `<span class="guardrail-pill">${escapeHtml(g)}</span>`).join('')}
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Data Gaps (from LLM response)
+            let dataGapsHtml = '';
+            const dataGaps = resp.data_gaps || [];
+            if (dataGaps.length > 0) {
+                dataGapsHtml = `
+                    <div class="data-gaps-card">
+                        <div class="answer-card-header" style="border-bottom-color: var(--bg-secondary);">
+                            <h3>Data Gaps</h3>
+                            <span style="font-size:0.8125rem;color:var(--text-muted);">${dataGaps.length} gap${dataGaps.length > 1 ? 's' : ''}</span>
+                        </div>
+                        <ul class="data-gaps-list">
+                            ${dataGaps.map(g => `<li>${escapeHtml(g)}</li>`).join('')}
+                        </ul>
+                    </div>
+                `;
+            }
+
+            const coverageGapsHtml = renderCoverageGaps(data.coverage_gaps);
+            const sourceArticlesHtml = renderSourceArticles(data.source_articles, m);
+            const usedChunksHtml = renderUsedChunks(data.used_chunks, 'gr');
+            const strategyHtml = renderSearchStrategy(m);
+            const rawJsonHtml = renderRawJsonToggle(data, 'grRawJson');
+
+            return headerHtml + outcomeHtml + responseToParticipantHtml + questionsHtml
+                + escalationHtml + guardrailsHtml + dataGapsHtml + coverageGapsHtml
+                + sourceArticlesHtml + usedChunksHtml + strategyHtml + rawJsonHtml;
+        }
+
+        // ================================================================
+        // Error renderer
+        // ================================================================
+        function renderError(data) {
+            return `
+                <div class="error-card">
+                    <h3>Error</h3>
+                    <p>${escapeHtml(data.message || data.detail || data.error || JSON.stringify(data))}</p>
+                </div>
+                ${renderRawJsonToggle(data, 'errorRawJson')}
+            `;
+        }
+
+        // ================================================================
+        // Health check
+        // ================================================================
         async function checkHealth() {
             const apiUrl = document.getElementById('apiUrl').value;
             const badge = document.getElementById('statusBadge');
-            
+
             try {
                 const response = await fetch(`${apiUrl}/health`);
                 const data = await response.json();
-                
+
                 if (data.status === 'healthy') {
                     badge.className = 'status-badge healthy';
                     badge.innerHTML = '<div class="status-dot"></div><span>Connected</span>';
@@ -870,20 +2297,11 @@
             }
         }
 
-        // Copy payload
+        // ================================================================
+        // Copy helpers
+        // ================================================================
         function copyPayload() {
             const text = document.getElementById('payloadPreview').textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                const btn = event.target;
-                const originalText = btn.textContent;
-                btn.textContent = 'Copied!';
-                setTimeout(() => btn.textContent = originalText, 2000);
-            });
-        }
-
-        // Copy response
-        function copyResponse() {
-            const text = document.getElementById('responseContent').textContent;
             navigator.clipboard.writeText(text).then(() => {
                 const btn = event.target;
                 const originalText = btn.textContent;

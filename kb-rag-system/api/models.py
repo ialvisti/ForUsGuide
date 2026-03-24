@@ -139,10 +139,10 @@ class GenerateResponseRequest(BaseModel):
     )
     
     max_response_tokens: Optional[int] = Field(
-        default=5000,
+        default=5500,
         ge=500,
-        le=5000,
-        description="Máximo de tokens para la respuesta (default: 5000)"
+        le=5500,
+        description="Máximo de tokens para la respuesta (default: 5500)"
     )
     
     total_inquiries_in_ticket: Optional[int] = Field(

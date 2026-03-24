@@ -1,0 +1,485 @@
+{
+  "generate_response": {
+    "data": {
+      "decision": "can_proceed",
+      "confidence": 0.859,
+      "response": {
+        "outcome": "blocked_not_eligible",
+        "outcome_reason": "The funds were paid to the participant by check rather than sent provider-to-provider, so the 60-day indirect rollover rule applies. Because 65 days have passed, the normal rollover window has been missed; under the context, the distribution is generally taxable income, may be subject to a 10% early withdrawal penalty if the participant is under age 59\u00bd, and is reported on Form 1099-R. Limited IRS relief may exist, but it cannot be guaranteed.",
+        "response_to_participant": {
+          "opening": "Based on what you shared, you are a former employee with a $900 401(k) balance, and the distribution check was made payable to you. Since 65 days have already passed, the normal 60-day indirect rollover window has been missed, so a standard on-time rollover to your Fidelity IRA can no longer be confirmed.",
+          "key_points": [
+            "Because the money was sent to you first instead of being moved directly from one provider to another, this is an indirect rollover situation and the 60-day rule applies.",
+            "Once that 60-day window is missed, the amount is generally treated as taxable income.",
+            "If you are under age 59\u00bd, the distribution may also be subject to a 10% early withdrawal penalty.",
+            "The distribution is generally reported on IRS Form 1099-R.",
+            "Possible IRS relief is limited to situations such as an automatic waiver for certain financial institution errors, self-certification for specific qualifying circumstances, or a Private Letter Ruling in rare cases.",
+            "Because your plan uses LT Trust, any operational help would go through ForUsAll, which can clarify plan activity, verify check processing dates, or resend provider documentation."
+          ],
+          "steps": [
+            {
+              "step_number": 1,
+              "action": "Gather the records related to the distribution and delay.",
+              "detail": "Keep the check details, any mailing records, and any communications that explain why the rollover was not completed within 60 days."
+            },
+            {
+              "step_number": 2,
+              "action": "Review the situation with a qualified tax professional before attempting a late deposit into your Fidelity IRA.",
+              "detail": "They can determine whether any IRS exception path may apply and what documentation would be needed."
+            },
+            {
+              "step_number": 3,
+              "action": "If you need plan records, contact ForUsAll through your LT Trust / ForUsAll access point.",
+              "detail": "Ask for help confirming the check issue date, processing history, or replacement documentation."
+            }
+          ],
+          "warnings": [
+            "Do not assume that depositing the money now will automatically be treated as a valid rollover.",
+            "Do not rely on any exception or waiver unless it is actually supported by your facts and documentation."
+          ]
+        },
+        "questions_to_ask": [],
+        "escalation": {
+          "needed": false,
+          "reason": null
+        },
+        "guardrails_applied": [
+          "Did not guarantee that the missed 60-day deadline will qualify for an exception or waiver.",
+          "Did not state that a late deposit will count as a rollover without confirming an applicable exception.",
+          "Did not provide tax advice or tell the participant how to file taxes.",
+          "Did not state any specific fee amount or processing timeline for a Private Letter Ruling."
+        ],
+        "data_gaps": [
+          "Participant name was not available from profile data, so the response could not include name-level personalization.",
+          "Participant age was not provided, so the response could only state that the 10% early withdrawal penalty may apply if under age 59\u00bd.",
+          "The exact date the participant received the funds was not provided, but the participant's statement that 65 days have passed was sufficient to determine the 60-day window was missed.",
+          "It is not known whether the delay was caused by a financial institution error or another qualifying circumstance that could support IRS relief."
+        ],
+        "coverage_gaps": []
+      },
+      "source_articles": [
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_types_used": "decision_guide, guardrails, required_data_disambiguation, response_frames",
+          "relevance": "Covers distribution (decision_guide, guardrails, required_data_disambiguation, response_frames)",
+          "used_info": true,
+          "max_score": 0.6539
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_types_used": "decision_guide, faqs, required_data_must_have, steps",
+          "relevance": "Covers rollover (decision_guide, faqs, required_data_must_have, steps)",
+          "used_info": true,
+          "max_score": 0.6486
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_types_used": "business_rules, required_data_must_have",
+          "relevance": "Covers termination_distribution_request (business_rules, required_data_must_have)",
+          "used_info": true,
+          "max_score": 0.5814
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_types_used": "definitions",
+          "relevance": "Covers distribution (definitions)",
+          "used_info": true,
+          "max_score": 0.5628
+        }
+      ],
+      "used_chunks": [
+        {
+          "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_4",
+          "score": 0.6539,
+          "chunk_type": "required_data_disambiguation",
+          "chunk_tier": "medium",
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "content_preview": "# Required Data \u2014 Disambiguation Notes\n\nEdge-case logic and decision rules for interpreting participant data.\n\n- Force-out eligibility is based on vested balance under $7,000 and terminated employment...",
+          "content": "# Required Data \u2014 Disambiguation Notes\n\nEdge-case logic and decision rules for interpreting participant data.\n\n- Force-out eligibility is based on vested balance under $7,000 and terminated employment status.\n- Balances of $80 or less may be fully absorbed by the administrative fee (fee-out). Greater than $80 and under $1,000 may be paid in cash with mandatory withholding; balances between $1,000 and $7,000 must be rolled to a safe harbor IRA unless the participant elects otherwise."
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_37",
+          "score": 0.6486,
+          "chunk_type": "faqs",
+          "chunk_tier": "low",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Frequently Asked Questions\n\n## Q: What happens if I miss the 60-day deadline?\n**A:** If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable incom...",
+          "content": "# Frequently Asked Questions\n\n## Q: What happens if I miss the 60-day deadline?\n**A:** If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if you are under age 59\u00bd, and is reported on IRS Form 1099-R as a distribution.\n\n## Q: Are there exceptions if I miss the 60-day rollover deadline?\n**A:** Yes. The IRS may allow flexibility through waivers or extensions such as an automatic waiver for certain financial institution errors, self-certification for specific circumstances, or a Private Letter Ruling (PLR) request to the IRS in rare situations.\n\n## Q: What circumstances can support self-certification for an extension?\n**A:** Examples include serious illness or death in the family, natural disasters, errors or delays by a financial institution, and mail delivery problems or lost checks.\n"
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_6",
+          "score": 0.6182,
+          "chunk_type": "decision_guide",
+          "chunk_tier": "critical",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- For the 60-day rollover rule to be relevant,...",
+          "content": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- For the 60-day rollover rule to be relevant, the participant must have received the funds from a distribution intended to be rolled into a 401(k) or IRA by the participant.\n- Automatic waiver is described as granted when the delay was caused by a financial institution error and all other requirements are met.\n- Self-certification is described as potentially available for specific circumstances such as serious illness or death in the family, natural disasters, errors or delays by a financial institution, or mail delivery problems or lost checks.\n\n## Missing Data Scenarios:\n\n**Condition:** Cannot determine whether the 60-day rollover rule applies without confirming whether the funds were paid to the participant versus sent directly provider-to-provider.\n**Missing:** Whether the funds were received by the participant (distribution payable to the participant) versus sent provider-to-provider (direct rollover)\n**Outcome:** blocked_missing_data\n**Ask:** Were the funds paid to you (for example, a check made payable to you), or were they sent directly from one provider to another as a direct rollover?\n\n**Condition:** Cannot evaluate the 60-day window without the date the participant received the funds.\n**Missing:** Date the participant received the funds\n**Outcome:** blocked_missing_data\n**Ask:** On what date did you receive the funds from the distribution?\n\n**Condition:** Cannot determine if missed-deadline consequences apply without confirming whether the rollover was completed within 60 days of receiving the funds.\n**Missing:** Whether the rollover was completed within 60 days of receiving the funds\n**Outcome:** blocked_missing_data\n**Ask:** Did you deposit or roll the funds into your 401(k) or IRA within 60 days of receiving them?\n\n## Allowed Conclusions:\n- If this was a direct rollover sent provider-to-provider, the 60-day rollover rule does not apply.\n- If the rollover was not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income.\n- If the rollover was not completed within 60 days, the participant may owe a 10% early withdrawal penalty if under age 59\u00bd.\n- If the rollover is not completed within 60 days, the amount is reported on IRS Form 1099-R as a distribution.\n- Exceptions may be available through an automatic waiver, self-certification for certain circumstances, or a Private Letter Ruling (PLR) in rare situations.\n- A qualified tax professional can help confirm eligibility for an exception, complete documentation, determine whether a PLR is necessary, and report the transaction correctly on the tax return.\n- ForUsAll can clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice.\n\n## Not Allowed Conclusions:\n- Do not guarantee that missing the 60-day window will qualify for an exception or waiver.\n- Do not guarantee that the participant will or will not owe taxes or penalties beyond the article's general statements.\n- Do not claim that depositing funds later will qualify as a rollover without confirming an applicable exception.\n- Do not provide tax advice or tell the participant how to file taxes.\n- Do not state a specific fee amount or processing timeline for a Private Letter Ruling (PLR)."
+        },
+        {
+          "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_9",
+          "score": 0.5816,
+          "chunk_type": "guardrails",
+          "chunk_tier": "critical",
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "content_preview": "# Guardrails and Safety Rules\n\n## Must NOT Say:\n- Do not state that active employees can be force-out eligible; force-outs apply only after employment ends.\n- Do not suggest force-outs apply to balanc...",
+          "content": "# Guardrails and Safety Rules\n\n## Must NOT Say:\n- Do not state that active employees can be force-out eligible; force-outs apply only after employment ends.\n- Do not suggest force-outs apply to balances of $7,000 or more.\n- Do not omit the requirement for advance written notice before an involuntary distribution.\n- Do not guarantee a cash distribution for balances between $1,000 and $7,000; those balances must be rolled into a safe harbor IRA unless the participant elects otherwise.\n- Do not claim the administrative fee is waived; the article states an industry-standard $80 administrative fee.\n\n## Must Do If Unsure:\n- If unsure about participant eligibility or balance thresholds, confirm that employment has ended and the vested balance is under $7,000 before proceeding."
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_21",
+          "score": 0.5814,
+          "chunk_type": "business_rules",
+          "chunk_tier": "high",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Business Rules: Small_Balance_Fee_Out\n\n## Small Balance Fee Out:\n- If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is $75 ...",
+          "content": "# Business Rules: Small_Balance_Fee_Out\n\n## Small Balance Fee Out:\n- If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is $75 or less, the fee-out process applies and the account is closed with no funds distributed.\n- If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is above $75, the normal distribution process applies and the participant can submit a standard termination distribution request.\n- The $75 threshold determines whether the normal distribution process (above $75) or the fee-out account closure process ($75 or less) applies.\n- For Total Vested Balances of $75 or less, the closing fee is equal to or greater than the Total Vested Balance, reducing the account to $0 and resulting in no payout.\n- Fee-out is an account closure process initiated by ForUsAll with the recordkeeper; it is not a participant-selected distribution method in the portal.\n- The participant will receive a confirmation once the fee-out account closure has been completed.\n- Do not mention the small balance threshold when helping a participant with a balance above $75.\n"
+        },
+        {
+          "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_8",
+          "score": 0.5765,
+          "chunk_type": "response_frames",
+          "chunk_tier": "critical",
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "content_preview": "# Response Frames by Outcome\n\n\n## Outcome: can_proceed\n\n### Message Components:\n- A force-out can proceed because employment has ended and the vested balance is under $7,000.\n- Advance written notice ...",
+          "content": "# Response Frames by Outcome\n\n\n## Outcome: can_proceed\n\n### Message Components:\n- A force-out can proceed because employment has ended and the vested balance is under $7,000.\n- Advance written notice must be provided before any involuntary distribution.\n- If the balance is $80 or less, the $80 administrative fee may fully absorb the balance (fee-out) and the account is closed with no funds transferred.\n- If the balance is greater than $80 and under $1,000, the plan may issue a cash distribution with mandatory 20% withholding.\n- If the balance is between $1,000 and $7,000 and no election is made, the balance must be rolled into a safe harbor IRA.\n\n### Next Steps:\n- Confirm notice has been sent timely via reliable delivery methods.\n- If no response is received, execute the outcome according to the applicable balance threshold.\n\n### Warnings:\n- Failure to provide proper notice can invalidate the distribution and increase fiduciary risk.\n\n### Do NOT Say:\n- Do not guarantee a specific outcome without confirming the balance threshold and whether a participant election was made.\n- Do not state that notice requirements can be skipped.\n\n## Outcome: blocked_missing_data\n\n### Message Components:\n- We need to confirm eligibility details before proceeding with a force-out.\n\n### Next Steps:\n- Confirm employment has ended.\n- Confirm the vested account balance amount.\n- Confirm whether the participant responded to the advance notice.\n\n### Do NOT Say:\n- Do not proceed with a force-out without confirming termination status and balance threshold.\n\n## Outcome: blocked_not_eligible\n\n### Message Components:\n- A force-out cannot proceed because eligibility requirements are not met.\n\n### Next Steps:\n- If the participant is still employed or the balance is $7,000 or more, continue regular plan administration in accordance with plan terms.\n\n### Do NOT Say:\n- Do not state that a force-out can occur if the participant is still employed or has a balance of $7,000 or more.\n\n## Outcome: ambiguous_plan_rules\n\n### Message Components:\n- Force-outs must follow IRS, DOL, and ERISA rules, including safe harbor IRA requirements and proper notice procedures.\n\n### Next Steps:\n- Confirm compliance with IRS Regulation \u00a7 401(a)(31)(B), DOL Safe Harbor Rules, and ERISA standards before proceeding.\n\n### Warnings:\n- Noncompliance can lead to plan errors, penalties, or audits.\n\n### Do NOT Say:\n- Do not guarantee compliance without confirming all regulatory requirements are met."
+        },
+        {
+          "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_7",
+          "score": 0.575,
+          "chunk_type": "decision_guide",
+          "chunk_tier": "critical",
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "content_preview": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- Employment has ended.\n- Vested account balan...",
+          "content": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- Employment has ended.\n- Vested account balance is under $7,000.\n\n## Blocking Conditions:\n- Participant is still employed.\n- Vested account balance is $7,000 or more.\n\n## Missing Data Scenarios:\n\n**Condition:** Employment status is not confirmed.\n**Missing:** Employment status has ended\n**Outcome:** blocked_missing_data\n**Ask:** None\n\n**Condition:** Vested account balance amount is not available.\n**Missing:** Vested account balance amount\n**Outcome:** blocked_missing_data\n**Ask:** None\n\n**Condition:** Participant response to advance notice is not documented.\n**Missing:** Participant response to advance notice\n**Outcome:** blocked_missing_data\n**Ask:** None\n\n## Allowed Conclusions:\n- A force-out may be initiated if employment has ended and the vested balance is under $7,000.\n- Balances of $80 or less may be fully absorbed by the $80 administrative fee, resulting in account closure with no funds transferred (fee-out).\n- Greater than $80 and under $1,000 may be paid in cash with mandatory 20% withholding.\n- Balances between $1,000 and $7,000 must be rolled into a safe harbor IRA unless the participant elects otherwise.\n- Participants must receive advance written notice before an involuntary distribution.\n\n## Not Allowed Conclusions:\n- Do not conclude a force-out can occur while the participant is still employed.\n- Do not conclude balances of $7,000 or more are eligible for force-out.\n- Do not state that notice is optional before an involuntary distribution."
+        },
+        {
+          "chunk_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_40",
+          "score": 0.5628,
+          "chunk_type": "definitions",
+          "chunk_tier": "low",
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "content_preview": "# Definitions and Terms\n\n## Cash distribution\nA payment of 401(k) funds directly to the participant, typically by check or wire.\n\n## Rollover distribution\nA movement of 401(k) funds to an IRA or anoth...",
+          "content": "# Definitions and Terms\n\n## Cash distribution\nA payment of 401(k) funds directly to the participant, typically by check or wire.\n\n## Rollover distribution\nA movement of 401(k) funds to an IRA or another qualified retirement plan that can avoid immediate taxes and penalties if done properly.\n\n## Pre-tax funds\n401(k) contributions made before income taxes are applied. These funds grow tax-deferred, meaning taxes are owed when the money is eventually withdrawn. The article describes rolling pre-tax funds to a Traditional IRA as an example.\n\n## Roth funds\n401(k) contributions made with after-tax dollars. These funds have tax-free growth potential and qualified withdrawals are generally tax-free. The article describes rolling Roth funds to a Roth IRA as an example.\n\n## 1099-R\nThe tax form issued for reporting a distribution or rollover.\n\n## Minimum Balance Rule\nThe rule described in the article stating that if the account balance is less than $7,000, the former employer has the right to remove the participant from the plan.\n\n## Mandatory cash-out\nA payout the participant may receive if the account balance is less than $1,000, minus taxes and potential penalties.\n\n## IRA\nAn Individual Retirement Account that may receive rolled over 401(k) funds, including an IRA chosen by the plan provider or a new IRA selected for a rollover.\n\n## Qualified plan\nAre Qualified 401(k) plans, 403(b) plan (tax-sheltered annuity), Governmental 457(b) plan, 403(a) annuity plan, SIMPLE IRA, Traditional IRA, Roth IRA and SEP IRA.\n\n## Wire transfer\nA payment or rollover method where funds are sent directly to the new account.\n\n## Check\nA payment or rollover method where funds are mailed to the participant or to the new IRA or plan provider, depending on the distribution type.\n\n## Federal tax withholding\nThe federal tax amount that may apply to a cash distribution, which the article states is 20%.\n\n## State taxes\nTaxes that may also be withheld from a cash distribution if the participant's state mandates it.\n\n## 10% early withdrawal penalty\nAn additional penalty that may apply when a participant under age 59\u00bd takes a cash distribution, unless an exception applies.\n\n## 60 days rule\nThe time period the article says generally applies to complete a rollover when the funds are paid to the participant first, in order to avoid taxes and penalties.\n\n## Traditional IRA\nThe IRA type used in the article's example for rolling over pre-tax 401(k) funds.\n\n## Roth IRA\nThe IRA type used in the article's example for rolling over Roth 401(k) funds.\n\n## Distribution request\nThe request submitted for a 401(k) distribution, during which Roth and pre-tax funds are automatically separated according to the article.\n\n## Distribution option\nThe option selected for each source in the account, such as rollover or cash distribution.\n\n## Payment method\nThe method selected for each source in the account, such as check or wire.\n\n## Current selections\nThe participant's existing investment selections that continue to apply if the 401(k) account remains in the plan.\n"
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_1",
+          "score": 0.5148,
+          "chunk_type": "required_data_must_have",
+          "chunk_tier": "critical",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Required Data \u2014 Must Have (Portal/Profile Data)\n\nThese fields MUST be collected from the participant portal or profile system.\n\n### Termination date\n**Description:** The date the participant termina...",
+          "content": "# Required Data \u2014 Must Have (Portal/Profile Data)\n\nThese fields MUST be collected from the participant portal or profile system.\n\n### Termination date\n**Description:** The date the participant terminated their employment.\n**Why needed:** To verify eligibility for distribution, without a termination date, the participant cannot proceed with the request.\n**Source:** participant_profile\n**Examples:** 1700-01-09, 2026-01-09\n\n### Rehire date\n**Description:** The date the participant was rehired.\n**Why needed:** To verify eligibility for distribution, to be eligible, rehire date must be before to the termination date.\n**Source:** participant_profile\n**Examples:** 1700-01-09, 2026-01-09\n\n### MFA status\n**Description:** The status of the participant's MFA enrollment.\n**Why needed:** To verify access to the participant portal, without a MFA enrollment, the participant cannot proceed with the request since they cannot log in to the portal.\n**Source:** participant_profile\n**Examples:** enrolled, not enrolled\n\n### Account Balance\n**Description:** The total amount of money in the participant's 401(k) account that they own outright and can withdraw or roll over upon termination of employment.\n**Why needed:** To verify eligibility for distribution, the account Total Vested Balance must be greater than 75.00 for a normal distribution. If the account Total Vested Balance is less than or equal to 75.00, the fee-out process applies and no funds may be distributed to the participant.\n**Source:** participant_profile\n**Examples:** 10000.0, 100000.0, 0.0, 95.23, 75.0, 75.01, 50.0, 74.99\n\n### Last Payroll date\n**Description:** The date of the participant's last payroll.\n**Why needed:** Used to confirm there are no pending contributions; it is better if the last payroll date is more than 1 week before the distribution request so all participant funds are available.\n**Source:** agent_input\n**Examples:** 1700-01-09, 2026-01-09\n\n### Participant's name\n**Description:** The name of the participant.\n**Why needed:** Required to confirm that we found a user related to the participant in our system.\n**Source:** participant_profile\n**Examples:** John Doe, Jane Doe, Oscar Santiago Garcia \n\n### Participant Status\n**Description:** The status of the participant in the system.\n**Why needed:** Required to confirm that the participant has already left their employer in order to request a distribution.\n**Source:** participant_profile\n**Examples:** Active, Terminated, Ineligible, Deceased, Unknown\n"
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_1",
+          "score": 0.4291,
+          "chunk_type": "required_data_must_have",
+          "chunk_tier": "critical",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Required Data \u2014 Must Have (Portal/Profile Data)\n\nThese fields MUST be collected from the participant portal or profile system.\n\n### Whether the funds were received by the participant (distribution p...",
+          "content": "# Required Data \u2014 Must Have (Portal/Profile Data)\n\nThese fields MUST be collected from the participant portal or profile system.\n\n### Whether the funds were received by the participant (distribution payable to the participant) versus sent provider-to-provider (direct rollover)\n**Description:** Determines whether the 60-day rollover rule applies (it applies to distributions intended to be rolled over by the participant and does not apply to direct rollovers).\n**Why needed:** Used to determine if the 60-day rollover rule applies.\n**Source:** agent_input\n**Examples:** Check made payable to you, Funds sent directly from one provider to another\n\n### Date the participant received the funds\n**Description:** Used to determine when the 60-day rollover window starts.\n**Why needed:** Needed to evaluate whether the rollover was completed within 60 days of receiving the funds.\n**Source:** agent_input\n**Examples:** 2026-02-04, 2026-03-15\n\n### Whether the rollover was completed within 60 days of receiving the funds\n**Description:** Determines whether the distribution is treated as an on-time rollover or a missed-deadline situation under the article's rule.\n**Why needed:** Needed to determine whether the missed-deadline consequences apply.\n**Source:** agent_input\n**Examples:** Completed within 60 days, Not completed within 60 days\n"
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_16",
+          "score": 0.3387,
+          "chunk_type": "steps",
+          "chunk_tier": "high",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Step-by-Step Procedure\n\n## Step 7: If the participant needs operational help, provide ForUsAll support contact information to clarify plan activity, verify check processing dates, or resend provider...",
+          "content": "# Step-by-Step Procedure\n\n## Step 7: If the participant needs operational help, provide ForUsAll support contact information to clarify plan activity, verify check processing dates, or resend provider documentation.\n**Note:** Do not provide tax advice.\n"
+        }
+      ],
+      "coverage_gaps": [],
+      "metadata": {
+        "chunks_used": 11,
+        "context_tokens": 3786,
+        "response_tokens": 856,
+        "model": "gpt-5.4",
+        "total_inquiries": 1,
+        "sub_queries": [
+          "missed 60-day indirect rollover deadline for 401k distribution tax consequences IRS waiver or self-certification exceptions",
+          "terminated 401k balance under $1000 mandatory cash-out force-out rules when distribution check is made payable to participant"
+        ],
+        "per_query_scores": {
+          "missed 60-day indirect rollover deadline for 401k distribution tax consequences IRS waiver or self-certification exceptions": 0.6486,
+          "terminated 401k balance under $1000 mandatory cash-out force-out rules when distribution check is made payable to participant": 0.6539
+        },
+        "unique_articles": 4,
+        "relevant_articles": 4,
+        "coverage_gaps": []
+      }
+    },
+    "latency_seconds": 54.15
+  },
+  "knowledge_question": {
+    "data": {
+      "answer": "Because the check was made payable to you, the knowledge base treats this as a distribution that you would need to complete as an indirect rollover. In that situation, the rollover generally must be completed within 60 days of receiving the funds.\n\nSince you said it has been 65 days, the knowledge base says the distribution is generally treated as taxable income. If you are under age 59\u00bd, you may also owe a 10% early withdrawal penalty. The amount is generally reported on IRS Form 1099-R as a distribution.\n\nA few important points about your situation:\n\n1. Why this happened\n- For former employees, balances greater than $80 and under $1,000 may be paid out in cash, with mandatory 20% withholding.\n- More generally, balances under $1,000 may be cashed out by the former employer.\n- Your $900 balance falls into that range.\n\n2. What the missed 60-day deadline usually means\n- If the rollover is not completed within 60 days after you received the funds, it generally does not qualify as a rollover.\n- Depositing the money into your Fidelity IRA after 60 days generally does not count as a rollover unless an IRS exception applies.\n\n3. Possible exceptions\nThe knowledge base says the IRS may allow flexibility in some cases through:\n- an automatic waiver for certain financial institution errors,\n- self-certification for specific circumstances, or\n- a Private Letter Ruling (PLR) request in rare situations.\n\nExamples of circumstances that may support self-certification include:\n- serious illness or death in the family,\n- natural disasters,\n- errors or delays by a financial institution, and\n- mail delivery problems or lost checks.\n\n4. What to do next\n- If you think one of those exception situations may apply, the knowledge base recommends consulting a qualified tax professional to confirm whether you may be eligible and to help with any required documentation.\n- ForUsAll cannot provide tax advice or confirm whether an IRS exception will be approved.\n- ForUsAll can help clarify plan activity, verify check processing dates, or resend provider documentation if needed.\n\n5. Direct vs. indirect rollover rule\n- The 60-day rule applies when the funds were paid to you first.\n- It does not apply to a direct rollover where funds are sent directly from one provider to another.\n\nSo, based on the knowledge base, if it has truly been 65 days since you received the check, the late deposit to your Fidelity IRA generally would not qualify as a rollover unless you meet an IRS exception. A qualified tax professional would be the right resource to review whether an exception, self-certification, or a rare PLR route may be available.",
+      "key_points": [
+        "A check made payable to you is generally subject to the 60-day indirect rollover rule.",
+        "After 60 days, the distribution is generally taxable, may carry a 10% early withdrawal penalty if under age 59\u00bd, and is reported on Form 1099-R.",
+        "A late deposit generally does not count as a rollover unless an IRS exception applies.",
+        "Possible exception paths mentioned in the knowledge base include certain financial institution error waivers, self-certification for specific circumstances, or a rare Private Letter Ruling.",
+        "ForUsAll can help verify dates or resend documentation, but cannot provide tax advice or guarantee exception eligibility."
+      ],
+      "source_articles": [
+        {
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "chunk_types_used": "business_rules, faqs, required_data_disambiguation",
+          "relevance": "Covers distribution (business_rules, faqs, required_data_disambiguation)",
+          "used_info": true,
+          "max_score": 0.6558
+        },
+        {
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "chunk_types_used": "business_rules, faqs, guardrails",
+          "relevance": "Covers rollover (business_rules, faqs, guardrails)",
+          "used_info": true,
+          "max_score": 0.6213
+        },
+        {
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "chunk_types_used": "additional_notes, business_rules, example, faqs, steps",
+          "relevance": "Covers termination_distribution_request (additional_notes, business_rules, example, faqs, steps)",
+          "used_info": true,
+          "max_score": 0.6026
+        },
+        {
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "chunk_types_used": "additional_notes, business_rules, steps",
+          "relevance": "Covers distribution (additional_notes, business_rules, steps)",
+          "used_info": true,
+          "max_score": 0.5796
+        }
+      ],
+      "used_chunks": [
+        {
+          "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_22",
+          "score": 0.6558,
+          "chunk_type": "faqs",
+          "chunk_tier": "low",
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "content_preview": "# Frequently Asked Questions\n\n## Q: What is a 401(k) force-out?\n**A:** A 401(k) force-out occurs when a former employee's vested account balance is below a certain threshold and the employer initiates...",
+          "content": "# Frequently Asked Questions\n\n## Q: What is a 401(k) force-out?\n**A:** A 401(k) force-out occurs when a former employee's vested account balance is below a certain threshold and the employer initiates a distribution by check or rollover without the participant's direct request.\n\n## Q: What balance thresholds apply to force-outs?\n**A:** Force-outs apply only to former employees with vested balances under $7,000; balances of $80 or less may be fully absorbed by the $80 administrative fee (fee-out), greater than $80 and under $1,000 may be paid in cash with 20% withholding, and $1,000 to $7,000 must be rolled into a safe harbor IRA unless the participant elects otherwise.\n\n## Q: Is participant notice required before a force-out?\n**A:** Yes. Participants must receive advance written notice and an opportunity to act before any involuntary distribution occurs.\n"
+        },
+        {
+          "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_4",
+          "score": 0.6476,
+          "chunk_type": "required_data_disambiguation",
+          "chunk_tier": "medium",
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "content_preview": "# Required Data \u2014 Disambiguation Notes\n\nEdge-case logic and decision rules for interpreting participant data.\n\n- Force-out eligibility is based on vested balance under $7,000 and terminated employment...",
+          "content": "# Required Data \u2014 Disambiguation Notes\n\nEdge-case logic and decision rules for interpreting participant data.\n\n- Force-out eligibility is based on vested balance under $7,000 and terminated employment status.\n- Balances of $80 or less may be fully absorbed by the administrative fee (fee-out). Greater than $80 and under $1,000 may be paid in cash with mandatory withholding; balances between $1,000 and $7,000 must be rolled to a safe harbor IRA unless the participant elects otherwise."
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_37",
+          "score": 0.6213,
+          "chunk_type": "faqs",
+          "chunk_tier": "low",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Frequently Asked Questions\n\n## Q: What happens if I miss the 60-day deadline?\n**A:** If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable incom...",
+          "content": "# Frequently Asked Questions\n\n## Q: What happens if I miss the 60-day deadline?\n**A:** If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if you are under age 59\u00bd, and is reported on IRS Form 1099-R as a distribution.\n\n## Q: Are there exceptions if I miss the 60-day rollover deadline?\n**A:** Yes. The IRS may allow flexibility through waivers or extensions such as an automatic waiver for certain financial institution errors, self-certification for specific circumstances, or a Private Letter Ruling (PLR) request to the IRS in rare situations.\n\n## Q: What circumstances can support self-certification for an extension?\n**A:** Examples include serious illness or death in the family, natural disasters, errors or delays by a financial institution, and mail delivery problems or lost checks.\n"
+        },
+        {
+          "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_11",
+          "score": 0.6132,
+          "chunk_type": "business_rules",
+          "chunk_tier": "high",
+          "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+          "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+          "content_preview": "# Business Rules: Distribution_Thresholds\n\n## Distribution Thresholds:\n- Balances of $80 or less: The $80 administrative fee can fully absorb the balance, resulting in account closure with no funds tr...",
+          "content": "# Business Rules: Distribution_Thresholds\n\n## Distribution Thresholds:\n- Balances of $80 or less: The $80 administrative fee can fully absorb the balance, resulting in account closure with no funds transferred (fee-out).\n- Greater than $80 and under $1,000: Plans may issue a cash distribution, minus mandatory 20% withholding.\n- $1,000 to $7,000: The plan must automatically roll the balance into a safe harbor IRA, unless the participant elects otherwise.\n"
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_42",
+          "score": 0.6026,
+          "chunk_type": "example",
+          "chunk_tier": "medium",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Example Scenario\n\n**Scenario:** A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $500 and wants a paper check as a cash lump sum distribut...",
+          "content": "# Example Scenario\n\n**Scenario:** A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $500 and wants a paper check as a cash lump sum distribution.\n\n**Outcome:** The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose Lump Sum and check as the method, and submit the request. If they don't have MFA enrolled or cannot log in, direct them to contact ForUsAll Support to request an electronic form."
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_41",
+          "score": 0.5951,
+          "chunk_type": "example",
+          "chunk_tier": "medium",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Example Scenario\n\n**Scenario:** A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $80, has MFA enrolled, has online access, and does not kn...",
+          "content": "# Example Scenario\n\n**Scenario:** A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $80, has MFA enrolled, has online access, and does not know how to request a distribution.\n\n**Outcome:** Confirm that balances above $75 follow the standard termination distribution process and restate the navigation steps (log in > Loans & Distributions > Separation of Service section > select Termination Distribution or Default). If the participant still cannot locate it, advise them to contact ForUsAll Support for assistance."
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_21",
+          "score": 0.5902,
+          "chunk_type": "business_rules",
+          "chunk_tier": "high",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Business Rules: Small_Balance_Fee_Out\n\n## Small Balance Fee Out:\n- If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is $75 ...",
+          "content": "# Business Rules: Small_Balance_Fee_Out\n\n## Small Balance Fee Out:\n- If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is $75 or less, the fee-out process applies and the account is closed with no funds distributed.\n- If a participant's Eligibility Status is Terminated, has a Termination Date on file, and their account Total Vested Balance is above $75, the normal distribution process applies and the participant can submit a standard termination distribution request.\n- The $75 threshold determines whether the normal distribution process (above $75) or the fee-out account closure process ($75 or less) applies.\n- For Total Vested Balances of $75 or less, the closing fee is equal to or greater than the Total Vested Balance, reducing the account to $0 and resulting in no payout.\n- Fee-out is an account closure process initiated by ForUsAll with the recordkeeper; it is not a participant-selected distribution method in the portal.\n- The participant will receive a confirmation once the fee-out account closure has been completed.\n- Do not mention the small balance threshold when helping a participant with a balance above $75.\n"
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_61",
+          "score": 0.5878,
+          "chunk_type": "additional_notes",
+          "chunk_tier": "low",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Additional Information: Small Balance Fee Out\n\n- If a terminated participant with a termination date on file has a Total Vested Balance of $75 or less, the fee-out process applies: ForUsAll submits ...",
+          "content": "# Additional Information: Small Balance Fee Out\n\n- If a terminated participant with a termination date on file has a Total Vested Balance of $75 or less, the fee-out process applies: ForUsAll submits a fee-out request to the recordkeeper, a standard closing fee is applied, and the account is reduced to $0 with no funds distributed.\n- The $75 threshold determines whether the normal distribution process (above $75) or the fee-out account closure process ($75 or less) applies.\n- $75 or less includes an exact balance of $75.00; this is treated as fee-out, not a standard distribution.\n- Above $75 means strictly greater than $75.00 (for example, $75.01 follows the normal distribution process).\n- Do not mention the small balance threshold when helping a participant with a balance above $75.\n- The participant will receive a confirmation once the fee-out closure is complete."
+        },
+        {
+          "chunk_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_15",
+          "score": 0.5796,
+          "chunk_type": "steps",
+          "chunk_tier": "high",
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "content_preview": "# Step-by-Step Procedure\n\n## Step 4: Review the minimum balance rules for leaving funds in the plan: balances under $7,000 may be removed from the plan by the former employer, balances under $1,000 ma...",
+          "content": "# Step-by-Step Procedure\n\n## Step 4: Review the minimum balance rules for leaving funds in the plan: balances under $7,000 may be removed from the plan by the former employer, balances under $1,000 may be cashed out, and balances between $1,000 and $7,000 may be automatically rolled into an IRA chosen by the plan provider.\n**Note:** The article describes these as possible plan outcomes the former employer has the right to apply.\n\n## Step 5: If the participant is considering a cash distribution, explain that funds are paid directly to them, typically by check or wire.\n**Note:** This option gives immediate access to cash but can reduce long-term retirement savings.\n\n## Step 6: Explain the tax consequences of a cash distribution, including typical 20% federal withholding, possible state withholding, and the possible 10% early withdrawal penalty for participants under age 59\u00bd unless an exception applies.\n**Note:** Also state that a 1099-R will be issued for tax reporting.\n"
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_11",
+          "score": 0.557,
+          "chunk_type": "business_rules",
+          "chunk_tier": "high",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Business Rules: Deadline_And_Consequences\n\n## Deadline And Consequences:\n- If the rollover is not completed within 60 days of receiving the funds, the distribution is generally treated as taxable in...",
+          "content": "# Business Rules: Deadline_And_Consequences\n\n## Deadline And Consequences:\n- If the rollover is not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income.\n- If the rollover is not completed within the 60-day window, the participant may owe a 10% early withdrawal penalty if under age 59\u00bd.\n- If the rollover is not completed within the 60-day window, the amount is reported on IRS Form 1099-R as a distribution.\n- Depositing the funds into another retirement account later does not qualify as a rollover unless certain exceptions are met.\n"
+        },
+        {
+          "chunk_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_42",
+          "score": 0.5542,
+          "chunk_type": "additional_notes",
+          "chunk_tier": "low",
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "content_preview": "# Additional Information: Rollover Timing\n\n- If the rollover is not a direct transfer and funds are paid via mail check to the participant first, the rollover generally must be completed within 60 day...",
+          "content": "# Additional Information: Rollover Timing\n\n- If the rollover is not a direct transfer and funds are paid via mail check to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties."
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_38",
+          "score": 0.5442,
+          "chunk_type": "faqs",
+          "chunk_tier": "low",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Frequently Asked Questions\n\n## Q: Can ForUsAll provide tax advice about the 60-day rollover rule?\n**A:** No. ForUsAll can help clarify plan activity, verify check processing dates, or resend provide...",
+          "content": "# Frequently Asked Questions\n\n## Q: Can ForUsAll provide tax advice about the 60-day rollover rule?\n**A:** No. ForUsAll can help clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice.\n\n## Q: If I miss the 60-day deadline but deposit the funds into another retirement account later, does it still count as a rollover?\n**A:** No. The article states that even if you deposit the funds into another retirement account later, it will not qualify as a rollover unless you meet certain exceptions.\n\n## Q: What is an automatic waiver for the 60-day rollover deadline?\n**A:** The article states an automatic waiver may be granted when the delay was caused by a financial institution error and all other requirements are met.\n"
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_40",
+          "score": 0.5384,
+          "chunk_type": "faqs",
+          "chunk_tier": "low",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Frequently Asked Questions\n\n## Q: What is a Private Letter Ruling (PLR) and when might it be used for a missed 60-day rollover?\n**A:** The article states that in rare situations you can request a fo...",
+          "content": "# Frequently Asked Questions\n\n## Q: What is a Private Letter Ruling (PLR) and when might it be used for a missed 60-day rollover?\n**A:** The article states that in rare situations you can request a formal waiver directly from the IRS through a Private Letter Ruling (PLR).\n\n## Q: What does a Private Letter Ruling (PLR) involve?\n**A:** The article states a PLR involves a written application, a fee, and longer processing times.\n\n## Q: What can a tax professional help me with related to a missed 60-day rollover?\n**A:** The article recommends consulting a qualified tax professional to confirm whether you are eligible for an exception, help you complete required documentation (like self-certification), determine if a Private Letter Ruling is necessary, and report the transaction correctly on your tax return.\n"
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_8",
+          "score": 0.5319,
+          "chunk_type": "guardrails",
+          "chunk_tier": "critical",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Guardrails and Safety Rules\n\n## Must NOT Say:\n- Do not provide tax advice.\n- Do not guarantee that a missed 60-day rollover deadline will be approved for an exception, waiver, or extension.\n- Do not...",
+          "content": "# Guardrails and Safety Rules\n\n## Must NOT Say:\n- Do not provide tax advice.\n- Do not guarantee that a missed 60-day rollover deadline will be approved for an exception, waiver, or extension.\n- Do not guarantee that a late deposit into another retirement account will qualify as a rollover without an exception.\n- Do not state or imply specific tax outcomes beyond the article's general statements (for example, do not promise no taxes or no penalties).\n- Do not state a specific fee amount for a Private Letter Ruling (PLR) because the article does not provide an amount.\n- Do not state specific processing timelines because the article only states that a PLR has longer processing times.\n- Do not claim that the 60-day rollover rule applies to direct rollovers where funds are sent directly from one provider to another.\n- Do not tell the participant that depositing the funds after 60 days will still qualify as a rollover unless you also state that it requires meeting an exception.\n- Do not instruct the participant on how to complete, submit, or word a self-certification beyond stating that self-certification may be possible and that they should keep proper documentation.\n- Do not advise the participant to submit forms to the IRS without also stating the article's recommendation to consult a qualified tax professional first.\n- Do not tell the participant they definitely owe the 10% early withdrawal penalty; the article states they may owe it only if they are under age 59\u00bd.\n- Do not claim the participant is eligible for an automatic waiver unless it is established that the delay was caused by a financial institution error and all other requirements are met (as stated in the article).\n- Do not claim that any specific self-certification circumstance will be accepted by the IRS; the article states self-certification may be possible for specific circumstances.\n- Do not suggest that a Private Letter Ruling (PLR) is always required to address a missed 60-day rollover; the article describes PLR as a rare situation.\n- Do not imply ForUsAll can determine whether a participant qualifies for an IRS waiver or extension; the article directs participants to consult a qualified tax professional for eligibility confirmation.\n- Do not state or imply that IRS Form 5498 is required in all cases; the article says it may be used as evidence during tax filing for self-certification situations.\n- Do not tell the participant that IRS Form 1099-R will not be issued if they later deposit the funds; the article states the amount is reported on IRS Form 1099-R as a distribution when the rollover is not completed within the 60-day window.\n- Do not characterize the 60-day rule as optional or flexible by default; the article states the rollover must be completed within 60 days unless an exception applies.\n\n## Must Do If Unsure:\n- If it is unclear whether the transaction was a direct rollover or a distribution payable to the participant, ask clarifying questions before applying the 60-day rule.\n- If the participant is seeking to claim an exception, recommend consulting a qualified tax professional to confirm eligibility and complete documentation.\n- If dates related to receiving funds or check processing are unclear, offer ForUsAll help to verify check processing dates or resend provider documentation.\n- If the payment type is unclear (paid to the participant versus provider-to-provider), ask how the funds were issued before referencing the 60-day rollover window.\n- If the participant asks which exception applies or whether they qualify, restate that only a qualified tax professional can confirm eligibility and advise them to consult one before taking next steps.\n- If the participant cannot confirm dates from memory, ask them to provide the date they received the funds and avoid concluding the deadline status until they share it.\n- If it is unclear when the 60-day rollover window started, ask the participant for the date they received the funds and do not conclude whether the deadline was met without that information.\n- If the participant believes a late deposit automatically qualifies as a rollover, restate that a late deposit generally does not qualify unless an exception is met, and recommend consulting a qualified tax professional about exceptions.\n- If the participant is asking about whether the distribution will be taxable or whether penalties apply, restate the article's general consequences and recommend consulting a qualified tax professional for their specific tax situation.\n- If the participant indicates a financial institution error or delay contributed to missing the deadline, explain the article's automatic waiver concept and recommend consulting a qualified tax professional before claiming an exception.\n- If the participant indicates circumstances listed for self-certification (such as serious illness or death in the family, natural disasters, financial institution errors or delays, or mail delivery problems or lost checks), explain that self-certification may be possible, remind them to keep proper documentation, and recommend consulting a qualified tax professional.\n- If the participant asks how to complete self-certification or what documentation is sufficient, refer them to a qualified tax professional to help complete required documentation, as the article advises.\n- If the participant asks whether a Private Letter Ruling is necessary, explain that the article describes PLR as a rare option and recommend consulting a qualified tax professional to determine whether it is necessary.\n- If the participant requests tax-return filing instructions or form-by-form guidance, state that ForUsAll cannot provide tax advice and recommend consulting a qualified tax professional to report the transaction correctly on the tax return."
+        },
+        {
+          "chunk_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_12",
+          "score": 0.5253,
+          "chunk_type": "business_rules",
+          "chunk_tier": "high",
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "content_preview": "# Business Rules: Rollover_Rules\n\n## Rollover Rules:\n- A rollover distribution allows the participant to move 401(k) funds to an IRA or another qualified retirement plan without paying immediate taxes...",
+          "content": "# Business Rules: Rollover_Rules\n\n## Rollover Rules:\n- A rollover distribution allows the participant to move 401(k) funds to an IRA or another qualified retirement plan without paying immediate taxes or penalties if done properly.\n- A rollover preserves retirement savings and keeps funds growing.\n- A rollover can be completed by check mailed to the new IRA or plan provider or by wire transfer directly to the new account.\n- If the rollover is not a direct transfer and the funds are paid to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties.\n- A 1099-R will be issued the following year for rollover reporting purposes.\n"
+        },
+        {
+          "chunk_id": "missed_60_day_rollover_window_chunk_36",
+          "score": 0.524,
+          "chunk_type": "faqs",
+          "chunk_tier": "low",
+          "article_id": "missed_60_day_rollover_window",
+          "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+          "content_preview": "# Frequently Asked Questions\n\n## Q: What is the 60-day rollover rule?\n**A:** The IRS allows you to move funds between eligible retirement accounts without paying taxes or penalties if you complete the...",
+          "content": "# Frequently Asked Questions\n\n## Q: What is the 60-day rollover rule?\n**A:** The IRS allows you to move funds between eligible retirement accounts without paying taxes or penalties if you complete the rollover within 60 days of receiving the funds.\n\n## Q: When does the 60-day rollover rule apply?\n**A:** It applies when you took a distribution and intended to roll the funds into a 401(k) or IRA yourself, such as when a check is made payable to you.\n\n## Q: Does the 60-day rule apply to direct rollovers?\n**A:** No. It does not apply to direct rollovers where funds are sent directly from one provider to another.\n"
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_45",
+          "score": 0.4742,
+          "chunk_type": "faqs",
+          "chunk_tier": "low",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Frequently Asked Questions\n\n## Q: Where do the funds go in a termination distribution or rollover?\n**A:** Funds move from the ForUsAll plan out to the participant or another institution as a distrib...",
+          "content": "# Frequently Asked Questions\n\n## Q: Where do the funds go in a termination distribution or rollover?\n**A:** Funds move from the ForUsAll plan out to the participant or another institution as a distribution or outgoing rollover.\n\n## Q: What should I do if Separation of Service is not available as a reason?\n**A:** Select Default and proceed. If the portal shows Default instead of Separation of Service, this is a known website issue and Default is the same option. If unsure whether separation is recorded, contact ForUsAll Support.\n\n## Q: What are the delivery timelines for checks and wires?\n**A:** ForUsAll reviews within about two business days. Standard checks typically arrive in about 2\u20133 weeks after approval via USPS, wires typically complete in about 1\u20132 weeks after approval depending on the receiving institution, and overnight checks typically complete in about 1\u20132 weeks after approval.\n"
+        },
+        {
+          "chunk_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_16",
+          "score": 0.4382,
+          "chunk_type": "steps",
+          "chunk_tier": "high",
+          "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+          "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+          "content_preview": "# Step-by-Step Procedure\n\n## Step 7: If the participant is considering a rollover, explain that funds can be moved to an IRA or another qualified retirement plan without immediate taxes or penalties i...",
+          "content": "# Step-by-Step Procedure\n\n## Step 7: If the participant is considering a rollover, explain that funds can be moved to an IRA or another qualified retirement plan without immediate taxes or penalties if done properly.\n**Note:** This preserves retirement savings and continued tax-advantaged growth.\n\n## Step 8: Explain the two rollover payment methods described in the article: a check mailed to the new IRA or plan provider, or a wire transfer sent directly to the new account.\n**Note:** The article notes that wire transfers are faster but require specific instructions.\n\n## Step 9: If the rollover will not be a direct transfer and funds will be paid to the participant first, explain the 60-day timing rule described in the article.\n**Note:** The article states that the rollover generally must be completed within 60 days to avoid taxes and penalties.\n"
+        },
+        {
+          "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_24",
+          "score": 0.4358,
+          "chunk_type": "steps",
+          "chunk_tier": "high",
+          "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+          "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+          "content_preview": "# Step-by-Step Procedure\n\n## Step 7: The participant must review elections and submit the request in the portal.\n**Note:** The participant must confirm distribution elections, tax withholding, and del...",
+          "content": "# Step-by-Step Procedure\n\n## Step 7: The participant must review elections and submit the request in the portal.\n**Note:** The participant must confirm distribution elections, tax withholding, and delivery method, then submit. For rollovers, Traditional funds can go into a Traditional type account or a Roth type account (Roth conversion may have tax implications), and Roth funds must go into a Roth type account. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored.\n\n## Step 8: The participant must track review, processing, and delivery timelines after submission.\n**Note:** ForUsAll reviews within about two business days. Standard checks typically arrive in about 2\u20133 weeks after approval via USPS. Wires typically complete in about 1\u20132 weeks after approval depending on the receiving institution. Overnight checks typically complete in about 1\u20132 weeks after approval.\n"
+        }
+      ],
+      "confidence_note": "well_covered",
+      "metadata": {
+        "chunks_used": 19,
+        "context_tokens": 3943,
+        "model": "gpt-5.4",
+        "sub_queries": [
+          "missed 60-day indirect rollover deadline 401k to IRA tax consequences late rollover self-certification IRS exceptions",
+          "terminated 401k balance under $1000 mandatory cash-out force-out distribution rules check payable to participant"
+        ],
+        "unique_articles": 4,
+        "relevant_articles": 4,
+        "coverage_gaps": [],
+        "per_query_scores": {
+          "missed 60-day indirect rollover deadline 401k to IRA tax consequences late rollover self-certification IRS exceptions": 0.6213,
+          "terminated 401k balance under $1000 mandatory cash-out force-out distribution rules check payable to participant": 0.6558,
+          "I left my job, my 401(k) balance is $900, and I received a check made payable to me. I was planning to roll it over to my Fidelity IRA but it's been 65 days. What happens now and what are my options?": 0.5409
+        }
+      }
+    },
+    "latency_seconds": 27.52
+  }
+}

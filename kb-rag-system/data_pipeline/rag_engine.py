@@ -35,6 +35,20 @@ logger = logging.getLogger(__name__)
 
 
 # ============================================================================
+# Exceptions
+# ============================================================================
+
+class LLMEmptyResponseError(Exception):
+    """Raised when the LLM returns empty or None content after all retries."""
+    def __init__(self, finish_reason: str, usage: Any = None):
+        self.finish_reason = finish_reason
+        self.usage = usage
+        super().__init__(
+            f"LLM returned no content (finish_reason={finish_reason}, usage={usage})"
+        )
+
+
+# ============================================================================
 # Data Models
 # ============================================================================
 
@@ -158,9 +172,6 @@ class RAGEngine:
             maxsize=self.CACHE_MAX_SIZE,
             ttl=self.CACHE_TTL_SECONDS
         )
-        # Lock to prevent duplicate Pinecone calls when concurrent coroutines
-        # check the cache before either has written back.
-        self._cache_lock = asyncio.Lock()
         
         logger.info(f"RAG Engine inicializado con modelo: {model}")
         if self.is_gpt5 and reasoning_effort:
@@ -246,11 +257,15 @@ class RAGEngine:
                 topic=topic
             )
             
-            llm_response = await self._call_llm(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=800
-            )
+            try:
+                llm_response = await self._call_llm(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=800
+                )
+            except LLMEmptyResponseError as e:
+                logger.error(f"LLM returned empty content in required_data: {e}")
+                llm_response = json.dumps({"participant_data": [], "plan_data": [], "coverage_gaps": []})
             
             # 5. Parse LLM response + extract coverage gaps
             try:
@@ -418,12 +433,20 @@ class RAGEngine:
                 max_tokens=completion_budget
             )
             
-            # 6. Call LLM
-            llm_response = await self._call_llm(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=completion_budget
-            )
+            # 6. Call LLM (retries once on empty content, then raises)
+            try:
+                llm_response = await self._call_llm(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=completion_budget
+                )
+            except LLMEmptyResponseError as e:
+                logger.error(f"LLM returned empty content after retries: {e}")
+                llm_response = json.dumps(
+                    self._build_llm_fallback_parsed(
+                        f"finish_reason={e.finish_reason}"
+                    )
+                )
             
             # 7. Parse LLM response + extract coverage gaps
             try:
@@ -450,10 +473,47 @@ class RAGEngine:
                     "coverage_gaps": []
                 }
             
+            # 7.1. Validate parsed response has required structure
+            missing_keys = self._LLM_RESPONSE_REQUIRED_KEYS - parsed.keys()
+            if missing_keys:
+                logger.error(
+                    f"LLM response missing required keys: {missing_keys}. "
+                    f"Keys present: {list(parsed.keys())}"
+                )
+                parsed = self._build_llm_fallback_parsed(
+                    f"missing keys: {', '.join(sorted(missing_keys))}"
+                )
+            
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
                 coverage_gaps = []
             coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
+            
+            # 7.5. Off-topic interception: LLM flagged inquiry as unrelated
+            if parsed.get("outcome") == "out_of_scope_inquiry":
+                logger.info(f"Off-topic inquiry detected by LLM: {parsed.get('outcome_reason', 'N/A')}")
+                pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
+                return GenerateResponseResult(
+                    decision="out_of_scope",
+                    confidence=0.1,
+                    response=parsed,
+                    source_articles=[],
+                    used_chunks=[],
+                    coverage_gaps=coverage_gaps,
+                    metadata={
+                        "chunks_used": 0,
+                        "context_tokens": tokens_used,
+                        "response_tokens": self.token_manager.count_tokens(llm_response),
+                        "model": self.model,
+                        "total_inquiries": total_inquiries_in_ticket,
+                        "sub_queries": sub_queries,
+                        "per_query_scores": pqs,
+                        "unique_articles": 0,
+                        "relevant_articles": 0,
+                        "coverage_gaps": coverage_gaps,
+                        "off_topic": True
+                    }
+                )
             
             # 8. Hybrid confidence (retrieval + LLM gap signal)
             confidence = self._calculate_confidence(chunks, coverage_gaps=coverage_gaps)
@@ -510,6 +570,7 @@ class RAGEngine:
     # Generate Response settings
     RESPONSE_MIN_CONTEXT_TOKENS = 2000
     GR_MAX_CHUNKS_PER_ARTICLE = 6
+    GR_UNFILTERED_TOP_K = 15
     
     # Knowledge Question settings
     KQ_CONTEXT_BUDGET = 4000
@@ -608,11 +669,19 @@ class RAGEngine:
                 question=question
             )
             
-            llm_response = await self._call_llm(
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=2000
-            )
+            try:
+                llm_response = await self._call_llm(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=2000
+                )
+            except LLMEmptyResponseError as e:
+                logger.error(f"LLM returned empty content in knowledge_question: {e}")
+                llm_response = json.dumps({
+                    "answer": "Unable to generate a response. Please try again or contact Support.",
+                    "key_points": [],
+                    "coverage_gaps": []
+                })
             
             # 6. Parse response
             try:
@@ -729,25 +798,26 @@ class RAGEngine:
         so it doesn't block the event loop, and caches results to avoid
         redundant network round-trips for identical queries.
         
-        Uses asyncio.Lock to prevent duplicate Pinecone calls when
-        concurrent coroutines generate the same cache key.
+        Lock-free: concurrent coroutines with the same cache key may
+        fire duplicate Pinecone calls; the last write wins (identical
+        result). This trade-off enables true parallel execution across
+        all search lanes.
         """
         key = self._cache_key(query_text, top_k, filter_dict)
         
-        async with self._cache_lock:
-            if key in self._search_cache:
-                logger.debug("Cache HIT for Pinecone query")
-                return self._search_cache[key]
-            
-            result = await asyncio.to_thread(
-                self.pinecone.query_chunks,
-                query_text=query_text,
-                top_k=top_k,
-                filter_dict=filter_dict
-            )
-            
-            self._search_cache[key] = result
-            return result
+        if key in self._search_cache:
+            logger.debug("Cache HIT for Pinecone query")
+            return self._search_cache[key]
+        
+        result = await asyncio.to_thread(
+            self.pinecone.query_chunks,
+            query_text=query_text,
+            top_k=top_k,
+            filter_dict=filter_dict
+        )
+        
+        self._search_cache[key] = result
+        return result
     
     # ── Record-Keeper Cascade Strategy ──
     
@@ -1003,57 +1073,81 @@ class RAGEngine:
         topic: str
     ) -> tuple:
         """
-        Parallel multi-query search for generate_response endpoint.
+        Parallel multi-lane search for generate_response endpoint.
         
-        For each RK cascade level, runs all enriched sub-queries through
-        topic strategies in parallel, merges results, and stops when
-        sufficient results are found.
+        Fires ALL RK cascade levels and an unfiltered semantic lane in
+        parallel, then merges, deduplicates, and ranks results.  This
+        ensures cross-article coverage for multi-topic inquiries while
+        still surfacing RK-specific chunks through score-based ranking.
+        
+        Lane 1 (cascade): Every cascade level × every enriched query,
+        each with topic-strategy fallbacks — preserves RK-aware priority.
+        
+        Lane 2 (unfiltered): Every enriched query with only a plan_type
+        filter — guarantees discovery of global/cross-RK articles that
+        the cascade's narrow filters might exclude.
         
         Returns:
             (merged_chunks, per_query_scores)
         """
         rk_cascade = self._build_rk_cascade(record_keeper)
-        chunks: List[Dict[str, Any]] = []
         per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
+        
+        # ── Lane 1: All cascade levels in parallel ──
+        cascade_tasks = []
+        cascade_task_queries: List[str] = []
         
         for level in rk_cascade:
             base_filters = {
                 **level["filters"],
                 "plan_type": {"$in": [plan_type, "all"]}
             }
-            
-            # Run topic strategies for all sub-queries in parallel
-            search_tasks = [
-                self._search_with_topic_strategies(eq, base_filters, topic)
-                for eq in enriched_queries
-            ]
-            results = await asyncio.gather(*search_tasks)
-            
-            # Track per-query best scores from individual results before merging
-            for eq, result_list in zip(enriched_queries, results):
-                best = max((c.get('score', 0) for c in result_list), default=0)
-                per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
-            
-            chunks = self._merge_and_rank_chunks(*results)
-            
-            if self._rk_results_sufficient(
-                chunks,
-                min_chunks=self.TOPIC_FILTER_MIN_CHUNKS,
-                min_score=self.TOPIC_FILTER_MIN_SCORE
-            ):
-                logger.info(
-                    f"generate_response: found {len(chunks)} chunks "
-                    f"at cascade level '{level['label']}'"
+            for eq in enriched_queries:
+                cascade_tasks.append(
+                    self._search_with_topic_strategies(eq, base_filters, topic)
                 )
-                break
-            
-            logger.info(
-                f"generate_response: cascade level '{level['label']}' "
-                f"insufficient ({len(chunks)} chunks), trying next level"
+                cascade_task_queries.append(eq)
+        
+        # ── Lane 2: Unfiltered semantic search (global article discovery) ──
+        unfiltered_tasks = []
+        for eq in enriched_queries:
+            unfiltered_tasks.append(
+                self._cached_query(
+                    query_text=eq,
+                    top_k=self.GR_UNFILTERED_TOP_K,
+                    filter_dict={"plan_type": {"$in": [plan_type, "all"]}}
+                )
             )
         
+        # Execute all lanes in parallel
+        all_results = await asyncio.gather(*cascade_tasks, *unfiltered_tasks)
+        
+        cascade_results = all_results[:len(cascade_tasks)]
+        unfiltered_results = all_results[len(cascade_tasks):]
+        
+        # Track per-query best scores
+        for eq, result_list in zip(cascade_task_queries, cascade_results):
+            best = max((c.get('score', 0) for c in result_list), default=0)
+            per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+        
+        for eq, result_list in zip(enriched_queries, unfiltered_results):
+            best = max((c.get('score', 0) for c in result_list), default=0)
+            per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+        
+        # Merge and deduplicate all results across both lanes
+        chunks = self._merge_and_rank_chunks(*cascade_results, *unfiltered_results)
+        
         if not chunks:
-            logger.warning("generate_response: no sufficient results across all cascade levels")
+            logger.warning("generate_response: no results across all search lanes")
+        else:
+            unique_articles = len(set(
+                c['metadata'].get('article_id') for c in chunks
+            ))
+            logger.info(
+                f"generate_response: {len(chunks)} chunks from "
+                f"{unique_articles} articles across {len(rk_cascade)} cascade "
+                f"levels + unfiltered lane"
+            )
         
         return chunks, per_query_scores
     
@@ -1435,12 +1529,15 @@ class RAGEngine:
     # Helper Methods - LLM
     # ========================================================================
     
-    # Multiplicador para GPT-5.4: los reasoning tokens se consumen dentro
-    # de max_completion_tokens, así que necesitamos presupuesto extra.
-    # Con reasoning_effort="medium", el modelo puede usar ~60-70% en reasoning.
-    GPT5_REASONING_MULTIPLIER = 4
-    GPT5_MIN_COMPLETION_TOKENS = 2000
+    # Multiplicador para GPT-5.4: reasoning tokens count against
+    # max_completion_tokens.  With reasoning_effort="medium" the model
+    # can spend 70-85% of the budget on internal reasoning, so we need
+    # generous headroom to avoid empty-content responses.
+    GPT5_REASONING_MULTIPLIER = 5
+    GPT5_MIN_COMPLETION_TOKENS = 4000
     
+    LLM_EMPTY_RESPONSE_RETRIES = 1
+
     async def _call_llm(
         self,
         system_prompt: str,
@@ -1449,6 +1546,10 @@ class RAGEngine:
     ) -> str:
         """
         Llama al LLM (OpenAI) de forma asíncrona.
+        
+        Retries once on empty/None content before raising
+        LLMEmptyResponseError so callers can build a proper fallback
+        instead of propagating an empty dict.
         
         Args:
             system_prompt: System prompt
@@ -1459,6 +1560,10 @@ class RAGEngine:
         
         Returns:
             Respuesta del LLM (string)
+        
+        Raises:
+            LLMEmptyResponseError: If the LLM returns empty content after
+                                   all retry attempts.
         """
         try:
             params = {
@@ -1489,23 +1594,32 @@ class RAGEngine:
                 params["temperature"] = self.temperature
                 logger.debug(f"Llamando GPT-4 con max_tokens={max_tokens}, temperature={self.temperature}")
             
-            # Async call — does not block the event loop
-            response = await self.openai_client.chat.completions.create(**params)
+            last_finish_reason = "unknown"
+            last_usage = None
             
-            content = response.choices[0].message.content
-            
-            if content is None or content.strip() == "":
+            for attempt in range(1, self.LLM_EMPTY_RESPONSE_RETRIES + 2):
+                response = await self.openai_client.chat.completions.create(**params)
+                
+                content = response.choices[0].message.content
+                last_finish_reason = response.choices[0].finish_reason
+                last_usage = response.usage
+                
+                if content and content.strip():
+                    logger.info(f"LLM response: {len(content)} characters")
+                    return content
+                
                 logger.warning(
-                    f"LLM retornó contenido vacío/None. "
-                    f"Finish reason: {response.choices[0].finish_reason}. "
-                    f"Usage: {response.usage}"
+                    f"LLM returned empty content (attempt {attempt}/{self.LLM_EMPTY_RESPONSE_RETRIES + 1}). "
+                    f"Finish reason: {last_finish_reason}. Usage: {last_usage}"
                 )
-                return "{}"
             
-            logger.info(f"LLM response: {len(content)} characters")
-            
-            return content
+            raise LLMEmptyResponseError(
+                finish_reason=last_finish_reason,
+                usage=last_usage
+            )
         
+        except LLMEmptyResponseError:
+            raise
         except Exception as e:
             logger.error(f"Error llamando LLM: {e}")
             raise
@@ -1905,6 +2019,30 @@ class RAGEngine:
             }
         )
     
+    _LLM_RESPONSE_REQUIRED_KEYS = {"outcome", "response_to_participant"}
+
+    @staticmethod
+    def _build_llm_fallback_parsed(reason: str) -> Dict[str, Any]:
+        """Build a well-formed parsed dict when the LLM output is empty or incomplete."""
+        return {
+            "outcome": "blocked_missing_data",
+            "outcome_reason": f"LLM response was empty or incomplete: {reason}",
+            "response_to_participant": {
+                "opening": "We were unable to generate a complete response for your inquiry. Please try again or contact Support.",
+                "key_points": [],
+                "steps": [],
+                "warnings": []
+            },
+            "questions_to_ask": [],
+            "escalation": {
+                "needed": True,
+                "reason": f"Automated response generation failed ({reason}). Please route to a human agent."
+            },
+            "guardrails_applied": [],
+            "data_gaps": [reason],
+            "coverage_gaps": []
+        }
+
     def _build_uncertain_response(self, reason: str, confidence: float) -> GenerateResponseResult:
         """Construye respuesta de fallback con el schema outcome-driven."""
         return GenerateResponseResult(

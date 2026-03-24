@@ -1473,35 +1473,18 @@
                     label: 'Collected Data',
                     type: 'textarea',
                     description: 'JSON object with participant and plan data',
-                    value: '{\n  "participant_data": {\n    "termination_date": "2024-11-01",\n    "rehire_date": null,\n    "balance": 2000.00,\n    "status": "Terminated",\n    "last_payroll_date": "2024-11-15"\n  },\n  "plan_data": {}\n}',
+                    value: '{\n  "participant_data": {\n    "termination_date": "2024-11-01",\n    "rehire_date": null,\n    "balance": 2000.00,\n    "status": "Terminated",\n    "last_payroll_date": "2024-11-15",\n    "mfa": "enrolled",\n    "name": "Ivancho"\n  },\n  "plan_data": {}\n}',
                     required: true,
                     isJson: true
                 },
-                {
-                    name: 'max_response_tokens',
-                    label: 'Max Response Tokens',
-                    type: 'number',
-                    description: 'Maximum tokens for the response (500-5000)',
-                    placeholder: '5000',
-                    min: 500,
-                    max: 5000,
-                    value: 5000
-                },
-                {
-                    name: 'total_inquiries_in_ticket',
-                    label: 'Total Inquiries in Ticket',
-                    type: 'number',
-                    description: 'Number of inquiries in the ticket (1-10)',
-                    placeholder: '2',
-                    min: 1,
-                    max: 10,
-                    value: 2
-                }
             ]
         };
 
         let currentEndpoint = 'required-data';
         let formData = {};
+
+        const SHARED_FIELDS = new Set(['inquiry', 'record_keeper', 'topic', 'collected_data']);
+        const sharedState = {};
 
         // ================================================================
         // Initialize
@@ -1534,7 +1517,7 @@
         }
 
         // ================================================================
-        // Form rendering (unchanged)
+        // Form rendering
         // ================================================================
         function renderForm() {
             const container = document.getElementById('formFields');
@@ -1557,21 +1540,23 @@
                 description.textContent = field.description;
 
                 let input;
+                const isShared = SHARED_FIELDS.has(field.name);
+                const hasSavedValue = isShared && sharedState[field.name] !== undefined;
 
                 if (field.type === 'textarea') {
                     input = document.createElement('textarea');
                     input.placeholder = field.placeholder || '';
                     input.rows = field.isJson ? 8 : 3;
-                    if (field.value) input.value = field.value;
+                    input.value = hasSavedValue ? sharedState[field.name] : (field.value || '');
                 } else if (field.type === 'select') {
                     input = document.createElement('select');
                     field.options.forEach(option => {
                         const opt = document.createElement('option');
                         opt.value = option;
                         opt.textContent = option;
-                        if (field.value && option === field.value) opt.selected = true;
                         input.appendChild(opt);
                     });
+                    input.value = hasSavedValue ? sharedState[field.name] : (field.value || '');
                 } else {
                     input = document.createElement('input');
                     input.type = field.type;
@@ -1579,8 +1564,8 @@
                     if (field.type === 'number') {
                         input.min = field.min;
                         input.max = field.max;
-                        input.value = field.value || '';
                     }
+                    input.value = hasSavedValue ? sharedState[field.name] : (field.value || '');
                 }
 
                 input.name = field.name;
@@ -1588,6 +1573,7 @@
                 if (field.required) input.required = true;
 
                 input.addEventListener('input', () => {
+                    if (isShared) sharedState[field.name] = input.value;
                     updateFormData(field.name, input.value, field.isJson);
                 });
 
@@ -1596,8 +1582,8 @@
                 formGroup.appendChild(input);
                 container.appendChild(formGroup);
 
-                if (field.value) {
-                    updateFormData(field.name, field.value, field.isJson);
+                if (input.value) {
+                    updateFormData(field.name, input.value, field.isJson);
                 }
             });
         }
@@ -1648,13 +1634,18 @@
                 : '/api/v1/generate-response';
 
             try {
+                const payload = {...formData};
+                if (currentEndpoint === 'generate-response') {
+                    payload.max_response_tokens = 5000;
+                }
+
                 const response = await fetch(`${apiUrl}${endpoint}`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
                         'X-API-Key': apiKey
                     },
-                    body: JSON.stringify(formData)
+                    body: JSON.stringify(payload)
                 });
 
                 const data = await response.json();
@@ -1826,7 +1817,7 @@
 
         function copyRawJson(id) {
             const text = document.querySelector(`#${id} pre`).textContent;
-            navigator.clipboard.writeText(text).then(() => {
+            copyToClipboard(text).then(() => {
                 const btn = event.target;
                 const orig = btn.textContent;
                 btn.textContent = 'Copied!';
@@ -2300,9 +2291,25 @@
         // ================================================================
         // Copy helpers
         // ================================================================
+        function copyToClipboard(text) {
+            if (navigator.clipboard && window.isSecureContext) {
+                return navigator.clipboard.writeText(text);
+            }
+            const textarea = document.createElement('textarea');
+            textarea.value = text;
+            textarea.style.position = 'fixed';
+            textarea.style.left = '-9999px';
+            textarea.style.opacity = '0';
+            document.body.appendChild(textarea);
+            textarea.select();
+            document.execCommand('copy');
+            document.body.removeChild(textarea);
+            return Promise.resolve();
+        }
+
         function copyPayload() {
             const text = document.getElementById('payloadPreview').textContent;
-            navigator.clipboard.writeText(text).then(() => {
+            copyToClipboard(text).then(() => {
                 const btn = event.target;
                 const originalText = btn.textContent;
                 btn.textContent = 'Copied!';

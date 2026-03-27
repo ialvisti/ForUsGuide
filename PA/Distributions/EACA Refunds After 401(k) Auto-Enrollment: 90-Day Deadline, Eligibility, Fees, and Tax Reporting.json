@@ -1,0 +1,619 @@
+{
+    "metadata": {
+        "article_id": "eaca_refunds_after_401k_auto_enrollment",
+        "title": "EACA Refunds After 401(k) Auto-Enrollment: 90-Day Deadline, Eligibility, Fees, and Tax Reporting",
+        "description": "Explains what an Eligible Automatic Contribution Arrangement (EACA) refund is in a 401(k) auto-enrollment context, including eligibility requirements (EACA plan status and auto-enrollment confirmation), the 90-day written request deadline measured from the first automatic contribution deposit, the refund calculation (employee contributions plus attributable earnings or losses, minus a $50 processing fee, with forfeiture of employer matching contributions), how to request the refund through support with a secure electronic form via RightSignature, expected 2–3 week processing time and check delivery via USPS, tax reporting expectations (Form 1099-R, ordinary income treatment, and early withdrawal penalty guidance), and post-refund consequences including removal from the 401(k) plan with potential future re-enrollment.",
+        "topic": "distribution",
+        "subtopics": [
+            "eaca_eligibility",
+            "auto_enrollment_opt_out",
+            "eaca_refund_deadline",
+            "refund_amount_calculation",
+            "employer_match_forfeiture",
+            "delivery_method",
+            "tax_reporting_1099r",
+            "post_refund_plan_removal"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": "401(k)",
+        "scope": "global",
+        "tags": [
+            "EACA Refund",
+            "Enrollment",
+            "Taxes",
+            "RightSignature Completed"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-01-28",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        },
+        "business_rules": [
+            {
+                "category": "eligibility",
+                "rules": [
+                    "Participant may qualify only if they were automatically enrolled in the 401(k) plan and contributions were taken from paychecks.",
+                    "The employer's plan must be specifically set up as an EACA plan; not every auto-enrollment plan is an EACA.",
+                    "Participant must submit a written request to opt out and request the refund.",
+                    "The written request must be received within 90 calendar days of the participant's first automatic 401(k) deferral or contribution deposit."
+                ]
+            },
+            {
+                "category": "deadline",
+                "rules": [
+                    "The 90-day EACA refund window is measured from the first automatic 401(k) deferral or contribution deposit (the first paycheck deduction that is deposited).",
+                    "If the written request is received on time, the refund can still be processed even if administrative steps finish shortly after the deadline.",
+                    "If the request is not received within 90 calendar days, the EACA refund option is no longer available.",
+                    "The 90-day deadline is established by the IRS and cannot be extended."
+                ]
+            },
+            {
+                "category": "refund_amount_and_forfeitures",
+                "rules": [
+                    "Approved refunds typically include the employee contributions made due to auto-enrollment and any earnings or losses attributable to those contributions.",
+                    "The refund amount is reduced by a $50 processing fee deducted from the amount the participant receives.",
+                    "Employer matching contributions are forfeited when an EACA refund is processed."
+                ]
+            },
+            {
+                "category": "tax_reporting",
+                "rules": [
+                    "A Form 1099-R is issued reporting the refunded amount for the year the refund is issued.",
+                    "The refunded amount is typically treated as taxable ordinary income for that year.",
+                    "The refund is generally not treated as an early retirement distribution, so a 10% early withdrawal penalty typically does not apply.",
+                    "The $50 processing fee may still be included in the taxable amount shown on the 1099-R, even though it reduces the check the participant receives."
+                ]
+            },
+            {
+                "category": "delivery_and_processing",
+                "rules": [
+                    "After the form is submitted, processing typically takes 2-3 weeks.",
+                    "Refunds are generally issued as a check mailed via regular USPS to the address on file."
+                ]
+            },
+            {
+                "category": "post_refund",
+                "rules": [
+                    "Once an EACA refund is processed, the participant is removed from the 401(k) plan.",
+                    "The participant may be able to re-enroll in the future if the employer allows."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "EACA refund processing",
+                "fee": "$50",
+                "notes": "Deducted from the amount the participant receives; the fee may still be included in the taxable amount shown on the Form 1099-R."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "internal-check",
+                "visibility": "agent-only",
+                "description": "Confirm whether the employer plan is an EACA plan and confirm the date of the first automatic 401(k) deferral or contribution deposit before assuming eligibility.",
+                "notes": "If unsure about plan type or the first contribution date, confirm through admin systems (ForUsBots) before assuming eligibility."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Contact support and state that the participant wants to request an EACA refund.",
+                "notes": "Support contact methods are provided in the references.contact block."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Receive the secure EACA refund form via RightSignature (electronic signature service).",
+                "notes": "The participant must complete the form to proceed. The form is delivered electronically through RightSignature."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Complete, sign, and submit the RightSignature form electronically as the written request to opt out and request the refund.",
+                "notes": "The written request must be received within 90 calendar days of the first automatic contribution deposit."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "After submission, allow typical processing time and expect delivery by mailed check.",
+                "notes": "Processing typically takes 2-3 weeks; refunds are generally issued as a check mailed via regular USPS to the address on file. The refund amount includes employee auto-enrollment contributions plus attributable earnings or losses, minus a $50 processing fee."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Expect tax reporting for the year the refund is issued and review the Form 1099-R when received.",
+                "notes": "If the participant has questions about reporting or personal tax impact, they can consider speaking with an accountant or tax advisor."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Understand that once the EACA refund is processed, the participant is removed from the 401(k) plan.",
+                "notes": "The participant may be able to re-enroll in the future if the employer allows. Employer matching contributions are forfeited as part of the refund."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant is unsure whether the employer plan is an EACA plan.",
+                "resolution": "Advise the participant to contact support to confirm whether the plan is set up as an EACA plan before assuming eligibility."
+            },
+            {
+                "issue": "Participant does not know the date of the first automatic contribution deposit and is unsure whether they are within the 90-day window.",
+                "resolution": "Advise the participant to contact support to confirm the first automatic contribution date and whether the written request can be received within the 90-day deadline."
+            },
+            {
+                "issue": "Participant missed the 90-day deadline.",
+                "resolution": "Explain that the EACA refund option is no longer available after the deadline; contributions generally remain in the plan and follow standard 401(k) rules, though the participant may be able to stop future contributions."
+            },
+            {
+                "issue": "Participant's mailing address on file is incorrect or outdated.",
+                "resolution": "Advise the participant to update their mailing address with support before the refund check is mailed, since refunds are sent via regular USPS to the address on file."
+            },
+            {
+                "issue": "Participant expects the employer match to be included in the EACA refund.",
+                "resolution": "Explain that employer matching contributions are forfeited when an EACA refund is processed and are not included in the refund amount."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant was auto-enrolled, the first automatic contribution was deposited, and the participant submits the written request on day 89 after the first deposit.",
+                "outcome": "The request can qualify if it is received within the 90 calendar day window; processing can still be completed shortly after the deadline if the request was received on time."
+            },
+            {
+                "scenario": "A participant requests an EACA refund after 90 calendar days have passed since the first automatic contribution deposit.",
+                "outcome": "The EACA refund option is no longer available; the participant's contributions generally remain in the plan and follow standard 401(k) rules."
+            },
+            {
+                "scenario": "A participant asks whether employer match will be included in the EACA refund.",
+                "outcome": "Explain that employer matching contributions are forfeited when an EACA refund is processed and are not returned to the participant."
+            },
+            {
+                "scenario": "A participant was auto-enrolled, the first automatic contribution was deposited, and the participant submits the written request, but the plan is not set up as an EACA plan.",
+                "outcome": "Explain that the EACA refund option is not available; the participant's contributions generally remain in the plan and follow standard 401(k) rules."
+            },
+            {
+                "scenario": "A participant's auto-enrollment contributions were invested and the investments declined in value before the EACA refund is processed.",
+                "outcome": "The refund amount typically includes the employee contributions plus any attributable earnings or losses; if the investments lost value, the refund amount will reflect those losses, reduced further by the $50 processing fee."
+            },
+            {
+                "scenario": "A participant contacts support to request an EACA refund but has not yet completed and submitted the secure RightSignature form.",
+                "outcome": "Inform the participant that the EACA refund cannot be processed until the secure form is completed, electronically signed, and submitted via RightSignature. Provide the form and emphasize the 90-day deadline for receipt of the written request."
+            },
+            {
+                "scenario": "A participant who previously received an EACA refund asks whether they can re-enroll in the 401(k) plan.",
+                "outcome": "Explain that the participant was removed from the plan when the EACA refund was processed but may be able to re-enroll in the future if the employer allows."
+            },
+            {
+                "scenario": "A participant asks whether they need to update their mailing address before the refund is issued.",
+                "outcome": "Advise the participant to confirm or update the mailing address on file with support, since the refund check is mailed via regular USPS to the address on file."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "common_misconceptions",
+                "notes": [
+                    "Not every auto-enrollment 401(k) plan is an EACA plan; participants should not assume eligibility based on auto-enrollment alone.",
+                    "The 90-day deadline is measured from the first automatic contribution deposit date, not the participant's enrollment date or hire date.",
+                    "The EACA refund is not a loan and cannot be repaid; once processed, the participant is removed from the plan.",
+                    "Employer matching contributions are forfeited as part of the EACA refund process and are not included in the refund amount."
+                ]
+            },
+            {
+                "category": "participant_tips",
+                "notes": [
+                    "Participants should confirm their mailing address is current before the refund check is mailed.",
+                    "Participants who are unsure about the tax impact of the refund should consult an accountant or tax advisor.",
+                    "If the participant wants to stop future contributions without requesting an EACA refund, they may be able to change their deferral election to 0% through standard plan options."
+                ]
+            },
+            {
+                "category": "agent_guidance",
+                "notes": [
+                    "Verify EACA plan status and first automatic contribution deposit date through admin systems (ForUsBots) before confirming eligibility to the participant.",
+                    "The RightSignature form must be received (not just sent) within the 90-day window; track form submission timing carefully.",
+                    "If a participant is close to the 90-day deadline, prioritize sending the RightSignature form immediately and advise the participant to complete it promptly."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "What is an EACA refund?",
+                "answer": "A one-time option in certain auto-enrollment 401(k) plans that lets an employee opt out shortly after enrollment and have automatic contributions returned if the written request is received within 90 calendar days of the first automatic contribution deposit."
+            },
+            {
+                "question": "What does the 90-day window start from?",
+                "answer": "It starts from the first automatic 401(k) deferral or contribution deposit, meaning the first paycheck deduction that is deposited into the plan."
+            },
+            {
+                "question": "If the written request is received on time but processing finishes after day 90, is it still valid?",
+                "answer": "Yes. If the request is received within the 90-day period, the refund can still be processed even if administrative steps finish shortly after the deadline."
+            },
+            {
+                "question": "What is included in the EACA refund amount?",
+                "answer": "It typically includes the employee contributions made due to auto-enrollment plus any earnings or losses attributable to those contributions, reduced by a $50 processing fee."
+            },
+            {
+                "question": "Is there a fee for an EACA refund?",
+                "answer": "Yes. A $50 processing fee is deducted from the amount the participant receives."
+            },
+            {
+                "question": "What happens to my employer matching contributions?",
+                "answer": "Employer matching contributions are forfeited when an EACA refund is processed. They are not included in the refund amount and are not returned to the participant."
+            },
+            {
+                "question": "How will the refund appear for tax reporting?",
+                "answer": "A Form 1099-R is issued for the year the refund is issued, and the refunded amount is typically treated as taxable ordinary income for that year."
+            },
+            {
+                "question": "Does the 10% early withdrawal penalty apply?",
+                "answer": "The refund is generally not treated as an early retirement distribution, so a 10% early withdrawal penalty typically does not apply."
+            },
+            {
+                "question": "How can I know if my plan is an EACA?",
+                "answer": "Contact support to confirm whether the plan is set up as an EACA plan. Not every auto-enrollment 401(k) plan is an EACA."
+            },
+            {
+                "question": "How do I submit the EACA refund form?",
+                "answer": "After contacting support, you will receive a secure EACA refund form via RightSignature. Complete, electronically sign, and submit the form through the RightSignature process."
+            },
+            {
+                "question": "Can I roll over an EACA refund into another retirement account?",
+                "answer": "EACA refunds are generally not eligible for rollover. The refund is treated as a return of auto-enrollment contributions and is typically reported as taxable ordinary income for the year issued."
+            },
+            {
+                "question": "Can I re-enroll in the 401(k) plan after receiving an EACA refund?",
+                "answer": "Once the EACA refund is processed, the participant is removed from the plan. The participant may be able to re-enroll in the future if the employer allows."
+            },
+            {
+                "question": "What if my mailing address on file is incorrect?",
+                "answer": "Contact support to update the mailing address before the refund check is mailed. Refunds are generally issued as a check mailed via regular USPS to the address on file."
+            },
+            {
+                "question": "What happens to my contributions if I miss the 90-day deadline?",
+                "answer": "If the 90-day deadline passes, the EACA refund option is no longer available. Contributions generally remain in the plan and follow standard 401(k) rules, though you may be able to stop future contributions."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "EACA (Eligible Automatic Contribution Arrangement)",
+                "definition": "A type of 401(k) plan arrangement that meets specific IRS requirements for automatic enrollment, including providing a permissible withdrawal (EACA refund) option within 90 days of the first automatic contribution. Not all auto-enrollment plans qualify as EACA plans."
+            },
+            {
+                "term": "EACA refund",
+                "definition": "A one-time refund option in EACA-qualified 401(k) plans allowing an employee to opt out shortly after automatic enrollment and have the automatic contributions returned if a written request is received within 90 calendar days of the first automatic contribution deposit."
+            },
+            {
+                "term": "Auto-enrollment",
+                "definition": "A plan feature that automatically enrolls eligible employees in the 401(k) plan at a default contribution rate unless the employee actively opts out or changes the rate."
+            },
+            {
+                "term": "Automatic deferral or contribution",
+                "definition": "The paycheck deduction that is deposited into the 401(k) plan due to automatic enrollment, without the employee having actively elected to contribute."
+            },
+            {
+                "term": "Employer matching contributions",
+                "definition": "Contributions made by the employer to the participant's 401(k) account, typically calculated as a percentage of the employee's own contributions. These are forfeited when an EACA refund is processed."
+            },
+            {
+                "term": "Forfeiture",
+                "definition": "The loss of a right to employer contributions (such as matching contributions) that occurs when an EACA refund is processed. Forfeited amounts are returned to the plan, not to the participant."
+            },
+            {
+                "term": "Form 1099-R",
+                "definition": "An IRS tax form used to report distributions from retirement plans, including EACA refunds. It is issued for the tax year in which the distribution or refund occurs and is used by the participant when filing taxes."
+            },
+            {
+                "term": "Ordinary income",
+                "definition": "Income taxed at the individual's regular income tax rate. EACA refunds are typically treated as taxable ordinary income for the year the refund is issued."
+            },
+            {
+                "term": "Early withdrawal penalty",
+                "definition": "A 10% additional tax imposed by the IRS on certain retirement plan distributions taken before age 59½. EACA refunds are generally not treated as early retirement distributions, so this penalty typically does not apply."
+            },
+            {
+                "term": "Written request",
+                "definition": "The formal request from the participant to opt out of auto-enrollment and receive an EACA refund, submitted by completing and electronically signing the secure EACA refund form via RightSignature."
+            },
+            {
+                "term": "Processing fee",
+                "definition": "A $50 fee deducted from the EACA refund amount before the check is issued. The fee may still be included in the taxable amount reported on the Form 1099-R."
+            },
+            {
+                "term": "RightSignature",
+                "definition": "An electronic signature service used to deliver, complete, and submit the secure EACA refund form. The participant receives the form electronically and signs it digitally."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not guarantee eligibility without confirming that the plan is set up as an EACA plan and confirming the first automatic contribution date and receipt timing of the written request.",
+                "Do not claim or imply an online participant portal is required for this process; the described process is to contact support and submit a secure form via RightSignature.",
+                "Do not promise specific processing or mail delivery dates beyond the stated typical processing timeframe and stated delivery method.",
+                "Do not guarantee tax outcomes, including whether any penalty applies; use qualifying language consistent with the article such as generally and typically.",
+                "Do not describe the refund amount without disclosing the $50 processing fee and the forfeiture of employer matching contributions."
+            ],
+            "must_do_if_unsure": [
+                "If the participant is unsure whether the plan is an EACA plan or does not know the first automatic contribution date, direct them to contact support to confirm before assuming eligibility.",
+                "If the participant is close to the 90-day deadline, prioritize sending the RightSignature form immediately and advise prompt completion."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+                "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+                "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": null
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Auto-enrollment occurred and automatic contributions were taken",
+                    "meaning": "Confirmation that the participant was automatically enrolled in the employer's 401(k) plan and contributions were taken from paychecks due to auto-enrollment.",
+                    "example_values": [
+                        "Plan enrollment type: Auto-enrollment"
+                    ],
+                    "why_needed": "Eligibility for an EACA refund requires auto-enrollment contributions.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Plan is set up as an EACA plan",
+                    "meaning": "Confirmation that the employer's plan is specifically configured as an Eligible Automatic Contribution Arrangement.",
+                    "example_values": [
+                        "EACA Plan"
+                    ],
+                    "why_needed": "Not every auto-enrollment plan is an EACA; EACA status is required for eligibility.",
+                    "source_note": null,
+                    "source_type": "plan_profile"
+                },
+                {
+                    "data_point": "Date of first automatic 401(k) deferral or contribution deposit",
+                    "meaning": "The date of the first paycheck deduction that was deposited into the 401(k) plan due to auto-enrollment.",
+                    "example_values": [
+                        "First contribution 2026-01-15"
+                    ],
+                    "why_needed": "Determines the 90 calendar day deadline for receipt of the written request.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant request to opt out and request an EACA refund",
+                    "meaning": "The participant's stated intent to opt out shortly after auto-enrollment and request return of the automatic contributions as an EACA refund.",
+                    "example_values": [
+                        "Participant requested to opt out and requests an EACA refund"
+                    ],
+                    "why_needed": "A written request to opt out and request the refund is required to initiate the process.",
+                    "source_note": null,
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Completed and signed EACA refund form submission",
+                    "meaning": "The participant has completed, electronically signed, and submitted the secure EACA refund form via RightSignature that serves as the written request.",
+                    "example_values": [
+                        "Signed electronic EACA refund form via RightSignature"
+                    ],
+                    "why_needed": "The written request must be received within the 90-day window and is submitted through the RightSignature form process.",
+                    "source_note": null,
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Address on file for check delivery",
+                    "meaning": "The mailing address currently on file is where the refund check will be mailed via regular USPS.",
+                    "example_values": [
+                        "1234 Main St Capital City, State 12345"
+                    ],
+                    "why_needed": "Refunds are generally issued as a check mailed via regular USPS to the address on file.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Participant email address",
+                    "meaning": "Email address used to deliver the RightSignature form electronically.",
+                    "example_values": [
+                        "participant@email.com"
+                    ],
+                    "why_needed": "Confirms the correct email for RightSignature form delivery and follow-up communications.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Current investment allocation or account balance",
+                    "meaning": "The participant's current 401(k) investment holdings and balance from auto-enrollment contributions.",
+                    "example_values": [
+                        "Balance: $1,200 in target-date fund"
+                    ],
+                    "why_needed": "Helps explain to the participant why the refund amount may differ from total contributions due to earnings or losses.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Auto-enrollment occurred and automatic contributions were taken",
+                    "ask_participant": null,
+                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                },
+                {
+                    "missing_data_point": "Plan is set up as an EACA plan",
+                    "ask_participant": null,
+                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                },
+                {
+                    "missing_data_point": "Date of first automatic 401(k) deferral or contribution deposit",
+                    "ask_participant": null,
+                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                },
+                {
+                    "missing_data_point": "Participant request to opt out and request an EACA refund",
+                    "ask_participant": "Do you want to opt out and request an EACA refund for your auto-enrollment contributions?",
+                    "agent_note": "Do not confirm eligibility or proceed with the refund process until the participant clearly requests the EACA refund."
+                },
+                {
+                    "missing_data_point": "Completed and signed EACA refund form submission",
+                    "ask_participant": "Have you completed and electronically signed and submitted the secure EACA refund form yet?",
+                    "agent_note": "Do not state the refund will be processed until the signed form is submitted and received."
+                },
+                {
+                    "missing_data_point": "Address on file for check delivery",
+                    "ask_participant": null,
+                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                }
+            ],
+            "disambiguation_notes": [
+                "Auto-enrollment plan does not automatically mean the plan is an EACA plan; EACA setup must be confirmed.",
+                "The 90-day window is based on the first deposit date of the automatic paycheck deduction, not the enrollment date or hire date.",
+                "Do not proceed with the refund process until the participant clearly requests the EACA refund.",
+                "The EACA refund is not a loan and cannot be repaid or rolled over."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "Participant was automatically enrolled in the employer's 401(k) plan and automatic contributions were taken from paychecks.",
+                "Employer plan is specifically set up as an EACA plan.",
+                "Written request to opt out and request the refund is received within 90 calendar days of the first automatic deferral or contribution deposit."
+            ],
+            "blocking_conditions": [
+                "Written request is received after 90 calendar days from the first automatic deferral or contribution deposit.",
+                "The plan is not set up as an EACA plan."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "The participant has not clearly requested an EACA refund.",
+                    "missing_data_point": "Participant request to opt out and request an EACA refund",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Do you want to opt out and request an EACA refund for your auto-enrollment contributions?"
+                },
+                {
+                    "condition": "The signed secure EACA refund form has not been completed and submitted.",
+                    "missing_data_point": "Completed and signed EACA refund form submission",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Have you completed and electronically signed and submitted the secure EACA refund form yet?"
+                }
+            ],
+            "allowed_conclusions": [
+                "The participant may qualify for an EACA refund if their plan is an EACA plan and the written request is received within 90 calendar days of the first automatic contribution deposit.",
+                "If approved, the refund typically includes auto-enrollment employee contributions plus attributable earnings or losses, reduced by a $50 processing fee.",
+                "Employer matching contributions are forfeited when an EACA refund is processed.",
+                "Refunds are generally mailed as a check via regular USPS to the address on file.",
+                "A Form 1099-R is issued for the year the refund is issued, and the refunded amount is typically treated as taxable ordinary income for that year.",
+                "Once the EACA refund is processed, the participant is removed from the 401(k) plan but may be able to re-enroll if the employer allows."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee the participant is eligible without confirming the plan is an EACA plan and verifying the first automatic contribution date and receipt timing of the written request.",
+                "Do not guarantee processing or mail delivery timing beyond what is stated as typical.",
+                "Do not guarantee the 10% early withdrawal penalty will not apply; describe it only as generally or typically not applicable as stated.",
+                "Do not claim the participant can still receive an EACA refund after the 90-day deadline or if the plan is not set up as an EACA plan.",
+                "Do not describe the refund amount without disclosing the $50 processing fee."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "An EACA refund is a one-time option in certain auto-enrollment 401(k) plans that allows you to opt out shortly after enrollment and have the automatic contributions returned if your written request is received within 90 calendar days of your first automatic contribution deposit.",
+                    "If approved, you typically receive your auto-enrollment employee contributions plus any attributable earnings or losses, reduced by a $50 processing fee.",
+                    "Employer matching contributions are forfeited when an EACA refund is processed.",
+                    "After you submit the signed form via RightSignature, processing typically takes 2-3 weeks and the refund is generally mailed as a check via regular USPS to your address on file.",
+                    "You will receive a Form 1099-R for the year the refund is issued; the refunded amount is typically taxable ordinary income, and it is generally not treated as an early retirement distribution so a 10% early withdrawal penalty typically does not apply.",
+                    "Once the EACA refund is processed, you will be removed from the 401(k) plan. You may be able to re-enroll in the future if your employer allows."
+                ],
+                "next_steps": [
+                    "Contact support and state that you want to request an EACA refund.",
+                    "Complete and electronically sign and submit the secure EACA refund form via RightSignature when it is provided."
+                ],
+                "warnings": [
+                    "The written request must be received within 90 calendar days of the first automatic contribution deposit.",
+                    "The $50 processing fee will be deducted from the refund amount.",
+                    "Employer matching contributions will be forfeited and are not included in the refund."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not promise exact processing or delivery dates.",
+                    "Do not guarantee tax outcomes or penalties; use qualifying language consistent with the article.",
+                    "Do not describe the refund amount without mentioning the $50 processing fee."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "To move forward with an EACA refund request, we need your written request to opt out and request the refund, submitted through the secure EACA refund form process via RightSignature."
+                ],
+                "next_steps": [
+                    "Contact support and state that you want to request an EACA refund.",
+                    "Complete and electronically sign and submit the secure EACA refund form via RightSignature once it is provided."
+                ],
+                "warnings": [
+                    "The written request must be received within 90 calendar days of the first automatic contribution deposit to qualify."
+                ],
+                "questions_to_ask": [
+                    "Do you want to opt out and request an EACA refund for your auto-enrollment contributions?",
+                    "Have you completed and electronically signed and submitted the secure EACA refund form yet?"
+                ],
+                "what_not_to_say": [
+                    "Do not confirm eligibility or that the refund will be processed until the signed form is submitted and received.",
+                    "Do not state the deadline is met without confirming timing relative to the first automatic contribution deposit."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "An EACA refund is only available if your employer plan is set up as an EACA plan and your written request is received within 90 calendar days of the first automatic contribution deposit.",
+                    "If an EACA refund is not available, your contributions generally remain in the plan and follow standard 401(k) rules. You may be able to stop future contributions, but past contributions are typically not refundable through the EACA process."
+                ],
+                "next_steps": [
+                    "If you want to change future contributions, consider stopping future contributions through standard plan options.",
+                    "Contact support to discuss other available options for your 401(k) account."
+                ],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not state that an EACA refund can be granted after the 90-day deadline or if the plan is not set up as an EACA plan."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Not every auto-enrollment 401(k) plan is an EACA plan, so eligibility depends on whether your employer's plan is specifically set up as an EACA plan.",
+                    "If you are unsure whether your plan is an EACA plan or you do not know the date of your first automatic contribution, contact support to confirm before assuming you are eligible."
+                ],
+                "next_steps": [
+                    "Contact support to confirm whether the plan is an EACA plan and to confirm the date of the first automatic contribution deposit."
+                ],
+                "warnings": [
+                    "The written request must be received within 90 calendar days of the first automatic contribution deposit to qualify."
+                ],
+                "questions_to_ask": [
+                    "Do you want to request an EACA refund for your auto-enrollment contributions?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee the plan is an EACA plan without confirmation.",
+                    "Do not guarantee eligibility or deadline status without confirming the first automatic contribution date and receipt timing of the written request."
+                ]
+            }
+        }
+    }
+}

@@ -15,7 +15,7 @@ import json
 import asyncio
 import hashlib
 import logging
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, NamedTuple
 from dataclasses import dataclass
 from openai import AsyncOpenAI
 from cachetools import TTLCache
@@ -32,6 +32,16 @@ from .prompts import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ============================================================================
+# LLM Response Container
+# ============================================================================
+
+class LLMResponse(NamedTuple):
+    """Return type for _call_llm: carries both text and API usage stats."""
+    content: str
+    usage: Optional[Dict[str, int]]
 
 
 # ============================================================================
@@ -257,12 +267,15 @@ class RAGEngine:
                 topic=topic
             )
             
+            llm_usage = None
             try:
-                llm_response = await self._call_llm(
+                llm_result = await self._call_llm(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_tokens=800
                 )
+                llm_response = llm_result.content
+                llm_usage = llm_result.usage
             except LLMEmptyResponseError as e:
                 logger.error(f"LLM returned empty content in required_data: {e}")
                 llm_response = json.dumps({"participant_data": [], "plan_data": [], "coverage_gaps": []})
@@ -314,6 +327,10 @@ class RAGEngine:
                 metadata={
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
+                    "response_tokens": self.token_manager.count_tokens(llm_response),
+                    "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
+                    "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
+                    "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
                     "model": self.model,
                     "sub_queries": sub_queries,
                     "per_query_scores": pqs,
@@ -404,6 +421,30 @@ class RAGEngine:
                 topic=topic
             )
             
+            # 3b. Fallback: if cascade results are thin, supplement with KQ-style broad search
+            top_score = chunks[0].get('score', 0) if chunks else 0
+            if len(chunks) < self.GR_FALLBACK_MIN_CHUNKS or top_score < self.GR_FALLBACK_MIN_SCORE:
+                logger.info(
+                    f"GR fallback triggered: {len(chunks)} chunks, "
+                    f"top_score={top_score:.3f}. "
+                    f"Supplementing with KQ-style broad search."
+                )
+                fallback_tasks = [
+                    self._cached_query(
+                        query_text=eq,
+                        top_k=self.KQ_TOP_K_PER_QUERY,
+                        filter_dict=None
+                    )
+                    for eq in enriched_queries
+                ]
+                fallback_results = await asyncio.gather(*fallback_tasks)
+                
+                for eq, result_list in zip(enriched_queries, fallback_results):
+                    best = max((c.get('score', 0) for c in result_list), default=0)
+                    per_query_scores[eq] = max(per_query_scores.get(eq, 0), round(best, 4))
+                
+                chunks = self._merge_and_rank_chunks(chunks, *fallback_results)
+            
             if not chunks:
                 logger.warning("No se encontraron chunks relevantes")
                 return self._build_uncertain_response(
@@ -433,12 +474,25 @@ class RAGEngine:
                 max_tokens=completion_budget
             )
             
-            # 6. Call LLM (retries once on empty content, then raises)
+            # 6. Call LLM with timeout guard
+            llm_usage = None
             try:
-                llm_response = await self._call_llm(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    max_tokens=completion_budget
+                llm_result = await asyncio.wait_for(
+                    self._call_llm(
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        max_tokens=completion_budget
+                    ),
+                    timeout=self.GR_LLM_TIMEOUT_SECONDS
+                )
+                llm_response = llm_result.content
+                llm_usage = llm_result.usage
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"LLM timed out after {self.GR_LLM_TIMEOUT_SECONDS}s for generate_response"
+                )
+                llm_response = json.dumps(
+                    self._build_llm_timeout_fallback(inquiry, selected_chunks)
                 )
             except LLMEmptyResponseError as e:
                 logger.error(f"LLM returned empty content after retries: {e}")
@@ -504,6 +558,9 @@ class RAGEngine:
                         "chunks_used": 0,
                         "context_tokens": tokens_used,
                         "response_tokens": self.token_manager.count_tokens(llm_response),
+                        "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
+                        "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
+                        "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
                         "model": self.model,
                         "total_inquiries": total_inquiries_in_ticket,
                         "sub_queries": sub_queries,
@@ -541,6 +598,9 @@ class RAGEngine:
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
                     "response_tokens": self.token_manager.count_tokens(llm_response),
+                    "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
+                    "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
+                    "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
                     "model": self.model,
                     "total_inquiries": total_inquiries_in_ticket,
                     "sub_queries": sub_queries,
@@ -568,9 +628,12 @@ class RAGEngine:
     RD_MAX_CHUNKS_PER_ARTICLE = 4
     
     # Generate Response settings
-    RESPONSE_MIN_CONTEXT_TOKENS = 2000
+    RESPONSE_MIN_CONTEXT_TOKENS = 3000
     GR_MAX_CHUNKS_PER_ARTICLE = 6
     GR_UNFILTERED_TOP_K = 15
+    GR_LLM_TIMEOUT_SECONDS = 90
+    GR_FALLBACK_MIN_CHUNKS = 6
+    GR_FALLBACK_MIN_SCORE = 0.35
     
     # Knowledge Question settings
     KQ_CONTEXT_BUDGET = 4000
@@ -669,12 +732,15 @@ class RAGEngine:
                 question=question
             )
             
+            llm_usage = None
             try:
-                llm_response = await self._call_llm(
+                llm_result = await self._call_llm(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
                     max_tokens=2000
                 )
+                llm_response = llm_result.content
+                llm_usage = llm_result.usage
             except LLMEmptyResponseError as e:
                 logger.error(f"LLM returned empty content in knowledge_question: {e}")
                 llm_response = json.dumps({
@@ -722,6 +788,10 @@ class RAGEngine:
                 metadata={
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
+                    "response_tokens": self.token_manager.count_tokens(llm_response),
+                    "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
+                    "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
+                    "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
                     "model": self.model,
                     "sub_queries": sub_queries,
                     "unique_articles": total_articles,
@@ -1227,12 +1297,12 @@ class RAGEngine:
         """
         try:
             system_prompt, user_prompt = build_decompose_question_prompt(question)
-            response = await self._call_llm(
+            llm_result = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_tokens=150
             )
-            parsed = json.loads(response)
+            parsed = json.loads(llm_result.content)
             sub_queries = parsed.get("sub_queries", [])
             
             if not sub_queries or not isinstance(sub_queries, list):
@@ -1543,7 +1613,7 @@ class RAGEngine:
         system_prompt: str,
         user_prompt: str,
         max_tokens: int
-    ) -> str:
+    ) -> LLMResponse:
         """
         Llama al LLM (OpenAI) de forma asíncrona.
         
@@ -1559,7 +1629,7 @@ class RAGEngine:
                         headroom para reasoning tokens.
         
         Returns:
-            Respuesta del LLM (string)
+            LLMResponse with content string and usage dict.
         
         Raises:
             LLMEmptyResponseError: If the LLM returns empty content after
@@ -1606,7 +1676,14 @@ class RAGEngine:
                 
                 if content and content.strip():
                     logger.info(f"LLM response: {len(content)} characters")
-                    return content
+                    usage_dict = None
+                    if last_usage:
+                        usage_dict = {
+                            "prompt_tokens": getattr(last_usage, "prompt_tokens", 0) or 0,
+                            "completion_tokens": getattr(last_usage, "completion_tokens", 0) or 0,
+                            "total_tokens": getattr(last_usage, "total_tokens", 0) or 0,
+                        }
+                    return LLMResponse(content=content, usage=usage_dict)
                 
                 logger.warning(
                     f"LLM returned empty content (attempt {attempt}/{self.LLM_EMPTY_RESPONSE_RETRIES + 1}). "
@@ -2040,6 +2117,66 @@ class RAGEngine:
             },
             "guardrails_applied": [],
             "data_gaps": [reason],
+            "coverage_gaps": []
+        }
+
+    @staticmethod
+    def _build_llm_timeout_fallback(
+        inquiry: str,
+        selected_chunks: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Build a degraded GR response when the LLM call times out.
+
+        Summarises the retrieved context so the caller still gets
+        actionable information instead of a blank failure.
+        """
+        key_points = []
+        seen_articles = set()
+        for chunk in selected_chunks[:6]:
+            meta = chunk.get("metadata", {})
+            article = meta.get("article_title", "")
+            if article and article not in seen_articles:
+                preview = meta.get("content", "")[:200].strip()
+                if preview:
+                    key_points.append(f"From \"{article}\": {preview}")
+                    seen_articles.add(article)
+
+        return {
+            "outcome": "ambiguous_plan_rules",
+            "outcome_reason": (
+                "The response could not be fully generated because processing "
+                "timed out. The information below is based on the retrieved "
+                "knowledge-base context only."
+            ),
+            "response_to_participant": {
+                "opening": (
+                    "We found relevant information for your inquiry but were "
+                    "unable to complete the full analysis in time. Below is a "
+                    "summary of what the knowledge base contains. Please "
+                    "contact ForUsAll Support for a complete answer."
+                ),
+                "key_points": key_points,
+                "steps": [
+                    {
+                        "step_number": 1,
+                        "action": "Contact ForUsAll Support for a complete answer.",
+                        "detail": "Email help@forusall.com or call 844-401-2253, Monday–Friday 7 AM–5 PM PT."
+                    }
+                ],
+                "warnings": [
+                    "This response was generated from retrieval context only "
+                    "due to a processing timeout and may be incomplete."
+                ]
+            },
+            "questions_to_ask": [],
+            "escalation": {
+                "needed": True,
+                "reason": "LLM processing timed out; a human agent should review this inquiry."
+            },
+            "guardrails_applied": [
+                "Response generated from retrieval context only due to processing timeout."
+            ],
+            "data_gaps": ["Full LLM analysis could not be completed within the time limit."],
             "coverage_gaps": []
         }
 

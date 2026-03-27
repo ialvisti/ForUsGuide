@@ -1,0 +1,1095 @@
+{
+    "metadata": {
+        "article_id": "can_i_split_my_401_k_rollover_between_multiple_providers",
+        "title": "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+        "description": "Guides a former employee through requesting a split rollover distribution from a ForUsAll-administered LT Trust 401(k). Covers two paths: (1) when the participant has both Roth and pre-tax sources and wants each sent to a different provider, the rollover is completed through the online portal (MFA enrollment required); (2) when the participant has only one source and wants to split it across multiple providers, the request must be handled manually via the RightSignature Separation of Service: Rollover Request Form. Includes eligibility requirements, fee disclosures, delivery methods, and processing timelines.",
+        "topic": "distribution",
+        "subtopics": [
+            "split_rollover",
+            "manual_processing",
+            "rightsignature",
+            "termination_distribution",
+            "wire",
+            "check",
+            "fees",
+            "tax_withholding",
+            "eligibility",
+            "portal_workflow",
+            "mfa"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "scope": "recordkeeper-specific",
+        "tags": [
+            "Termination Rollover",
+            "Withdrawal Request --> Terminated Distribution",
+            "Participant Dashboard",
+            "RightSignature Completed",
+            "Taxes",
+            "MFA"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-03-16",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "request_method",
+                "rules": [
+                    "A split rollover request for one source across multiple providers cannot be submitted through the online dashboard.",
+                    "If the participant is splitting Roth funds to one provider and pre-tax funds to another provider and has full online access with MFA enrolled, they can follow the online rollover workflow.",
+                    "For one-source split rollover requests, after the Must Have items are verified and the participant's instructions are received, the AI agent can share the secure RightSignature link; if the requirements cannot be verified, redirect the participant to support."
+                ]
+            },
+            {
+                "category": "instruction_requirements",
+                "rules": [
+                    "The participant must clearly state how the rollover should be divided.",
+                    "The rollover can be split by percentage or by dollar amount.",
+                    "Rollovers can be split using any combination of account types, financial institutions, delivery methods, and amounts, as long as instructions are clearly provided."
+                ]
+            },
+            {
+                "category": "processing",
+                "rules": [
+                    "Split rollover requests of one source in the account must be manually reviewed and processed.",
+                    "Manual review is required due to the complexity of routing funds to multiple destinations.",
+                    "Manual processing is used to help ensure the accuracy and security of the request."
+                ]
+            },
+            {
+                "category": "eligibility",
+                "rules": [
+                    "The participant must have a Terminated status and Termination date in the system.",
+                    "Only vested balances are eligible for distribution.",
+                    "If there is a Rehire date in the system, the Termination date must be after the Rehire date.",
+                    "Plan Status in the system must be Active or Pending Termination.",
+                    "The plan must not be in a Blackout period.",
+                    "The participant must have MFA enrolled for any workflow that requires online access."
+                ]
+            },
+            {
+                "category": "fees",
+                "rules": [
+                    "A $75 distribution fee applies to all requests.",
+                    "No additional charges apply for a Regular Mail Check.",
+                    "An additional $35 wire fee applies if a wire is chosen, and an additional $50 fee applies if an OverNight Check is chosen. These fees apply per wire or per overnight check, not per request.",
+                    "Wire transfer and OverNight Check fees are non-refundable."
+                ]
+            },
+            {
+                "category": "tax_withholding",
+                "rules": [
+                    "For cash distributions, 20% federal MANDATORY withholding applies.",
+                    "State withholding may also apply (Subject to the state's tax laws).",
+                    "Cash distributions are taxable income for the calendar year processed."
+                ]
+            },
+            {
+                "category": "submission_method",
+                "rules": [
+                    "Submitting through the participant portal is the preferred and fastest route only when the participant has full online access with MFA enrolled and is rolling Roth funds to one provider and pre-tax funds to another provider.",
+                    "If the participant is splitting one source across multiple providers or portal processing is not available, the participant must use the manual RightSignature process or contact support."
+                ]
+            },
+            {
+                "category": "delivery",
+                "rules": [
+                    "Checks are sent via USPS or UPS.",
+                    "Wires require exact instructions to avoid rejections and returns.",
+                    "A returned wire may be converted to a mailed check."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "Distribution request",
+                "fee": "$75",
+                "notes": "Applies to all requests."
+            },
+            {
+                "service": "Wire delivery",
+                "fee": "$35",
+                "notes": "Applies in addition to the Distribution request fee if a wire is chosen; non-refundable. It applies per wire if multiple wires are requested"
+            },
+            {
+                "service": "OverNight Check delivery",
+                "fee": "$50",
+                "notes": "Applies in addition to the Distribution request fee if an OverNight Check is chosen; non-refundable."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.",
+                "notes": "This path (steps 1-8) applies only when the participant has both Roth and pre-tax sources in their account and wants each source sent to a different provider. The participant must have full online access with MFA enrolled. If the participant has only one source and wants to split it across multiple providers, skip to step 9."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must select a distribution reason for the request.",
+                "notes": "The participant must choose Separation of Service. If Separation of Service is unavailable, the participant must choose Default and continue."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must review account sources and vesting before continuing.",
+                "notes": "The portal shows Traditional and any Roth sources and vesting percentages. Only vested balances are eligible. If vesting looks incorrect, the participant must contact ForUsAll Support before submitting."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must enter email confirmation information.",
+                "notes": "The participant must expand Email Confirmation Information and enter at least one valid email address for updates or inquiries."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must choose the distribution type and how funds will be delivered.",
+                "notes": "The participant must choose from the following options: lump sum cash distribution, full rollover to an IRA or qualified plan, or partial rollover plus partial cash."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must provide delivery details for the chosen option.",
+                "notes": "For checks, the participant must provide a mailing address and (for cash) any additional withholding if selected. For wires, the participant must provide required routing and account details. For rollovers, the participant must provide the receiving institution information and IRA or sub-account number if applicable."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must review elections and submit the request in the portal.",
+                "notes": "The participant must confirm distribution elections, tax withholding, and delivery method, then submit. A confirmation screen summarizes choices. If the confirmation screen shows 'none' for email confirmation after an email was entered, this is a known display issue and can be ignored."
+            },
+            {
+                "step_number": 8,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "The participant must track review, processing, and delivery timelines after submission.",
+                "notes": "ForUsAll will review and approve the request within 1 to 2 business days. After approval, processing time is 1 to 2 weeks via wire and 2 to 3 weeks via check. ForUsAll does not send notifications or updates about the process. The participant should wait for the shared timeframe and contact support if the funds are not received after that time."
+            },
+            {
+                "step_number": 9,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant has only one source (only Roth or only pre-tax, including 'Employee Deferral' and/or 'Safe Harbor') and wants to split it across multiple providers, this must follow the manual RightSignature process. Collect the participant's rollover instructions per the following steps.",
+                "notes": "This applies when one source is being split across multiple providers and cannot be completed through the online dashboard."
+            },
+            {
+                "step_number": 10,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Collect the participant's exact rollover split instructions.",
+                "notes": "Instructions must clearly describe how the rollover should be divided."
+            },
+            {
+                "step_number": 11,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Confirm whether the participant is splitting the rollover by percentage or by dollar amount.",
+                "notes": "Either method is allowed according to the article."
+            },
+            {
+                "step_number": 12,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Capture each destination account or provider and the requested delivery method for each portion.",
+                "notes": "The article examples include regular check, OverNight Check, and wire transfer as delivery methods."
+            },
+            {
+                "step_number": 13,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Disclose all applicable fees to the participant before sharing the RightSignature link.",
+                "notes": "Inform the participant of the $75 distribution fee, plus $35 per wire or $50 per overnight check if applicable. These additional delivery fees are non-refundable."
+            },
+            {
+                "step_number": 14,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If any portion is being taken as cash rather than rolled over, inform the participant about tax withholding.",
+                "notes": "20% federal mandatory withholding applies to cash distributions. State withholding may also apply depending on the participant's state of residence."
+            },
+            {
+                "step_number": 15,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "After eligibility is verified and the instructions are received, send the participant the secure RightSignature link to finalize the request.",
+                "notes": "Use the Separation of Service: Rollover Request Form only after the Must Have items are verified. If any Must Have item cannot be verified, redirect the participant to support."
+            },
+            {
+                "step_number": 16,
+                "type": "internal-check",
+                "visibility": "participant-facing",
+                "description": "Inform the participant that the request is handled through manual review and processing by support and this may take 1-2 business days to review and approve and 1-3 weeks to process and deliver.",
+                "notes": "This is required because routing funds to multiple destinations is complex."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "The participant tries to submit the split rollover through the online dashboard.",
+                "resolution": "Explain that splitting one source across multiple providers cannot be submitted through the online dashboard. If the participant is rolling Roth funds to one provider and pre-tax funds to another provider and has full online access with MFA enrolled, they can use the online workflow. Otherwise, direct the participant to the manual process or support."
+            },
+            {
+                "issue": "The participant provides incomplete or unclear split instructions.",
+                "resolution": "Ask the participant to specify exactly how the rollover should be divided, including whether the split is by percentage or dollar amount, the destination for each portion, and the delivery method for each portion."
+            },
+            {
+                "issue": "The participant asks why the request cannot be done online.",
+                "resolution": "Explain that split rollover requests of one source in the account must be manually reviewed and processed due to the complexity of routing funds to multiple destinations, which helps ensure accuracy and security."
+            },
+            {
+                "issue": "The participant wants to split the rollover but does not say whether the split should be by percentage or dollar amount.",
+                "resolution": "Ask the participant to clarify whether the rollover should be divided by percentage or by dollar amount before the request is processed."
+            },
+            {
+                "issue": "The participant provides split percentages that do not add up to 100%.",
+                "resolution": "Ask the participant to correct the percentages so the full rollover amount is clearly accounted for."
+            },
+            {
+                "issue": "The participant provides dollar amounts that do not clearly account for the full balance.",
+                "resolution": "Ask the participant to confirm how the remaining balance should be handled so the split instructions are complete."
+            },
+            {
+                "issue": "The participant identifies the receiving institutions but does not specify the delivery method for each portion.",
+                "resolution": "Ask the participant to provide the delivery method for each portion, such as regular check, OverNight Check, or wire transfer, before moving forward."
+            },
+            {
+                "issue": "The participant requests a wire transfer but does not provide complete wire instructions.",
+                "resolution": "Ask the participant to provide complete wire instructions and do not proceed with the wire portion until all required details are clearly provided."
+            },
+            {
+                "issue": "The participant wants to split the rollover across multiple destinations but only gives partial destination information.",
+                "resolution": "Ask the participant to provide the full destination details for each portion of the rollover so the request can be routed correctly."
+            },
+            {
+                "issue": "The participant changes the rollover split instructions after the request has already been prepared.",
+                "resolution": "Confirm the updated instructions in full and ensure the latest version is clearly documented before sending or re-sending the RightSignature link."
+            },
+            {
+                "issue": "The participant says they want to split one source across multiple providers but the instructions are inconsistent.",
+                "resolution": "Review the conflicting details with the participant and ask them to restate the full request in one clear set of instructions."
+            },
+            {
+                "issue": "The participant asks where to find the RightSignature form before support has sent it.",
+                "resolution": "Explain that the Separation of Service: Rollover Request Form is shared only after the Must Have items are verified for the manual process. If the requirements cannot be verified, redirect the participant to support."
+            },
+            {
+                "issue": "The participant wants to submit the request by phone but has not yet provided the full split details.",
+                "resolution": "Collect the complete instructions during the conversation or ask the participant to send the full breakdown by email so the request can be documented accurately."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant wants 70% of their pre-tax account rolled over to a Charles Schwab IRA via check and the remaining 30% of the same pre-tax account rolled into a new employer's 401(k) via check.",
+                "outcome": "This is allowed if the participant provides the instructions clearly, meets the Must Have requirements, and completes the Separation of Service: Rollover Request Form."
+            },
+            {
+                "scenario": "A participant wants $1,000 of their pre-tax account rolled over to an Empower IRA via wire transfer and the remaining balance of the same pre-tax account rolled into a Vanguard IRA via check.",
+                "outcome": "This is allowed if the participant provides the instructions clearly, meets the Must Have requirements, and completes the Separation of Service: Rollover Request Form."
+            },
+            {
+                "scenario": "A participant wants to roll 50% of their pre-tax account to a Fidelity IRA by check and 50% to a new employer's 401(k) by check.",
+                "outcome": "This can be processed as a split rollover if the participant contacts support or uses the manual process, provides the instructions clearly, and completes the Separation of Service: Rollover Request Form."
+            },
+            {
+                "scenario": "A participant wants to roll $5,000 of their pre-tax account to a Vanguard IRA by wire and the remaining balance to a Charles Schwab IRA by check.",
+                "outcome": "This can be processed as a split rollover if the participant provides complete dollar-based instructions, delivery details for both destinations, and completes the Separation of Service: Rollover Request Form. The wire portion is subject to the additional wire fee."
+            },
+            {
+                "scenario": "A participant wants to roll 80% of their pre-tax account to one IRA but does not specify where the remaining 20% should go.",
+                "outcome": "This is blocked until the participant provides complete split instructions for the full rollover amount, including the destination for the remaining portion."
+            },
+            {
+                "scenario": "A participant says they want to split their rollover between two providers but does not say whether the split is by percentage or dollar amount.",
+                "outcome": "This is blocked until the participant clarifies whether the rollover split is based on percentage or dollar amount."
+            },
+            {
+                "scenario": "A participant wants to split a rollover across two IRAs and gives the percentages, but does not provide the delivery method for either portion.",
+                "outcome": "This is blocked until the participant provides the requested delivery method for each portion, such as regular check, OverNight Check, or wire transfer."
+            },
+            {
+                "scenario": "A participant tries to complete a split rollover entirely through the participant dashboard.",
+                "outcome": "If the participant is splitting one source across multiple providers, they should be informed that the request cannot be submitted through the online dashboard and must instead use the manual process or support."
+            },
+            {
+                "scenario": "A participant wants $2,500 sent to an Empower IRA by wire and the remaining balance to a new employer plan by check, but the wire instructions are incomplete.",
+                "outcome": "This is blocked until complete wire instructions are provided. The request should not move forward with assumed or partial wire information."
+            },
+            {
+                "scenario": "A participant wants to split their rollover among three different receiving accounts and clearly provides the amount, destination, and delivery method for each portion.",
+                "outcome": "This can proceed through the manual split rollover process if the participant meets the Must Have requirements and completes the Separation of Service: Rollover Request Form."
+            },
+            {
+                "scenario": "A participant has both pre-tax and Roth balances and wants the pre-tax money rolled to one institution and the Roth money rolled to another institution.",
+                "outcome": "If the participant has full online access with MFA enrolled, this can be handled through the online workflow using the regular termination rollover process."
+            },
+            {
+                "scenario": "A participant wants to split their rollover by dollar amount, but the stated dollar amounts exceed the available balance.",
+                "outcome": "This is blocked until the participant corrects the instructions so the requested amounts align with the available balance being distributed."
+            },
+            {
+                "scenario": "A participant provides complete split rollover instructions by email, including percentages, institutions, and delivery methods.",
+                "outcome": "The AI agent can use those instructions to prepare the manual request and share the Separation of Service: Rollover Request Form only after the Must Have requirements are verified."
+            },
+            {
+                "scenario": "A participant calls support and asks whether they can split one source from their account into multiple destinations.",
+                "outcome": "The participant can be told yes, this is allowed, but it must be handled manually and cannot be submitted through the online dashboard."
+            },
+            {
+                "scenario": "A participant wants one portion of the rollover sent by overnight check and another portion by wire.",
+                "outcome": "This can proceed if the participant provides complete instructions for each portion, applicable delivery fees are disclosed, and the participant completes the Separation of Service: Rollover Request Form."
+            },
+            {
+                "scenario": "A participant wants to split their rollover, but the participant does not yet have MFA enrolled and the process being followed requires MFA.",
+                "outcome": "This is blocked until the participant completes the MFA requirement if the process requires online access, or until support handles the request if eligibility cannot otherwise be verified."
+            },
+            {
+                "scenario": "A participant has terminated employment, has a vested balance, and wants 60% rolled to an IRA and 40% sent as cash.",
+                "outcome": "This may require additional clarification because the article supports split rollovers across destinations, but cash treatment and withholding rules should only be applied if they are part of the validated process being used."
+            },
+            {
+                "scenario": "A participant wants a split rollover but only says, \"Send some to Fidelity and the rest to Schwab.\"",
+                "outcome": "This is blocked until the participant specifies exact percentages or dollar amounts, along with delivery instructions for each portion."
+            },
+            {
+                "scenario": "A participant wants the entire pre-tax account rolled over, split evenly between two IRAs, with both checks mailed to the receiving institutions.",
+                "outcome": "This can proceed as a manual split rollover once the Must Have requirements are verified and the participant completes the Separation of Service: Rollover Request Form."
+            },
+            {
+                "scenario": "A participant submits a manual split rollover request and later asks why support review is required.",
+                "outcome": "The participant can be told that manual review is required because routing one source to multiple destinations is more complex and the process helps ensure accuracy and security."
+            },
+            {
+                "scenario": "A participant wants to split the rollover by percentage, but uses percentages that do not total 100%.",
+                "outcome": "This is blocked until the participant corrects the percentages so the instructions fully account for the rollover being requested."
+            },
+            {
+                "scenario": "A participant provides all split rollover instructions clearly, but asks where to find the RightSignature form before support has sent it.",
+                "outcome": "The participant should be told that the Separation of Service: Rollover Request Form is shared after the Must Have items are verified for the manual process. Do not claim any other access path unless it is explicitly provided in the approved process."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "processing_method",
+                "notes": [
+                    "One-source split rollovers are handled manually to ensure accuracy when routing funds to multiple destinations."
+                ]
+            },
+            {
+                "category": "processing_times",
+                "notes": [
+                    "ForUsAll will review and approve your request within 1 to 2 business days.",
+                    "After approval, processing time is 1 to 2 weeks via wire and 2 to 3 weeks via check.",
+                    "ForUsAll does not send notifications or updates about the process. Wait for the shared timeframe and contact support if funds are not received after that time."
+                ]
+            },
+            {
+                "category": "fees",
+                "notes": [
+                    "A $75 distribution fee applies to all requests, with additional non-refundable fees of $35 per wire or $50 per overnight check."
+                ]
+            },
+            {
+                "category": "roth_and_traditional_sources",
+                "notes": [
+                    "The portal displays Traditional and any Roth sources.",
+                    "Ensure the receiving account accepts the tax character of the funds (for example, Roth IRA for Roth amounts)."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "Can a participant split a 401(k) rollover between multiple providers?",
+                "answer": "Yes. If the participant is sending Roth funds to one provider and pre-tax funds to another provider and has full online access with MFA enrolled, they can use the online workflow. If the participant is splitting one source across multiple providers, the request must follow the manual process."
+            },
+            {
+                "question": "Can a split rollover request be submitted through the online dashboard?",
+                "answer": "Only in the scenario where the participant has both Roth and pre-tax balances, has full online access with MFA enrolled, and is sending Roth funds to one provider and pre-tax funds to another provider. If one source is being split across multiple providers, the request cannot be submitted through the online dashboard."
+            },
+            {
+                "question": "How does the participant request a split rollover?",
+                "answer": "The participant either follows the online workflow for separate Roth and pre-tax sources when eligible to do so, or uses the manual process for one-source split rollovers by providing exact instructions and completing the Separation of Service: Rollover Request Form after eligibility is verified."
+            },
+            {
+                "question": "How can the rollover be divided?",
+                "answer": "The article says the rollover can be split by percentage or by dollar amount."
+            },
+            {
+                "question": "What happens after support receives the participant's instructions?",
+                "answer": "After the Must Have items are verified for the manual process, the participant receives the Separation of Service: Rollover Request Form so the request can be finalized."
+            },
+            {
+                "question": "Why is the split rollover processed manually?",
+                "answer": "The article says split rollover requests of one source in the account must be manually reviewed and processed because routing funds to multiple destinations is complex, and the process helps ensure accuracy and security."
+            },
+            {
+                "question": "Do split rollover requests require help from support?",
+                "answer": "Yes for one-source split rollovers. Those requests must be handled through the manual process. Separate Roth and pre-tax rollovers may follow the online workflow when the participant has full online access with MFA enrolled."
+            },
+            {
+                "question": "Can the participant choose different destinations for different portions of the rollover?",
+                "answer": "Yes. The article says the rollover can be divided across more than one retirement account or provider."
+            },
+            {
+                "question": "Can a split rollover be divided by percentage or by dollar amount?",
+                "answer": "Yes. The article states that split instructions can be provided by either percentage or dollar amount."
+            },
+            {
+                "question": "Does the participant need to be specific when giving split rollover instructions?",
+                "answer": "Yes. The article says the participant must clearly state exactly how the rollover should be divided."
+            },
+            {
+                "question": "Can the participant use different delivery methods for different portions of the rollover?",
+                "answer": "Yes. The article states that rollovers can be split using any combination of delivery methods as long as the instructions are clearly provided."
+            },
+            {
+                "question": "Is a secure form part of the split rollover process?",
+                "answer": "Yes. For the manual process, after the Must Have items are verified, the participant receives the Separation of Service: Rollover Request Form to finalize the request."
+            },
+            {
+                "question": "When is the RightSignature link sent to the participant?",
+                "answer": "For the manual process, the secure RightSignature link for the Separation of Service: Rollover Request Form is sent or shared after the Must Have items are verified."
+            },
+            {
+                "question": "Can one source in the participant's account be routed to multiple destinations?",
+                "answer": "Yes. The article explains that split rollover requests of one source in the account can be processed manually."
+            },
+            {
+                "question": "Why does support handle split rollover requests outside the dashboard?",
+                "answer": "The article says one-source split rollover requests must be handled manually because routing funds to multiple destinations is more complex."
+            },
+            {
+                "question": "What should the participant include in a split rollover request?",
+                "answer": "The participant should clearly explain how the rollover should be divided, including the amount or percentage for each portion, where each portion should go, and the delivery method for each portion."
+            },
+            {
+                "question": "Can part of the rollover go to an IRA and another part go to a new employer plan?",
+                "answer": "Yes. The article's examples show that different portions can be sent to different destinations, including an IRA and a new employer's 401(k)."
+            },
+            {
+                "question": "Can one portion of the rollover be sent by check and another by wire transfer?",
+                "answer": "Yes. The article's examples show that different portions can use different delivery methods, including check and wire transfer."
+            },
+            {
+                "question": "Does the article allow flexible combinations when splitting a rollover?",
+                "answer": "Yes. The article says the rollover can be split using any combination of account types, financial institutions, delivery methods, and amounts, as long as the instructions are clearly provided."
+            },
+            {
+                "question": "What if the participant wants help completing the split rollover process?",
+                "answer": "The article says the support team is available to help if the participant needs help completing the process or has questions about the rollover."
+            },
+            {
+                "question": "What contact methods are available for requesting a split rollover?",
+                "answer": "The participant can contact support by email at help@forusall.com or by phone at 844-401-2253."
+            },
+            {
+                "question": "Does the article provide an example of a percentage-based split rollover?",
+                "answer": "Yes. The article includes an example where 70% of a pre-tax account is rolled to one destination and the remaining 30% is rolled to another destination."
+            },
+            {
+                "question": "Does the article provide an example of an amount-based split rollover?",
+                "answer": "Yes. The article includes an example where $1,000 of a pre-tax account is rolled to one destination and the remaining balance is rolled to another destination."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Split rollover",
+                "definition": "A rollover request in which one source from a participant's account is divided across more than one retirement account or provider."
+            },
+            {
+                "term": "RightSignature",
+                "definition": "The secure method used to deliver the Separation of Service: Rollover Request Form to the participant for the manual process."
+            },
+            {
+                "term": "Delivery method",
+                "definition": "The way a rollover portion is sent to its destination, such as by check or wire transfer."
+            },
+            {
+                "term": "401(k) rollover",
+                "definition": "A movement of retirement funds from the participant's 401(k) account to another eligible retirement account or provider."
+            },
+            {
+                "term": "Multiple providers",
+                "definition": "More than one receiving financial institution, retirement account provider, or qualified plan selected to receive portions of the rollover."
+            },
+            {
+                "term": "Pre-tax balance",
+                "definition": "The portion of the participant's retirement account that holds pre-tax contributions and related balances."
+            },
+            {
+                "term": "Roth balance",
+                "definition": "The portion of the participant's retirement account that holds Roth contributions and related balances."
+            },
+            {
+                "term": "Percentage-based split",
+                "definition": "A split rollover instruction that divides the rollover using percentages for each destination."
+            },
+            {
+                "term": "Amount-based split",
+                "definition": "A split rollover instruction that divides the rollover using fixed dollar amounts for each destination."
+            },
+            {
+                "term": "Remaining balance",
+                "definition": "The portion of the account balance left after a stated dollar amount or other portion has already been assigned to a destination."
+            },
+            {
+                "term": "Receiving institution",
+                "definition": "The financial institution or plan that will receive all or part of the rollover."
+            },
+            {
+                "term": "Qualified plan",
+                "definition": "An eligible employer-sponsored retirement plan that can receive rollover funds."
+            },
+            {
+                "term": "IRA",
+                "definition": "An individual retirement account that can receive rollover funds when permitted by the process being used."
+            },
+            {
+                "term": "New employer's 401(k)",
+                "definition": "A new employer-sponsored 401(k) plan selected to receive rollover funds from the participant's existing account."
+            },
+            {
+                "term": "Manual review",
+                "definition": "A support-handled review process required when the rollover request is too complex to be completed through the standard online workflow."
+            },
+            {
+                "term": "Manual processing",
+                "definition": "A non-portal handling process used to complete rollover requests that involve one source being routed to multiple destinations or other added complexity."
+            },
+            {
+                "term": "Online dashboard",
+                "definition": "The participant's web-based account interface where standard account actions may be completed, including the online workflow for separate Roth and pre-tax rollover destinations when the participant has full access, but where one-source split rollover requests cannot be submitted."
+            },
+            {
+                "term": "Participant portal",
+                "definition": "The ForUsAll online account access point where participants can review and submit certain retirement account requests."
+            },
+            {
+                "term": "Termination distribution",
+                "definition": "A distribution request made after a participant has terminated employment, subject to the rules and validations in the process being used."
+            },
+            {
+                "term": "Terminated status",
+                "definition": "A participant status in the system indicating that the participant is no longer actively employed."
+            },
+            {
+                "term": "Termination date",
+                "definition": "The date recorded in the system showing when the participant's employment ended."
+            },
+            {
+                "term": "Rehire date",
+                "definition": "The date recorded in the system showing when a participant returned to employment after a prior termination."
+            },
+            {
+                "term": "Vested balance",
+                "definition": "The portion of the participant's account balance that is available for distribution based on vesting status."
+            },
+            {
+                "term": "MFA",
+                "definition": "Multi-factor authentication used as an added account security requirement."
+            },
+            {
+                "term": "Separation of Service",
+                "definition": "A distribution reason indicating that the participant's employment has ended."
+            },
+            {
+                "term": "Wire transfer",
+                "definition": "An electronic delivery method used to send a rollover or distribution amount directly to the receiving institution or account."
+            },
+            {
+                "term": "Wire instructions",
+                "definition": "The routing and account details required to send funds by wire transfer."
+            },
+            {
+                "term": "Distribution fee",
+                "definition": "The base fee charged for processing a distribution request."
+            },
+            {
+                "term": "Wire fee",
+                "definition": "An additional fee charged when a wire transfer delivery method is selected."
+            },
+            {
+                "term": "OverNight Check",
+                "definition": "An expedited check delivery option that carries an additional fee."
+            },
+            {
+                "term": "Regular Mail Check",
+                "definition": "A standard mailed check delivery option."
+            },
+            {
+                "term": "Returned wire",
+                "definition": "A wire transfer that is rejected or sent back, which may then be converted to a mailed check under the process being used."
+            },
+            {
+                "term": "Participant Dashboard",
+                "definition": "The account landing area where the participant accesses tools such as Loans and Distributions."
+            },
+            {
+                "term": "Record keeper",
+                "definition": "The organization responsible for recordkeeping administration for the retirement plan."
+            },
+            {
+                "term": "LT Trust",
+                "definition": "The record keeper identified in the article metadata for this process."
+            },
+            {
+                "term": "RightSignature electronic form",
+                "definition": "The Separation of Service: Rollover Request Form delivered through a secure RightSignature link for the participant to review and complete the request."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not tell the participant that a one-source split rollover can be submitted through the online dashboard.",
+                "Do not omit or contradict the stated processing timeline for review and delivery.",
+                "Do not assert any eligibility requirement that is not stated in the article.",
+                "Do not guarantee any rule beyond what the participant clearly instructs in the request.",
+                "Do not suggest a portal-based workflow when the participant is splitting one source across multiple providers.",
+                "Do not claim support for a split request unless the participant's instructions are clearly provided.",
+                "Do not claim where or how to access the RightSignature link beyond stating that the Separation of Service: Rollover Request Form is shared after the Must Have items are verified for the manual process.",
+                "Do not assume percentages, dollar amounts, destinations, or delivery methods if the participant's instructions are incomplete.",
+                "Do not say the request is ready to proceed until all split details are clearly provided.",
+                "Do not state that support can process a wire portion without complete wire instructions.",
+                "Do not treat partial destination information as sufficient for a manual split rollover request.",
+                "Do not tell the participant that manual review can be skipped for a one-source split rollover.",
+                "Do not imply that one source can be routed to multiple destinations without the manual process.",
+                "Do not give the participant an alternate submission path unless it is explicitly documented in the approved process.",
+                "Do not promise that a requested delivery method will be accepted if the participant has not provided the required details.",
+                "Do not restate inconsistent instructions as final until the participant confirms one clear version of the request.",
+                "Do not say the participant is eligible without confirming employment status, balance thresholds, or plan limitations first."
+            ],
+            "must_do_if_unsure": [
+                "Ask the participant to clarify exactly how the rollover should be divided.",
+                "Ask the participant to clarify the destination account or provider for each portion if it is not clear.",
+                "Ask the participant to clarify whether each portion is based on percentage or dollar amount if that is not clear.",
+                "Use only the contact methods stated in the article when directing the participant to start the process. For the manual process, share the Separation of Service: Rollover Request Form only after the Must Have items are verified; otherwise redirect to support.",
+                "Disclose all applicable fees (distribution fee, wire fee, overnight check fee) before sharing the RightSignature link or directing the participant to submit through the portal."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [
+                "LT Trust: Understanding Login Error Codes",
+                "LT: Completing Your Rollover Online – Best Practices",
+                "LT: When will I receive my wire transfer, ACH transfer, or check?",
+                "LT: How do I roll over my 401(k) to another retirement account?",
+                "LT: How to Request a Rollover Source Withdrawal from Your 401(k)",
+                "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+                "Distribution Requests for Small Account Balances",
+                "Can I roll over Roth 401(k) funds separately from pre-tax funds?",
+                "What Are the Tax Implications of a Cash Distribution vs a Rollover Distribution?",
+                "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+                "When Will I Receive My 401(k) Withdrawal or Rollover?",
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax"
+            ],
+            "external_links": [
+                "https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e"
+            ],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Mon-Fri, 07:00-17:00 PST"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Termination date",
+                    "meaning": "The date the participant terminated their employment.",
+                    "example_values": [
+                        "2025-06-15",
+                        "2026-01-09",
+                        null
+                    ],
+                    "why_needed": "To verify eligibility for distribution. Without a termination date, the participant cannot proceed with the request.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Rehire date",
+                    "meaning": "The date the participant was rehired.",
+                    "example_values": [
+                        "2025-03-01",
+                        "2026-01-09",
+                        null
+                    ],
+                    "why_needed": "To verify eligibility for distribution. If a rehire date is present, it must be before the termination date.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "MFA status",
+                    "meaning": "The status of the participant's MFA enrollment.",
+                    "example_values": [
+                        "enrolled",
+                        "not enrolled"
+                    ],
+                    "why_needed": "To verify whether the participant can use a workflow that requires online access.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Account balance",
+                    "meaning": "The total balance of the participant's account.",
+                    "example_values": [
+                        10000.0,
+                        0.0,
+                        95.23,
+                        null
+                    ],
+                    "why_needed": "To verify eligibility for distribution. The account balance must be greater than 75.00.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Last Payroll date",
+                    "meaning": "The date of the participant's last payroll.",
+                    "example_values": [
+                        "2025-12-20",
+                        "2026-01-09",
+                        null
+                    ],
+                    "why_needed": "Needed to verify payroll activity for the termination distribution process when applicable.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant's name",
+                    "meaning": "The name of the participant.",
+                    "example_values": [
+                        "John Doe",
+                        "Jane Doe",
+                        "Oscar Santiago Garcia "
+                    ],
+                    "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant Status",
+                    "meaning": "The status of the participant in the system.",
+                    "example_values": [
+                        "Active",
+                        "Terminated",
+                        "Ineligible",
+                        "Deceased",
+                        "Unknown"
+                    ],
+                    "why_needed": "Required to confirm that the participant has already left their employer in order to request a distribution.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Split instructions",
+                    "meaning": "The participant's exact instructions for how the rollover should be divided.",
+                    "example_values": [
+                        "I want 50% of mi total Vested balance to my IRA and 50% to my Traditional IRA",
+                        "I want $5,000 sent to my new employer's 401(k) and the rest sent to my Vanguard IRA",
+                        "I want to split the rollover evenly between two IRAs and have one portion sent by check and the other portion sent by wire",
+                        "I want 70% of the pre-tax balance rolled to one destination and the remaining 30% rolled to another destination",
+                        "I want my Roth balance to be rolled to a Roth IRA and my pre-tax balance to be rolled to a different IRA",
+                        "I want $2,500 sent to an Empower IRA by wire and the remaining balance sent to a new employer plan by check"
+                    ],
+                    "why_needed": "Needed to process the request correctly and route the rollover as instructed.",
+                    "source_note": "Supported by article section: Let us know exactly how you'd like your rollover to be divided",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Allocation method",
+                    "meaning": "Whether the participant is dividing the rollover by percentage or by dollar amount.",
+                    "example_values": [
+                        "percentage",
+                        "dollar amount"
+                    ],
+                    "why_needed": "Needed because the article allows split instructions to be given by percentage or by dollar amount.",
+                    "source_note": "Supported by article section: you can split each source by percentage or by dollar amount",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Destination for each portion",
+                    "meaning": "The retirement account or provider that should receive each part of the rollover.",
+                    "example_values": [
+                        "Fidelity Investments",
+                        "Vanguard",
+                        "New employer's 401(k)",
+                        "Charles Schwab",
+                        "Empower",
+                        "Traditional IRA at XYZ Bank",
+                        "Roth IRA at ABC Financial",
+                        "T. Rowe Price",
+                        "Principal Financial Group",
+                        "ADP Retirement Services",
+                        "Wells Fargo",
+                        "Merrill Lynch",
+                        "Human Interest",
+                        "Betterment",
+                        "Personal Capital",
+                        "E-TRADE",
+                        "Ally Invest",
+                        "TD Ameritrade",
+                        "Merrill Edge"
+                    ],
+                    "why_needed": "Needed to route each portion of the rollover to the correct destination.",
+                    "source_note": "Supported by article examples showing multiple destination accounts and providers",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Delivery method for each portion",
+                    "meaning": "How each portion should be sent to its destination.",
+                    "example_values": [
+                        "regular check",
+                        "OverNight Check",
+                        "wire transfer"
+                    ],
+                    "why_needed": "Needed because the article examples include delivery methods for each portion.",
+                    "source_note": "Supported by article examples showing check and wire transfer",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Preferred support contact method",
+                    "meaning": "Whether the participant is contacting support by email or phone.",
+                    "example_values": [
+                        "email",
+                        "phone"
+                    ],
+                    "why_needed": "Helps align communication with one of the contact methods stated in the article.",
+                    "source_note": "Supported by article section: Contact our support team via email or phone",
+                    "source_type": "message_text"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Termination date",
+                    "ask_participant": "Have already left your employer?",
+                    "agent_note": "If the participant has not left their employer, they cannot proceed with the request."
+                },
+                {
+                    "missing_data_point": "Rehire date",
+                    "ask_participant": null,
+                    "agent_note": "Rehire date is not required for eligibility on its own. However, if a Rehire date IS present in the system, verify it falls before the Termination date — a Rehire date after the Termination date blocks the distribution."
+                },
+                {
+                    "missing_data_point": "MFA status",
+                    "ask_participant": "Have you enrolled MFA in the participant portal?",
+                    "agent_note": "If the participant has not enrolled MFA, they may not be able to use the online workflow."
+                },
+                {
+                    "missing_data_point": "Account balance",
+                    "ask_participant": "What is the Total Vested Balance you see in your dashboard when logging in?",
+                    "agent_note": "If greater than $75, proceed with the split rollover instructions as shared in this article. If the participant says they do not have log in access, they must contact support."
+                },
+                {
+                    "missing_data_point": "Last Payroll date",
+                    "ask_participant": "What was your last payroll date?",
+                    "agent_note": "Use this to verify the termination distribution process when applicable."
+                },
+                {
+                    "missing_data_point": "Participant's name",
+                    "ask_participant": "We haven't found an account under your information, please provide your full name, email address associated with your account and the name of the company.",
+                    "agent_note": "If this field is missing, it means that we couldn't find a user related to the participant in our system, this means that we cannot determine if the participant is eligible for a distribution."
+                },
+                {
+                    "missing_data_point": "Participant Status",
+                    "ask_participant": "Have you already left your employer?",
+                    "agent_note": "If the participant has not left their employer, they cannot proceed with the request."
+                }
+            ],
+            "disambiguation_notes": [
+                "The article refers to splitting one source in the participant's account across multiple destinations.",
+                "The article allows percentage-based and amount-based instructions.",
+                "The article allows different account types, financial institutions, delivery methods, and amounts as long as the instructions are clear."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "Participant must have a termination date",
+                "Participant must have an Account balance greater than 75.00",
+                "If Rehire date is not null, it must be before the termination date",
+                "Participant must have a MFA status of 'enrolled' when the workflow requires online access",
+                "Plan Status in the system must be Active or Pending Termination",
+                "The plan must not be in a Blackout period"
+            ],
+            "blocking_conditions": [
+                "The participant is trying to submit a one-source split rollover through the online dashboard instead of using the manual process.",
+                "The participant has not provided clear enough instructions to route funds to multiple destinations.",
+                "Participant doesn't have a termination date",
+                "Participant doesn't have an Account balance greater than 75.00",
+                "If Rehire date is not null, it is after the termination date",
+                "Participant has a MFA status of 'not enrolled' when the workflow requires online access",
+                "Plan Status is not Active or Pending Termination",
+                "The plan is in a Blackout period"
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "There is no name provided for the participant",
+                    "missing_data_point": "Participant's name",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "We haven't found an account under your information, please provide your full name, email address associated with your account and the name of the company."
+                },
+                {
+                    "condition": "Termination date is not present",
+                    "missing_data_point": "Termination date",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "When was your last day of employment?"
+                },
+                {
+                    "condition": "The participant has not stated how the rollover should be divided.",
+                    "missing_data_point": "Split instructions",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "How would you like your rollover to be divided?"
+                },
+                {
+                    "condition": "The participant has not stated whether the split is by percentage or dollar amount.",
+                    "missing_data_point": "Allocation method",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Should the rollover be divided by percentage or by dollar amount?"
+                },
+                {
+                    "condition": "The participant has not identified the destination account or provider for each portion.",
+                    "missing_data_point": "Destination for each portion",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Which retirement account or provider should receive each portion of the rollover?"
+                },
+                {
+                    "condition": "The participant has not stated the delivery method for each portion.",
+                    "missing_data_point": "Delivery method for each portion",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "How would you like each portion delivered, such as by regular check, OverNight Check, or wire transfer?"
+                }
+            ],
+            "allowed_conclusions": [
+                "If a rehire date is present and it's after the termination date, the participant is not eligible for a distribution.",
+                "If the participant is eligible for a distribution, they can request a split rollover per this article's instructions.",
+                "The participant can request a split rollover between multiple providers.",
+                "A one-source split rollover cannot be submitted through the online dashboard.",
+                "The participant must use the correct path for the scenario: the online workflow for separate Roth and pre-tax destinations when eligible, or the manual process for one-source split rollovers.",
+                "The rollover may be split by percentage or by dollar amount if instructions are clearly provided.",
+                "After the Must Have items are verified for the manual process, the Separation of Service: Rollover Request Form can be shared to finalize the request.",
+                "The request requires manual review and processing because routing funds to multiple destinations is complex."
+            ],
+            "not_allowed_conclusions": [
+                "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant.",
+                "Do not claim unvested funds are eligible for distribution. Only vested balances are eligible for distribution.",
+                "If the participant has a Termination date, but is status is NOT 'Terminated', this might indicate that the information is not up to date, we need to confirm the information with the participant.",
+                "If the participant status is 'Terminated', but doesn't have a Termination date, this might indicate that the information is not up to date, we need to confirm the information with the participant.",
+                "Do not say the participant can complete a one-source split rollover through the online dashboard.",
+                "Do not contradict the stated review and delivery timing in this article.",
+                "Do not assert eligibility limitations or requirements that are not stated in the article.",
+                "Do not say the request can proceed when the split instructions are unclear or incomplete.",
+                "Do not claim how the participant accesses the RightSignature link beyond what the article states."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "We confirmed the required eligibility items for your scenario.",
+                    "You can request a split rollover distribution with the instructions outlined in this article.",
+                    "Please follow the correct path outlined in the article for your scenario.",
+                    "Confirm that split rollovers across multiple providers are allowed.",
+                    "Explain that separate Roth and pre-tax destinations may use the online workflow when eligible, while one-source split rollovers must be handled through the manual process.",
+                    "Make sure to provide exact split instructions, including allocation method, destination for each portion, and delivery method for each portion.",
+                    "For the manual process, after the Must Have items are verified, the Separation of Service: Rollover Request Form can be shared to finalize the request.",
+                    "Since a one-source split rollover involves routing funds to multiple destinations, it requires manual review and processing."
+                ],
+                "next_steps": [
+                    "If the participant is eligible for the manual process, send the participant the Separation of Service: Rollover Request Form link: https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e",
+                    "Have the participant fill out the RightSignature form. If the participant has more questions, instruct to contact support by email at help@forusall.com or by phone at 844-401-2253.",
+                    "Collect the complete split instructions.",
+                    "Once filled out, the request will be submitted for manual review and processing by support."
+                ],
+                "warnings": [
+                    "A one-source split rollover must be manually reviewed and processed because funds are being routed to multiple destinations.",
+                    "Do not promise an exact funding date beyond the stated timelines in this article."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not say a one-source split rollover can be submitted through the online dashboard.",
+                    "Do not promise a processing timeline beyond what the article states.",
+                    "Do not omit the requirement for clear instructions."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "Explain that the request can be handled, but more detail is needed before it can move forward.",
+                    "Tell the participant that split instructions must be clearly provided.",
+                    "Remind the participant that the manual process is finalized through the Separation of Service: Rollover Request Form only after the Must Have items are verified."
+                ],
+                "next_steps": [
+                    "Ask for the missing split details.",
+                    "Once the missing details are provided, continue through the correct workflow for the participant's scenario."
+                ],
+                "warnings": [
+                    "Do not proceed based on assumptions when any split detail is missing."
+                ],
+                "questions_to_ask": [
+                    "How would you like your rollover to be divided?",
+                    "Should the rollover be divided by percentage or by dollar amount?",
+                    "Which retirement account or provider should receive each portion of the rollover?",
+                    "How would you like each portion delivered, such as by regular check, OverNight Check, or wire transfer?"
+                ],
+                "what_not_to_say": [
+                    "Do not say the request is ready to proceed if the instructions are incomplete.",
+                    "Do not guess destinations, amounts, percentages, or delivery methods."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "State only what the article supports and explain that eligibility must be confirmed against the article's requirements before the process can proceed.",
+                    "If the situation falls outside the article, avoid inventing an eligibility determination."
+                ],
+                "next_steps": [],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not say the participant is eligible without confirming employment status, balance thresholds, or plan limitations first.",
+                    "Do not invent restrictions that are not supported by this article."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Explain the process using only the article's stated rules.",
+                    "Clarify that the request requires clear instructions and may require manual review depending on the participant's scenario.",
+                    "State that the correct path is either the online workflow for separate Roth and pre-tax destinations when eligible, or the manual process with the Separation of Service: Rollover Request Form."
+                ],
+                "next_steps": [
+                    "Clarify any unclear request details with the participant before proceeding."
+                ],
+                "warnings": [
+                    "Do not expand beyond the article when interpreting unclear request details."
+                ],
+                "questions_to_ask": [
+                    "Can you confirm exactly how you want each portion of the rollover divided, where each portion should go, and whether this is a separate Roth and pre-tax rollover or a one-source split rollover?"
+                ],
+                "what_not_to_say": [
+                    "Do not introduce plan rules or exceptions that are not stated in the article.",
+                    "Do not claim additional system behavior beyond the article's description."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": "Conditional",
+            "mfa_relevant": "True",
+            "record_keeper_must_be": "LT Trust"
+        }
+    }
+}

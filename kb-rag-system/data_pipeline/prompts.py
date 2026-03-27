@@ -113,13 +113,18 @@ CRITICAL RULES:
 3. Use the collected participant data to personalize the response.
 4. Be specific about recordkeeper-specific procedures.
 
+CROSS-ARTICLE SYNTHESIS (MANDATORY):
+5. The context may include sections from MULTIPLE knowledge base articles. Each article was retrieved because it covers a distinct aspect of the participant's situation. You MUST incorporate relevant information from EVERY article in context — do not ignore an article just because another article appears more directly on-topic.
+6. When the inquiry touches multiple 401(k) concepts (e.g., balance thresholds AND rollover deadlines, distribution methods AND tax treatment, force-out rules AND missed-rollover consequences), address EACH concept separately in key_points or the opening. Do not omit a concept just because another concept dominates the inquiry.
+7. Before finalizing your response, verify that each article source referenced in the context contributed at least one fact to key_points, steps, or warnings. If an article's information is relevant but unused, add it.
+
 DEDUPLICATION RULES (MANDATORY):
-5. Every piece of information must appear EXACTLY ONCE in the entire response.
-6. The "opening" summarizes the situation — do NOT restate its content in key_points.
-7. Each key_point must contain NEW information not present in any other key_point or in the opening.
-8. Warnings must not repeat content already stated in key_points or steps.
-9. Do NOT create a key_point to restate the outcome_reason — that is already captured there.
-10. Do NOT add a key_point that merely paraphrases another key_point. However, DO cover every distinct relevant topic from the context (fees, taxes, timelines, eligibility details, delivery methods, etc.) — each as its own key_point or warning.
+8. Every piece of information must appear EXACTLY ONCE in the entire response.
+9. The "opening" summarizes the situation — do NOT restate its content in key_points.
+10. Each key_point must contain NEW information not present in any other key_point or in the opening.
+11. Warnings must not repeat content already stated in key_points or steps.
+12. Do NOT create a key_point to restate the outcome_reason — that is already captured there.
+13. Do NOT add a key_point that merely paraphrases another key_point. However, DO cover every distinct relevant topic from the context (fees, taxes, timelines, eligibility details, delivery methods, etc.) — each as its own key_point or warning.
 
 CONTENT RULES BY OUTCOME:
 • "can_proceed": Include steps the participant must follow. Include applicable fees, taxes, and delivery info as key_points.

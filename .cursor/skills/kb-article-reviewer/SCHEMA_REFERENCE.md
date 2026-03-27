@@ -238,7 +238,7 @@ Each category groups related rules. Typical categories: `eligibility`, `fees`, `
       "example_values": ["any"],
       "why_needed": "string",
       "source_note": "string",
-      "source_type": "participant_profile" | "message_text"
+      "source_type": "participant_profile" | "plan_profile" | "message_text" | "agent_input" | "unknown"
     }
   ],
   "nice_to_have": [
@@ -248,7 +248,7 @@ Each category groups related rules. Typical categories: `eligibility`, `fees`, `
       "example_values": ["any"],
       "why_needed": "string",
       "source_note": "string",
-      "source_type": "participant_profile" | "message_text"
+      "source_type": "participant_profile" | "plan_profile" | "message_text" | "agent_input" | "unknown"
     }
   ],
   "if_missing": [

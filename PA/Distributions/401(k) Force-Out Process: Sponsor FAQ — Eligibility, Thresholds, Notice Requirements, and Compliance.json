@@ -1,0 +1,469 @@
+{
+    "metadata": {
+        "article_id": "401k_force_out_process_sponsor_faq",
+        "title": "401(k) Force-Out Process: Sponsor FAQ — Eligibility, Thresholds, Notice Requirements, and Compliance",
+        "description": "Answers common plan sponsor questions about the 401(k) force-out process — the involuntary distribution of former employees' vested balances under $7,000. Covers when a sponsor can initiate a force-out, the three balance thresholds (fee-out for $80 or less, cash distribution with 20% federal withholding for balances under $1,000, and automatic safe harbor IRA rollover for $1,000–$7,000), required advance participant notices, compliance requirements under IRS Regulation § 401(a)(31)(B), DOL Safe Harbor Rules, and ERISA standards, the industry-standard $80 administrative fee, 1099-R tax reporting obligations, and ForUsAll's annual automated force-out cycle as 3(16) fiduciary administrator.",
+        "topic": "distribution",
+        "subtopics": [
+            "eligibility_thresholds",
+            "cash_distribution_rules",
+            "automatic_ira_rollover",
+            "participant_notice_requirements",
+            "compliance_standards",
+            "administrative_fees",
+            "automated_process",
+            "fee_out",
+            "federal_tax_withholding",
+            "fiduciary_responsibilities"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": "401(k)",
+        "scope": "global",
+        "tags": [
+            "Withdrawal Request --> Terminated Distribution",
+            "Participant Notices",
+            "Taxes"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-02-19",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "eligibility",
+                "rules": [
+                    "Force-outs apply only to former employees with vested account balances under $7,000."
+                ]
+            },
+            {
+                "category": "distribution_thresholds",
+                "rules": [
+                    "Balances of $80 or less: The $80 administrative fee fully absorbs the balance, closing the account with no funds transferred (fee-out).",
+                    "Greater than $80 and under $1,000: Plans may issue a cash distribution, minus mandatory 20% federal tax withholding.",
+                    "$1,000 to $7,000: The plan must automatically roll the balance into a safe harbor IRA, unless the participant elects otherwise."
+                ]
+            },
+            {
+                "category": "participant_notice_requirements",
+                "rules": [
+                    "Participants must receive advance written notice before any involuntary distribution occurs.",
+                    "Notices must be timely and sent via reliable delivery methods.",
+                    "Skipping or mistiming notices can invalidate the distribution and increase fiduciary risk."
+                ]
+            },
+            {
+                "category": "fees",
+                "rules": [
+                    "Most recordkeepers charge an industry-standard $80 administrative fee for force-outs.",
+                    "When the balance is $80 or less, this fee fully absorbs the account (see fee-out under distribution_thresholds)."
+                ]
+            },
+            {
+                "category": "tax_reporting",
+                "rules": [
+                    "Force-out distributions are taxable events and must be reported on IRS Form 1099-R.",
+                    "Cash distributions under $1,000 are subject to mandatory 20% federal tax withholding at the time of distribution.",
+                    "Safe harbor IRA rollovers ($1,000–$7,000) are not taxed at rollover but are reported as direct rollovers on Form 1099-R."
+                ]
+            },
+            {
+                "category": "compliance_framework",
+                "rules": [
+                    "IRS Regulation § 401(a)(31)(B) allows force-outs under $7,000.",
+                    "DOL Safe Harbor Rules require prudent IRA provider selection, low fees, and capital preservation investments.",
+                    "ERISA standards require plan documents to be followed, proper notices to be issued, and fiduciary responsibilities to be upheld.",
+                    "Noncompliance can lead to plan errors, penalties, or audits."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "Force-out administrative fee",
+                "fee": "$80",
+                "notes": "Industry-standard administrative fee charged by most recordkeepers; if the balance is $80 or less, it will be fully absorbed and no funds transferred."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "internal-check",
+                "visibility": "both",
+                "description": "Internal sponsor coordination to confirm whether the plan sponsor is participating in the annual force-out process.",
+                "notes": "ForUsAll checks in with plan sponsors to confirm participation; this is sponsor decision-making and is not a participant-facing step."
+            },
+            {
+                "step_number": 2,
+                "type": "internal-check",
+                "visibility": "both",
+                "description": "Internal review of eligible terminated participants with vested balances under $7,000, shared with the plan sponsor for review.",
+                "notes": "ForUsAll shares a list of eligible terminated participants for sponsor review; this is not participant-facing."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Send compliant written notices to eligible participants before any involuntary distribution.",
+                "notes": "Participants must receive advance written notice and an opportunity to act before distribution."
+            },
+            {
+                "step_number": 4,
+                "type": "internal-check",
+                "visibility": "both",
+                "description": "Process voluntary distribution requests if participants respond.",
+                "notes": "If participants request a voluntary distribution after notice, it is processed instead of an involuntary force-out."
+            },
+            {
+                "step_number": 5,
+                "type": "internal-check",
+                "visibility": "both",
+                "description": "Execute the force-out based on the applicable balance threshold after notice and any participant election period.",
+                "notes": "Distribution method follows the threshold rules: fee-out for $80 or less, cash with 20% withholding for $80–$1,000, or safe harbor IRA rollover for $1,000–$7,000 unless the participant elected otherwise."
+            },
+            {
+                "step_number": 6,
+                "type": "internal-check",
+                "visibility": "both",
+                "description": "Coordinate with the IRA provider to complete the rollover and confirm receipt.",
+                "notes": "ForUsAll manages the final handoff and internally confirms receipt with the IRA provider."
+            },
+            {
+                "step_number": 7,
+                "type": "internal-check",
+                "visibility": "both",
+                "description": "Issue 1099-R tax forms for all force-out distributions processed during the tax year.",
+                "notes": "1099-R forms are issued to participants and filed with the IRS; cash distributions use distribution code 1 or 7, and direct rollovers use code G."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant claims they did not receive notice before the force-out.",
+                "resolution": "Confirm that written notice was sent timely via reliable delivery methods; improper or mistimed notice can invalidate the distribution and increase fiduciary risk."
+            },
+            {
+                "issue": "Participant balance is $80 or less and no funds were transferred.",
+                "resolution": "This is a fee-out — the $80 administrative fee absorbed the entire balance. The account is closed and no distribution check or rollover is issued."
+            },
+            {
+                "issue": "Sponsor is concerned about compliance exposure.",
+                "resolution": "Reinforce that force-outs must follow IRS Regulation § 401(a)(31)(B), DOL Safe Harbor Rules, and ERISA standards, including proper notices and fiduciary oversight."
+            },
+            {
+                "issue": "Participant asks about the tax impact of their force-out distribution.",
+                "resolution": "Cash distributions are subject to mandatory 20% federal withholding and reported on Form 1099-R. Safe harbor IRA rollovers are reported as direct rollovers and not taxed at the time of transfer."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A terminated participant has a vested balance of $900 and does not respond to the advance notice.",
+                "outcome": "The plan issues a cash distribution of $720 ($900 minus mandatory 20% federal withholding of $180). A 1099-R is issued for the tax year."
+            },
+            {
+                "scenario": "A terminated participant has a vested balance of $3,500 and does not respond to the advance notice.",
+                "outcome": "The plan automatically rolls the $3,500 balance into a safe harbor IRA. A 1099-R with rollover code G is issued."
+            },
+            {
+                "scenario": "A terminated participant has a vested balance of $60.",
+                "outcome": "The $80 administrative fee exceeds the balance, so the full $60 is absorbed (fee-out). The account is closed with no funds transferred to the participant."
+            },
+            {
+                "scenario": "A participant is still actively employed and the sponsor asks about forcing out their $4,000 balance.",
+                "outcome": "Blocked — force-outs apply only to former employees. The participant must first separate from employment before a force-out can be initiated."
+            },
+            {
+                "scenario": "A terminated participant has a vested balance of $8,200.",
+                "outcome": "Blocked — the vested balance is $7,000 or more. The balance is not eligible for force-out and must remain in the plan until the participant requests a voluntary distribution."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "annual_timing",
+                "notes": [
+                    "ForUsAll runs the force-out process annually starting in Q3.",
+                    "The process is fully automated to ensure consistency, accuracy, and full compliance."
+                ]
+            },
+            {
+                "category": "fiduciary_role",
+                "notes": [
+                    "As 3(16) administrator, ForUsAll handles participant communications and documentation.",
+                    "As 3(16) fiduciary, ForUsAll takes responsibility for execution and compliance."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "What is a 401(k) force-out?",
+                "answer": "A 401(k) force-out occurs when a former employee's vested account balance is below a certain threshold and the employer initiates a distribution by check or rollover without the participant's direct request."
+            },
+            {
+                "question": "What balance thresholds apply to force-outs?",
+                "answer": "Force-outs apply only to former employees with vested balances under $7,000. Balances of $80 or less are absorbed by the administrative fee (fee-out). Balances greater than $80 and under $1,000 may be paid in cash with 20% federal withholding. Balances of $1,000 to $7,000 must be rolled into a safe harbor IRA unless the participant elects otherwise."
+            },
+            {
+                "question": "Is participant notice required before a force-out?",
+                "answer": "Yes. Participants must receive advance written notice and an opportunity to act before any involuntary distribution occurs."
+            },
+            {
+                "question": "What is a fee-out?",
+                "answer": "A fee-out occurs when a participant's vested balance is $80 or less and the $80 administrative fee absorbs the entire amount, resulting in account closure with no funds transferred to the participant."
+            },
+            {
+                "question": "What tax reporting is required for force-out distributions?",
+                "answer": "All force-out distributions must be reported on IRS Form 1099-R. Cash distributions are subject to mandatory 20% federal withholding and reported with the applicable distribution code. Safe harbor IRA rollovers are reported as direct rollovers using code G and are not taxed at the time of transfer."
+            },
+            {
+                "question": "Can a force-out be initiated for an active employee?",
+                "answer": "No. Force-outs can only be initiated after employment has ended. An active employee's balance cannot be involuntarily distributed regardless of the amount."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Force-out",
+                "definition": "An involuntary distribution of a former employee's vested 401(k) balance under $7,000 initiated by the employer without the participant's direct request."
+            },
+            {
+                "term": "Fee-out",
+                "definition": "A force-out where the participant's vested balance is $80 or less and is fully absorbed by the $80 administrative fee, resulting in account closure with no funds transferred."
+            },
+            {
+                "term": "Vested balance",
+                "definition": "The portion of a participant's 401(k) account balance that they are entitled to keep upon leaving employment, based on the plan's vesting schedule. Force-out eligibility is determined by the vested balance, not the total account balance."
+            },
+            {
+                "term": "Safe harbor IRA",
+                "definition": "An IRA used for automatic rollovers of force-out balances between $1,000 and $7,000 when the participant does not make an election."
+            },
+            {
+                "term": "3(16) administrator",
+                "definition": "A fiduciary role responsible for plan administration, including communications, execution, and compliance with applicable regulations."
+            },
+            {
+                "term": "1099-R",
+                "definition": "An IRS tax form used to report distributions from retirement plans, including force-out cash distributions and safe harbor IRA rollovers."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not state that active employees can be force-out eligible; force-outs apply only after employment ends.",
+                "Do not suggest force-outs apply to balances of $7,000 or more.",
+                "Do not omit the requirement for advance written notice before an involuntary distribution.",
+                "Do not guarantee a cash distribution for balances between $1,000 and $7,000; those balances must be rolled into a safe harbor IRA unless the participant elects otherwise.",
+                "Do not claim the administrative fee is waived; the article states an industry-standard $80 administrative fee.",
+                "Do not omit 1099-R reporting obligations when discussing force-out tax implications."
+            ],
+            "must_do_if_unsure": [
+                "If unsure about participant eligibility or balance thresholds, confirm that employment has ended and the vested balance is under $7,000 before proceeding.",
+                "If unsure whether advance written notice was properly sent and delivered, do not confirm the force-out is valid — verify delivery records first."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [
+                "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+                "How Do I Cancel or Change a Pending Distribution Request?"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": null,
+                "phone": null,
+                "support_hours": null
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Employment status has ended",
+                    "meaning": "Confirmation that the participant is a former employee and no longer employed.",
+                    "example_values": [
+                        "Former employee"
+                    ],
+                    "why_needed": "Force-outs can only be initiated after employment ends.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Vested account balance amount",
+                    "meaning": "The participant's vested 401(k) account balance used to determine force-out eligibility and distribution method.",
+                    "example_values": [
+                        "Balance under $7,000"
+                    ],
+                    "why_needed": "Eligibility and distribution method depend on whether the balance is $80 or less, greater than $80 and under $1,000, or between $1,000 and $7,000.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant response to advance notice",
+                    "meaning": "Whether the participant elected a voluntary distribution, elected otherwise for the automatic rollover process, or did not respond after receiving advance written notice.",
+                    "example_values": [
+                        "Requested voluntary distribution",
+                        "Elected otherwise",
+                        "No response received"
+                    ],
+                    "why_needed": "Determines whether to process a voluntary distribution, proceed with an involuntary force-out, or follow the participant's election when applicable.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Sponsor-verified participant list",
+                    "meaning": "A list of eligible terminated participants reviewed and approved by the plan sponsor for the current force-out cycle.",
+                    "example_values": [
+                        "Sponsor-approved force-out list for Q3 2026"
+                    ],
+                    "why_needed": "Confirms sponsor intent and reduces the risk of processing force-outs for participants the sponsor wants to exclude.",
+                    "source_note": null,
+                    "source_type": "participant_profile"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Employment status has ended",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                },
+                {
+                    "missing_data_point": "Vested account balance amount",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                },
+                {
+                    "missing_data_point": "Participant response to advance notice",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                }
+            ],
+            "disambiguation_notes": [
+                "Force-out eligibility is based on vested balance under $7,000 and terminated employment status.",
+                "Balances of $80 or less result in a fee-out (see definitions). Balances over $80 and under $1,000 may be paid in cash with mandatory 20% federal withholding. Balances of $1,000–$7,000 must be rolled to a safe harbor IRA unless the participant elects otherwise."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "Employment has ended.",
+                "Vested account balance is under $7,000."
+            ],
+            "blocking_conditions": [
+                "Participant is still employed.",
+                "Vested account balance is $7,000 or more."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "Employment status is not confirmed.",
+                    "missing_data_point": "Employment status has ended",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Vested account balance amount is not available.",
+                    "missing_data_point": "Vested account balance amount",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Participant response to advance notice is not documented.",
+                    "missing_data_point": "Participant response to advance notice",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                }
+            ],
+            "allowed_conclusions": [
+                "A force-out may be initiated if employment has ended and the vested balance is under $7,000.",
+                "Balances of $80 or less are absorbed by the administrative fee (fee-out), closing the account with no funds transferred.",
+                "Balances over $80 and under $1,000 may be distributed as cash with mandatory 20% federal withholding.",
+                "Balances of $1,000–$7,000 must be rolled into a safe harbor IRA unless the participant elects otherwise.",
+                "Participants must receive advance written notice before an involuntary distribution.",
+                "All force-out distributions must be reported on IRS Form 1099-R."
+            ],
+            "not_allowed_conclusions": [
+                "Do not conclude a force-out can occur while the participant is still employed.",
+                "Do not conclude balances of $7,000 or more are eligible for force-out.",
+                "Do not state that notice is optional before an involuntary distribution.",
+                "Do not omit 1099-R reporting when discussing force-out tax consequences."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "A force-out can proceed because employment has ended and the vested balance is under $7,000.",
+                    "Advance written notice must be provided before any involuntary distribution.",
+                    "The distribution method depends on the balance: fee-out for $80 or less, cash with 20% withholding for $80–$1,000, or safe harbor IRA rollover for $1,000–$7,000.",
+                    "A 1099-R will be issued for the distribution."
+                ],
+                "next_steps": [
+                    "Confirm notice has been sent timely via reliable delivery methods.",
+                    "If no response is received, execute the outcome according to the applicable balance threshold.",
+                    "Ensure 1099-R is issued for the tax year in which the distribution occurs."
+                ],
+                "warnings": [
+                    "Failure to provide proper notice can invalidate the distribution and increase fiduciary risk."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not guarantee a specific outcome without confirming the balance threshold and whether a participant election was made.",
+                    "Do not state that notice requirements can be skipped."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "We need to confirm eligibility details before proceeding with a force-out."
+                ],
+                "next_steps": [
+                    "Confirm employment has ended.",
+                    "Confirm the vested account balance amount.",
+                    "Confirm whether the participant responded to the advance notice."
+                ],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not proceed with a force-out without confirming termination status and balance threshold."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "A force-out cannot proceed because eligibility requirements are not met."
+                ],
+                "next_steps": [
+                    "If the participant is still employed or the balance is $7,000 or more, continue regular plan administration in accordance with plan terms."
+                ],
+                "warnings": [],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not state that a force-out can occur if the participant is still employed or has a balance of $7,000 or more."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Force-outs must follow IRS, DOL, and ERISA rules, including safe harbor IRA requirements and proper notice procedures."
+                ],
+                "next_steps": [
+                    "Confirm compliance with IRS Regulation § 401(a)(31)(B), DOL Safe Harbor Rules, and ERISA standards before proceeding."
+                ],
+                "warnings": [
+                    "Noncompliance can lead to plan errors, penalties, or audits."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not guarantee compliance without confirming all regulatory requirements are met."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        }
+    }
+}

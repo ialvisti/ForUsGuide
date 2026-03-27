@@ -9,9 +9,11 @@
             "secure_2_0",
             "required_beginning_date",
             "still_working_exception",
+            "5_percent_ownership_exception",
             "rmd_penalties",
             "rmd_deadlines",
             "rmd_calculation",
+            "rmd_taxation",
             "roth_conversion_rmd_impact"
         ],
         "audience": "Internal AI Support Agent",
@@ -20,7 +22,8 @@
         "scope": "global",
         "tags": [
             "RMD Fidelity --> RMD",
-            "Taxes"
+            "Taxes",
+            "RMD AT --> In Service Distribution"
         ],
         "language": "en-US",
         "last_updated": null,
@@ -91,7 +94,6 @@
                 ]
             }
         ],
-        "fees": [],
         "steps": [
             {
                 "step_number": 1,
@@ -125,11 +127,18 @@
                 "step_number": 5,
                 "type": "participant-facing",
                 "visibility": "both",
+                "description": "Discuss tax implications and withholding. RMDs are taxed as ordinary income; advise the participant to ensure federal (and if applicable, state) tax withholding is set up on the distribution, or to plan for a potential tax payment when filing.",
+                "notes": "RMDs are taxed as ordinary income in the year they are received. If the participant delayed their first RMD to the following year, two distributions in one calendar year could push them into a higher tax bracket. Suggest the participant consult a tax professional if they have questions about withholding amounts or estimated tax payments."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
                 "description": "If an RMD was missed, explain that penalties may apply and that correcting promptly may reduce the penalty under SECURE 2.0.",
                 "notes": "Penalty is 25% and potentially 10% if corrected promptly."
             },
             {
-                "step_number": 6,
+                "step_number": 7,
                 "type": "participant-facing",
                 "visibility": "both",
                 "description": "If the participant asks about reducing or eliminating future RMDs, explain how in-plan Roth conversions can lower future taxable RMDs and that Roth funds are exempt from RMDs as of 2024. Note the 5-year holding rule, the rule that RMD amounts cannot be converted, and that the decision to convert depends on individual tax circumstances.",
@@ -182,12 +191,35 @@
             {
                 "scenario": "Participant asks whether they still need to roll their Roth 401(k) to a Roth IRA to avoid RMDs.",
                 "outcome": "No—as of 2024, Roth 401(k) funds are exempt from RMDs during the account owner's lifetime. Rolling to a Roth IRA is no longer necessary to avoid RMDs, but may still be useful for consolidation or legacy planning."
+            },
+            {
+                "scenario": "Participant is age 74, owns 10% of the sponsoring business, is still employed, and asks if they can delay their RMD under the still-working exception.",
+                "outcome": "Blocked — the still-working exception does not apply because the participant owns 5% or more of the sponsoring business (including family-attributed ownership). The participant must take their RMD by the applicable deadline regardless of employment status."
+            },
+            {
+                "scenario": "Participant is age 75 (born in 1959) with a $200,000 pre-tax 401(k) balance as of December 31 of the previous year and asks how much their RMD will be.",
+                "outcome": "The RMD is calculated by dividing the prior year-end balance by the IRS life expectancy factor. For example, if the applicable Uniform Lifetime Table factor for age 75 is 24.6, the RMD would be $200,000 ÷ 24.6 = approximately $8,130.08. The participant should verify the exact factor and calculated amount with ForUsAll or their plan provider."
             }
         ],
         "additional_notes": [
-            "The RMD starting age is determined by birth year under SECURE Act 2.0: age 73 for those born before 1960, and age 75 for those born in 1960 or later. All age references in this article should be interpreted using this rule.",
-            "Roth conversions can eliminate future RMDs on the converted balance, but a Roth conversion is a taxable event and the decision depends on individual tax circumstances. This article explains the mechanics but does not advise on whether a conversion is appropriate for a given participant.",
-            "Rolling Roth 401(k) funds to a Roth IRA is no longer necessary to avoid RMDs (as of 2024 under SECURE Act 2.0), but may still be beneficial for account consolidation or legacy planning."
+            {
+                "category": "age_thresholds",
+                "notes": [
+                    "The RMD starting age is determined by birth year under SECURE Act 2.0: age 73 for those born before 1960, and age 75 for those born in 1960 or later. All age references in this article should be interpreted using this rule."
+                ]
+            },
+            {
+                "category": "roth_conversion",
+                "notes": [
+                    "Roth conversions can eliminate future RMDs on the converted balance, but a Roth conversion is a taxable event and the decision depends on individual tax circumstances. This article explains the mechanics but does not advise on whether a conversion is appropriate for a given participant."
+                ]
+            },
+            {
+                "category": "roth_401k_rollover",
+                "notes": [
+                    "Rolling Roth 401(k) funds to a Roth IRA is no longer necessary to avoid RMDs (as of 2024 under SECURE Act 2.0), but may still be beneficial for account consolidation or legacy planning."
+                ]
+            }
         ],
         "faq_pairs": [
             {
@@ -229,6 +261,22 @@
             {
                 "question": "Do I still need to roll my Roth 401(k) into a Roth IRA to avoid RMDs?",
                 "answer": "No. As of 2024, Roth 401(k) funds are exempt from RMDs during the account owner's lifetime under SECURE Act 2.0. Rolling over to a Roth IRA is no longer necessary to avoid RMDs, but may still be useful for consolidation or legacy planning."
+            },
+            {
+                "question": "What if I have 401(k) accounts at multiple employers?",
+                "answer": "RMDs must be calculated and taken separately from each employer's plan. The still-working exception applies only to the current employer's plan; accounts held at former employers are not eligible for the deferral and RMDs must be taken from those plans by the applicable deadline."
+            },
+            {
+                "question": "Can I take more than my RMD in a given year?",
+                "answer": "Yes. The RMD is the minimum you must withdraw. You may take more than the required amount, but excess withdrawals in one year do not reduce the RMD for future years. Each year's RMD is recalculated independently."
+            },
+            {
+                "question": "What if my spouse is more than 10 years younger than me?",
+                "answer": "If your sole beneficiary is your spouse and your spouse is more than 10 years younger, you may use the Joint Life and Last Survivor Expectancy Table instead of the Uniform Lifetime Table. This generally results in a smaller RMD. Confirm the applicable table with your plan provider or a tax professional."
+            },
+            {
+                "question": "I own 5% of the business and I'm still working. Can I delay my RMD?",
+                "answer": "No. If you own 5% or more of the business sponsoring the plan (including family-attributed ownership from a spouse, child, or parent), the still-working exception does not apply. You must begin RMDs by the applicable deadline regardless of your employment status."
             }
         ],
         "definitions": [
@@ -259,6 +307,30 @@
             {
                 "term": "5-year holding rule (Roth conversion)",
                 "definition": "A rule requiring that Roth-converted funds be held for at least 5 years from the year of conversion before withdrawals of earnings qualify as tax-free."
+            },
+            {
+                "term": "SECURE Act 2.0",
+                "definition": "The SECURE 2.0 Act of 2022, federal legislation that updated retirement plan rules including raising the RMD starting age (to 73, and eventually 75 for those born in 1960 or later), reducing the missed-RMD excise tax penalty from 50% to 25% (or 10% if corrected promptly), and eliminating lifetime RMDs for Roth 401(k) accounts starting in 2024."
+            },
+            {
+                "term": "Uniform Lifetime Table",
+                "definition": "An IRS table used by most 401(k) account owners to determine the life expectancy factor for calculating RMDs. The table provides a divisor based on the account owner's age, applied to the prior year-end account balance."
+            },
+            {
+                "term": "Joint Life and Last Survivor Expectancy Table",
+                "definition": "An IRS table used to calculate RMDs when the sole beneficiary is a spouse who is more than 10 years younger than the account owner. This table generally produces a smaller RMD than the Uniform Lifetime Table."
+            },
+            {
+                "term": "Ordinary income",
+                "definition": "Income taxed at the individual's regular federal (and possibly state) income tax rates. RMDs from pre-tax 401(k) accounts are treated as ordinary income in the year they are received."
+            },
+            {
+                "term": "Lump sum distribution",
+                "definition": "A single payment of the entire RMD amount in one transaction, as opposed to taking the RMD in multiple installments throughout the year."
+            },
+            {
+                "term": "Installment distribution",
+                "definition": "Taking the RMD amount across multiple payments spread throughout the year, rather than as a single lump sum."
             }
         ],
         "guardrails": {
@@ -280,10 +352,12 @@
         "references": {
             "participant_portal": null,
             "internal_articles": [
-                "lt:_how_to_request_a_401(k)_termination_cash_withdrawal_or_rollover",
-                "distribution_requests_for_small_account_balances",
-                "how_do_i_cancel_or_change_a_pending_distribution_request?",
-                "can_i_take_a_distribution_while_employed?"
+                "lt_request_401k_termination_withdrawal_or_rollover",
+                "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+                "how_do_i_cancel_or_change_a_pending_distribution_request",
+                "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+                "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+                "missed_60_day_rollover_window"
             ],
             "external_links": [],
             "contact": {

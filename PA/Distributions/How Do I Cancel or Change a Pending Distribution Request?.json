@@ -379,7 +379,8 @@
             "internal_articles": [
                 "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
                 "Can I Take Money From My 401(k) While Employed? Your Options Explained",
-                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax"
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact"
             ],
             "external_links": [],
             "contact": {
@@ -454,18 +455,6 @@
                     "why_needed": "Used to understand the participant's intent and context for the requested change or cancellation.",
                     "source_note": "Referenced in steps and common_issues as a required detail for processing the request.",
                     "source_type": "message_text"
-                },
-                {
-                    "data_point": "Distribution request status",
-                    "meaning": "The current stage of the distribution request, such as pending, initiated, or processed, which determines what options may be available.",
-                    "example_values": [
-                        "Pending (submitted but not processed by custodian)",
-                        "Initiated (processing has begun)",
-                        "Processed (completed and payment is being or has been delivered)"
-                    ],
-                    "why_needed": "Determines whether cancellation, edits, or alternative options may be available after support review.",
-                    "source_note": "Referenced in business_rules and decision_guide; status must be confirmed by contacting support, as it cannot be directly verified by the AI agent.",
-                    "source_type": "participant_profile"
                 }
             ],
             "nice_to_have": [
@@ -502,11 +491,6 @@
                     "agent_note": "Do not infer reasons; use the participant's stated reason."
                 },
                 {
-                    "missing_data_point": "Distribution request status",
-                    "ask_participant": null,
-                    "agent_note": "Status must be confirmed by contacting support; do not attempt to retrieve, infer, or communicate it."
-                },
-                {
                     "missing_data_point": "Delivery method",
                     "ask_participant": null,
                     "agent_note": "Delivery method must be confirmed by support if relevant; do not assume or retrieve it."
@@ -517,7 +501,8 @@
                 "If the request has been initiated or processed, available options may depend on the delivery method and status.",
                 "Distribution requests begin processing quickly after submission, so timing directly impacts available options.",
                 "Cancellation and change outcomes are not guaranteed and must be confirmed after reviewing the request status.",
-                "The same request types (hardship, loan, in-service, termination distribution) may follow the same status-based rules for cancellation or changes."
+                "The same request types (hardship, loan, in-service, termination distribution) may follow the same status-based rules for cancellation or changes.",
+                "Distribution request status (pending, initiated, or processed) is determined exclusively by human support agents after reviewing the request — the AI agent cannot retrieve, infer, or communicate it."
             ]
         },
         "decision_guide": {

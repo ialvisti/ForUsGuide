@@ -1,0 +1,680 @@
+{
+    "metadata": {
+        "article_id": "how_do_i_cancel_or_change_a_pending_distribution_request",
+        "title": "How Do I Cancel or Change a Pending Distribution Request?",
+        "description": "Explains how participants can request cancellation or changes to a pending 401(k) distribution request, including hardship, loan, in-service, and termination distributions. Covers the urgency of contacting ForUsAll immediately by phone (844-401-2253, Mon–Fri 7AM–5PM PST) or email (help@forusall.com), what information participants must provide (full name, request type, submission method, approximate submission date, and reason for the change), and how available options depend on the request's processing status (pending, initiated, or processed) and delivery method. The AI agent cannot verify request status directly — support must review and confirm whether cancellation, edits, stop payment, or reissue options are available. Calling is the preferred method for time-sensitive changes. ForUsAll will provide next steps or alternate solutions if cancellation is not possible.",
+        "topic": "distribution",
+        "subtopics": [
+            "cancel_pending_distribution",
+            "change_pending_distribution",
+            "distribution_status_dependency",
+            "contact_methods",
+            "required_participant_information",
+            "support_review_handoff",
+            "submission_method"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": null,
+        "plan_type": "401(k)",
+        "scope": "global",
+        "tags": [
+            "Withdrawal Request --> Terminated Distribution",
+            "Hardship Request",
+            "Loan Request",
+            "RMD AT --> In Service Distribution"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-02-19",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "urgency",
+                "rules": [
+                    "Once a distribution request is submitted, it begins processing quickly, so immediate notice is important."
+                ]
+            },
+            {
+                "category": "cancellation_and_change_possibility",
+                "rules": [
+                    "If the distribution is still pending and has not been processed by the custodian, cancellation or edits may be possible after review by support.",
+                    "If the request has already been initiated or processed, options to stop or reissue the payment may be available depending on the delivery method and status after review by support.",
+                    "ForUsAll will review the request status and provide next steps or alternate solutions if cancellation is not possible."
+                ]
+            },
+            {
+                "category": "contact_method",
+                "rules": [
+                    "Participants should call ForUsAll as soon as possible for time-sensitive changes.",
+                    "Email is available, but calling is preferred for urgent requests."
+                ]
+            },
+            {
+                "category": "required_participant_information",
+                "rules": [
+                    "Before assessing options, collect the participant's full name, type of distribution request, submission method, approximate date submitted, and reason for the change or cancellation.",
+                    "Do not conclude what options are available until all required details have been provided.",
+                    "If any required detail is missing, ask the participant directly before proceeding."
+                ]
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Advise the participant to contact ForUsAll as soon as possible to request a cancellation or change. Calling is preferred for time-sensitive changes: 844-401-2253, Monday to Friday (no national holidays) 7AM to 5PM PST. Email is also available at help@forusall.com but may be slower for urgent requests.",
+                "notes": "Provide both the phone number and email so the participant can choose, but emphasize calling for urgency."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Ask the participant to include or have ready their full name, type of request, submission method, approximate date submitted, and reason for change or cancellation.",
+                "notes": "Type examples include hardship, loan, in-service, and termination distribution."
+            },
+            {
+                "step_number": 3,
+                "type": "internal-check",
+                "visibility": "agent-only",
+                "description": "Advise that the distribution request status must be reviewed by support to determine whether it is still pending, has been initiated, or has been processed.",
+                "notes": "The AI agent cannot verify request status; support must confirm status and determine whether canceling, editing, stopping, or reissuing is possible."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Explain to the participant that support will determine what options are available based on the reviewed status, and provide next steps or alternate solutions if cancellation is not possible.",
+                "notes": "Do not guarantee an outcome; options may vary depending on delivery method and status."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant requests cancellation or edits after the distribution request has already been initiated or processed.",
+                "resolution": "Explain that cancellation or edits may not be possible once approved or processed. Support may be able to explore alternatives such as stopping or reissuing the payment, depending on how it was delivered and its current processing stage."
+            },
+            {
+                "issue": "Participant does not provide enough information to locate or assess the request.",
+                "resolution": "Request the participant's full name, type of request, submission method, approximate date submitted, and reason for the change or cancellation."
+            },
+            {
+                "issue": "Participant uses email for an urgent change.",
+                "resolution": "Advise that calling is preferred for time-sensitive changes and provide the phone number for faster handling."
+            },
+            {
+                "issue": "Participant assumes their request can be canceled without checking status.",
+                "resolution": "Clarify that cancellation depends on whether the request is still pending and must be confirmed by support reviewing the request status."
+            },
+            {
+                "issue": "Participant contacts support too late after submission.",
+                "resolution": "Explain that distribution requests process quickly and immediate contact is critical to increase the likelihood of changes or cancellation."
+            },
+            {
+                "issue": "Participant is unsure what type of distribution they submitted.",
+                "resolution": "Ask clarifying questions to determine the request type, such as whether it was a hardship, loan, in-service, or termination distribution."
+            },
+            {
+                "issue": "Participant provides an incorrect or unclear submission date.",
+                "resolution": "Ask for an approximate timeframe and use available details to help locate the request."
+            },
+            {
+                "issue": "Participant believes cancellation is guaranteed if they act quickly.",
+                "resolution": "Set expectations that cancellation is not guaranteed and depends on processing status and custodian activity."
+            },
+            {
+                "issue": "Participant asks if changes can be made after payment has been sent.",
+                "resolution": "Explain that once processed, cancellation may not be possible. Support can evaluate whether the payment can be halted or reissued based on how it was sent and where it is in processing."
+            },
+            {
+                "issue": "Participant does not understand what 'pending' means.",
+                "resolution": "Explain that pending means the request has been submitted but not yet processed by the custodian."
+            },
+            {
+                "issue": "Participant provides partial information (for example, only name and no request details).",
+                "resolution": "Request all required details including request type, submission method, approximate submission date, and reason to properly assess the request."
+            },
+            {
+                "issue": "Participant expects immediate confirmation of cancellation.",
+                "resolution": "Explain that the request must be reviewed by support first and that available options will be determined after checking the current status."
+            },
+            {
+                "issue": "Participant is confused about what 'delivery method' means.",
+                "resolution": "Clarify that delivery method refers to how the payment is issued and that available options may depend on it and the request status."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant calls immediately after submitting a distribution request and it is still pending and not processed by the custodian.",
+                "outcome": "Cancellation or edits may be possible once support confirms that the request has not yet been processed by the custodian."
+            },
+            {
+                "scenario": "A participant requests cancellation, but the request shows as initiated or processed.",
+                "outcome": "Cancellation may not be possible. Support will assess whether the payment can be intercepted or reissued given the delivery method and current processing stage."
+            },
+            {
+                "scenario": "A participant asks to cancel but did not include the request type or approximate submission date.",
+                "outcome": "Ask for the missing details before concluding what options are available."
+            },
+            {
+                "scenario": "A participant emails shortly after submitting a request but marks it as urgent.",
+                "outcome": "Advise the participant to call instead, as phone is preferred for time-sensitive requests, then proceed with support review."
+            },
+            {
+                "scenario": "A participant calls but only provides their name without additional request details.",
+                "outcome": "Ask for the type of request, submission method, approximate submission date, and reason before proceeding."
+            },
+            {
+                "scenario": "A participant calls and the request is still pending but close to being processed.",
+                "outcome": "Emphasize that timing is critical and route to support immediately so the request can be reviewed before the custodian completes processing."
+            },
+            {
+                "scenario": "A participant contacts support after the request has already been processed and payment is underway.",
+                "outcome": "Explain that cancellation is likely not possible and that support will review whether stop or reissue options may apply."
+            },
+            {
+                "scenario": "A participant is unsure whether their request has been processed yet.",
+                "outcome": "Let the participant know that only support can check where the request stands in processing and confirm what actions are still possible."
+            },
+            {
+                "scenario": "A participant provides all required details and calls immediately after submission.",
+                "outcome": "Forward the details to support so they can verify the processing stage and advise whether cancellation or edits remain available."
+            },
+            {
+                "scenario": "A participant wants to change details instead of canceling the request.",
+                "outcome": "Edits may be possible if the request has not yet been processed. Direct to support so they can verify and confirm what modifications are available."
+            },
+            {
+                "scenario": "A participant asks if they can cancel and submit a new request instead.",
+                "outcome": "Cancellation may be possible if the request is still pending. Advise that support will confirm the status and outline next steps, which may include submitting a new request."
+            },
+            {
+                "scenario": "A participant contacts support but provides conflicting details about the request type.",
+                "outcome": "Clarify the correct request type before proceeding with support review."
+            },
+            {
+                "scenario": "A participant contacts support several days after submission without knowing the current status.",
+                "outcome": "Given the elapsed time, the request may already be processed. Support needs to check the current stage to determine whether any options — including stop payment or reissue — are still on the table."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "processing_times",
+                "notes": [
+                    "Distribution requests begin processing quickly after submission, so immediate notice is important."
+                ]
+            },
+            {
+                "category": "contact_guidance",
+                "notes": [
+                    "Participants should call ForUsAll as soon as possible for time-sensitive changes.",
+                    "Email is available, but calling is preferred for urgent requests."
+                ]
+            },
+            {
+                "category": "required_information",
+                "notes": [
+                    "Participants should provide their full name, type of request, submission method, approximate date submitted, and reason for change or cancellation when contacting support."
+                ]
+            },
+            {
+                "category": "status_dependency",
+                "notes": [
+                    "The ability to cancel or edit a distribution request depends on whether it is still pending and not processed by the custodian.",
+                    "If the request has already been initiated or processed, available options may depend on the delivery method and status.",
+                    "Request status must be confirmed by support; the AI agent cannot verify it."
+                ]
+            },
+            {
+                "category": "outcome_variability",
+                "notes": [
+                    "Cancellation or changes are not guaranteed and depend on the current status of the request.",
+                    "ForUsAll will review the request and provide next steps or alternate solutions if cancellation is not possible."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "Can I cancel or change a distribution request after I submit it?",
+                "answer": "It may be possible if the distribution is still pending and has not been processed by the custodian, but support must verify the current status first. If the request has already been initiated or processed, support may explore whether the payment can be stopped or reissued, which depends on the delivery method and how far along processing has progressed."
+            },
+            {
+                "question": "What is the best way to request an urgent cancellation or change?",
+                "answer": "Calling is preferred for time-sensitive changes. Participants can also email, but calling is recommended for urgent requests."
+            },
+            {
+                "question": "What information should I include when I contact ForUsAll?",
+                "answer": "Participants should provide their full name, the type of request, submission method, an approximate date the request was submitted, and the reason for the change or cancellation."
+            },
+            {
+                "question": "What if the request cannot be canceled?",
+                "answer": "ForUsAll will check where the request currently stands in processing and guide the participant through next steps. If cancellation is no longer an option, support will discuss alternate solutions."
+            },
+            {
+                "question": "How quickly should I request a cancellation or change?",
+                "answer": "You should contact ForUsAll as soon as possible because distribution requests begin processing quickly after submission."
+            },
+            {
+                "question": "Can I request a change instead of canceling my distribution?",
+                "answer": "Yes, edits may be possible if the request is still pending and has not been processed by the custodian. Support will need to verify the current processing stage before confirming what changes can be made."
+            },
+            {
+                "question": "What happens if my request has already been processed?",
+                "answer": "If the request has already been initiated or processed, cancellation may not be possible. Alternatives such as halting or reissuing the payment may exist depending on how it was delivered and its current processing stage, which support will evaluate."
+            },
+            {
+                "question": "Is email a good option for urgent cancellation requests?",
+                "answer": "Email is available, but calling is preferred for urgent or time-sensitive requests."
+            },
+            {
+                "question": "Why is timing important when canceling a distribution request?",
+                "answer": "Timing is important because distribution requests begin processing quickly, which may limit the ability to cancel or change them."
+            },
+            {
+                "question": "Will ForUsAll confirm whether my request can be canceled?",
+                "answer": "Yes. Once support checks where your request is in processing, they will explain what actions are available and walk you through next steps."
+            },
+            {
+                "question": "Can I cancel my request after it has been approved?",
+                "answer": "Once a request has been initiated or processed, cancellation may not be possible. Support will review the situation and determine whether other remedies — such as stopping or reissuing the payment — are feasible based on how the funds were sent."
+            },
+            {
+                "question": "Do I need to provide a reason for canceling or changing my request?",
+                "answer": "Yes, providing a reason helps support understand your request and guide you through the appropriate next steps."
+            },
+            {
+                "question": "What if I do not know when I submitted my request?",
+                "answer": "You should provide an approximate date to help locate and review your request."
+            },
+            {
+                "question": "Will my request definitely be canceled if I call right away?",
+                "answer": "Calling immediately increases the chances, but cancellation is not guaranteed and depends on the request status and processing stage as reviewed by support."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Distribution request",
+                "definition": "A request submitted to withdraw or distribute funds, such as a hardship, loan, in-service, or termination distribution."
+            },
+            {
+                "term": "Pending",
+                "definition": "A status indicating the distribution request has been submitted but has not yet been processed by the custodian."
+            },
+            {
+                "term": "Custodian",
+                "definition": "The party that processes the distribution request."
+            },
+            {
+                "term": "Delivery method",
+                "definition": "How the payment is delivered; available options to stop or reissue may depend on this method and the request status."
+            },
+            {
+                "term": "Reissue",
+                "definition": "Issuing the payment again as an alternative option if cancellation is not possible, depending on delivery method and status."
+            },
+            {
+                "term": "Cancellation",
+                "definition": "A request to stop a distribution before it has been processed by the custodian."
+            },
+            {
+                "term": "Edit or change",
+                "definition": "A modification to a submitted distribution request, which may be possible if the request is still pending and not processed."
+            },
+            {
+                "term": "Initiated",
+                "definition": "A status indicating the distribution request has begun processing but may not yet be fully completed."
+            },
+            {
+                "term": "Processed",
+                "definition": "A status indicating the distribution request has been completed by the custodian and funds are being or have been delivered."
+            },
+            {
+                "term": "Request status",
+                "definition": "The current stage of a distribution request, such as pending, initiated, or processed, which determines available options and must be confirmed by support."
+            },
+            {
+                "term": "Time-sensitive request",
+                "definition": "A request that requires immediate action because delays may reduce the ability to make changes or cancellations."
+            },
+            {
+                "term": "Alternate solutions",
+                "definition": "Other possible actions or next steps provided if a cancellation or change cannot be completed."
+            },
+            {
+                "term": "Stop payment",
+                "definition": "An attempt to halt a distribution after it has been initiated, depending on delivery method and status."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not guarantee that a distribution request can be canceled or edited.",
+                "Do not state or imply specific processing or turnaround timelines beyond noting that processing begins quickly.",
+                "Do not claim the request can be stopped or reissued without reviewing the delivery method and status.",
+                "Do not instruct the participant to use a participant portal or other system path that is not described in the article.",
+                "Do not conclude that cancellation is impossible solely based on participant statements without reviewing the request status.",
+                "Do not guarantee that calling immediately will result in successful cancellation or changes.",
+                "Do not assume a request is still pending without verifying its status.",
+                "Do not provide options for cancellation, edits, stop, or reissue without confirming the current request status.",
+                "Do not ignore the importance of timing when advising participants on cancellation or changes.",
+                "Do not treat email as equally effective as phone for urgent requests when the article states calling is preferred.",
+                "Do not proceed without collecting the required participant details needed to locate the request.",
+                "Do not assume the type of distribution request if the participant has not specified it.",
+                "Do not infer the submission date if it is not provided by the participant.",
+                "Do not present alternate solutions without first confirming that cancellation is not possible.",
+                "Do not communicate outcomes as definitive when the article states they depend on status and delivery method.",
+                "Do not communicate or infer the request status to the participant; status must be confirmed and communicated by support."
+            ],
+            "must_do_if_unsure": [
+                "Confirm the distribution request status before stating what changes are possible.",
+                "If the request cannot be confirmed, do not tell the participant the request status and redirect them directly to support.",
+                "If required participant-provided information is missing, ask for it before concluding next steps.",
+                "When the article indicates outcomes depend on delivery method and status, communicate that dependency and avoid definitive promises."
+            ]
+        },
+        "references": {
+            "participant_portal": null,
+            "internal_articles": [
+                "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+                "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Monday to Friday, 7AM to 5PM PST (no national holidays)"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Participant's name",
+                    "meaning": "The name of the participant.",
+                    "example_values": [
+                        "John Doe",
+                        "Jane Doe",
+                        "Oscar Santiago Garcia "
+                    ],
+                    "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+                    "source_note": "Required for request identification; referenced in steps and common_issues.",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Type of request",
+                    "meaning": "The kind of distribution request the participant submitted.",
+                    "example_values": [
+                        "hardship withdrawal",
+                        "loan",
+                        "in-service distribution",
+                        "termination distribution"
+                    ],
+                    "why_needed": "Needed to understand what request the participant is trying to change or cancel and to support accurate review.",
+                    "source_note": "Referenced in steps, common_issues, and business_rules as a required detail for locating the request.",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Submission method",
+                    "meaning": "How the participant submitted the request.",
+                    "example_values": [
+                        "Online from participant portal",
+                        "Electronic form sent to your email through RightSignature",
+                        "ForUsAll submitted it on your behalf after receiving a call from you"
+                    ],
+                    "why_needed": "Helps locate the correct request method to hand off to support for confirmation and review.",
+                    "source_note": "Referenced in steps and common_issues as a required detail for locating the request.",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Approximate date submitted",
+                    "meaning": "When the participant submitted the distribution request.",
+                    "example_values": [
+                        "A calendar date or relative date stated by the participant",
+                        "For example, 'I submitted it last Tuesday' or 'I submitted it on March 3rd'",
+                        "If the participant is unsure, an approximate timeframe such as 'about a week ago' can also be helpful.",
+                        "I submitted it on March 22, 2025."
+                    ],
+                    "why_needed": "Helps locate the correct request and supports assessing timing and current status.",
+                    "source_note": "Referenced in steps and common_issues; timing is critical per business_rules urgency category.",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Reason for change or cancellation",
+                    "meaning": "Why the participant wants to cancel or change the request.",
+                    "example_values": [
+                        "A reason stated by the participant",
+                        "I no longer need the distribution",
+                        "I made a mistake in the request.",
+                        "I want to change the amount or delivery method.",
+                        "I want to change the type of distribution.",
+                        "Other reasons the participant may provide for wanting to change or cancel the request."
+                    ],
+                    "why_needed": "Used to understand the participant's intent and context for the requested change or cancellation.",
+                    "source_note": "Referenced in steps and common_issues as a required detail for processing the request.",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Distribution request status",
+                    "meaning": "The current stage of the distribution request, such as pending, initiated, or processed, which determines what options may be available.",
+                    "example_values": [
+                        "Pending (submitted but not processed by custodian)",
+                        "Initiated (processing has begun)",
+                        "Processed (completed and payment is being or has been delivered)"
+                    ],
+                    "why_needed": "Determines whether cancellation, edits, or alternative options may be available after support review.",
+                    "source_note": "Referenced in business_rules and decision_guide; status must be confirmed by contacting support, as it cannot be directly verified by the AI agent.",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Delivery method",
+                    "meaning": "How the payment is being delivered, which may affect whether stopping or reissuing is possible.",
+                    "example_values": [
+                        "Wire, ACH, Check"
+                    ],
+                    "why_needed": "Options to stop or reissue may depend on the delivery method and the request status.",
+                    "source_note": "Referenced in business_rules and decision_guide; delivery method may affect available options.",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Participant full name",
+                    "ask_participant": "What is your full name?",
+                    "agent_note": "Do not proceed to conclusions about what can be changed or canceled without enough information to identify the request."
+                },
+                {
+                    "missing_data_point": "Type of request",
+                    "ask_participant": "What type of request is it (for example, hardship, loan, in-service, or termination distribution)?",
+                    "agent_note": "Do not assume the request type; ask directly if it is not provided."
+                },
+                {
+                    "missing_data_point": "Approximate date submitted",
+                    "ask_participant": "About when did you submit the request?",
+                    "agent_note": "Avoid making assumptions about timing; collect the participant's stated approximate submission date."
+                },
+                {
+                    "missing_data_point": "Reason for change or cancellation",
+                    "ask_participant": "What is the reason you want to change or cancel the request?",
+                    "agent_note": "Do not infer reasons; use the participant's stated reason."
+                },
+                {
+                    "missing_data_point": "Distribution request status",
+                    "ask_participant": null,
+                    "agent_note": "Status must be confirmed by contacting support; do not attempt to retrieve, infer, or communicate it."
+                },
+                {
+                    "missing_data_point": "Delivery method",
+                    "ask_participant": null,
+                    "agent_note": "Delivery method must be confirmed by support if relevant; do not assume or retrieve it."
+                }
+            ],
+            "disambiguation_notes": [
+                "The ability to cancel or edit depends on whether the request is still pending and not processed by the custodian.",
+                "If the request has been initiated or processed, available options may depend on the delivery method and status.",
+                "Distribution requests begin processing quickly after submission, so timing directly impacts available options.",
+                "Cancellation and change outcomes are not guaranteed and must be confirmed after reviewing the request status.",
+                "The same request types (hardship, loan, in-service, termination distribution) may follow the same status-based rules for cancellation or changes."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "Eligibility to cancel or edit cannot be determined by the AI and requires support to review the request status."
+            ],
+            "blocking_conditions": [
+                "If support review confirms the request cannot be canceled, cancellation is not possible and alternate solutions should be discussed."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "Participant full name is not provided.",
+                    "missing_data_point": "Participant full name",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What is your full name?"
+                },
+                {
+                    "condition": "Type of request is not provided.",
+                    "missing_data_point": "Type of request",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What type of request is it (for example, hardship, loan, in-service, or termination distribution)?"
+                },
+                {
+                    "condition": "Approximate date submitted is not provided.",
+                    "missing_data_point": "Approximate date submitted",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "About when did you submit the request?"
+                },
+                {
+                    "condition": "Reason for change or cancellation is not provided.",
+                    "missing_data_point": "Reason for change or cancellation",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What is the reason you want to change or cancel the request?"
+                }
+            ],
+            "allowed_conclusions": [
+                "Because distribution requests begin processing quickly, contacting ForUsAll immediately is important for changes or cancellation.",
+                "Support must review the request status to determine whether cancellation or edits may be possible.",
+                "If the request has been initiated or processed, cancellation may not be possible and options to stop or reissue may be available depending on delivery method and status after support review.",
+                "Available options depend on the current status of the request and, in some cases, the delivery method.",
+                "ForUsAll will review the request status and provide next steps or alternate solutions if cancellation is not possible."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee that the request will be canceled or changed.",
+                "Do not state or imply that cancellation is certain simply because the participant contacted ForUsAll quickly.",
+                "Do not claim specific processing, turnaround, or delivery timelines.",
+                "Do not say when the custodian will process the request unless the article explicitly states it.",
+                "Do not claim a stop or reissue will occur without reviewing delivery method and status.",
+                "Do not claim cancellation is impossible without support review.",
+                "Do not assume the request is still pending unless its status has been reviewed by support.",
+                "Do not assume that initiated or processed requests can still be stopped or reissued.",
+                "Do not present available options as the same for every request type or every status.",
+                "Do not conclude what changes are possible if the participant has not provided enough information to identify the request.",
+                "Do not tell the participant to use a portal, platform, or system path not mentioned in the article.",
+                "Do not treat email as the preferred option for urgent requests when the article says calling is preferred.",
+                "Do not infer the request type, submission date, or reason for change if the participant has not provided them.",
+                "Do not state that support can resolve the request immediately.",
+                "Do not promise alternate solutions before the request status has been reviewed by support."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "ForUsAll will review whether your distribution request can be canceled or changed based on its current status.",
+                    "Because distribution requests begin processing quickly, contacting support as soon as possible is important.",
+                    "If the request is still pending and not processed by the custodian, cancellation or edits may be possible after support review."
+                ],
+                "next_steps": [
+                    "Support reviews the request status to determine whether cancellation or edits may be possible.",
+                    "If cancellation or edits are possible, explain the available next steps.",
+                    "If cancellation is not possible, explain that alternate solutions may be available depending on delivery method and status."
+                ],
+                "warnings": [
+                    "Options depend on the current status of the request and, in some cases, the delivery method.",
+                    "Cancellation or changes are not guaranteed."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not promise that the request will definitely be canceled or changed.",
+                    "Do not provide specific time estimates for processing or resolution.",
+                    "Do not imply that status has already been verified if support has not yet reviewed it.",
+                    "Do not guarantee that contacting support immediately will result in successful cancellation or changes.",
+                    "Do not state that the request is still pending without confirmation from support.",
+                    "Do not claim that cancellation is still possible after processing without verifying the request status.",
+                    "Do not suggest that all requests can be edited or modified after submission.",
+                    "Do not imply that support can stop or reissue the payment without reviewing delivery method and status.",
+                    "Do not present outcomes as certain when they depend on request status and delivery method.",
+                    "Do not assume the participant's request details without confirmation.",
+                    "Do not suggest alternative solutions before confirming that cancellation is not possible.",
+                    "Do not state that the request has already been processed unless confirmed.",
+                    "Do not imply that calling guarantees faster resolution outcomes beyond being the preferred method for urgent requests."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "To help with your cancellation or change request, we need a few details so we can locate and review your distribution request."
+                ],
+                "next_steps": [
+                    "Collect the missing participant-provided details.",
+                    "Once enough information is provided to identify the request, advise the participant to contact support.",
+                    "Support will review the request status to determine what options may be available."
+                ],
+                "warnings": [
+                    "We cannot confirm what changes are possible until support reviews the request status.",
+                    "Cancellation or changes are not guaranteed and depend on the request status and, in some cases, the delivery method."
+                ],
+                "questions_to_ask": [
+                    "What is your full name?",
+                    "What type of request is it (for example, hardship, loan, in-service, or termination distribution)?",
+                    "About when did you submit the request?",
+                    "What is the reason you want to change or cancel the request?"
+                ],
+                "what_not_to_say": [
+                    "Do not confirm cancellation or change options without the information needed to locate the request.",
+                    "Do not guess the request type or submission date.",
+                    "Do not imply that the request status has already been reviewed.",
+                    "Do not guarantee that cancellation or changes will be possible.",
+                    "Do not suggest outcomes before support has reviewed the request status."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Options depend on the current status of the distribution request and may also depend on the delivery method.",
+                    "ForUsAll will review the request status and walk the participant through next steps or alternate solutions."
+                ],
+                "next_steps": [
+                    "Collect the participant details needed to identify the request.",
+                    "Advise the participant that support will review the request status to determine available options.",
+                    "If cancellation is not possible, explain that alternate solutions may be available depending on the request status and delivery method."
+                ],
+                "warnings": [
+                    "Available options cannot be confirmed until support reviews the request status.",
+                    "Cancellation, edits, stop, or reissue options are not guaranteed."
+                ],
+                "questions_to_ask": [
+                    "What is your full name?",
+                    "What type of request is it (for example, hardship, loan, in-service, or termination distribution)?",
+                    "About when did you submit the request?",
+                    "What is the reason you want to change or cancel the request?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee the request can be canceled or changed.",
+                    "Do not claim stopping or reissuing will be available without confirming status and delivery method.",
+                    "Do not imply that the request status has already been reviewed.",
+                    "Do not present available options as certain before support review."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": false,
+            "mfa_relevant": false,
+            "record_keeper_must_be": null
+        }
+    }
+}

@@ -352,7 +352,7 @@
         "outcome": "Use Lump Sum Cash Distribution with wire delivery. Provide complete bank routing and account details and a mailing address. Expect a $75 distribution fee plus a $35 wire fee, and 20% federal withholding (plus any applicable state withholding)."
       },
       {
-        "scenario": "Participant wants to roll 100% to a Traditional IRA at Fidelity.",
+        "scenario": "Participant wants to roll 100% to a Traditional IRA at their IRA provider.",
         "outcome": "Use Full Rollover with check or wire delivery. If using a wire, list the receiving institution as the bank account name and include routing and account details and the IRA sub-account number. If a wire returns, a rollover check may be mailed instead."
       },
       {
@@ -364,11 +364,11 @@
         "outcome": "Do not proceed with submission until vesting is reviewed. Only vested amounts are eligible, so the participant should contact ForUsAll Support to review vesting."
       },
       {
-        "scenario": "Participant is wiring rollover funds to Fidelity IRA and is unsure which bank details to use.",
-        "outcome": "Advise the participant to obtain wire-specific routing and account details from Fidelity, including any intermediary bank details (such as JP Morgan Chase) if provided, and verify the details directly with the receiving institution before submitting. Do not use ACH details for wire transfers."
+        "scenario": "Participant is wiring rollover funds to their IRA provider and is unsure which bank details to use.",
+        "outcome": "Advise the participant to obtain wire-specific routing and account details from the receiving institution, including any intermediary bank details if provided, and verify the details directly with the receiving institution before submitting. Do not use ACH details for wire transfers."
       },
       {
-        "scenario": "Participant selected check as rollover payment method and wants the funds sent immediately to their Fidelity IRA.",
+        "scenario": "Participant selected check as rollover payment method and wants the funds sent immediately to their IRA provider.",
         "outcome": "Advise the participant to wait the standard 2–3 weeks for USPS delivery after approval, as the processing time by the custodian cannot be modified."
       },
       {
@@ -850,7 +850,7 @@
           "data_point": "Verification of the receiving financial institution's information",
           "meaning": "The participant needs to confirm the receiving institution's information is accurate for the rollover.",
           "example_values": [
-            "Fidelity Investments",
+            "ABC Brokerage",
             "Vanguard",
             "Charles Schwab"
           ],

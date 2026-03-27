@@ -9,27 +9,23 @@
             "hardship_withdrawals",
             "rollover_source_withdrawals",
             "401k_loans",
-            "taxes_and_penalties"
+            "taxes_and_penalties",
+            "internal_agent_procedures",
+            "loan_repayment_and_default",
+            "processing_timelines"
         ],
         "audience": "Internal AI Support Agent",
         "record_keeper": null,
         "plan_type": "401(k)",
         "scope": "global",
         "tags": [
-            "401k",
-            "in-service distribution",
-            "hardship withdrawal",
-            "rollover withdrawal",
-            "401k loan",
-            "taxes",
-            "early withdrawal penalty",
-            "plan rules",
-            "participant support",
             "Loan Request",
             "Hardship Request",
             "RMD AT --> In Service Distribution",
             "Taxes",
-            "Incoming Rollover"
+            "Incoming Rollover",
+            "Participant Dashboard",
+            "Advisory Session"
         ],
         "language": "en-US",
         "last_updated": null,
@@ -77,9 +73,7 @@
                     "Hardship withdrawals are subject to ordinary income tax.",
                     "A 10% early withdrawal penalty typically applies to hardship withdrawals and rollover sources (Depending on Pre tax or Roth) if the participant is under age 59 1/2, unless an exception is met.",
                     "Taxes may apply to rollover source withdrawals depending on whether the funds are pre-tax or Roth.",
-                    "For 401(k) loans, there is no early withdrawal penalty as long as the loan is repaid properly through payroll deductions or paid off in full via a one-time payment for the outstanding balance. If the participant terminates employment and requests a cash distribution or a rollover, it is recommended that the loan be paid off first to avoid the outstanding loan amount becoming taxable; if it is not paid off before the cash-out or rollover, the outstanding loan amount will become taxable.",
-                    "Failure to repay a 401(k) loan may result in the loan being treated as a taxable distribution.",
-                    "Loans are not taxable as they are taken through payroll deductions, unless they default when the participant terminates employment and requests the 401(k) funds out through a cash distribution or through a rollover to an IRA or new retirement plan."
+                    "401(k) loans are not taxable while repaid properly through payroll deductions or paid off in full via a one-time payment, and carry no early withdrawal penalty when repaid on time. However, failure to repay a loan may result in it being treated as a taxable distribution. If the participant terminates employment and requests the 401(k) funds out through a cash distribution or rollover, it is recommended the loan be paid off first; if it is not paid off before the cash-out or rollover, the outstanding loan amount will become taxable."
                 ]
             },
             {
@@ -149,7 +143,6 @@
                 ]
             }
         ],
-        "fees": [],
         "steps": [
             {
                 "step_number": 1,
@@ -213,6 +206,13 @@
                 "visibility": "both",
                 "description": "If active loans exist, explain that eligibility for hardship withdrawal or in-service distribution depends on leaving a required contingent amount tied to outstanding loan balances, and advise the participant to contact support to confirm.",
                 "notes": "Do not provide the participant with the internal calculation or any dollar amounts from the profile."
+            },
+            {
+                "step_number": 10,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant is asking about a rollover source withdrawal, ask whether they remember bringing money into their current employer plan from another retirement account. If YES, explain they may qualify and direct them to contact Participant Support to confirm and initiate the request. If NO, explain they may not qualify for a rollover source withdrawal but recommend contacting support to double check. If NOT SURE or DO NOT REMEMBER, advise them to contact Participant Support to confirm whether rollover assets exist in the plan.",
+                "notes": "This step implements the rollover_source_withdrawal_screen business rules. Do not confirm rollover asset availability without support verification."
             }
         ],
         "common_issues": [
@@ -369,6 +369,14 @@
             {
                 "scenario": "A participant asks what could happen if they stop making payments on a 401(k) loan.",
                 "outcome": "Explain that failure to repay may result in the loan being treated as a taxable distribution, and that loans can become taxable if they default when the participant terminates employment and requests the 401(k) funds out through a cash distribution or through a rollover to an IRA or new retirement plan."
+            },
+            {
+                "scenario": "A participant with an active loan (Outstanding Balance of $15,000) requests a hardship withdrawal. The agent checks and finds the Account Balance is $25,000.",
+                "outcome": "The contingent amount is 2 × $15,000 = $30,000, which exceeds the $25,000 Account Balance. The participant may not qualify for a hardship withdrawal while the active loan exists at this balance level. Advise the participant to contact Participant Support to confirm eligibility. Do not share the Account Balance, Outstanding Balance, or the computed contingent amount with the participant."
+            },
+            {
+                "scenario": "A participant asks about withdrawing rollover funds but is not sure whether they ever rolled money into the current employer plan.",
+                "outcome": "Ask if they remember bringing money into their current employer plan from another retirement account. Since they answered NOT SURE, advise them to contact the ForUsAll Participant Support Team to confirm whether rollover assets exist in the plan before proceeding. Do not confirm or deny rollover source availability without verification."
             }
         ],
         "additional_notes": [
@@ -540,6 +548,18 @@
             {
                 "term": "Loan payoff in full (early payoff)",
                 "definition": "The article's statement that a participant can pay off the total outstanding loan balance in full at any time with no penalties."
+            },
+            {
+                "term": "Contingent amount",
+                "definition": "An internally calculated amount equal to 2 times the sum of all Outstanding Balance amounts for active loans. When a participant with active loans requests a hardship withdrawal or in-service distribution, this amount must remain in the account; the participant may only request the remaining balance above the contingent amount. Support must confirm eligibility."
+            },
+            {
+                "term": "Account Balance (participant profile field)",
+                "definition": "The Total Vested Balance available shown in the participant profile Savings Rate section under Account Balance. Used internally to confirm whether the balance exceeds $2,000 for loan eligibility and to compare against the contingent amount for hardship or in-service withdrawals. This value must not be shared with the participant."
+            },
+            {
+                "term": "Maximum Number of Loans",
+                "definition": "A plan-level setting found in the participant profile Loans section that indicates whether the employer plan allows loans and how many loans can be active simultaneously. Values are 0 (loans not allowed), 1, 2, or 3. This is general plan information that can be shared with the participant."
             }
         ],
         "guardrails": {
@@ -568,12 +588,18 @@
                 "Do not conclude a participant qualifies for a hardship withdrawal or in-service distribution when active loans exist without applying the contingent amount rule and directing to support to confirm."
             ],
             "must_do_if_unsure": [
-                "If plan availability for a withdrawal or loan type is unclear, direct the participant to contact the ForUsAll Participant Support Team for eligibility review and next steps."
+                "If plan availability for a withdrawal or loan type is unclear, direct the participant to contact the ForUsAll Participant Support Team for eligibility review and next steps.",
+                "If the participant's hardship reason does not clearly match one of the IRS-defined qualifying reasons listed in the article, do not confirm eligibility; advise the participant to contact the ForUsAll Participant Support Team to review whether the reason qualifies.",
+                "If it is unclear whether the participant has active loans, whether Maximum Number of Loans allows another loan, or whether the Account Balance meets the $2,000 threshold, do not confirm loan availability; direct the participant to contact support or verify internally before proceeding."
             ]
         },
         "references": {
             "participant_portal": null,
-            "internal_articles": [],
+            "internal_articles": [
+                "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
+                "How Do I Cancel or Change a Pending Distribution Request?",
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax"
+            ],
             "external_links": [
                 "https://www.calendly.com/forusalladvisory",
                 "https://www.irs.gov/retirement-plans/hardships-early-withdrawals-and-loans"
@@ -674,7 +700,7 @@
                     ],
                     "why_needed": "The article states the hardship withdrawal amount is limited to the amount necessary to meet the financial need.",
                     "source_note": null,
-                    "source_type": "agent_input"
+                    "source_type": "message_text"
                 },
                 {
                     "data_point": "Rollover assets exist in the plan",
@@ -718,19 +744,6 @@
                     ],
                     "why_needed": "The article states Roth distributions may be taxed on earnings if taken when it has been less than 5 years.",
                     "source_note": "Support must confirm first or advise participant to contact support if unsure.",
-                    "source_type": "participant_profile"
-                },
-                {
-                    "data_point": "Maximum Number of Loans",
-                    "meaning": "Plan setting that indicates whether loans are allowed and how many loans can be active at a time (0, 1, 2, or 3).",
-                    "example_values": [
-                        "0",
-                        "1",
-                        "2",
-                        "3"
-                    ],
-                    "why_needed": "Determines whether the plan allows loans and whether the participant can take an additional loan under the plan limit.",
-                    "source_note": null,
                     "source_type": "participant_profile"
                 },
                 {

@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     RATE_LIMIT_REQUIRED_DATA: int = 60
     RATE_LIMIT_GENERATE_RESPONSE: int = 30
     
+    # GCP
+    GCP_PROJECT: str = ""
+    GCS_BUCKET: str = ""
+    ENABLE_EXECUTION_LOGGING: bool = False
+    
     model_config = {
         "env_file": ".env",
         "case_sensitive": True,

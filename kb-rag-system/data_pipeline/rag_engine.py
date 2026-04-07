@@ -15,6 +15,7 @@ import json
 import asyncio
 import hashlib
 import logging
+import time
 from typing import Dict, Any, List, Optional, NamedTuple
 from dataclasses import dataclass
 from openai import AsyncOpenAI
@@ -28,7 +29,9 @@ from .prompts import (
     build_required_data_prompt,
     build_generate_response_prompt,
     build_knowledge_question_prompt,
-    build_decompose_question_prompt
+    build_decompose_question_prompt,
+    build_gr_outcome_prompt,
+    build_gr_response_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -361,31 +364,20 @@ class RAGEngine:
         total_inquiries_in_ticket: int = 1
     ) -> GenerateResponseResult:
         """
-        Genera respuesta contextualizada usando la KB y datos recolectados.
+        Generate a contextualised response using a two-phase LLM architecture.
         
         Pipeline:
         1. Decompose inquiry into focused sub-queries (LLM)
-        2. Parallel multi-query search with RK cascade + topic strategies
+        2. KQ-style parallel search (simplified, unfiltered + plan_type safety net)
         3. Merge, deduplicate, and rank all retrieved chunks
         4. Build context with article diversity + tier priority
-        5. Generate structured response via LLM (with coverage gap detection)
-        6. Hybrid confidence (retrieval + LLM gap signal)
-        7. Source article transparency in metadata
-        
-        Args:
-            inquiry: La consulta del participante
-            record_keeper: Record keeper (ej: "LT Trust")
-            plan_type: Tipo de plan (ej: "401(k)")
-            topic: Tema principal
-            collected_data: Datos recolectados del participante/plan
-            max_response_tokens: Máximo de tokens para la respuesta
-            total_inquiries_in_ticket: Total de inquiries en el ticket
-        
-        Returns:
-            GenerateResponseResult con respuesta estructurada
+        5a. Phase 1 — Outcome determination (lightweight LLM call, max 500 tokens)
+            Fast path: if out_of_scope_inquiry, return immediately
+        5b. Phase 2 — Response generation (outcome-conditional schema, remaining budget)
+        6. Hybrid confidence + source article transparency
         """
         logger.info(f"generate_response() - Topic: {topic}, Budget: {max_response_tokens} tokens")
-        
+
         try:
             # 1. Context budget with minimum floor
             context_budget = max(
@@ -399,7 +391,6 @@ class RAGEngine:
             sub_queries = await self._decompose_question(inquiry)
             logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
             
-            # Build enriched queries per sub-query
             enriched_queries = []
             for sq in sub_queries:
                 parts = [sq, topic]
@@ -408,42 +399,15 @@ class RAGEngine:
                         parts.append(f"{key}: {value}")
                 enriched_queries.append(" ".join(parts))
             
-            # Include original inquiry as fallback if decomposition didn't preserve it
             if inquiry not in sub_queries:
                 fallback_parts = [inquiry, topic]
                 enriched_queries.append(" ".join(fallback_parts))
             
-            # 3. Parallel multi-query search with topic strategies
-            chunks, per_query_scores = await self._search_for_response(
+            # 3. Simplified parallel search (KQ-style)
+            chunks, per_query_scores = await self._search_for_response_simple(
                 enriched_queries=enriched_queries,
-                record_keeper=record_keeper,
                 plan_type=plan_type,
-                topic=topic
             )
-            
-            # 3b. Fallback: if cascade results are thin, supplement with KQ-style broad search
-            top_score = chunks[0].get('score', 0) if chunks else 0
-            if len(chunks) < self.GR_FALLBACK_MIN_CHUNKS or top_score < self.GR_FALLBACK_MIN_SCORE:
-                logger.info(
-                    f"GR fallback triggered: {len(chunks)} chunks, "
-                    f"top_score={top_score:.3f}. "
-                    f"Supplementing with KQ-style broad search."
-                )
-                fallback_tasks = [
-                    self._cached_query(
-                        query_text=eq,
-                        top_k=self.KQ_TOP_K_PER_QUERY,
-                        filter_dict=None
-                    )
-                    for eq in enriched_queries
-                ]
-                fallback_results = await asyncio.gather(*fallback_tasks)
-                
-                for eq, result_list in zip(enriched_queries, fallback_results):
-                    best = max((c.get('score', 0) for c in result_list), default=0)
-                    per_query_scores[eq] = max(per_query_scores.get(eq, 0), round(best, 4))
-                
-                chunks = self._merge_and_rank_chunks(chunks, *fallback_results)
             
             if not chunks:
                 logger.warning("No se encontraron chunks relevantes")
@@ -461,56 +425,150 @@ class RAGEngine:
             
             logger.info(f"Context: {len(selected_chunks)} chunks, {tokens_used} tokens")
             
-            # 5. Compute completion budget and generate prompts
-            completion_budget = max(self.RESPONSE_MIN_TOKENS, max_response_tokens - tokens_used)
-            
-            system_prompt, user_prompt = build_generate_response_prompt(
+            # ================================================================
+            # 5a. Phase 1 — Outcome Determination
+            # ================================================================
+            phase1_start = time.monotonic()
+            p1_system, p1_user = build_gr_outcome_prompt(
                 context=context,
                 inquiry=inquiry,
                 collected_data=collected_data,
                 record_keeper=record_keeper,
                 plan_type=plan_type,
                 topic=topic,
-                max_tokens=completion_budget
             )
             
-            # 6. Call LLM with timeout guard
-            llm_usage = None
+            phase1_usage = None
+            outcome = None
+            outcome_reason = None
+            
             try:
-                llm_result = await asyncio.wait_for(
+                p1_result = await asyncio.wait_for(
                     self._call_llm(
-                        system_prompt=system_prompt,
-                        user_prompt=user_prompt,
-                        max_tokens=completion_budget
+                        system_prompt=p1_system,
+                        user_prompt=p1_user,
+                        max_tokens=self.GR_PHASE1_MAX_TOKENS,
                     ),
-                    timeout=self.GR_LLM_TIMEOUT_SECONDS
+                    timeout=self.GR_PHASE1_TIMEOUT_SECONDS,
                 )
-                llm_response = llm_result.content
-                llm_usage = llm_result.usage
+                phase1_usage = p1_result.usage
+                p1_parsed = json.loads(p1_result.content)
+                outcome = p1_parsed.get("outcome", "ambiguous_plan_rules")
+                outcome_reason = p1_parsed.get("outcome_reason", "")
+                logger.info(f"Phase 1 outcome: {outcome} ({outcome_reason[:80]}...)")
             except asyncio.TimeoutError:
-                logger.warning(
-                    f"LLM timed out after {self.GR_LLM_TIMEOUT_SECONDS}s for generate_response"
+                logger.warning(f"Phase 1 timed out after {self.GR_PHASE1_TIMEOUT_SECONDS}s")
+                return GenerateResponseResult(
+                    decision="uncertain",
+                    confidence=0.3,
+                    response=self._build_llm_timeout_fallback(inquiry, selected_chunks),
+                    source_articles=self._build_source_articles(selected_chunks),
+                    used_chunks=self._serialize_used_chunks(selected_chunks),
+                    coverage_gaps=[],
+                    metadata=self._gr_metadata(
+                        selected_chunks, tokens_used, "", None,
+                        total_inquiries_in_ticket, sub_queries,
+                        per_query_scores, enriched_queries,
+                        phase="phase1_timeout",
+                    ),
                 )
+            except (json.JSONDecodeError, LLMEmptyResponseError) as e:
+                logger.error(f"Phase 1 failed ({type(e).__name__}): {e}")
+                outcome = "ambiguous_plan_rules"
+                outcome_reason = "Phase 1 outcome determination failed; proceeding with conservative outcome."
+            
+            phase1_elapsed = time.monotonic() - phase1_start
+            logger.info(f"Phase 1 completed in {phase1_elapsed:.1f}s")
+            
+            # ── Fast path: out_of_scope_inquiry ──
+            if outcome == "out_of_scope_inquiry":
+                logger.info(f"Off-topic inquiry (fast path): {outcome_reason}")
+                oos_parsed = {
+                    "outcome": "out_of_scope_inquiry",
+                    "outcome_reason": outcome_reason,
+                    "response_to_participant": {
+                        "opening": "I can only assist with retirement plan-related questions such as 401(k) distributions, rollovers, loans, and account access. Your inquiry appears to be outside this scope.",
+                        "key_points": [],
+                        "steps": [],
+                        "warnings": []
+                    },
+                    "questions_to_ask": [],
+                    "escalation": {"needed": False, "reason": None},
+                    "guardrails_applied": [],
+                    "data_gaps": [],
+                    "coverage_gaps": [],
+                }
+                pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
+                return GenerateResponseResult(
+                    decision="out_of_scope",
+                    confidence=0.1,
+                    response=oos_parsed,
+                    source_articles=[],
+                    used_chunks=[],
+                    coverage_gaps=[],
+                    metadata={
+                        **self._gr_metadata(
+                            [], tokens_used, json.dumps(oos_parsed), phase1_usage,
+                            total_inquiries_in_ticket, sub_queries,
+                            per_query_scores, enriched_queries,
+                            phase="phase1_oos",
+                        ),
+                        "off_topic": True,
+                    },
+                )
+            
+            # ================================================================
+            # 5b. Phase 2 — Response Generation
+            # ================================================================
+            completion_budget = max(self.RESPONSE_MIN_TOKENS, max_response_tokens - tokens_used)
+            phase2_timeout = max(30, self.GR_LLM_TIMEOUT_SECONDS - phase1_elapsed - 5)
+            
+            p2_system, p2_user = build_gr_response_prompt(
+                context=context,
+                inquiry=inquiry,
+                collected_data=collected_data,
+                record_keeper=record_keeper,
+                plan_type=plan_type,
+                topic=topic,
+                outcome=outcome,
+                outcome_reason=outcome_reason,
+            )
+            
+            phase2_usage = None
+            try:
+                p2_result = await asyncio.wait_for(
+                    self._call_llm(
+                        system_prompt=p2_system,
+                        user_prompt=p2_user,
+                        max_tokens=completion_budget,
+                    ),
+                    timeout=phase2_timeout,
+                )
+                llm_response = p2_result.content
+                phase2_usage = p2_result.usage
+            except asyncio.TimeoutError:
+                logger.warning(f"Phase 2 timed out after {phase2_timeout:.0f}s")
                 llm_response = json.dumps(
                     self._build_llm_timeout_fallback(inquiry, selected_chunks)
                 )
             except LLMEmptyResponseError as e:
-                logger.error(f"LLM returned empty content after retries: {e}")
+                logger.error(f"Phase 2 LLM empty: {e}")
                 llm_response = json.dumps(
-                    self._build_llm_fallback_parsed(
-                        f"finish_reason={e.finish_reason}"
-                    )
+                    self._build_llm_fallback_parsed(f"finish_reason={e.finish_reason}")
+                )
+            except Exception as e:
+                logger.error(f"Phase 2 LLM error: {type(e).__name__}: {e}")
+                llm_response = json.dumps(
+                    self._build_llm_timeout_fallback(inquiry, selected_chunks)
                 )
             
-            # 7. Parse LLM response + extract coverage gaps
+            # 6. Parse Phase 2 response
             try:
                 parsed = json.loads(llm_response)
             except json.JSONDecodeError as e:
-                logger.error(f"Error parseando JSON del LLM: {e}")
-                logger.error(f"Respuesta: {llm_response[:500]}")
+                logger.error(f"Phase 2 JSON parse error: {e}")
+                logger.error(f"Raw response: {llm_response[:500]}")
                 parsed = {
-                    "outcome": "blocked_missing_data",
-                    "outcome_reason": "Response parsing failed — raw LLM output could not be parsed as JSON.",
                     "response_to_participant": {
                         "opening": "We were unable to generate a structured response for your inquiry.",
                         "key_points": [llm_response[:1000]] if llm_response else [],
@@ -527,56 +585,48 @@ class RAGEngine:
                     "coverage_gaps": []
                 }
             
-            # 7.1. Validate parsed response has required structure
+            # Inject Phase 1 outcome into parsed response
+            parsed["outcome"] = outcome
+            parsed["outcome_reason"] = outcome_reason
+            
+            # Validate required structure
             missing_keys = self._LLM_RESPONSE_REQUIRED_KEYS - parsed.keys()
             if missing_keys:
                 logger.error(
-                    f"LLM response missing required keys: {missing_keys}. "
+                    f"Phase 2 response missing required keys: {missing_keys}. "
                     f"Keys present: {list(parsed.keys())}"
                 )
                 parsed = self._build_llm_fallback_parsed(
                     f"missing keys: {', '.join(sorted(missing_keys))}"
                 )
+                parsed["outcome"] = outcome
+                parsed["outcome_reason"] = outcome_reason
             
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
                 coverage_gaps = []
             coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
             
-            # 7.5. Off-topic interception: LLM flagged inquiry as unrelated
-            if parsed.get("outcome") == "out_of_scope_inquiry":
-                logger.info(f"Off-topic inquiry detected by LLM: {parsed.get('outcome_reason', 'N/A')}")
-                pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
-                return GenerateResponseResult(
-                    decision="out_of_scope",
-                    confidence=0.1,
-                    response=parsed,
-                    source_articles=[],
-                    used_chunks=[],
-                    coverage_gaps=coverage_gaps,
-                    metadata={
-                        "chunks_used": 0,
-                        "context_tokens": tokens_used,
-                        "response_tokens": self.token_manager.count_tokens(llm_response),
-                        "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
-                        "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
-                        "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
-                        "model": self.model,
-                        "total_inquiries": total_inquiries_in_ticket,
-                        "sub_queries": sub_queries,
-                        "per_query_scores": pqs,
-                        "unique_articles": 0,
-                        "relevant_articles": 0,
-                        "coverage_gaps": coverage_gaps,
-                        "off_topic": True
-                    }
-                )
-            
-            # 8. Hybrid confidence (retrieval + LLM gap signal)
+            # 7. Hybrid confidence
             confidence = self._calculate_confidence(chunks, coverage_gaps=coverage_gaps)
+            
+            # Phase 1 outcome is a stronger signal than retrieval metrics alone.
+            # When the LLM determined a concrete outcome and Phase 2 produced
+            # a real response, ensure the decision aligns with the outcome.
+            OUTCOME_CONFIDENCE_FLOORS = {
+                "can_proceed": 0.65,
+                "blocked_not_eligible": 0.65,
+                "blocked_missing_data": 0.55,
+                "ambiguous_plan_rules": 0.50,
+            }
+            floor = OUTCOME_CONFIDENCE_FLOORS.get(outcome, 0.0)
+            if floor and confidence < floor:
+                logger.info(f"Confidence floor applied: {confidence:.3f} -> {floor} (outcome={outcome})")
+                confidence = floor
+            
             decision = self._determine_decision(confidence)
             
-            # 9. Build source articles and used chunks
+            # 8. Source articles and used chunks
             source_articles = self._build_source_articles(selected_chunks)
             used_chunks = self._serialize_used_chunks(selected_chunks)
             total_articles = len(source_articles)
@@ -584,8 +634,10 @@ class RAGEngine:
                 1 for sa in source_articles if sa.get("used_info", False)
             )
             
-            # Remap per_query_scores keys to original sub-queries for readability
             pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
+            
+            # Combine usage from both phases
+            combined_usage = self._combine_llm_usage(phase1_usage, phase2_usage)
             
             return GenerateResponseResult(
                 decision=decision,
@@ -598,16 +650,18 @@ class RAGEngine:
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
                     "response_tokens": self.token_manager.count_tokens(llm_response),
-                    "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
-                    "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
-                    "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
+                    "prompt_tokens": combined_usage.get("prompt_tokens", 0),
+                    "completion_tokens": combined_usage.get("completion_tokens", 0),
+                    "total_tokens": combined_usage.get("total_tokens", 0),
                     "model": self.model,
                     "total_inquiries": total_inquiries_in_ticket,
                     "sub_queries": sub_queries,
                     "per_query_scores": pqs,
                     "unique_articles": total_articles,
                     "relevant_articles": relevant_articles,
-                    "coverage_gaps": coverage_gaps
+                    "coverage_gaps": coverage_gaps,
+                    "phase1_elapsed_s": round(phase1_elapsed, 1),
+                    "phase1_outcome": outcome,
                 }
             )
         
@@ -628,10 +682,12 @@ class RAGEngine:
     RD_MAX_CHUNKS_PER_ARTICLE = 4
     
     # Generate Response settings
-    RESPONSE_MIN_CONTEXT_TOKENS = 3000
+    RESPONSE_MIN_CONTEXT_TOKENS = 4000
     GR_MAX_CHUNKS_PER_ARTICLE = 6
     GR_UNFILTERED_TOP_K = 15
-    GR_LLM_TIMEOUT_SECONDS = 90
+    GR_LLM_TIMEOUT_SECONDS = 180
+    GR_PHASE1_TIMEOUT_SECONDS = 45
+    GR_PHASE1_MAX_TOKENS = 500
     GR_FALLBACK_MIN_CHUNKS = 6
     GR_FALLBACK_MIN_SCORE = 0.35
     
@@ -1135,90 +1191,69 @@ class RAGEngine:
         all_chunks.sort(key=lambda c: c.get('score', 0), reverse=True)
         return all_chunks
     
-    async def _search_for_response(
+    async def _search_for_response_simple(
         self,
         enriched_queries: List[str],
-        record_keeper: Optional[str],
         plan_type: str,
-        topic: str
     ) -> tuple:
         """
-        Parallel multi-lane search for generate_response endpoint.
+        KQ-style parallel search for generate_response endpoint.
         
-        Fires ALL RK cascade levels and an unfiltered semantic lane in
-        parallel, then merges, deduplicates, and ranks results.  This
-        ensures cross-article coverage for multi-topic inquiries while
-        still surfacing RK-specific chunks through score-based ranking.
+        For each enriched query, fires two lanes in parallel:
+        1. Unfiltered semantic search (top_k=15) — relies on embedding
+           relevance; the enriched query text already contains topic +
+           participant data for natural RK/topic matching.
+        2. Plan-type filtered search (top_k=10) — safety net ensuring
+           plan-specific articles surface even if embeddings are noisy.
         
-        Lane 1 (cascade): Every cascade level × every enriched query,
-        each with topic-strategy fallbacks — preserves RK-aware priority.
-        
-        Lane 2 (unfiltered): Every enriched query with only a plan_type
-        filter — guarantees discovery of global/cross-RK articles that
-        the cascade's narrow filters might exclude.
+        This replaces the RK cascade + topic-strategy approach, reducing
+        Pinecone calls from ~24-28 to ~6-8 per request.
         
         Returns:
             (merged_chunks, per_query_scores)
         """
-        rk_cascade = self._build_rk_cascade(record_keeper)
         per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
-        
-        # ── Lane 1: All cascade levels in parallel ──
-        cascade_tasks = []
-        cascade_task_queries: List[str] = []
-        
-        for level in rk_cascade:
-            base_filters = {
-                **level["filters"],
-                "plan_type": {"$in": [plan_type, "all"]}
-            }
-            for eq in enriched_queries:
-                cascade_tasks.append(
-                    self._search_with_topic_strategies(eq, base_filters, topic)
-                )
-                cascade_task_queries.append(eq)
-        
-        # ── Lane 2: Unfiltered semantic search (global article discovery) ──
-        unfiltered_tasks = []
+        tasks = []
+        task_queries: List[str] = []
+
         for eq in enriched_queries:
-            unfiltered_tasks.append(
+            tasks.append(
+                self._cached_query(eq, top_k=self.KQ_TOP_K_PER_QUERY, filter_dict=None)
+            )
+            task_queries.append(eq)
+            tasks.append(
                 self._cached_query(
-                    query_text=eq,
-                    top_k=self.GR_UNFILTERED_TOP_K,
+                    eq,
+                    top_k=10,
                     filter_dict={"plan_type": {"$in": [plan_type, "all"]}}
                 )
             )
-        
-        # Execute all lanes in parallel
-        all_results = await asyncio.gather(*cascade_tasks, *unfiltered_tasks)
-        
-        cascade_results = all_results[:len(cascade_tasks)]
-        unfiltered_results = all_results[len(cascade_tasks):]
-        
-        # Track per-query best scores
-        for eq, result_list in zip(cascade_task_queries, cascade_results):
-            best = max((c.get('score', 0) for c in result_list), default=0)
-            per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
-        
-        for eq, result_list in zip(enriched_queries, unfiltered_results):
-            best = max((c.get('score', 0) for c in result_list), default=0)
-            per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
-        
-        # Merge and deduplicate all results across both lanes
-        chunks = self._merge_and_rank_chunks(*cascade_results, *unfiltered_results)
-        
+            task_queries.append(eq)
+
+        results = await asyncio.gather(*tasks)
+
+        for i, eq in enumerate(enriched_queries):
+            unfiltered = results[2 * i]
+            filtered = results[2 * i + 1]
+            best = max(
+                (c.get('score', 0) for c in unfiltered + filtered),
+                default=0
+            )
+            per_query_scores[eq] = round(best, 4)
+
+        chunks = self._merge_and_rank_chunks(*results)
+
         if not chunks:
-            logger.warning("generate_response: no results across all search lanes")
+            logger.warning("generate_response: no results from simplified search")
         else:
             unique_articles = len(set(
                 c['metadata'].get('article_id') for c in chunks
             ))
             logger.info(
-                f"generate_response: {len(chunks)} chunks from "
-                f"{unique_articles} articles across {len(rk_cascade)} cascade "
-                f"levels + unfiltered lane"
+                f"generate_response (simple): {len(chunks)} chunks from "
+                f"{unique_articles} articles ({len(tasks)} Pinecone calls)"
             )
-        
+
         return chunks, per_query_scores
     
     async def _search_with_topic_strategies(
@@ -1603,8 +1638,8 @@ class RAGEngine:
     # max_completion_tokens.  With reasoning_effort="medium" the model
     # can spend 70-85% of the budget on internal reasoning, so we need
     # generous headroom to avoid empty-content responses.
-    GPT5_REASONING_MULTIPLIER = 5
-    GPT5_MIN_COMPLETION_TOKENS = 4000
+    GPT5_REASONING_MULTIPLIER = 10
+    GPT5_MIN_COMPLETION_TOKENS = 16000
     
     LLM_EMPTY_RESPONSE_RETRIES = 1
 
@@ -2097,6 +2132,51 @@ class RAGEngine:
         )
     
     _LLM_RESPONSE_REQUIRED_KEYS = {"outcome", "response_to_participant"}
+
+    def _gr_metadata(
+        self,
+        selected_chunks: List[Dict[str, Any]],
+        tokens_used: int,
+        llm_response: str,
+        llm_usage: Optional[Dict[str, int]],
+        total_inquiries: int,
+        sub_queries: List[str],
+        per_query_scores: Dict[str, float],
+        enriched_queries: List[str],
+        phase: str = "",
+    ) -> Dict[str, Any]:
+        """Build a metadata dict for GenerateResponseResult."""
+        source_articles = self._build_source_articles(selected_chunks)
+        pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
+        return {
+            "chunks_used": len(selected_chunks),
+            "context_tokens": tokens_used,
+            "response_tokens": self.token_manager.count_tokens(llm_response) if llm_response else 0,
+            "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
+            "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
+            "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
+            "model": self.model,
+            "total_inquiries": total_inquiries,
+            "sub_queries": sub_queries,
+            "per_query_scores": pqs,
+            "unique_articles": len(source_articles),
+            "relevant_articles": sum(1 for sa in source_articles if sa.get("used_info", False)),
+            "coverage_gaps": [],
+            "phase": phase,
+        }
+
+    @staticmethod
+    def _combine_llm_usage(
+        usage1: Optional[Dict[str, int]],
+        usage2: Optional[Dict[str, int]]
+    ) -> Dict[str, int]:
+        """Sum token counts from two LLM usage dicts."""
+        combined: Dict[str, int] = {}
+        for key in ("prompt_tokens", "completion_tokens", "total_tokens"):
+            v1 = (usage1 or {}).get(key, 0)
+            v2 = (usage2 or {}).get(key, 0)
+            combined[key] = v1 + v2
+        return combined
 
     @staticmethod
     def _build_llm_fallback_parsed(reason: str) -> Dict[str, Any]:

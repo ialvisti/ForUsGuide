@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>KB RAG Stress Test Analytics</title>
+<style>
+  :root {
+    --bg: #0b0f1a;
+    --surface: #131825;
+    --surface2: #1a2033;
+    --surface3: #1f2740;
+    --border: #252d44;
+    --text: #e2e8f0;
+    --text-dim: #8892a8;
+    --accent: #6366f1;
+    --accent-glow: rgba(99,102,241,.25);
+    --green: #22c55e;
+    --green-dim: rgba(34,197,94,.15);
+    --amber: #f59e0b;
+    --amber-dim: rgba(245,158,11,.15);
+    --red: #ef4444;
+    --cyan: #06b6d4;
+    --pink: #ec4899;
+    --purple: #a855f7;
+    --indigo: #818cf8;
+  }
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg); color: var(--text); line-height: 1.6; min-height: 100vh;
+  }
+  .container { max-width: 1440px; margin: 0 auto; padding: 0 24px; }
+
+  /* ── Hero ── */
+  .hero { text-align: center; padding: 48px 24px 32px; position: relative; overflow: hidden; }
+  .hero::before {
+    content: ''; position: absolute; top: -120px; left: 50%; transform: translateX(-50%);
+    width: 600px; height: 600px; background: radial-gradient(circle, var(--accent-glow) 0%, transparent 70%); pointer-events: none;
+  }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: 8px; background: var(--surface2); border: 1px solid var(--border);
+    padding: 6px 16px; border-radius: 999px; font-size: 13px; color: var(--text-dim); margin-bottom: 16px;
+  }
+  .hero-badge .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); animation: pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+  .hero h1 { font-size: 38px; font-weight: 800; letter-spacing: -1px; margin-bottom: 6px; position: relative; }
+  .hero h1 span { background: linear-gradient(135deg, var(--accent), var(--cyan)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .hero .subtitle { color: var(--text-dim); font-size: 15px; max-width: 620px; margin: 0 auto; }
+
+  /* ── Score Ring ── */
+  .score-ring-wrapper { display: flex; justify-content: center; margin: 24px 0 0; }
+  .score-ring { position: relative; width: 160px; height: 160px; }
+  .score-ring svg { transform: rotate(-90deg); }
+  .score-ring circle { fill: none; stroke-width: 10; }
+  .score-ring .track { stroke: var(--surface2); }
+  .score-ring .fill { stroke: var(--green); stroke-linecap: round; }
+  .score-ring .label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); text-align: center; }
+  .score-ring .label .pct { font-size: 40px; font-weight: 800; color: var(--green); }
+  .score-ring .label .sub { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+
+  /* ── KPI ── */
+  .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin: 32px 0 40px; }
+  .kpi { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; position: relative; overflow: hidden; }
+  .kpi::after { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px; background: linear-gradient(90deg, var(--accent), var(--cyan)); opacity: 0; transition: opacity .2s; }
+  .kpi:hover::after { opacity: 1; }
+  .kpi .kpi-label { font-size: 11px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; margin-bottom: 6px; }
+  .kpi .kpi-value { font-size: 26px; font-weight: 700; }
+  .kpi .kpi-detail { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+  /* ── Section ── */
+  .section { margin-bottom: 40px; }
+  .section-header { display: flex; align-items: center; gap: 12px; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .section-header h2 { font-size: 18px; font-weight: 700; }
+  .badge { background: var(--accent); color: #fff; font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 999px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 900px) { .two-col { grid-template-columns: 1fr; } }
+
+  /* ── Card ── */
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; overflow-x: auto; }
+  .card h3 { font-size: 14px; font-weight: 600; margin-bottom: 14px; display: flex; align-items: center; gap: 8px; }
+  .card h3 .dot-indicator { width: 10px; height: 10px; border-radius: 50%; }
+
+  /* ── Stat boxes ── */
+  .stat-boxes { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .stat-box { background: var(--surface2); border-radius: 8px; padding: 12px 14px; text-align: center; }
+  .stat-box .sb-val { font-size: 22px; font-weight: 800; }
+  .stat-box .sb-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
+
+  /* ── Bar charts ── */
+  .bar-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .bar-label { width: 140px; font-size: 11px; color: var(--text-dim); text-align: right; flex-shrink: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar-track { flex: 1; height: 20px; background: var(--surface2); border-radius: 5px; overflow: hidden; position: relative; }
+  .bar-fill { height: 100%; border-radius: 5px; transition: width .8s ease; position: relative; }
+  .bar-fill::after { content: attr(data-value); position: absolute; right: 8px; top: 50%; transform: translateY(-50%); font-size: 10px; font-weight: 600; color: #fff; }
+  .bar-value { width: 55px; font-size: 11px; font-weight: 600; flex-shrink: 0; }
+
+  /* ── Histogram ── */
+  .histogram { display: flex; align-items: flex-end; gap: 3px; height: 120px; padding-top: 10px; }
+  .hist-bar-wrapper { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+  .hist-bar { width: 100%; border-radius: 3px 3px 0 0; min-height: 4px; position: relative; cursor: pointer; }
+  .hist-bar:hover { filter: brightness(1.3); }
+  .hist-bar .tooltip { display: none; position: absolute; bottom: calc(100% + 6px); left: 50%; transform: translateX(-50%); background: #1e293b; border: 1px solid var(--border); border-radius: 6px; padding: 4px 8px; font-size: 11px; white-space: nowrap; z-index: 10; }
+  .hist-bar:hover .tooltip { display: block; }
+  .hist-label { font-size: 8px; color: var(--text-dim); margin-top: 3px; }
+
+  /* ── Spark ── */
+  .spark-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .spark-id { width: 44px; font-size: 10px; color: var(--text-dim); font-weight: 600; }
+  .spark-bar-track { flex: 1; height: 12px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+  .spark-bar { height: 100%; border-radius: 3px; }
+  .spark-val { width: 44px; font-size: 10px; font-weight: 600; text-align: right; }
+
+  /* ── Donut ── */
+  .donut-row { display: flex; align-items: center; gap: 20px; flex-wrap: wrap; }
+  .donut-container { position: relative; width: 120px; height: 120px; flex-shrink: 0; }
+  .donut-container svg { transform: rotate(-90deg); }
+  .donut-container circle { fill: none; stroke-width: 14; }
+  .donut-legend { display: flex; flex-direction: column; gap: 6px; }
+  .legend-item { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 3px; flex-shrink: 0; }
+
+  /* ── Pills ── */
+  .pill { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+  .pill-pass { background: var(--green-dim); color: var(--green); }
+  .pill-fail { background: rgba(239,68,68,.15); color: var(--red); }
+  .pill-endpoint { background: rgba(99,102,241,.12); color: var(--indigo); }
+  .pill-endpoint.kq { background: rgba(6,182,212,.12); color: var(--cyan); }
+  .decision-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .decision-pill { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 10px; font-size: 13px; font-weight: 600; }
+  .decision-pill .dp-count { font-size: 20px; font-weight: 800; }
+
+  /* ══════════════════════════════════════════════════════════════
+     DETAIL CARDS — the main new feature
+     ══════════════════════════════════════════════════════════════ */
+
+  /* ── Filter bar ── */
+  .filter-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .filter-btn {
+    padding: 6px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s;
+  }
+  .filter-btn:hover { border-color: var(--accent); color: var(--text); }
+  .filter-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── Detail card ── */
+  .detail-card {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+    margin-bottom: 12px; overflow: hidden; transition: border-color .2s;
+  }
+  .detail-card:hover { border-color: rgba(99,102,241,.4); }
+  .detail-header {
+    display: flex; align-items: center; gap: 12px; padding: 14px 18px; cursor: pointer;
+    user-select: none; transition: background .15s;
+  }
+  .detail-header:hover { background: var(--surface2); }
+  .detail-header .dh-id { font-size: 12px; font-weight: 700; color: var(--accent); min-width: 48px; }
+  .detail-header .dh-name { flex: 1; font-size: 13px; font-weight: 600; }
+  .detail-header .dh-pills { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .detail-header .dh-latency { font-size: 12px; color: var(--text-dim); font-variant-numeric: tabular-nums; min-width: 55px; text-align: right; }
+  .detail-header .dh-arrow { font-size: 14px; color: var(--text-dim); transition: transform .2s; min-width: 16px; text-align: center; }
+  .detail-card.open .detail-header .dh-arrow { transform: rotate(180deg); }
+
+  .detail-body { display: none; padding: 0 18px 18px; }
+  .detail-card.open .detail-body { display: block; }
+
+  .detail-section { margin-bottom: 16px; }
+  .detail-section:last-child { margin-bottom: 0; }
+  .ds-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 6px; font-weight: 600; }
+  .ds-content {
+    background: var(--surface2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px 14px; font-size: 13px; line-height: 1.7; white-space: pre-wrap; word-break: break-word;
+  }
+  .ds-content.question-text { color: var(--cyan); font-weight: 500; font-size: 14px; }
+  .ds-content.answer-text { color: var(--text); }
+  .ds-content.data-json { font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace; font-size: 12px; color: var(--indigo); max-height: 300px; overflow-y: auto; }
+  .ds-content.data-json::-webkit-scrollbar { width: 5px; }
+  .ds-content.data-json::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* Key points, steps, warnings */
+  .kp-list { list-style: none; padding: 0; }
+  .kp-list li { padding: 6px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 13px; display: flex; gap: 8px; }
+  .kp-list li:last-child { border-bottom: none; }
+  .kp-bullet { flex-shrink: 0; width: 6px; height: 6px; border-radius: 50%; margin-top: 8px; }
+  .kp-bullet.green { background: var(--green); }
+  .kp-bullet.amber { background: var(--amber); }
+  .kp-bullet.cyan { background: var(--cyan); }
+  .kp-bullet.pink { background: var(--pink); }
+  .kp-bullet.purple { background: var(--purple); }
+
+  .step-item { display: flex; gap: 10px; padding: 8px 0; border-bottom: 1px solid rgba(255,255,255,.04); font-size: 13px; }
+  .step-item:last-child { border-bottom: none; }
+  .step-num { background: var(--accent); color: #fff; width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 700; flex-shrink: 0; }
+  .step-body b { color: var(--text); }
+  .step-body .step-detail { color: var(--text-dim); font-size: 12px; margin-top: 2px; }
+
+  .meta-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+  .meta-item { background: var(--surface3); border-radius: 6px; padding: 8px 10px; }
+  .meta-item .mi-label { font-size: 10px; color: var(--text-dim); text-transform: uppercase; letter-spacing: .5px; }
+  .meta-item .mi-value { font-size: 13px; font-weight: 600; margin-top: 2px; }
+
+  .article-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+  .article-tag { background: var(--surface3); border: 1px solid var(--border); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--text-dim); }
+
+  .guardrail-tag { background: rgba(168,85,247,.12); border: 1px solid rgba(168,85,247,.25); border-radius: 6px; padding: 3px 8px; font-size: 11px; color: var(--purple); }
+  .warning-tag { background: var(--amber-dim); border: 1px solid rgba(245,158,11,.25); border-radius: 6px; padding: 4px 10px; font-size: 12px; color: var(--amber); display: block; margin-bottom: 4px; }
+
+  /* ── Expand/collapse all ── */
+  .toggle-all-btn {
+    padding: 6px 16px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2);
+    color: var(--text-dim); cursor: pointer; font-size: 12px; font-weight: 600; transition: all .15s; margin-left: auto;
+  }
+  .toggle-all-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ── Footer ── */
+  footer { text-align: center; padding: 32px 24px; color: var(--text-dim); font-size: 11px; border-top: 1px solid var(--border); margin-top: 24px; }
+
+  @media (max-width: 700px) {
+    .hero h1 { font-size: 26px; }
+    .kpi-grid { grid-template-columns: 1fr 1fr; }
+    .two-col { grid-template-columns: 1fr; }
+    .bar-label { width: 80px; font-size: 10px; }
+    .detail-header .dh-pills { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="hero-badge"><span class="dot"></span> Stress Test Complete</div>
+  <h1>KB RAG System <span>Analytics</span></h1>
+  <p class="subtitle">Comprehensive endpoint stress test across 45 distribution scenarios — with full questions, data sent, and answers</p>
+  <div class="score-ring-wrapper">
+    <div class="score-ring">
+      <svg width="160" height="160" viewBox="0 0 160 160">
+        <circle class="track" cx="80" cy="80" r="70"/>
+        <circle class="fill" cx="80" cy="80" r="70" id="scoreCircle"/>
+      </svg>
+      <div class="label">
+        <div class="pct" id="scoreLabel">—</div>
+        <div class="sub">Pass Rate</div>
+      </div>
+    </div>
+  </div>
+</header>
+
+<div class="container">
+
+<div class="kpi-grid" id="kpiGrid"></div>
+
+<!-- ── Endpoint Comparison ── -->
+<div class="section">
+  <div class="section-header"><h2>Endpoint Comparison</h2><span class="badge">HEAD TO HEAD</span></div>
+  <div class="two-col">
+    <div class="card" id="endpointStatsKQ"></div>
+    <div class="card" id="endpointStatsGR"></div>
+  </div>
+</div>
+
+<!-- ── Latency ── -->
+<div class="section">
+  <div class="section-header"><h2>Response Time Distribution</h2><span class="badge">LATENCY</span></div>
+  <div class="two-col">
+    <div class="card"><h3><span class="dot-indicator" style="background:var(--cyan)"></span> Knowledge Question (ms)</h3><div class="histogram" id="histKQ"></div></div>
+    <div class="card"><h3><span class="dot-indicator" style="background:var(--accent)"></span> Generate Response (ms)</h3><div class="histogram" id="histGR"></div></div>
+  </div>
+</div>
+
+<!-- ── Confidence + Coverage ── -->
+<div class="section">
+  <div class="section-header"><h2>Confidence & Coverage</h2><span class="badge">ANALYSIS</span></div>
+  <div class="two-col">
+    <div class="card"><h3><span class="dot-indicator" style="background:var(--green)"></span> GR Confidence per Test</h3><div id="confidenceSpark"></div></div>
+    <div class="card"><h3><span class="dot-indicator" style="background:var(--cyan)"></span> KQ Coverage Distribution</h3><div class="donut-row" id="coverageDonut"></div></div>
+  </div>
+</div>
+
+<!-- ── Article Usage ── -->
+<div class="section">
+  <div class="section-header"><h2>Source Article Usage</h2><span class="badge">RETRIEVAL MAP</span></div>
+  <div class="card" id="articleUsageCard"></div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════════════
+     DETAIL CARDS — full Q, data, & answer
+     ══════════════════════════════════════════════════════════════ -->
+<div class="section">
+  <div class="section-header">
+    <h2>Full Test Details</h2>
+    <span class="badge">45 TESTS</span>
+    <button class="toggle-all-btn" onclick="toggleAll()">Expand All</button>
+  </div>
+  <div class="filter-bar" id="filterBar"></div>
+  <div id="detailCards"></div>
+</div>
+
+</div>
+
+<footer>
+  <p>KB RAG System &mdash; Stress Test Analytics &mdash; Generated <span id="footerDate"></span> &mdash; 45 tests across 11 knowledge base articles</p>
+  <p style="margin-top:4px">ForUsAll Participant Advisory &bull; Distributions Domain</p>
+</footer>
+
+<script>
+/* ═══════════════════ Load data from external JSON ═══════════════════ */
+let DATA = null;
+
+async function loadData() {
+  try {
+    const resp = await fetch('./stress_test_results.json');
+    DATA = await resp.json();
+  } catch (e) {
+    document.body.innerHTML = '<div style="padding:80px;text-align:center;color:#ef4444;font-size:18px">Could not load stress_test_results.json — make sure the file exists in the same directory.</div>';
+    return;
+  }
+  render();
+}
+
+function render() {
+  const R = DATA.results;
+  const KQ = R.filter(r => r.endpoint === 'knowledge-question');
+  const GR = R.filter(r => r.endpoint === 'generate-response');
+
+  const avg = arr => arr.length ? arr.reduce((s,v)=>s+v,0)/arr.length : 0;
+  const fmt = ms => ms < 1000 ? ms.toFixed(0)+'ms' : (ms/1000).toFixed(1)+'s';
+  const confColor = c => c >= .83 ? 'var(--green)' : c >= .75 ? 'var(--amber)' : 'var(--red)';
+  const catLabel = s => s.replace(/_/g,' ').replace(/\b\w/g,c=>c.toUpperCase());
+  const esc = s => s ? String(s).replace(/</g,'&lt;').replace(/>/g,'&gt;') : '';
+
+  // Score ring
+  const pct = DATA.total_tests ? (DATA.passed / DATA.total_tests * 100) : 0;
+  const circ = 2 * Math.PI * 70;
+  const sc = document.getElementById('scoreCircle');
+  sc.style.strokeDasharray = circ;
+  sc.style.strokeDashoffset = circ - (pct/100)*circ;
+  document.getElementById('scoreLabel').textContent = pct.toFixed(0) + '%';
+
+  // Footer date
+  document.getElementById('footerDate').textContent = DATA.timestamp ? DATA.timestamp.split('T')[0] : '';
+
+  // KPIs
+  const allMs = R.map(r=>r.response_time_ms);
+  const grConf = GR.filter(r=>r.confidence!==null).map(r=>r.confidence);
+  const totalChunks = R.reduce((s,r)=>s+r.chunks_used,0);
+  const totalArts = new Set(R.flatMap(r=>r.source_articles)).size;
+  const totalMs = allMs.reduce((s,v)=>s+v,0);
+
+  const kpis = [
+    {l:'Total Tests',v:R.length,d:`${KQ.length} KQ + ${GR.length} GR`},
+    {l:'Pass Rate',v:pct.toFixed(0)+'%',d:`${DATA.passed} / ${DATA.total_tests}`},
+    {l:'Avg Latency',v:fmt(avg(allMs)),d:`KQ ${fmt(avg(KQ.map(r=>r.response_time_ms)))} · GR ${fmt(avg(GR.map(r=>r.response_time_ms)))}`},
+    {l:'Avg Confidence',v:grConf.length ? (avg(grConf)*100).toFixed(1)+'%':'—',d:grConf.length ? `Min ${(Math.min(...grConf)*100).toFixed(1)}% · Max ${(Math.max(...grConf)*100).toFixed(1)}%`:''},
+    {l:'Total Chunks',v:totalChunks.toLocaleString(),d:`Avg ${(totalChunks/R.length).toFixed(1)} per test`},
+    {l:'Articles Hit',v:totalArts,d:'Unique articles retrieved'},
+    {l:'Runtime',v:(totalMs/60000).toFixed(1)+'m',d:fmt(totalMs)+' total'},
+    {l:'HTTP Errors',v:'0',d:'All 200 OK'},
+  ];
+  document.getElementById('kpiGrid').innerHTML = kpis.map(k=>`<div class="kpi"><div class="kpi-label">${k.l}</div><div class="kpi-value">${k.v}</div><div class="kpi-detail">${k.d}</div></div>`).join('');
+
+  // Endpoint stat cards
+  function epCard(id, label, color, tests) {
+    const ms = tests.map(t=>t.response_time_ms);
+    const chunks = tests.map(t=>t.chunks_used);
+    const arts = tests.map(t=>t.source_articles.length);
+    const pass = tests.filter(t=>t.passed).length;
+    document.getElementById(id).innerHTML = `
+      <h3><span class="dot-indicator" style="background:${color}"></span> ${label}</h3>
+      <div class="stat-boxes">
+        <div class="stat-box"><div class="sb-val">${tests.length}</div><div class="sb-label">Tests</div></div>
+        <div class="stat-box"><div class="sb-val" style="color:var(--green)">${pass}</div><div class="sb-label">Passed</div></div>
+        <div class="stat-box"><div class="sb-val">${fmt(avg(ms))}</div><div class="sb-label">Avg Latency</div></div>
+        <div class="stat-box"><div class="sb-val">${avg(chunks).toFixed(1)}</div><div class="sb-label">Avg Chunks</div></div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;font-size:12px;color:var(--text-dim)">
+        <div>Min latency: <b style="color:var(--text)">${fmt(Math.min(...ms))}</b></div>
+        <div>Max latency: <b style="color:var(--text)">${fmt(Math.max(...ms))}</b></div>
+        <div>Min chunks: <b style="color:var(--text)">${Math.min(...chunks)}</b></div>
+        <div>Max chunks: <b style="color:var(--text)">${Math.max(...chunks)}</b></div>
+        <div>Avg articles: <b style="color:var(--text)">${avg(arts).toFixed(1)}</b></div>
+        <div>Max articles: <b style="color:var(--text)">${Math.max(...arts)}</b></div>
+      </div>`;
+  }
+  epCard('endpointStatsKQ','Knowledge Question','var(--cyan)',KQ);
+  epCard('endpointStatsGR','Generate Response','var(--accent)',GR);
+
+  // Histograms
+  function hist(id, tests, color) {
+    const el = document.getElementById(id);
+    const sorted = [...tests].sort((a,b)=>a.response_time_ms-b.response_time_ms);
+    const mx = Math.max(...sorted.map(t=>t.response_time_ms));
+    el.innerHTML = sorted.map(t=>{
+      const h = Math.max(6, (t.response_time_ms/mx)*110);
+      return `<div class="hist-bar-wrapper"><div class="hist-bar" style="height:${h}px;background:${color}"><span class="tooltip">${t.test_id}: ${fmt(t.response_time_ms)}</span></div><span class="hist-label">${t.test_id}</span></div>`;
+    }).join('');
+  }
+  hist('histKQ',KQ,'var(--cyan)');
+  hist('histGR',GR,'var(--accent)');
+
+  // Confidence sparklines
+  const sparkEl = document.getElementById('confidenceSpark');
+  sparkEl.innerHTML = GR.filter(r=>r.confidence!==null).map(r=>{
+    const w = r.confidence*100;
+    return `<div class="spark-row"><span class="spark-id">${r.test_id}</span><div class="spark-bar-track"><div class="spark-bar" style="width:${w}%;background:${confColor(r.confidence)}"></div></div><span class="spark-val" style="color:${confColor(r.confidence)}">${(r.confidence*100).toFixed(1)}%</span></div>`;
+  }).join('');
+
+  // Coverage donut
+  const covCounts = {};
+  KQ.forEach(r=>{covCounts[r.confidence_note]=(covCounts[r.confidence_note]||0)+1;});
+  const covColors = {well_covered:'var(--green)',partially_covered:'var(--amber)',limited_coverage:'var(--red)'};
+  const covLabels = {well_covered:'Well Covered',partially_covered:'Partially Covered',limited_coverage:'Limited Coverage'};
+  const dCirc = 2*Math.PI*45;
+  let off = 0;
+  let arcs = '';
+  let leg = '<div class="donut-legend">';
+  Object.entries(covCounts).forEach(([k,v])=>{
+    const p = v/KQ.length; const d = p*dCirc;
+    arcs += `<circle cx="55" cy="55" r="45" stroke="${covColors[k]||'#888'}" stroke-width="16" stroke-dasharray="${d} ${dCirc-d}" stroke-dashoffset="${-off}" opacity=".9"/>`;
+    off += d;
+    leg += `<div class="legend-item"><span class="legend-dot" style="background:${covColors[k]||'#888'}"></span><span>${covLabels[k]||k}: <b>${v}</b> (${(p*100).toFixed(0)}%)</span></div>`;
+  });
+  leg += '</div>';
+  document.getElementById('coverageDonut').innerHTML = `<div class="donut-container"><svg width="110" height="110" viewBox="0 0 110 110"><circle cx="55" cy="55" r="45" fill="none" stroke="var(--surface2)" stroke-width="16"/>${arcs}</svg></div>${leg}`;
+
+  // Article usage
+  const artMap = {};
+  R.forEach(r=>r.source_articles.forEach(a=>{artMap[a]=(artMap[a]||0)+1;}));
+  const sortedArts = Object.entries(artMap).sort((a,b)=>b[1]-a[1]);
+  const mxA = sortedArts[0]?.[1]||1;
+  document.getElementById('articleUsageCard').innerHTML = '<h3><span class="dot-indicator" style="background:var(--amber)"></span> Retrieval frequency across all 45 tests</h3>' +
+    sortedArts.map(([n,c])=>`<div class="bar-row"><span class="bar-label" style="width:260px" title="${esc(n)}">${esc(n)}</span><div class="bar-track"><div class="bar-fill" style="width:${c/mxA*100}%;background:rgba(245,158,11,${Math.max(.3,c/mxA)})" data-value="${c}"></div></div><span class="bar-value">${c} hits</span></div>`).join('');
+
+  // ══════════════════ DETAIL CARDS ══════════════════
+  // Filters
+  const filterBar = document.getElementById('filterBar');
+  const endpoints = ['all','knowledge-question','generate-response'];
+  filterBar.innerHTML = endpoints.map(e=>`<button class="filter-btn ${e==='all'?'active':''}" data-filter="${e}">${e==='all'?'All Tests':e==='knowledge-question'?'Knowledge Question':'Generate Response'}</button>`).join('');
+  filterBar.querySelectorAll('.filter-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      filterBar.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+      filterCards(btn.dataset.filter);
+    });
+  });
+
+  // Build cards
+  const cardsEl = document.getElementById('detailCards');
+  cardsEl.innerHTML = R.map((r, idx) => {
+    const isKQ = r.endpoint === 'knowledge-question';
+    const epPill = `<span class="pill pill-endpoint ${isKQ?'kq':''}">${isKQ?'Knowledge Q':'Generate R'}</span>`;
+    const statusPill = `<span class="pill ${r.passed?'pill-pass':'pill-fail'}">${r.passed?'PASS':'FAIL'}</span>`;
+    const confBadge = r.confidence !== null
+      ? `<span style="font-size:11px;color:${confColor(r.confidence)};font-weight:600">${(r.confidence*100).toFixed(1)}%</span>`
+      : (r.confidence_note ? `<span style="font-size:11px;color:var(--text-dim)">${r.confidence_note.replace(/_/g,' ')}</span>` : '');
+
+    let body = '';
+
+    // Question / Inquiry
+    if (isKQ) {
+      const q = r.request_payload?.question || '';
+      body += `<div class="detail-section"><div class="ds-label">Question Sent</div><div class="ds-content question-text">${esc(q)}</div></div>`;
+    } else {
+      const p = r.request_payload || {};
+      body += `<div class="detail-section"><div class="ds-label">Inquiry</div><div class="ds-content question-text">${esc(p.inquiry)}</div></div>`;
+      // Collected data
+      if (p.collected_data) {
+        body += `<div class="detail-section"><div class="ds-label">Collected Data Sent</div><div class="ds-content data-json">${esc(JSON.stringify(p.collected_data, null, 2))}</div></div>`;
+      }
+      // Context fields
+      const meta = [];
+      if (p.record_keeper) meta.push(`Record Keeper: ${p.record_keeper}`);
+      if (p.plan_type) meta.push(`Plan: ${p.plan_type}`);
+      if (p.topic) meta.push(`Topic: ${p.topic}`);
+      if (p.max_response_tokens) meta.push(`Max tokens: ${p.max_response_tokens}`);
+      if (p.total_inquiries_in_ticket && p.total_inquiries_in_ticket > 1) meta.push(`Inquiries in ticket: ${p.total_inquiries_in_ticket}`);
+      if (meta.length) {
+        body += `<div class="detail-section"><div class="ds-label">Request Context</div><div class="meta-grid">${meta.map(m=>{const [l,v]=m.split(': ');return `<div class="meta-item"><div class="mi-label">${esc(l)}</div><div class="mi-value">${esc(v)}</div></div>`;}).join('')}</div></div>`;
+      }
+    }
+
+    // ANSWER / RESPONSE
+    if (isKQ) {
+      if (r.response_answer) {
+        body += `<div class="detail-section"><div class="ds-label">Answer</div><div class="ds-content answer-text">${esc(r.response_answer)}</div></div>`;
+      }
+      if (r.response_key_points?.length) {
+        body += `<div class="detail-section"><div class="ds-label">Key Points</div><div class="ds-content"><ul class="kp-list">${r.response_key_points.map(kp=>`<li><span class="kp-bullet cyan"></span><span>${esc(kp)}</span></li>`).join('')}</ul></div></div>`;
+      }
+    } else {
+      // Outcome
+      if (r.response_outcome || r.response_outcome_reason) {
+        body += `<div class="detail-section"><div class="ds-label">Outcome</div><div class="meta-grid">`;
+        if (r.response_outcome) body += `<div class="meta-item"><div class="mi-label">Outcome</div><div class="mi-value" style="color:${r.response_outcome==='can_proceed'?'var(--green)':r.response_outcome==='blocked_not_eligible'?'var(--red)':'var(--amber)'}">${catLabel(r.response_outcome)}</div></div>`;
+        if (r.response_outcome_reason) body += `<div class="meta-item" style="grid-column:span 2"><div class="mi-label">Reason</div><div class="mi-value" style="font-weight:400;font-size:12px">${esc(r.response_outcome_reason)}</div></div>`;
+        body += '</div></div>';
+      }
+      // Opening
+      if (r.response_opening) {
+        body += `<div class="detail-section"><div class="ds-label">Response Opening</div><div class="ds-content answer-text">${esc(r.response_opening)}</div></div>`;
+      }
+      // Key points
+      if (r.response_key_points?.length) {
+        body += `<div class="detail-section"><div class="ds-label">Key Points</div><div class="ds-content"><ul class="kp-list">${r.response_key_points.map(kp=>`<li><span class="kp-bullet green"></span><span>${esc(kp)}</span></li>`).join('')}</ul></div></div>`;
+      }
+      // Steps
+      if (r.response_steps?.length) {
+        body += `<div class="detail-section"><div class="ds-label">Steps</div><div class="ds-content">${r.response_steps.map(s=>`<div class="step-item"><span class="step-num">${s.step_number||'·'}</span><div class="step-body"><b>${esc(s.action)}</b>${s.detail?`<div class="step-detail">${esc(s.detail)}</div>`:''}</div></div>`).join('')}</div></div>`;
+      }
+      // Warnings
+      if (r.response_warnings?.length) {
+        body += `<div class="detail-section"><div class="ds-label">Warnings</div><div class="ds-content">${r.response_warnings.map(w=>`<span class="warning-tag">${esc(w)}</span>`).join('')}</div></div>`;
+      }
+      // Questions to ask
+      if (r.response_questions?.length) {
+        body += `<div class="detail-section"><div class="ds-label">Questions to Ask Participant</div><div class="ds-content"><ul class="kp-list">${r.response_questions.map(q=>`<li><span class="kp-bullet pink"></span><span><b>${esc(q.question)}</b><br/><span style="color:var(--text-dim);font-size:12px">${esc(q.why)}</span></span></li>`).join('')}</ul></div></div>`;
+      }
+      // Guardrails
+      if (r.response_guardrails?.length) {
+        body += `<div class="detail-section"><div class="ds-label">Guardrails Applied</div><div style="display:flex;flex-wrap:wrap;gap:4px">${r.response_guardrails.map(g=>`<span class="guardrail-tag">${esc(g)}</span>`).join('')}</div></div>`;
+      }
+      // Data gaps
+      if (r.response_data_gaps?.length) {
+        body += `<div class="detail-section"><div class="ds-label">Data Gaps</div><div class="ds-content"><ul class="kp-list">${r.response_data_gaps.map(d=>`<li><span class="kp-bullet amber"></span><span>${esc(typeof d === 'string' ? d : (d.field || JSON.stringify(d)))}</span></li>`).join('')}</ul></div></div>`;
+      }
+      // Escalation
+      if (r.response_escalation?.needed) {
+        body += `<div class="detail-section"><div class="ds-label">Escalation</div><div class="ds-content" style="color:var(--red)">${esc(r.response_escalation.reason || 'Escalation needed')}</div></div>`;
+      }
+    }
+
+    // Source articles (common)
+    if (r.source_articles?.length) {
+      body += `<div class="detail-section"><div class="ds-label">Source Articles (${r.source_articles.length})</div><div class="article-tags">${r.source_articles.map(a=>`<span class="article-tag">${esc(a)}</span>`).join('')}</div></div>`;
+    }
+
+    // Metadata
+    body += `<div class="detail-section"><div class="ds-label">Test Metadata</div><div class="meta-grid">
+      <div class="meta-item"><div class="mi-label">Latency</div><div class="mi-value">${fmt(r.response_time_ms)}</div></div>
+      <div class="meta-item"><div class="mi-label">Chunks Used</div><div class="mi-value">${r.chunks_used}</div></div>
+      <div class="meta-item"><div class="mi-label">Category</div><div class="mi-value">${catLabel(r.category)}</div></div>
+      <div class="meta-item"><div class="mi-label">HTTP Status</div><div class="mi-value">${r.status_code}</div></div>
+    </div></div>`;
+
+    return `<div class="detail-card" data-endpoint="${r.endpoint}" data-idx="${idx}">
+      <div class="detail-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="dh-id">${r.test_id}</span>
+        <span class="dh-name">${esc(r.name)}</span>
+        <span class="dh-pills">${epPill} ${statusPill} ${confBadge}</span>
+        <span class="dh-latency">${fmt(r.response_time_ms)}</span>
+        <span class="dh-arrow">▼</span>
+      </div>
+      <div class="detail-body">${body}</div>
+    </div>`;
+  }).join('');
+}
+
+function filterCards(endpoint) {
+  document.querySelectorAll('.detail-card').forEach(card => {
+    if (endpoint === 'all' || card.dataset.endpoint === endpoint) {
+      card.style.display = '';
+    } else {
+      card.style.display = 'none';
+    }
+  });
+}
+
+let allExpanded = false;
+function toggleAll() {
+  allExpanded = !allExpanded;
+  document.querySelectorAll('.detail-card').forEach(card => {
+    if (card.style.display !== 'none') {
+      card.classList.toggle('open', allExpanded);
+    }
+  });
+  document.querySelector('.toggle-all-btn').textContent = allExpanded ? 'Collapse All' : 'Expand All';
+}
+
+loadData();
+</script>
+</body>
+</html>

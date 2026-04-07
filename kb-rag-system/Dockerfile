@@ -32,12 +32,13 @@ RUN useradd -m -u 1000 appuser && \
 
 USER appuser
 
-# Expose port
+# Cloud Run sets PORT; default to 8000 for local Docker use
+ENV PORT=8000
 EXPOSE 8000
 
-# Health check
+# Health check (uses fixed port for local Docker; Cloud Run ignores HEALTHCHECK)
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
-# Run application
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "2"]
+# Run application — uses ${PORT} so Cloud Run can set it dynamically
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers 2"]

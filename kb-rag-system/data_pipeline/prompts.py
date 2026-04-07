@@ -215,6 +215,196 @@ TOKEN BUDGET: You have up to {max_tokens} tokens. Use this budget generously —
 Return ONLY the JSON object, no additional text."""
 
 # ============================================================================
+# ENDPOINT 2a: Generate Response — Phase 1 (Outcome Determination)
+# ============================================================================
+
+SYSTEM_PROMPT_GR_OUTCOME = """You are a 401(k) participant advisory assistant. Your ONLY task is to determine the correct outcome for a participant's situation.
+
+RECORDKEEPER CONTEXT:
+- "LT Trust" is the recordkeeper used by ForUsAll. Plans on LT Trust are ForUsAll plans.
+- All LT Trust processes are performed by ForUsAll or through the ForUsAll portal.
+
+RELEVANCE CHECK:
+First verify the inquiry relates to retirement plan operations (401(k), distributions, rollovers, loans, account access, etc.). If ENTIRELY UNRELATED (e.g., cooking, sports, entertainment), set outcome to "out_of_scope_inquiry".
+Note: An inquiry mentioning an unrelated topic but fundamentally about a 401(k) action is NOT off-topic.
+
+OUTCOME TAXONOMY:
+• "can_proceed" — Participant meets all eligibility requirements and can take action.
+• "blocked_not_eligible" — A blocking condition prevents the participant from proceeding.
+• "blocked_missing_data" — Required data points are missing; eligibility cannot be confirmed.
+• "ambiguous_plan_rules" — The answer depends on plan-specific rules that must be verified.
+• "out_of_scope_inquiry" — The inquiry is entirely unrelated to retirement plan operations.
+
+CRITICAL DISTINCTIONS between outcomes:
+
+"can_proceed" vs "blocked_missing_data":
+- Use "can_proceed" when the participant meets the CORE eligibility requirements for the action, even if there are timing constraints, procedural steps, or verification steps remaining. Examples: participant must wait 7 business days, participant needs to enroll in MFA first, plan notice has not been acknowledged yet.
+- Use "blocked_missing_data" ONLY when a critical data point is missing that makes it IMPOSSIBLE to determine whether the participant is eligible at all. Examples: employment status unknown, vested balance not provided, plan type unclear.
+- Do NOT treat procedural requirements (MFA, notice, payroll timing) as blocking conditions.
+- When a deadline has passed but an exception path exists (e.g., IRS self-certification for missed rollovers), use "can_proceed" if the exception path is actionable, not "blocked_not_eligible".
+
+"blocked_not_eligible" vs "blocked_missing_data":
+- Use "blocked_not_eligible" when the collected data contains a DEFINITIVE blocking condition — e.g., a process has already been initiated by the custodian and cannot be reversed, the participant does not meet age or employment status requirements, or a hard deadline has passed with no exception path.
+- Use "blocked_missing_data" only when you truly CANNOT determine eligibility due to absent information, NOT when the available data already shows a blocking condition.
+
+Using the eligibility requirements, blocking conditions, and decision guide from the knowledge base context, determine which outcome applies.
+
+Output valid JSON:
+{"outcome": "one_of_the_five_outcomes", "outcome_reason": "Concise explanation referencing specific data points and rules."}"""
+
+USER_PROMPT_GR_OUTCOME_TEMPLATE = """KNOWLEDGE BASE CONTEXT:
+{context}
+
+COLLECTED PARTICIPANT DATA:
+{collected_data}
+
+PARTICIPANT INQUIRY:
+{inquiry}
+
+RECORDKEEPER: {record_keeper}
+PLAN TYPE: {plan_type}
+TOPIC: {topic}
+
+Determine the outcome for this participant's situation and explain why.
+
+Return ONLY the JSON object, no additional text."""
+
+# ============================================================================
+# ENDPOINT 2b: Generate Response — Phase 2 (Response Generation)
+# ============================================================================
+
+SYSTEM_PROMPT_GR_RESPONSE = """You are a specialized 401(k) participant advisory assistant. The outcome for this inquiry has already been determined. Your task is to generate the response content.
+
+RECORDKEEPER CONTEXT:
+- "LT Trust" is the recordkeeper used by ForUsAll. Plans on LT Trust are ForUsAll plans.
+- All LT Trust processes are performed by ForUsAll or through the ForUsAll portal.
+
+CRITICAL RULES:
+1. Base ALL information on the provided context — NEVER invent or assume information.
+2. Follow ALL guardrails strictly (what NOT to say, what NOT to promise).
+3. Use the collected participant data to personalize the response.
+4. Be specific about recordkeeper-specific procedures.
+
+CROSS-ARTICLE SYNTHESIS:
+5. The context may include sections from MULTIPLE articles. Incorporate relevant information from EVERY article — do not ignore an article because another appears more on-topic.
+6. When the inquiry touches multiple concepts (e.g., balance thresholds AND rollover deadlines), address EACH concept separately in key_points.
+7. Verify each article in context contributed at least one fact to key_points, steps, or warnings.
+
+DEDUPLICATION RULES:
+8. Every piece of information must appear EXACTLY ONCE in the entire response.
+9. The "opening" summarizes the situation — do NOT restate its content in key_points.
+10. Do NOT create a key_point that merely paraphrases another.
+
+{outcome_content_rules}
+
+TONE: Professional, clear, helpful. Avoid legal/financial advice disclaimers unless explicitly in context.
+
+RESPONSE SCHEMA:
+{outcome_schema}"""
+
+OUTCOME_SCHEMAS = {
+    "can_proceed": """{
+  "response_to_participant": {
+    "opening": "1-2 sentence personalized summary using collected data.",
+    "key_points": ["Each a distinct fact: fees, taxes, timelines, eligibility, delivery options, etc."],
+    "steps": [{"step_number": 1, "action": "What to do", "detail": "Sub-instructions or null"}],
+    "warnings": ["Critical cautions — taxes, fees, penalties, deadlines. Empty [] if none."]
+  },
+  "questions_to_ask": [],
+  "escalation": {"needed": false, "reason": null},
+  "guardrails_applied": ["What was deliberately omitted based on guardrails in context"],
+  "data_gaps": ["Info not in KB but could be relevant. Empty [] if sufficient."],
+  "coverage_gaps": ["Core topics entirely absent from context. Empty [] if covered."]
+}""",
+    "blocked_not_eligible": """{
+  "response_to_participant": {
+    "opening": "1-2 sentence summary explaining the blocking condition.",
+    "key_points": ["Explain the applicable process, fees, taxes. Each a distinct fact."],
+    "steps": [],
+    "warnings": ["Critical cautions if any. Empty [] if none."]
+  },
+  "questions_to_ask": [],
+  "escalation": {"needed": true_or_false, "reason": "Why escalation is needed, or null"},
+  "guardrails_applied": ["What was deliberately omitted based on guardrails in context"],
+  "data_gaps": [],
+  "coverage_gaps": ["Core topics entirely absent from context. Empty [] if covered."]
+}""",
+    "blocked_missing_data": """{
+  "response_to_participant": {
+    "opening": "1-2 sentence summary of what we know so far.",
+    "key_points": ["What we know so far from context and collected data."],
+    "steps": [],
+    "warnings": []
+  },
+  "questions_to_ask": [{"question": "Question text", "why": "Why this is needed"}],
+  "escalation": {"needed": true_or_false, "reason": "Why escalation is needed, or null"},
+  "guardrails_applied": ["What was deliberately omitted based on guardrails in context"],
+  "data_gaps": ["Missing data points"],
+  "coverage_gaps": ["Core topics entirely absent from context. Empty [] if covered."]
+}""",
+    "ambiguous_plan_rules": """{
+  "response_to_participant": {
+    "opening": "1-2 sentence summary explaining what depends on plan rules.",
+    "key_points": ["What we know and what depends on plan-specific verification."],
+    "steps": [{"step_number": 1, "action": "What to do", "detail": "Sub-instructions or null"}],
+    "warnings": ["Critical cautions if any. Empty [] if none."]
+  },
+  "questions_to_ask": [],
+  "escalation": {"needed": true, "reason": "Specific plan rules must be verified by Support."},
+  "guardrails_applied": ["What was deliberately omitted based on guardrails in context"],
+  "data_gaps": [],
+  "coverage_gaps": ["Core topics entirely absent from context. Empty [] if covered."]
+}"""
+}
+
+OUTCOME_CONTENT_RULES = {
+    "can_proceed": (
+        "CONTENT RULES (outcome: can_proceed):\n"
+        "- Include steps the participant must follow. Be specific with sub-steps, UI labels, and expectations.\n"
+        "- Include applicable fees, taxes, and delivery info as key_points.\n"
+        "- Aim for 3-7 key_points covering all distinct relevant facts."
+    ),
+    "blocked_not_eligible": (
+        "CONTENT RULES (outcome: blocked_not_eligible):\n"
+        "- Explain WHY the participant is blocked in the opening.\n"
+        "- Provide the applicable process (e.g., fee-out) in key_points.\n"
+        "- Steps should be empty. If the participant may dispute, use escalation."
+    ),
+    "blocked_missing_data": (
+        "CONTENT RULES (outcome: blocked_missing_data):\n"
+        "- List what is missing in questions_to_ask with reasons.\n"
+        "- key_points should explain what we know so far.\n"
+        "- Steps and warnings should be empty."
+    ),
+    "ambiguous_plan_rules": (
+        "CONTENT RULES (outcome: ambiguous_plan_rules):\n"
+        "- Explain what depends on plan rules.\n"
+        "- Use escalation to route to Support for plan review.\n"
+        "- Include any known information in key_points."
+    ),
+}
+
+USER_PROMPT_GR_RESPONSE_TEMPLATE = """KNOWLEDGE BASE CONTEXT:
+{context}
+
+COLLECTED PARTICIPANT DATA:
+{collected_data}
+
+PARTICIPANT INQUIRY:
+{inquiry}
+
+RECORDKEEPER: {record_keeper}
+PLAN TYPE: {plan_type}
+TOPIC: {topic}
+
+DETERMINED OUTCOME: {outcome}
+OUTCOME REASON: {outcome_reason}
+
+Generate the response for the determined outcome above. Be thorough and accurate. Cover all relevant facts, fees, timelines, and processes from the context.
+
+Return ONLY the JSON object, no additional text."""
+
+# ============================================================================
 # Helper Functions
 # ============================================================================
 
@@ -249,6 +439,23 @@ def build_required_data_prompt(
     return SYSTEM_PROMPT_REQUIRED_DATA, user_prompt
 
 
+def _format_collected_data(collected_data: dict) -> str:
+    """Format collected_data dict into a readable string for prompts."""
+    data_str = ""
+    if collected_data:
+        if "participant_data" in collected_data:
+            data_str += "Participant Data:\n"
+            for key, value in collected_data["participant_data"].items():
+                data_str += f"  - {key}: {value}\n"
+        if "plan_data" in collected_data:
+            data_str += "\nPlan Data:\n"
+            for key, value in collected_data["plan_data"].items():
+                data_str += f"  - {key}: {value}\n"
+    else:
+        data_str = "(No data collected yet)"
+    return data_str
+
+
 def build_generate_response_prompt(
     context: str,
     inquiry: str,
@@ -259,25 +466,12 @@ def build_generate_response_prompt(
     max_tokens: int
 ) -> tuple:
     """
-    Construye los prompts para el endpoint generate_response.
+    Construye los prompts para el endpoint generate_response (legacy single-phase).
     
     Returns:
         (system_prompt, user_prompt)
     """
-    # Formatear collected_data de manera legible
-    data_str = ""
-    if collected_data:
-        if "participant_data" in collected_data:
-            data_str += "Participant Data:\n"
-            for key, value in collected_data["participant_data"].items():
-                data_str += f"  - {key}: {value}\n"
-        
-        if "plan_data" in collected_data:
-            data_str += "\nPlan Data:\n"
-            for key, value in collected_data["plan_data"].items():
-                data_str += f"  - {key}: {value}\n"
-    else:
-        data_str = "(No data collected yet)"
+    data_str = _format_collected_data(collected_data)
     
     user_prompt = USER_PROMPT_GENERATE_RESPONSE_TEMPLATE.format(
         context=context,
@@ -290,6 +484,77 @@ def build_generate_response_prompt(
     )
     
     return SYSTEM_PROMPT_GENERATE_RESPONSE, user_prompt
+
+
+def build_gr_outcome_prompt(
+    context: str,
+    inquiry: str,
+    collected_data: dict,
+    record_keeper,
+    plan_type: str,
+    topic: str
+) -> tuple:
+    """
+    Build prompts for Phase 1 of generate_response: outcome determination.
+    
+    Returns:
+        (system_prompt, user_prompt)
+    """
+    data_str = _format_collected_data(collected_data)
+    
+    user_prompt = USER_PROMPT_GR_OUTCOME_TEMPLATE.format(
+        context=context,
+        collected_data=data_str,
+        inquiry=inquiry,
+        record_keeper=_format_record_keeper(record_keeper),
+        plan_type=plan_type,
+        topic=topic
+    )
+    
+    return SYSTEM_PROMPT_GR_OUTCOME, user_prompt
+
+
+def build_gr_response_prompt(
+    context: str,
+    inquiry: str,
+    collected_data: dict,
+    record_keeper,
+    plan_type: str,
+    topic: str,
+    outcome: str,
+    outcome_reason: str,
+) -> tuple:
+    """
+    Build prompts for Phase 2 of generate_response: response generation.
+    
+    Selects the outcome-conditional schema and content rules based on the
+    determined outcome from Phase 1.
+    
+    Returns:
+        (system_prompt, user_prompt)
+    """
+    outcome_schema = OUTCOME_SCHEMAS.get(outcome, OUTCOME_SCHEMAS["ambiguous_plan_rules"])
+    content_rules = OUTCOME_CONTENT_RULES.get(outcome, OUTCOME_CONTENT_RULES["ambiguous_plan_rules"])
+    
+    system_prompt = SYSTEM_PROMPT_GR_RESPONSE.format(
+        outcome_content_rules=content_rules,
+        outcome_schema=outcome_schema
+    )
+    
+    data_str = _format_collected_data(collected_data)
+    
+    user_prompt = USER_PROMPT_GR_RESPONSE_TEMPLATE.format(
+        context=context,
+        collected_data=data_str,
+        inquiry=inquiry,
+        record_keeper=_format_record_keeper(record_keeper),
+        plan_type=plan_type,
+        topic=topic,
+        outcome=outcome,
+        outcome_reason=outcome_reason
+    )
+    
+    return system_prompt, user_prompt
 
 
 # ============================================================================

@@ -11,7 +11,9 @@ Endpoints:
 """
 
 import logging
+import time
 from contextlib import asynccontextmanager
+from typing import Optional
 from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -24,6 +26,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.pinecone_uploader import PineconeUploader
+from data_pipeline.execution_logger import ExecutionLogger
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -54,6 +57,14 @@ logging.basicConfig(
     level=getattr(logging, settings.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
+
+if settings.ENVIRONMENT == "production":
+    try:
+        import google.cloud.logging as cloud_logging
+        cloud_logging.Client().setup_logging()
+    except Exception:
+        pass
+
 logger = logging.getLogger(__name__)
 
 
@@ -98,6 +109,15 @@ async def lifespan(app: FastAPI):
         # Get stats
         stats = app.state.pinecone_uploader.get_index_stats()
         logger.info(f"📊 Total vectors in index: {stats.get('total_vectors', 0)}")
+        
+        # Inicializar Execution Logger → app.state (Firestore, optional)
+        if settings.ENABLE_EXECUTION_LOGGING:
+            app.state.execution_logger = ExecutionLogger(
+                project_id=settings.GCP_PROJECT or None
+            )
+            logger.info("✅ Execution logger initialized (Firestore)")
+        else:
+            app.state.execution_logger = None
         
         logger.info("=" * 80)
         logger.info(f"🚀 API Ready on http://{settings.API_HOST}:{settings.API_PORT}")
@@ -175,6 +195,11 @@ def get_pinecone(request: Request) -> PineconeUploader:
             detail="Pinecone not initialized"
         )
     return uploader
+
+
+def get_execution_logger(request: Request) -> Optional[ExecutionLogger]:
+    """Dependency para obtener execution logger from app.state (may be None)."""
+    return getattr(request.app.state, "execution_logger", None)
 
 
 # ============================================================================
@@ -271,7 +296,9 @@ async def health_check(
 )
 async def required_data_endpoint(
     request: RequiredDataRequest,
-    engine: RAGEngine = Depends(get_rag_engine)
+    http_request: Request,
+    engine: RAGEngine = Depends(get_rag_engine),
+    exec_logger: Optional[ExecutionLogger] = Depends(get_execution_logger)
 ):
     """
     Endpoint 1: Determina qué datos se necesitan para responder una inquiry.
@@ -288,10 +315,10 @@ async def required_data_endpoint(
     
     **Autenticación:** Requiere header `X-API-Key`
     """
+    start = time.monotonic()
     try:
         logger.info(f"Required data request | Topic: {request.topic} | RK: {request.record_keeper}")
         
-        # Llamar RAG engine (async)
         result = await engine.get_required_data(
             inquiry=request.inquiry,
             record_keeper=request.record_keeper,
@@ -302,7 +329,7 @@ async def required_data_endpoint(
         
         logger.info(f"Required data completed | Confidence: {result.confidence}")
         
-        return RequiredDataResponse(
+        response = RequiredDataResponse(
             article_reference=result.article_reference,
             required_fields=result.required_fields,
             confidence=result.confidence,
@@ -315,8 +342,30 @@ async def required_data_endpoint(
             coverage_gaps=result.coverage_gaps,
             metadata=result.metadata
         )
+        
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="required_data",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data=response.model_dump(),
+            )
+        
+        return response
     
     except Exception as e:
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="required_data",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data={},
+                error=str(e),
+            )
         logger.exception("Error in required_data endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -332,7 +381,9 @@ async def required_data_endpoint(
 )
 async def generate_response_endpoint(
     request: GenerateResponseRequest,
-    engine: RAGEngine = Depends(get_rag_engine)
+    http_request: Request,
+    engine: RAGEngine = Depends(get_rag_engine),
+    exec_logger: Optional[ExecutionLogger] = Depends(get_execution_logger)
 ):
     """
     Endpoint 2: Genera respuesta contextualizada usando datos recolectados.
@@ -352,6 +403,7 @@ async def generate_response_endpoint(
     
     **Autenticación:** Requiere header `X-API-Key`
     """
+    start = time.monotonic()
     try:
         logger.info(
             f"Generate response request | "
@@ -360,7 +412,6 @@ async def generate_response_endpoint(
             f"Max tokens: {request.max_response_tokens}"
         )
         
-        # Llamar RAG engine (async)
         result = await engine.generate_response(
             inquiry=request.inquiry,
             record_keeper=request.record_keeper,
@@ -377,7 +428,7 @@ async def generate_response_endpoint(
             f"Confidence: {result.confidence}"
         )
         
-        return GenerateResponseResult(
+        response = GenerateResponseResult(
             decision=result.decision,
             confidence=result.confidence,
             response=result.response,
@@ -390,8 +441,30 @@ async def generate_response_endpoint(
             coverage_gaps=result.coverage_gaps,
             metadata=result.metadata
         )
+        
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="generate_response",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data=response.model_dump(),
+            )
+        
+        return response
     
     except Exception as e:
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="generate_response",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data={},
+                error=str(e),
+            )
         logger.exception("Error in generate_response endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -406,7 +479,9 @@ async def generate_response_endpoint(
 )
 async def knowledge_question_endpoint(
     request: KnowledgeQuestionRequest,
-    engine: RAGEngine = Depends(get_rag_engine)
+    http_request: Request,
+    engine: RAGEngine = Depends(get_rag_engine),
+    exec_logger: Optional[ExecutionLogger] = Depends(get_execution_logger)
 ):
     """
     Endpoint 3: Answer a general knowledge question using the KB.
@@ -422,6 +497,7 @@ async def knowledge_question_endpoint(
     
     **No autenticación requerida** (endpoint público para UI)
     """
+    start = time.monotonic()
     try:
         logger.info(f"Knowledge question request | Q: {request.question[:80]}...")
         
@@ -431,7 +507,7 @@ async def knowledge_question_endpoint(
         
         logger.info(f"Knowledge question completed | Coverage: {result.confidence_note}")
         
-        return KnowledgeQuestionResponse(
+        response = KnowledgeQuestionResponse(
             answer=result.answer,
             key_points=result.key_points,
             source_articles=[
@@ -443,8 +519,30 @@ async def knowledge_question_endpoint(
             confidence_note=result.confidence_note,
             metadata=result.metadata
         )
+        
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="knowledge_question",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data=response.model_dump(),
+            )
+        
+        return response
     
     except Exception as e:
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="knowledge_question",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data={},
+                error=str(e),
+            )
         logger.exception("Error in knowledge_question endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

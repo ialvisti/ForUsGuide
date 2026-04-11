@@ -226,6 +226,120 @@ class TestGenerateResponseEndpoint:
         assert 'response' in data
 
 
+class TestRequiredDataNoMatch:
+    """Tests for required-data no-match early exit behavior."""
+
+    def test_required_data_no_match_low_confidence_with_gaps(self, client, test_api_key):
+        """When the engine returns null article_id with coverage gaps, the API
+        should propagate the no-match response (200 OK, null article, empty fields)."""
+        mock_response = Mock()
+        mock_response.article_reference = {
+            "article_id": None,
+            "title": None,
+            "confidence": 0.341
+        }
+        mock_response.required_fields = {
+            "participant_data": [],
+            "plan_data": []
+        }
+        mock_response.confidence = 0.341
+        mock_response.source_articles = []
+        mock_response.used_chunks = []
+        mock_response.coverage_gaps = [
+            "ForUsAll account activation email not received / account access setup troubleshooting"
+        ]
+        mock_response.metadata = {
+            "no_match_reason": "Confidence (0.341) below threshold with coverage gaps",
+            "chunks_used": 0,
+            "sub_queries": ["activation email"],
+            "per_query_scores": {},
+            "unique_articles": 0,
+            "relevant_articles": 0,
+            "coverage_gaps": [
+                "ForUsAll account activation email not received / account access setup troubleshooting"
+            ]
+        }
+
+        client.app.state.rag_engine.get_required_data = AsyncMock(
+            return_value=mock_response
+        )
+
+        response = client.post(
+            "/api/v1/required-data",
+            json={
+                "inquiry": "Participant is not receiving the account activation email at matt@atlasup.com",
+                "record_keeper": "LT Trust",
+                "plan_type": "401(k)",
+                "topic": "account_access"
+            },
+            headers={"X-API-Key": test_api_key}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["article_reference"]["article_id"] is None
+        assert data["article_reference"]["title"] is None
+        assert data["required_fields"]["participant_data"] == []
+        assert data["required_fields"]["plan_data"] == []
+        assert len(data["coverage_gaps"]) >= 1
+        assert data["confidence"] < 0.40
+
+    def test_required_data_normal_match_passes_through(self, client, test_api_key):
+        """High-confidence matches should return a valid article reference."""
+        mock_response = Mock()
+        mock_response.article_reference = {
+            "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+            "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+            "confidence": 0.85
+        }
+        mock_response.required_fields = {
+            "participant_data": [
+                {
+                    "field": "termination_date",
+                    "description": "Date of termination",
+                    "why_needed": "Verify eligibility",
+                    "data_type": "date",
+                    "required": True
+                }
+            ],
+            "plan_data": []
+        }
+        mock_response.confidence = 0.85
+        mock_response.source_articles = []
+        mock_response.used_chunks = []
+        mock_response.coverage_gaps = []
+        mock_response.metadata = {
+            "chunks_used": 5,
+            "sub_queries": ["termination rollover"],
+            "per_query_scores": {},
+            "unique_articles": 1,
+            "relevant_articles": 1,
+            "coverage_gaps": []
+        }
+
+        client.app.state.rag_engine.get_required_data = AsyncMock(
+            return_value=mock_response
+        )
+
+        response = client.post(
+            "/api/v1/required-data",
+            json={
+                "inquiry": "I left my job and want to roll over my 401k to Fidelity",
+                "record_keeper": "LT Trust",
+                "plan_type": "401(k)",
+                "topic": "termination_distribution_request"
+            },
+            headers={"X-API-Key": test_api_key}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["article_reference"]["article_id"] is not None
+        assert data["confidence"] >= 0.65
+        assert data["coverage_gaps"] == []
+        assert len(data["required_fields"]["participant_data"]) >= 1
+
+
 class TestRequestIDTracking:
     """Tests para Request ID tracking."""
     

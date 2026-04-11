@@ -251,6 +251,36 @@ class RAGEngine:
                     "No relevant articles found for this topic"
                 )
             
+            # 2b. Guard 1: Retrieval quality gate — skip LLM if no rdmh chunk is relevant
+            best_rdmh_score = max(
+                (c.get('score', 0) for c in chunks
+                 if c['metadata'].get('chunk_type') == 'required_data_must_have'),
+                default=0.0
+            )
+            if best_rdmh_score < self.RD_RETRIEVAL_MIN_SCORE:
+                logger.info(
+                    f"Retrieval quality gate: best rdmh score {best_rdmh_score:.4f} "
+                    f"< threshold {self.RD_RETRIEVAL_MIN_SCORE}. Skipping LLM."
+                )
+                pqs = {sq: per_query_scores.get(eq, 0.0)
+                       for sq, eq in zip(sub_queries, enriched_queries)}
+                source_articles = self._build_source_articles(
+                    chunks[:self.RD_MAX_CHUNKS_PER_ARTICLE * 3]
+                )
+                return self._build_no_match_required_data_response(
+                    reason=(
+                        f"Best required_data_must_have score ({best_rdmh_score:.4f}) "
+                        f"below threshold ({self.RD_RETRIEVAL_MIN_SCORE})"
+                    ),
+                    confidence=0.0,
+                    source_articles=source_articles,
+                    used_chunks=[],
+                    coverage_gaps=[f"No relevant KB article found for topic: {topic}"],
+                    sub_queries=sub_queries,
+                    per_query_scores=pqs,
+                    tokens_used=0,
+                )
+            
             # 3. Build context with article diversity
             context, selected_chunks, tokens_used = self._build_context_with_diversity(
                 chunks=chunks,
@@ -303,6 +333,34 @@ class RAGEngine:
             confidence = self._calculate_required_data_confidence(
                 chunks, query_topic=topic, coverage_gaps=coverage_gaps
             )
+            
+            # 6b. Guard 2: No-match gate — null article reference when confidence
+            #     is low and LLM reports gaps
+            if confidence < self.RD_NO_MATCH_CONFIDENCE and coverage_gaps:
+                logger.info(
+                    f"No-match gate: confidence {confidence:.3f} "
+                    f"< {self.RD_NO_MATCH_CONFIDENCE} with "
+                    f"{len(coverage_gaps)} coverage gap(s). Nulling article reference."
+                )
+                source_articles = self._build_source_articles(selected_chunks)
+                used_chunks_serialized = self._serialize_used_chunks(selected_chunks)
+                pqs = {sq: per_query_scores.get(eq, 0.0)
+                       for sq, eq in zip(sub_queries, enriched_queries)}
+                return self._build_no_match_required_data_response(
+                    reason=(
+                        f"Confidence ({confidence:.3f}) below threshold "
+                        f"with coverage gaps: {coverage_gaps}"
+                    ),
+                    confidence=confidence,
+                    source_articles=source_articles,
+                    used_chunks=used_chunks_serialized,
+                    coverage_gaps=coverage_gaps,
+                    sub_queries=sub_queries,
+                    per_query_scores=pqs,
+                    tokens_used=tokens_used,
+                    llm_usage=llm_usage,
+                    llm_response=llm_response,
+                )
             
             # 7. Build source articles and used chunks
             source_articles = self._build_source_articles(selected_chunks)
@@ -680,6 +738,8 @@ class RAGEngine:
     RD_CONTEXT_BUDGET = 3500
     RD_TOP_K_PER_QUERY = 5
     RD_MAX_CHUNKS_PER_ARTICLE = 4
+    RD_RETRIEVAL_MIN_SCORE = 0.25
+    RD_NO_MATCH_CONFIDENCE = 0.40
     
     # Generate Response settings
     RESPONSE_MIN_CONTEXT_TOKENS = 4000
@@ -2129,6 +2189,61 @@ class RAGEngine:
                 "relevant_articles": 0,
                 "coverage_gaps": []
             }
+        )
+    
+    def _build_no_match_required_data_response(
+        self,
+        reason: str,
+        confidence: float,
+        source_articles: List[Dict[str, Any]],
+        used_chunks: List[Dict[str, Any]],
+        coverage_gaps: List[str],
+        sub_queries: List[str],
+        per_query_scores: Dict[str, float],
+        tokens_used: int,
+        llm_usage: Optional[Dict[str, int]] = None,
+        llm_response: str = "",
+    ) -> RequiredDataResponse:
+        """Build a no-match response that preserves diagnostic data.
+
+        Unlike _build_empty_required_data_response (used for hard errors),
+        this keeps source_articles, used_chunks, coverage_gaps, and query
+        metadata so downstream systems and n8n can observe why no article
+        matched and decide how to escalate.
+        """
+        total_articles = len(source_articles)
+        relevant_articles = sum(
+            1 for sa in source_articles if sa.get("used_info", False)
+        )
+        return RequiredDataResponse(
+            article_reference={
+                "article_id": None,
+                "title": None,
+                "confidence": confidence,
+            },
+            required_fields={"participant_data": [], "plan_data": []},
+            confidence=confidence,
+            source_articles=source_articles,
+            used_chunks=used_chunks,
+            coverage_gaps=coverage_gaps,
+            metadata={
+                "no_match_reason": reason,
+                "chunks_used": len(used_chunks),
+                "context_tokens": tokens_used,
+                "response_tokens": (
+                    self.token_manager.count_tokens(llm_response)
+                    if llm_response else 0
+                ),
+                "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
+                "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
+                "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
+                "model": self.model,
+                "sub_queries": sub_queries,
+                "per_query_scores": per_query_scores,
+                "unique_articles": total_articles,
+                "relevant_articles": relevant_articles,
+                "coverage_gaps": coverage_gaps,
+            },
         )
     
     _LLM_RESPONSE_REQUIRED_KEYS = {"outcome", "response_to_participant"}

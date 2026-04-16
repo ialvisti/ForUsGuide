@@ -1,0 +1,632 @@
+{
+    "metadata": {
+        "article_id": "vanguard_how_to_submit_a_loan_request",
+        "title": "Vanguard: How to Submit a Loan Request",
+        "description": "Internal guide for AI support agents on Vanguard 401(k) loans submitted through the participant portal at my.vanguardplan.com. Covers eligibility limits ($1,000 minimum, 50% of vested balance, $50,000 cap), portal submission steps via the Shortcuts menu, loan purpose selection (general vs. primary residence), payroll frequency verification, a one-time $150 fee deducted from loan proceeds, funding by physical check (2-3 weeks after approval), repayment through after-tax payroll deductions over 1-5 years, early repayment with no penalty, tax consequences on default or employment termination, and primary residence documentation requirements.",
+        "topic": "loan",
+        "subtopics": [
+            "loan_request",
+            "eligibility",
+            "portal_navigation",
+            "repayment_terms",
+            "early_repayment",
+            "fees",
+            "processing_timelines",
+            "tax_reporting",
+            "primary_residence_loan",
+            "employment_termination"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": "Vanguard",
+        "plan_type": "401(k)",
+        "scope": "recordkeeper-specific",
+        "tags": [
+            "Loan Request",
+            "Participant Dashboard",
+            "Payroll Issue",
+            "Taxes"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-04-10",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "eligibility",
+                "rules": [
+                    "The participant may borrow up to 50% of their vested balance.",
+                    "The minimum loan amount is $1,000.",
+                    "The maximum loan amount is $50,000 within a 12-month period.",
+                    "The Amount available shown in Vanguard confirms the minimum and maximum the participant is eligible to borrow.",
+                    "Market fluctuations may affect the participant's maximum eligible amount."
+                ]
+            },
+            {
+                "category": "loan_setup",
+                "rules": [
+                    "The participant must identify whether the loan is for a general purpose or for the purchase of a primary residence.",
+                    "The participant must select a preferred number of payments.",
+                    "The participant must verify payroll frequency and it must match the employer's actual schedule exactly.",
+                    "The participant must choose a desired loan start date.",
+                    "The participant must download and read the Loan paperwork PDF before moving forward.",
+                    "The participant must check the final authorization box and follow the remaining prompts to complete the request."
+                ]
+            },
+            {
+                "category": "repayment",
+                "rules": [
+                    "The repayment period can be from 1 to 5 years.",
+                    "Payments are made through after-tax payroll deductions.",
+                    "If payroll frequency is not accurate, the loan request will be rejected.",
+                    "The participant may repay the loan in full at any time with no prepayment penalty.",
+                    "If the participant wants to repay early, they must contact support for instructions."
+                ]
+            },
+            {
+                "category": "funding_and_processing",
+                "rules": [
+                    "Once submitted, ForUsAll will review and approve the request within 1-2 business days.",
+                    "The only delivery method mentioned in the source article is physical check.",
+                    "After approval, the time to receive funds through a physical check is 2-3 weeks.",
+                    "To avoid financial delays, the request should be submitted at least 3-4 weeks before the funds are needed.",
+                    "If the participant asks about ACH or wire delivery, the agent should advise contacting support for confirmation because the source article does not mention those options for Vanguard."
+                ]
+            },
+            {
+                "category": "documentation",
+                "rules": [
+                    "If the loan is for a primary residence, additional paperwork may be required.",
+                    "For a primary residence loan, ForUsAll may request a copy of a signed purchase or sale agreement."
+                ]
+            },
+            {
+                "category": "tax_and_employment",
+                "rules": [
+                    "Loans are not taxable if fully repaid.",
+                    "If a loan defaults, the outstanding amount may be treated as a taxable distribution.",
+                    "If the participant terminates employment, any outstanding balance must be repaid immediately.",
+                    "If an outstanding balance is not repaid after termination, it may be treated as a taxable distribution and could be subject to penalties."
+                ]
+            },
+            {
+                "category": "technical_guidance",
+                "rules": [
+                    "For the best experience and to ensure all security features function correctly, the process should be completed on a computer or laptop rather than a mobile device."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "One-time loan fee",
+                "fee": "$150",
+                "notes": "Taken out of the loan proceeds."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Log in to the Vanguard participant portal at my.vanguardplan.com.",
+                "notes": "The article recommends using a computer or laptop rather than a mobile device."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Open the Shortcuts drop-down menu in the top right corner of the dashboard.",
+                "notes": null
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Select Model a New Loan and then click the red Model a Loan button.",
+                "notes": null
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Review the Amount available on the next screen to confirm the minimum and maximum amount available to borrow.",
+                "notes": "Market fluctuations may affect the maximum eligible amount."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Identify whether the loan is for a general purpose or for the purchase of a primary residence.",
+                "notes": "A primary residence loan may require additional paperwork later."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Customize the loan terms by selecting the preferred number of payments, verifying payroll frequency, and choosing the desired loan start date.",
+                "notes": "Payroll frequency must match the employer's actual schedule exactly or the request will be rejected."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Click the Loan paperwork PDF and download and read it before moving forward.",
+                "notes": "The article states this review is important before submission."
+            },
+            {
+                "step_number": 8,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Check the final authorization box, click Next at the bottom of the page, and follow the remaining prompts to complete the request.",
+                "notes": null
+            },
+            {
+                "step_number": 9,
+                "type": "internal-check",
+                "visibility": "both",
+                "description": "If the loan is for a primary residence and additional paperwork is needed, ForUsAll will reach back out to request it.",
+                "notes": "The article gives a signed purchase or sale agreement as an example."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "The participant selects or enters an incorrect payroll frequency.",
+                "resolution": "Advise the participant to verify that payroll frequency matches the employer's actual schedule exactly, because an inaccurate payroll frequency will cause the request to be rejected."
+            },
+            {
+                "issue": "The participant requests the maximum available amount and later faces delays or resubmission needs.",
+                "resolution": "Advise the participant to request slightly less than the maximum because market fluctuations may reduce the eligible amount."
+            },
+            {
+                "issue": "The participant needs funds quickly.",
+                "resolution": "Set expectations that ForUsAll review and approval takes 1-2 business days, and delivery by physical check after approval takes 2-3 weeks. The article recommends submitting the request at least 3-4 weeks before the funds are needed."
+            },
+            {
+                "issue": "The participant is applying for a primary residence loan and is unsure why the process is not complete yet.",
+                "resolution": "Explain that a primary residence loan may require additional paperwork and that ForUsAll may request a signed purchase or sale agreement."
+            },
+            {
+                "issue": "The participant is trying to complete the process on a mobile device and encounters issues.",
+                "resolution": "Recommend completing the process on a computer or laptop because the article states that all security features work best there."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant sees an amount available in the portal and wants to borrow the full maximum shown.",
+                "outcome": "The agent should explain that market fluctuations may affect the maximum eligible amount and that requesting slightly less than the maximum can help avoid resubmission delays."
+            },
+            {
+                "scenario": "A participant chooses a payroll frequency that does not match the employer's actual schedule.",
+                "outcome": "The agent should explain that the request will be rejected if payroll frequency is not accurate and should tell the participant to verify the exact employer payroll schedule."
+            },
+            {
+                "scenario": "A participant requests a loan for the purchase of a primary residence.",
+                "outcome": "The agent should explain that additional paperwork may be required and that ForUsAll may request a signed purchase or sale agreement."
+            },
+            {
+                "scenario": "A participant asks whether paying off the loan early will trigger a penalty.",
+                "outcome": "The agent should say that early full repayment is allowed with no prepayment penalty and that the participant should contact support for instructions."
+            },
+            {
+                "scenario": "A participant terminates employment while a loan balance is still outstanding.",
+                "outcome": "The agent should explain that the outstanding balance must be repaid immediately or it may be treated as a taxable distribution and could be subject to penalties."
+            },
+            {
+                "scenario": "A participant wants to borrow $500 from their 401(k).",
+                "outcome": "Blocked. The agent should explain that the minimum loan amount is $1,000 and the participant cannot proceed with a request below that amount."
+            },
+            {
+                "scenario": "A participant wants to borrow $60,000 and believes their vested balance supports it.",
+                "outcome": "Blocked. The agent should explain that the maximum loan amount is $50,000 within a 12-month period regardless of vested balance, and that the participant must also stay within 50% of their vested balance."
+            },
+            {
+                "scenario": "A participant asks to receive loan funds via ACH or wire transfer instead of a physical check.",
+                "outcome": "The agent should explain that the source article only mentions physical check as the delivery method for Vanguard loans and advise the participant to contact support for confirmation about alternative delivery options."
+            },
+            {
+                "scenario": "A participant asks what the interest rate will be on their Vanguard loan.",
+                "outcome": "The agent should explain that the exact interest rate is not stated in the article and will be shown to the participant during the loan submission process in the portal. The agent must not estimate or guess the rate."
+            },
+            {
+                "scenario": "A participant has not yet decided whether the loan is for general purposes or a primary residence and wants to know which steps to follow.",
+                "outcome": "Blocked — missing data. The agent must collect the loan purpose before guiding the participant through the full submission process, because a primary residence loan may require additional paperwork."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "escalation_paths",
+                "notes": [
+                    "If the participant wants to repay the loan early, they must contact support at help@forusall.com or 844-401-2253 for payoff instructions before sending funds.",
+                    "If a primary residence loan requires additional paperwork, ForUsAll will proactively reach out to the participant; the agent does not need to initiate this.",
+                    "If the participant reports that their loan request was rejected due to a payroll frequency mismatch, advise them to verify the correct frequency with their employer before resubmitting."
+                ]
+            },
+            {
+                "category": "agent_tips",
+                "notes": [
+                    "The exact interest rate is not published in the source article; the participant will see it during the portal submission process. Do not estimate or guess the rate.",
+                    "The $150 one-time fee is deducted from loan proceeds, not from the participant's account balance separately.",
+                    "Physical check is the only delivery method mentioned in the source article for Vanguard loans. If the participant asks about ACH or wire, advise them to contact support for confirmation."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "Where does the participant submit a Vanguard loan request?",
+                "answer": "The participant submits the request through the Vanguard participant portal at my.vanguardplan.com by using the Shortcuts menu and selecting Model a New Loan."
+            },
+            {
+                "question": "How much can the participant borrow?",
+                "answer": "The participant may borrow up to 50% of their vested balance, with a minimum of $1,000 and a maximum of $50,000 within a 12-month period."
+            },
+            {
+                "question": "Is there a loan fee?",
+                "answer": "Yes. There is a one-time $150 loan fee, and it is taken from the loan proceeds."
+            },
+            {
+                "question": "How long does review and funding take?",
+                "answer": "ForUsAll review and approval takes 1-2 business days after submission. After approval, receiving funds by physical check takes 2-3 weeks."
+            },
+            {
+                "question": "What happens if payroll frequency is entered incorrectly?",
+                "answer": "If payroll frequency does not match the employer's actual schedule exactly, the loan request will be rejected."
+            },
+            {
+                "question": "Can the participant repay the loan early?",
+                "answer": "Yes. The participant may repay the loan in full at any time with no prepayment penalty, but they must contact support for instructions."
+            },
+            {
+                "question": "Is the loan taxable?",
+                "answer": "The loan is not taxable if it is fully repaid. If the loan defaults, the outstanding amount may be treated as a taxable distribution."
+            },
+            {
+                "question": "What happens if the participant terminates employment with an outstanding loan balance?",
+                "answer": "The outstanding balance must be repaid immediately. Otherwise, it may be treated as a taxable distribution and could be subject to penalties."
+            },
+            {
+                "question": "How are the loan funds delivered?",
+                "answer": "The source article only mentions physical check as the delivery method. After approval, the participant should expect to receive funds by check in about 2-3 weeks. If the participant asks about ACH or wire, advise them to contact support for confirmation."
+            },
+            {
+                "question": "What is the interest rate on a Vanguard loan?",
+                "answer": "The source article does not provide a specific interest rate. The exact rate will be shown to the participant during the loan submission process in the Vanguard portal."
+            },
+            {
+                "question": "How many loans can a participant have at the same time?",
+                "answer": "The source article does not specify a limit on the number of simultaneous outstanding loans for Vanguard. If the participant asks, advise them to check the Vanguard portal or contact support for plan-specific loan count limits."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Amount available",
+                "definition": "The value shown in the Vanguard process that confirms the minimum and maximum amount the participant is eligible to borrow."
+            },
+            {
+                "term": "Vested balance",
+                "definition": "The portion of the participant's 401(k) balance used in the article to determine the maximum loan amount."
+            },
+            {
+                "term": "Primary residence loan",
+                "definition": "A loan identified in the process as being for the purchase of the participant's primary residence, which may require additional paperwork."
+            },
+            {
+                "term": "After-tax payroll deductions",
+                "definition": "The repayment method stated in the article, where loan payments are taken from payroll after taxes."
+            },
+            {
+                "term": "Taxable distribution",
+                "definition": "The possible tax treatment described in the article if a loan defaults or if an outstanding balance is not repaid after termination of employment."
+            },
+            {
+                "term": "Payroll frequency",
+                "definition": "The employer's pay schedule (e.g., weekly, biweekly, semimonthly, or monthly) that the participant must verify and enter exactly during the loan submission process. An incorrect value will cause the request to be rejected."
+            },
+            {
+                "term": "Loan default",
+                "definition": "The condition that occurs when a loan is not repaid according to its terms. If a loan defaults, the outstanding amount may be treated as a taxable distribution."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not provide any loan amount limits other than up to 50% of vested balance, with a minimum of $1,000 and a maximum of $50,000 within a 12-month period.",
+                "Do not guarantee the participant can borrow the exact current maximum shown without noting that market fluctuations may affect eligibility.",
+                "Do not provide any interest rate amount because the article states the exact rate will be shown during the process.",
+                "Do not provide any processing or funding timeline other than the timelines stated in the article.",
+                "Do not say that a mobile device is recommended for this process.",
+                "Do not say that payroll frequency can be approximate; the article says it must match the employer's actual schedule exactly.",
+                "Do not claim where or how to access the Loan paperwork PDF beyond what the article states.",
+                "Do not assert tax consequences beyond what the article states about default, termination, taxable distribution treatment, and possible penalties.",
+                "Do not suggest a repayment period outside 1 to 5 years.",
+                "Do not omit that early repayment instructions must come from support.",
+                "Do not state a specific limit on the number of simultaneous outstanding loans because the source article does not specify one for Vanguard.",
+                "Do not confirm that ACH or wire delivery is available for Vanguard loans because the source article only mentions physical check as the delivery method.",
+                "Do not advise on a new loan request if the participant has a defaulted loan in the system without first directing them to contact support."
+            ],
+            "must_do_if_unsure": [
+                "Refer to the participant's Amount available in the Vanguard process for loan eligibility range.",
+                "Use the support contact information provided in the article if the participant has a primary residence loan and needs confirmation about additional paperwork.",
+                "State only the timelines, fees, and requirements that are explicitly included in the article.",
+                "Explain when the article says something may be required instead of presenting it as guaranteed."
+            ]
+        },
+        "references": {
+            "participant_portal": "my.vanguardplan.com",
+            "internal_articles": [
+                "LT: 401(k) Loan Complete Guide — Submission, Repayment & Support"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": null
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Loan purpose",
+                    "meaning": "Whether the participant is requesting a general purpose loan or a primary residence loan.",
+                    "example_values": [
+                        "general purpose",
+                        "primary residence"
+                    ],
+                    "why_needed": "Needed to complete the loan setup in the portal and determine whether additional paperwork may be required.",
+                    "source_note": "Supported by article section: Identify Loan Type",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Requested loan amount",
+                    "meaning": "The amount the participant wants to borrow.",
+                    "example_values": [],
+                    "why_needed": "Needed to evaluate whether the request fits the stated loan minimum, maximum, and Amount available shown in the portal.",
+                    "source_note": "Supported by article section: Loan Amount",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Payroll frequency",
+                    "meaning": "The employer's actual payroll schedule that must be entered correctly during submission.",
+                    "example_values": [],
+                    "why_needed": "Needed because the participant must verify payroll frequency exactly, and an incorrect value will cause rejection.",
+                    "source_note": "Supported by article section: Customize Your Terms",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Desired loan start date",
+                    "meaning": "The loan start date the participant chooses during submission.",
+                    "example_values": [],
+                    "why_needed": "Needed to complete the loan setup process in the portal.",
+                    "source_note": "Supported by article section: Customize Your Terms",
+                    "source_type": "message_text"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Amount available shown in the portal",
+                    "meaning": "The minimum and maximum amount the participant can borrow as displayed during the Vanguard process.",
+                    "example_values": [
+                        "A value stated in this article"
+                    ],
+                    "why_needed": "Helps confirm the participant's eligible borrowing range before submission.",
+                    "source_note": "Supported by article section: Check Eligibility",
+                    "source_type": "unknown"
+                },
+                {
+                    "data_point": "Confirmation that the Loan paperwork PDF was reviewed",
+                    "meaning": "Whether the participant downloaded and read the Loan paperwork PDF before moving forward.",
+                    "example_values": [
+                        "A value stated in this article"
+                    ],
+                    "why_needed": "The article says it is important to download and read the document before proceeding.",
+                    "source_note": "Supported by article section: Review Documentation",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Signed purchase or sale agreement copy",
+                    "meaning": "A supporting document that may be requested for a primary residence loan.",
+                    "example_values": [
+                        "A value stated in this article"
+                    ],
+                    "why_needed": "May be needed if ForUsAll requests additional paperwork for a primary residence loan.",
+                    "source_note": "Supported by article section: Purchase of a Primary residence",
+                    "source_type": "agent_input"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Loan purpose",
+                    "ask_participant": "Is this loan for a general purpose or for the purchase of your primary residence?",
+                    "agent_note": "Do not describe the request as fully ready to submit until the loan purpose is known."
+                },
+                {
+                    "missing_data_point": "Requested loan amount",
+                    "ask_participant": "What loan amount would you like to request?",
+                    "agent_note": "Do not describe the request as eligible until the requested loan amount is known."
+                },
+                {
+                    "missing_data_point": "Payroll frequency",
+                    "ask_participant": "What is your employer's actual payroll frequency that should be used for this loan request?",
+                    "agent_note": "Do not confirm the request is ready if payroll frequency is unknown or unverified, because an inaccurate value will cause rejection."
+                },
+                {
+                    "missing_data_point": "Desired loan start date",
+                    "ask_participant": "What loan start date would you like to use for this request?",
+                    "agent_note": "Do not describe the loan setup as complete without the selected start date."
+                }
+            ],
+            "disambiguation_notes": [
+                "The article distinguishes between a general purpose loan and a primary residence loan.",
+                "The article says a primary residence loan may require additional paperwork, not that it always will.",
+                "The article uses Amount available as the eligibility indicator shown in the Vanguard process.",
+                "The article says the exact interest rate will be shown during the process and does not provide a rate in the article."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "The requested loan amount must fall within the Amount available shown in the Vanguard process.",
+                "The loan amount must be at least $1,000.",
+                "The loan amount cannot exceed 50% of vested balance.",
+                "The loan amount cannot exceed $50,000 within a 12-month period."
+            ],
+            "blocking_conditions": [
+                "The request is blocked if the desired loan amount is below $1,000.",
+                "The request is blocked if the desired loan amount exceeds the eligible amount shown in the process.",
+                "The request is blocked if the desired loan amount exceeds 50% of vested balance.",
+                "The request is blocked if the desired loan amount exceeds $50,000 within a 12-month period.",
+                "The request can be rejected if payroll frequency does not match the employer's actual schedule exactly."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "The loan purpose is not known.",
+                    "missing_data_point": "Loan purpose",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Is this loan for a general purpose or for the purchase of your primary residence?"
+                },
+                {
+                    "condition": "The requested loan amount is not known.",
+                    "missing_data_point": "Requested loan amount",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What loan amount would you like to request?"
+                },
+                {
+                    "condition": "The payroll frequency to be used is not known or has not been verified.",
+                    "missing_data_point": "Payroll frequency",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What is your employer's actual payroll frequency that should be used for this loan request?"
+                },
+                {
+                    "condition": "The desired loan start date is not known.",
+                    "missing_data_point": "Desired loan start date",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What loan start date would you like to use for this request?"
+                }
+            ],
+            "allowed_conclusions": [
+                "The participant can use the Vanguard portal to submit the loan request.",
+                "The participant should use the Amount available shown in the portal to confirm the borrowing range.",
+                "The participant may need to provide additional paperwork if the loan is for a primary residence.",
+                "The loan has a one-time $150 fee deducted from loan proceeds.",
+                "Review and approval takes 1-2 business days after submission.",
+                "Funding by physical check after approval takes 2-3 weeks.",
+                "Repayment is through after-tax payroll deductions over 1 to 5 years.",
+                "Early full repayment is allowed without a prepayment penalty, and support can provide instructions.",
+                "An unpaid defaulted loan or an unpaid outstanding balance after termination may be treated as a taxable distribution."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee the participant can borrow the exact maximum shown without noting that market fluctuations may affect the amount.",
+                "Do not guarantee that a primary residence loan will or will not require additional paperwork.",
+                "Do not provide a specific interest rate because the article says the exact rate will be shown during the process.",
+                "Do not guarantee funding sooner than the timelines stated in the article.",
+                "Do not conclude that an inaccurate payroll frequency is acceptable.",
+                "Do not claim where or how to access the Loan paperwork PDF unless the article explicitly states it.",
+                "Do not conclude any tax result beyond what the article states about taxable distribution treatment and possible penalties."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "You can submit the request through the Vanguard portal at my.vanguardplan.com.",
+                    "Use the Shortcuts menu, choose Model a New Loan, and then Model a Loan.",
+                    "Check the Amount available shown in the process before choosing the requested amount.",
+                    "Select the loan purpose, payroll frequency, and loan start date, and complete the remaining loan setup fields during submission.",
+                    "Download and read the Loan paperwork PDF before moving forward.",
+                    "Check the final authorization box and follow the remaining prompts to complete the request."
+                ],
+                "next_steps": [
+                    "Proceed through the Vanguard loan submission steps in the portal.",
+                    "Use a computer or laptop for the best experience.",
+                    "If the loan is for a primary residence, watch for any follow-up request for additional paperwork.",
+                    "Contact support if you want instructions for early repayment or need confirmation about possible primary residence paperwork."
+                ],
+                "warnings": [
+                    "Requesting slightly less than the maximum may help avoid delays caused by market fluctuations.",
+                    "Payroll frequency must match the employer's actual schedule exactly or the request will be rejected.",
+                    "Review and approval takes 1-2 business days, and physical check funding after approval takes 2-3 weeks.",
+                    "Submit the request at least 3-4 weeks before the funds are needed."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not promise a specific interest rate.",
+                    "Do not promise faster funding than the article states.",
+                    "Do not say a mobile device is recommended for completing the request."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "More information is needed before the loan request can be described as ready to submit.",
+                    "The article requires the loan purpose, requested loan amount, payroll frequency, and desired loan start date before the request can be assessed as ready to proceed."
+                ],
+                "next_steps": [
+                    "Collect the missing required detail or details.",
+                    "Once the missing detail is known, continue with the Vanguard loan submission steps."
+                ],
+                "warnings": [
+                    "Do not proceed with an unverified payroll frequency because an inaccurate value will cause rejection."
+                ],
+                "questions_to_ask": [
+                    "Is this loan for a general purpose or for the purchase of your primary residence?",
+                    "What loan amount would you like to request?",
+                    "What is your employer's actual payroll frequency that should be used for this loan request?",
+                    "What loan start date would you like to use for this request?"
+                ],
+                "what_not_to_say": [
+                    "Do not say the request is fully ready without the required loan details.",
+                    "Do not guess missing loan information."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "The request cannot proceed as described if the amount does not fall within the eligible borrowing range shown in the Vanguard process.",
+                    "The article states that the minimum is $1,000 and the maximum is 50% of vested balance up to $50,000 within a 12-month period."
+                ],
+                "next_steps": [
+                    "Review the Amount available shown in the Vanguard process.",
+                    "Adjust the requested amount so it fits the stated limits if needed.",
+                    "Contact support if help is needed confirming the loan amount rules."
+                ],
+                "warnings": [
+                    "Market fluctuations may affect the maximum eligible amount.",
+                    "Requesting slightly less than the maximum may help avoid resubmission delays."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not say an amount outside the stated limits can still be approved.",
+                    "Do not promise that the maximum shown will remain unchanged."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "If the loan is for a primary residence, additional paperwork may be required.",
+                    "ForUsAll may request a copy of a signed purchase or sale agreement for a primary residence loan."
+                ],
+                "next_steps": [
+                    "Explain that primary residence paperwork is conditional and may be requested after submission.",
+                    "Use the provided support contact information if the participant needs confirmation about primary residence paperwork."
+                ],
+                "warnings": [
+                    "Do not present primary residence paperwork as guaranteed unless it has actually been requested."
+                ],
+                "questions_to_ask": [
+                    "Is this loan for the purchase of your primary residence?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee that a primary residence loan will not need additional paperwork.",
+                    "Do not guarantee that primary residence paperwork is always required."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": true,
+            "mfa_relevant": false,
+            "record_keeper_must_be": "Vanguard"
+        }
+    }
+}

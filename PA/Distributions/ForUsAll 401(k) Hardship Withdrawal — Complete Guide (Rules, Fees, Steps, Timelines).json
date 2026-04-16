@@ -339,8 +339,8 @@
                     "source_type": "plan_profile"
                 },
                 {
-                    "data_point": "Current vested balance",
-                    "meaning": "The participant's vested balance, which may affect the amount available for hardship withdrawal under plan rules.",
+                    "data_point": "Account Balance",
+                    "meaning": "The participant's Account Balance (this is the Vested Balance), which may affect the amount available for hardship withdrawal under plan rules.",
                     "example_values": [],
                     "why_needed": "The article lists vested balance as a factor that may affect the amount the participant can withdraw.",
                     "source_note": "Supported by article section: Key Facts About Hardship Withdrawals",

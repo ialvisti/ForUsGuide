@@ -1,0 +1,1305 @@
+{
+    "metadata": {
+        "article_id": "lt_trust_401k_loan_complete_guide_submission_repayment_support",
+        "title": "LT: 401(k) Loan Complete Guide — Submission, Repayment & Support",
+        "description": "Internal guide for AI support agents on LT Trust 401(k) loans. Covers eligibility checks (active employment, $2,000 vested balance, plan loan limits), portal submission steps on desktop, the RightSignature alternate path when portal access is unavailable, repayment via after-tax payroll deductions, early payoff instructions (check, ACH, wire), repayment increases, delivery method options and timelines, fees ($100 processing, $75 annual, $35 wire), loan dashboard behavior, tax consequences on unpaid loans after employment ends, and a decision guide for eligibility determination.",
+        "topic": "loan",
+        "subtopics": [
+            "eligibility",
+            "loan_submission",
+            "rightsignature_alternate_path",
+            "loan_repayment",
+            "early_payoff",
+            "loan_dashboard",
+            "loan_limits",
+            "delivery_methods",
+            "fees",
+            "tax_consequences",
+            "processing_timelines"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "scope": "recordkeeper-specific",
+        "tags": [
+            "Loan Request",
+            "Participant Dashboard",
+            "Payroll Issue",
+            "Taxes",
+            "RightSignature Completed",
+            "MFA"
+        ],
+        "language": "en-US",
+        "last_updated": "2025-10-16",
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-04-09",
+        "source_last_updated": "2025-10-16",
+        "source_system": "DevRev"
+    },
+    "details": {
+        "critical_flags": {
+            "portal_required": true,
+            "mfa_relevant": true,
+            "record_keeper_must_be": "LT Trust"
+        },
+        "business_rules": [
+            {
+                "category": "eligibility",
+                "rules": [
+                    "Participant must be actively employed.",
+                    "Participant must have a vested balance of at least $2,000.",
+                    "Participant must be within the plan loan limit.",
+                    "The plan must allow loans.",
+                    "Desktop or laptop use is required because mobile is not supported.",
+                    "The article states the plan loan limit may vary by plan and may be 0, 1, or 2 loans.",
+                    "For a general purpose loan, the repayment term is 1 to 5 years.",
+                    "The interest rate for a general purpose loan is Prime rate plus 1%, fixed at issuance.",
+                    "If a hardship withdrawal happens first, loan eligibility may be reduced.",
+                    "If the participant's balance is below $2,000 after a hardship withdrawal, the participant is not eligible for a loan.",
+                    "The article states loan limits as a minimum of $1,000 and a maximum of 50% of vested balance or $50,000.",
+                    "If employment ends, the loan becomes due within 90 days.",
+                    "If a defaulted loan appears in the system, direct the participant to support before advising on a new loan request."
+                ]
+            },
+            {
+                "category": "repayment",
+                "rules": [
+                    "Loan repayments are made through after-tax payroll deductions.",
+                    "Payment amount depends on the employer's pay schedule, such as weekly, biweekly, semimonthly, or monthly.",
+                    "If payroll payments are missed, catch-up payments may be applied.",
+                    "Early payoff is allowed at any time with no penalty.",
+                    "Early payoff outside payroll deductions must be completed as a single transaction for the full remaining amount.",
+                    "Partial payments outside standard payroll deductions are not accepted.",
+                    "Repayment increases are allowed at any time, but the increase must be in multiples of the current repayment amount.",
+                    "For repayment increases, the participant must specify whether the request applies to one loan or both loans if applicable and this must be done by support only."
+                ]
+            },
+            {
+                "category": "fees",
+                "rules": [
+                    "A $100 processing fee is taken from participant's balance.",
+                    "A $75 annual maintenance fee will apply.",
+                    "A $35 fee for wire delivery will apply; there is no additional charge for ACH delivery.",
+                    "Fees and disclosures must be reviewed before submitting the request because fees are non-refundable."
+                ]
+            },
+            {
+                "category": "delivery_methods",
+                "rules": [
+                    "ACH is listed as a bank transfer option.",
+                    "Wire transfer will include an additional $35 fee.",
+                    "Check delivery is slower than ACH or wire.",
+                    "Selected delivery method affects how funds are sent after approval."
+                ]
+            },
+            {
+                "category": "tax_consequences",
+                "rules": [
+                    "If the loan is not repaid after employment ends, it may be treated as a taxable distribution.",
+                    "The participant may receive a Form 1099-R if the loan is not repaid after employment ends.",
+                    "A 10% early withdrawal penalty may apply if the loan is not repaid after employment ends.",
+                    "The article advises participants to consider speaking with a qualified tax advisor for tax questions or rollover options."
+                ]
+            }
+        ],
+        "fees": [
+            {
+                "service": "Loan processing fee",
+                "fee": "$100 processing fee",
+                "notes": "From participant's balance."
+            },
+            {
+                "service": "Annual maintenance fee",
+                "fee": "$75 annual maintenance fee",
+                "notes": "Standard recurrent annual fee."
+            },
+            {
+                "service": "Wire fee",
+                "fee": "$35 wire fee",
+                "notes": "Charged as a mandatory one-time fee if wire delivery is selected for the loan request."
+            },
+            {
+                "service": "ACH delivery",
+                "fee": "No fee",
+                "notes": "No additional charge for ACH delivery, which is listed as the standard delivery method."
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Log in to the participant portal at account.forusall.com/login using a desktop or laptop.",
+                "notes": "Mobile is not supported."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If participant MFA Status is 'not enrolled', if the participant says has log in issues, participant will not be able to complete the online process of requesting a loan. An electronic form trough RightSignature must be filled out.",
+                "notes": "If the participant qualifies for a loan but cannot access or create a ForUsAll online account, provide the RightSignature loan request form. https://secure.rightsignature.com/templates/f8b97df9-fe9b-4102-88ae-67550596a8dc/template-signer-link/54b1a5a8ac80175602c7db648ca9aa75"
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Navigate to Loans & Distributions tab at the top right corner, then locate Loans from the top-right menu.",
+                "notes": null
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Use the Quick Loan Calculator to estimate the loan by typing in the amount in the Loan amount text box, enter the total payments you want to pay off the loan in the # of payments text box, confirm the displayed payroll frequency aligns with your payroll frequency, and review the amortization schedule using the Review Amortization Schedule button. Once ready, click Calculate.",
+                "notes": "The article says eligible amount can change daily, so requesting slightly less than the maximum may help avoid delays."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Click the Get Started button to begin the request.",
+                "notes": null
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Read through the Review General Information section.",
+                "notes": "This section shows Current plan vested account balance, Loan Limits, Minimum loan amount, Maximum loan amount, Minimum duration, Maximum duration, Days to complete request, Loan Fees and Fees Amount. Once this has been confirmed click Next at the bottom right."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Confirm the Loan Summary, click Calculate, then click Next at the bottom.",
+                "notes": "The participant just needs to confirm the information before proceeding."
+            },
+            {
+                "step_number": 8,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Confirm your email in the Verify Personal Information screen. Confirm your email in all necessary fields and then click Next at the bottom.",
+                "notes": "The participant needs to confirm the email for verification purposes."
+            },
+            {
+                "step_number": 9,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Choose the delivery method for the loan proceeds. You can select Check, Wire or ACH. Make sure you have your bank's exact direct deposit instructions.",
+                "notes": "Options listed are ACH, wire transfer, or check. Be advised wire has an additional fee of $35."
+            },
+            {
+                "step_number": 10,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Review the transaction summary, fees and disclosures, then submit the request.",
+                "notes": "The listed LT Trust loan fees apply under this guide."
+            },
+            {
+                "step_number": 11,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Wait for ForUsAll to review the request and, if approved, send funds based on the selected delivery method.",
+                "notes": "ForUsAll review is stated as 1 to 2 business days. Check delivery is stated as about 2 to 3 weeks processing time, and wire or ACH is stated as about 1 to 2 weeks processing time. This includes approval, liquidation of funds, and the participant actually receiving the money."
+            },
+            {
+                "step_number": 12,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Participants will repay the loan through after-tax payroll deductions based on the employer's payroll schedule.",
+                "notes": "If payments are missed, catch-up payments may be applied."
+            },
+            {
+                "step_number": 13,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Participants can pay off the loan early at any time, check the payoff balance on the dashboard or contact support.",
+                "notes": "No penalty is stated for early payoff."
+            },
+            {
+                "step_number": 14,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "You can pay off the loan at any time with no penalty. Before sending an early payoff by check, ACH, or wire, contact support to confirm your Plan ID and Loan number.",
+                "notes": "The article says this helps ensure funds are applied correctly and avoids delays."
+            },
+            {
+                "step_number": 15,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "For a check payoff, make the check payable to Mid Atlantic Trust Company, include the Plan ID and full name on the memo line, write the loan payoff note at the top of the check, and send it to the listed mailing address.",
+                "notes": "Mailing address: Mid Atlantic Trust Company PO Box 515451 Los Angeles, CA 90051-6751."
+            },
+            {
+                "step_number": 16,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "For an ACH or wire payoff, confirm the loan payoff amount from your ForUsAll dashboard under My Portfolio, then Loans, and confirm which loan balance you want to pay off. For wire, use Bank Name Huntington Bank, Bank Address 7 Easton Oval, Columbus, OH 43219, ABA Routing Number 044000024, Account Number 01100176493, Account of Mid Atlantic Trust Company, OBI (Originator to Beneficiary Information) Plan Number MA000000, Further Credit To [Participant's full Name], Loan #____. For ACH, use ABA Routing Number 041215032, Account Number 01100176493, Account of Mid Atlantic Trust Company, Further Credit To Plan Number MA000000, [Participant's full Name], Loan #____.",
+                "notes": "The article provides separate ACH and wire routing details. Include the participant's full name, Plan ID, and Loan number in the transaction details so the payoff is applied correctly."
+            },
+            {
+                "step_number": 17,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "After sending an early payoff, notify support immediately that the funds are on the way.",
+                "notes": "The article states support will review the payment and coordinate with the employer to stop future payroll deductions."
+            },
+            {
+                "step_number": 18,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the participant's employment ends while a loan remains outstanding, repay the balance within 90 days to avoid possible tax consequences. We strongly recommend not taking a loan if you're leaving your current employer soon.",
+                "notes": "The article states the unpaid amount may become a taxable distribution and may result in Form 1099-R and a possible 10% early withdrawal penalty."
+            },
+            {
+                "step_number": 19,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "To request a repayment increase, contact support. The increase must be in multiples of the current repayment amount, and the participant must specify whether the increase applies to one loan or both loans if applicable.",
+                "notes": "Repayment increases are processed by support only and adjusted through payroll deductions."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant cannot create or access a ForUsAll online account and needs another way to submit the loan request.",
+                "resolution": "Confirm the participant qualifies for a loan first. Once qualification is confirmed, provide the RightSignature loan request form as the alternate submission path: https://secure.rightsignature.com/templates/f8b97df9-fe9b-4102-88ae-67550596a8dc/template-signer-link/54b1a5a8ac80175602c7db648ca9aa75"
+            },
+            {
+                "issue": "Participant cannot find the Loans section.",
+                "resolution": "Confirm the participant is using a desktop or laptop and is logged in. Direct them to the top-right menu, then Loans & Distributions, then Loans, then Get Started."
+            },
+            {
+                "issue": "Requested loan amount is higher than allowed.",
+                "resolution": "Explain that the eligible loan amount can change daily based on market performance. Suggest requesting slightly less than the maximum or checking again later."
+            },
+            {
+                "issue": "Maximum number of loans has been reached.",
+                "resolution": "Explain that many plans allow up to 2 active loans, but the article also notes plan limits may vary. The participant may need to pay off an existing loan in full before requesting another."
+            },
+            {
+                "issue": "Participant is unsure which delivery method to choose.",
+                "resolution": "Explain that ACH is listed with no fee and about 1 to 2 weeks, wire includes a $35 fee and is about 1 to 2 weeks, and check is slower at about 2 to 3 weeks."
+            },
+            {
+                "issue": "Participant cannot see the first payment date.",
+                "resolution": "Direct the participant to the amortization schedule shown during submission. The article says the first payment date is usually within 1 month after the loan is issued."
+            },
+            {
+                "issue": "A payroll deduction was missed.",
+                "resolution": "Explain that the system may apply catch-up payments, which can result in double deductions until the repayment schedule is back on track."
+            },
+            {
+                "issue": "Participant has questions about the interest rate.",
+                "resolution": "Explain that the article states the rate is fixed at Prime rate plus 1% when the loan is issued and does not change afterward."
+            },
+            {
+                "issue": "Participant left employment with an outstanding loan.",
+                "resolution": "Explain that the article states the loan must be repaid within 90 days or it may become a taxable distribution, may generate Form 1099-R, and may result in a 10% early withdrawal penalty. Advise the participant to speak with a qualified tax advisor for tax guidance."
+            },
+            {
+                "issue": "Participant wants to change a loan after submission.",
+                "resolution": "If the request was just submitted, direct the participant to contact support immediately, with calling preferred. If the request was already processed, explain that changes may not be possible and some situations may require canceling and resubmitting."
+            },
+            {
+                "issue": "Participant is trying to apply on a mobile device.",
+                "resolution": "Explain that the article states loan requests must be submitted using a desktop or laptop because mobile is not supported."
+            },
+            {
+                "issue": "Participant is unsure whether their plan allows loans.",
+                "resolution": "Explain that loan availability depends on the plan. Confirm that the participant's plan allows loans before advising that they can proceed."
+            },
+            {
+                "issue": "Participant is unsure whether they meet the minimum balance requirement.",
+                "resolution": "Explain that the article states the participant must have at least a $2,000 vested balance to be eligible for a loan."
+            },
+            {
+                "issue": "Participant had a hardship withdrawal and now cannot request the expected loan amount.",
+                "resolution": "Explain that a hardship withdrawal may reduce loan eligibility. If the balance is below $2,000, the participant is not eligible for a loan."
+            },
+            {
+                "issue": "Participant wants to know the minimum and maximum loan amounts.",
+                "resolution": "Explain that the article states the minimum loan amount is $1,000 and the maximum is 50% of vested balance or $50,000."
+            },
+            {
+                "issue": "Participant is confused by the loan balance shown on the dashboard.",
+                "resolution": "Explain that the dashboard balance reflects the remaining amount, not the total amount already paid. The dashboard also shows payment per paycheck and start date."
+            },
+            {
+                "issue": "Participant cannot find the amortization schedule on the dashboard.",
+                "resolution": "Explain that the article states the dashboard does not show the amortization schedule. If more detail is needed, the participant can request it from support."
+            },
+            {
+                "issue": "Participant wants a payment history for the loan.",
+                "resolution": "Explain that payment history is not listed as part of the dashboard overview in the article and that the participant can request payment history from support."
+            },
+            {
+                "issue": "Participant wants to increase the repayment amount.",
+                "resolution": "Explain that repayment can be increased at any time, but only in multiples of the current repayment amount. The participant must also specify whether the increase applies to one loan or both loans if applicable."
+            },
+            {
+                "issue": "Participant wants to make a partial extra payment outside payroll deductions.",
+                "resolution": "Explain that the article states partial payments outside standard payroll deductions are not accepted. Early payoff outside payroll must be completed as a single transaction for the full remaining balance."
+            },
+            {
+                "issue": "Participant is unsure what information must be included with an early payoff payment.",
+                "resolution": "Explain that support should first confirm the participant's Plan ID and Loan number. The article also states that the participant's full name, Plan ID, and Loan number should be included so the payment is applied correctly."
+            },
+            {
+                "issue": "Participant is concerned about what happens if an early payoff overpays the balance.",
+                "resolution": "Explain that if there is only one active loan, the overpayment is refunded by check to the participant's mailing address. If there are two active loans, the overpayment may be applied to the remaining active loan according to the participant's instructions."
+            },
+            {
+                "issue": "Participant sees the error 'Please identify if your Home phone can receive text messages' on the Verify Personal Information screen.",
+                "resolution": "Advise the participant to contact support immediately so a fix request can be submitted. Explain that this issue is typically corrected within 24 hours after the request is submitted."
+            },
+            {
+                "issue": "A defaulted loan appears in the participant's system records.",
+                "resolution": "Direct the participant to contact support before advising on a new loan request. Do not provide new-loan guidance until the defaulted loan status has been reviewed by support."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "The participant qualifies for a loan but cannot create or access a ForUsAll online account.",
+                "outcome": "After confirming the participant qualifies for a loan, provide the RightSignature loan request form as the alternate submission path: https://secure.rightsignature.com/templates/f8b97df9-fe9b-4102-88ae-67550596a8dc/template-signer-link/54b1a5a8ac80175602c7db648ca9aa75"
+            },
+            {
+                "scenario": "The participant asks for another submission option because they cannot use online access.",
+                "outcome": "Do not provide the alternate form immediately. First confirm the participant qualifies for a loan. After qualification is confirmed, provide the RightSignature loan request form."
+            },
+            {
+                "scenario": "The participant requests the full maximum available loan amount.",
+                "outcome": "Explain that market changes can reduce eligibility before approval, so requesting slightly less than the maximum may help avoid delays or reapplying."
+            },
+            {
+                "scenario": "The participant already has the maximum number of active loans allowed by the plan.",
+                "outcome": "Explain that another loan cannot proceed until an existing loan is paid off in full, subject to the plan's loan limit."
+            },
+            {
+                "scenario": "The participant wants the fastest delivery and is concerned about fees.",
+                "outcome": "Explain that ACH is listed as about 1 to 2 weeks with no fee, wire is about 1 to 2 weeks with a $35 fee, and check is slower. The participant can weigh speed against the wire cost."
+            },
+            {
+                "scenario": "The participant needs a longer term for a primary residence loan.",
+                "outcome": "Explain that a primary residence loan is only a conditional example in this guide. Some participants may see this option and some may not. If the participant does not see this loan option during the online process and needs this type of loan, direct them to contact support."
+            },
+            {
+                "scenario": "The participant leaves employment shortly after receiving the loan.",
+                "outcome": "Explain that the article states the loan becomes due within 90 days, and if not repaid it may become a taxable distribution. The participant may have rollover options and should consider speaking with a tax advisor."
+            },
+            {
+                "scenario": "The participant wants to pay off the loan early using funds outside payroll.",
+                "outcome": "Explain that the payoff must be a single transaction for the full remaining balance, support should confirm the Plan ID and Loan number first, and the participant must notify support after the payment is sent."
+            },
+            {
+                "scenario": "The participant overpays a loan payoff when only one active loan exists.",
+                "outcome": "Explain that the article states the overpayment will be refunded by check to the participant's mailing address."
+            },
+            {
+                "scenario": "The participant overpays a loan payoff when two active loans exist.",
+                "outcome": "Explain that the article states the overpayment will be applied to the remaining active loan according to the participant's instructions."
+            },
+            {
+                "scenario": "The participant is using a phone and cannot complete the loan request.",
+                "outcome": "Explain that the article states loan requests must be submitted on a desktop or laptop because mobile is not supported."
+            },
+            {
+                "scenario": "The participant had a hardship withdrawal first and now wants to know why the loan amount is lower than expected.",
+                "outcome": "Explain that the article states a hardship withdrawal may reduce loan eligibility, and if the balance is below $2,000, the participant is not eligible for a loan."
+            },
+            {
+                "scenario": "The participant wants to know why the system no longer allows the exact amount they saw earlier.",
+                "outcome": "Explain that the article says the eligible amount can change daily. Suggest requesting slightly less than the maximum to reduce the chance of delays."
+            },
+            {
+                "scenario": "The participant wants to know how repayments will be taken after the loan is issued.",
+                "outcome": "Explain that the article states loan payments are made through after-tax payroll deductions and that the payment amount depends on the employer's payroll schedule."
+            },
+            {
+                "scenario": "The participant asks whether making an early payoff in smaller partial amounts is allowed.",
+                "outcome": "Explain that the article states partial payments outside standard payroll deductions are not accepted. Early payoff must be completed as a single transaction for the full remaining balance."
+            },
+            {
+                "scenario": "The participant wants to increase the repayment amount for only one of two active loans.",
+                "outcome": "Explain that the article allows repayment increases at any time in multiples of the current repayment amount, and the participant must specify whether the increase applies to one loan or both loans."
+            },
+            {
+                "scenario": "The participant wants to find the amortization schedule after the loan has already been issued.",
+                "outcome": "Explain that the dashboard does not show the amortization schedule. The participant can request the amortization schedule from support."
+            },
+            {
+                "scenario": "The participant sees the dashboard balance and thinks it represents the total amount already repaid.",
+                "outcome": "Explain that the article states the dashboard balance reflects the remaining balance, not the total amount paid so far."
+            },
+            {
+                "scenario": "The participant wants to know what details must be included when sending an early payoff by ACH, wire, or check.",
+                "outcome": "Explain that support should first confirm the Plan ID and Loan number, and that the participant's full name, Plan ID, and Loan number should be included so the payment is applied correctly."
+            },
+            {
+                "scenario": "The participant missed a payroll deduction and is worried about what happens next.",
+                "outcome": "Explain that the article states the system may apply catch-up payments, which can result in larger or doubled deductions until the repayment schedule is back on track."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "processing_times",
+                "notes": [
+                    "ForUsAll review is stated as 1 to 2 business days.",
+                    "ACH is stated as about 1 to 2 weeks processing time.",
+                    "Wire transfer is stated as about 1 to 2 weeks processing time.",
+                    "Check delivery is stated as about 2 to 3 weeks processing time.",
+                    "The listed processing times include approval, liquidation of funds, and the participant actually receiving the money.",
+                    "The first payment date is usually within 1 month after the loan is issued."
+                ]
+            },
+            {
+                "category": "dashboard_behavior",
+                "notes": [
+                    "Loans are viewed under My Portfolio, then Loans.",
+                    "The dashboard shows the loan list, remaining balance versus original balance, payment per paycheck, and start date.",
+                    "The dashboard does not show the amortization schedule.",
+                    "Multiple loans are shown separately on the dashboard.",
+                    "Participants can contact support for amortization schedules or payment history."
+                ]
+            },
+            {
+                "category": "early_payoff_instructions",
+                "notes": [
+                    "Before an early payoff by ACH, wire, or check, support should confirm the participant's Plan ID and Loan number.",
+                    "The article provides check, ACH, and wire instructions for early payoff.",
+                    "The participant must notify support immediately after sending the payoff funds so payroll deductions can be stopped.",
+                    "The article states overpayment handling differs depending on whether the participant has one active loan or two active loans."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "What if a participant qualifies for a loan but cannot create or access a ForUsAll online account?",
+                "answer": "After confirming the participant qualifies for a loan, the AI agent may provide the RightSignature loan request form as an alternate submission path: https://secure.rightsignature.com/templates/f8b97df9-fe9b-4102-88ae-67550596a8dc/template-signer-link/54b1a5a8ac80175602c7db648ca9aa75. The form must only be shared after qualification is confirmed."
+            },
+            {
+                "question": "Can the AI agent share the RightSignature loan request form before confirming eligibility?",
+                "answer": "No. The RightSignature loan request form should only be shared after the participant has been confirmed to qualify for a loan."
+            },
+            {
+                "question": "How does a participant submit an LT Trust 401(k) loan request?",
+                "answer": "The participant logs in at account.forusall.com/login on a desktop or laptop, navigates to Loans & Distributions and then Loans, estimates the loan in the calculator, clicks Get Started, completes the application, selects the loan type and term, chooses a delivery method, reviews fees and disclosures, and submits the request."
+            },
+            {
+                "question": "What are the basic eligibility requirements for a loan?",
+                "answer": "The article states the participant must be actively employed, have at least a $2,000 vested balance, be within the plan loan limit, and be in a plan that allows loans. If a defaulted loan appears in the system, direct the participant to support before advising on a new loan request."
+            },
+            {
+                "question": "What is the term and rate for a general purpose loan?",
+                "answer": "The article states a general purpose loan has a term of 1 to 5 years and an interest rate of Prime rate plus 1%, fixed at issuance."
+            },
+            {
+                "question": "What delivery methods are available for loan proceeds?",
+                "answer": "The article lists ACH, wire transfer, and check. ACH is listed with no fee and about 1 to 2 weeks, wire has a $35 fee and about 1 to 2 weeks, and check is slower at about 2 to 3 weeks."
+            },
+            {
+                "question": "What fees are listed for the loan request?",
+                "answer": "The article lists a $100 processing fee from plan balance, a $75 annual maintenance fee, and a $35 wire fee if wire delivery is selected."
+            },
+            {
+                "question": "How are loan payments made?",
+                "answer": "The article states loan payments are made through after-tax payroll deductions, with payment amounts based on the employer's payroll schedule."
+            },
+            {
+                "question": "Can a participant pay off a loan early?",
+                "answer": "Yes. The article states a participant can pay off the loan at any time with no penalty, but outside payroll deductions the payoff must be a single transaction for the full remaining balance."
+            },
+            {
+                "question": "Can a participant increase loan repayment amounts?",
+                "answer": "Yes. The article states repayment can be increased at any time, but only in multiples of the current repayment amount, and the participant must specify whether the request applies to one loan or both loans if applicable."
+            },
+            {
+                "question": "What happens if employment ends before the loan is repaid?",
+                "answer": "The article states the loan becomes due within 90 days. If it is not repaid, it may be treated as a taxable distribution, may generate Form 1099-R, and a 10% early withdrawal penalty may apply."
+            },
+            {
+                "question": "What information is available on the loan dashboard?",
+                "answer": "The dashboard shows the loan list, remaining balance versus original balance, payment per paycheck, and start date, but it does not show the amortization schedule."
+            },
+            {
+                "question": "Can a participant submit a loan request from a mobile phone?",
+                "answer": "No. The article states that loan requests must be submitted using a desktop or laptop because mobile is not supported."
+            },
+            {
+                "question": "Why does the article recommend requesting slightly less than the maximum loan amount?",
+                "answer": "The article states that eligible loan amounts can change daily. Requesting slightly less than the maximum may help avoid delays if the participant's eligible amount decreases before approval."
+            },
+            {
+                "question": "What is the minimum and maximum loan amount mentioned in the article?",
+                "answer": "The article states the minimum loan amount is $1,000 and the maximum is 50% of the vested balance or $50,000."
+            },
+            {
+                "question": "Can a hardship withdrawal affect loan eligibility?",
+                "answer": "Yes. The article states that a hardship withdrawal may reduce loan eligibility. If the participant's balance falls below $2,000, the participant is not eligible for a loan."
+            },
+            {
+                "question": "What should a participant do if they want to change a loan request after submitting it?",
+                "answer": "The article states that if the request was just submitted, changes may still be possible and the participant should contact support immediately, with calling preferred. If the request has already been processed, changes may not be possible and in some cases canceling and resubmitting may be required."
+            },
+            {
+                "question": "Can a participant see the amortization schedule on the dashboard after the loan is issued?",
+                "answer": "No. The article states that the dashboard does not show the amortization schedule. If the participant needs it, they can request it from support."
+            },
+            {
+                "question": "What does the loan balance shown on the dashboard represent?",
+                "answer": "The article states that the dashboard balance shows the remaining loan amount, not the total amount already paid."
+            },
+            {
+                "question": "What should a participant include when sending an early payoff payment?",
+                "answer": "The article states that support should first confirm the participant's Plan ID and Loan number. It also says the participant's full name, Plan ID, and Loan number should be included so the payment is applied correctly."
+            },
+            {
+                "question": "What happens if a participant misses a payroll deduction?",
+                "answer": "The article states that if a payment is missed, the system may apply catch-up payments. This can result in double deductions until the repayment schedule is back on track."
+            },
+            {
+                "question": "What happens if a participant overpays during an early loan payoff?",
+                "answer": "The article states that if the participant has one active loan, the overpayment will be refunded by check to the mailing address. If the participant has two active loans, the overpayment may be applied to the remaining active loan according to the participant's instructions."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "General purpose loan",
+                "definition": "A standard loan type in the article with a repayment term of 1 to 5 years and an interest rate of Prime rate plus 1%, fixed at issuance."
+            },
+            {
+                "term": "Total Vested Account balance",
+                "definition": "The balance amount used in the article to determine loan eligibility and limits."
+            },
+            {
+                "term": "Amortization schedule",
+                "definition": "The repayment schedule the participant can review during submission and request from support if needed later."
+            },
+            {
+                "term": "After-tax payroll deductions",
+                "definition": "The repayment method described in the article, where loan payments are deducted from payroll after taxes."
+            },
+            {
+                "term": "Defaulted loan",
+                "definition": "A loan status that should be redirected to support before advising on a new loan request."
+            },
+            {
+                "term": "Prime rate plus 1%",
+                "definition": "The interest rate formula stated in the article for general purpose loans, fixed when the loan is issued."
+            },
+            {
+                "term": "Form 1099-R",
+                "definition": "The tax form the article says a participant may receive if an unpaid loan after employment ends is treated as a taxable distribution."
+            },
+            {
+                "term": "Primary residence loan",
+                "definition": "A conditional loan type example that some participants may see and some may not while implementation continues. If the participant does not see this option during the online process and needs this type of loan, they must contact support."
+            },
+            {
+                "term": "Maximum Number of Loans",
+                "definition": "The maximum number of loans a participant's plan allows at one time. The article states this may vary by plan and may be 0, 1, or 2 loans."
+            },
+            {
+                "term": "Loan limit",
+                "definition": "The loan amount boundaries stated in the article: a minimum of $1,000 and a maximum of 50% of the vested balance or $50,000."
+            },
+            {
+                "term": "Catch-up payments",
+                "definition": "Additional payroll deductions that may be applied if a scheduled loan payment is missed, which can result in double deductions until repayment is back on track."
+            },
+            {
+                "term": "Fixed at issuance",
+                "definition": "The article's description that the loan interest rate is set when the loan is issued and does not change afterward."
+            },
+            {
+                "term": "ACH",
+                "definition": "A bank transfer delivery method for a loan or early payoff method listed in the article. For loan proceeds, ACH is listed with no fee and about 1 to 2 weeks."
+            },
+            {
+                "term": "Wire transfer",
+                "definition": "A delivery or early payoff method listed in the article that includes a $35 fee for loan proceeds and is listed as about 1 to 2 weeks."
+            },
+            {
+                "term": "Check",
+                "definition": "A loan delivery or early payoff method listed in the article. For loan proceeds, check is described as slower than ACH or wire and listed as about 2 to 3 weeks."
+            },
+            {
+                "term": "Processing fee",
+                "definition": "A fee listed in the article as a $100 fee taken from the participant's plan balance when the loan request is submitted."
+            },
+            {
+                "term": "Annual maintenance fee",
+                "definition": "A fee listed in the article as a $75 annual fee associated with the loan."
+            },
+            {
+                "term": "Wire fee",
+                "definition": "A fee listed in the article as a mandatory $35 fee if wire transfer is used."
+            },
+            {
+                "term": "Loan dashboard",
+                "definition": "The section under My Portfolio and then Loans where the participant can view loan details such as loan list, remaining balance versus original balance, payment per paycheck, and start date."
+            },
+            {
+                "term": "Outstanding Balance",
+                "definition": "The unpaid amount still owed on the loan. The article clarifies that the balance shown on the dashboard and participant's profile is the remaining balance, not the total amount already paid."
+            },
+            {
+                "term": "Repayment Amount",
+                "definition": "The amount deducted from each payroll cycle to repay the loan, shown on the dashboard."
+            },
+            {
+                "term": "Early payoff",
+                "definition": "The option to repay the loan in full before the normal schedule ends. The article states this can be done at any time with no penalty, but outside payroll deductions it must be a single transaction for the full remaining amount."
+            },
+            {
+                "term": "Repayment increase",
+                "definition": "An increase to the loan repayment amount that the article says can be requested at any time, but only in multiples of the current repayment amount."
+            },
+            {
+                "term": "Taxable distribution",
+                "definition": "A possible tax treatment described in the article if a loan is not repaid after employment ends."
+            },
+            {
+                "term": "Loan offset",
+                "definition": "The remaining unpaid loan balance that may need to be addressed when employment ends, including possible rollover options mentioned in the article."
+            },
+            {
+                "term": "Hardship withdrawal",
+                "definition": "A withdrawal type discussed in the article that may reduce loan eligibility and may lower the participant's balance below the threshold needed to qualify for a loan."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not include ticket actions, escalation routing, or internal ticket workflow steps in participant guidance.",
+                "Do not guarantee that a plan allows loans or a specific number of loans when the article states plan limits may vary.",
+                "Do not guarantee the participant is eligible until the article's stated requirements are satisfied.",
+                "Do not provide timelines other than those explicitly stated in the article.",
+                "Do not state that mobile submission is supported because the article says desktop or laptop only.",
+                "Do not state that the dashboard shows an amortization schedule because the article says it does not.",
+                "Do not claim a participant can make partial early-payoff payments outside payroll deductions because the article says only full single-transaction payoff is accepted.",
+                "Do not say that wire transfer has no fee. The article states a $35 wire fee applies.",
+                "Do not provide tax advice. Only provide the general information stated in the article and advise the participant to speak with a qualified tax advisor.",
+                "Do not say that all plans allow 2 loans. The article says the plan may allow 0, 1, or 2 loans.",
+                "Do not guarantee a primary residence loan term is available unless the participant sees that loan type option or support confirms next steps.",
+                "Do not say where else a participant can access documents or schedules unless the article explicitly states it.",
+                "Do not promise loan approval. The article states the request is reviewed after submission.",
+                "Do not state that the participant can submit a loan request before confirming the plan allows loans.",
+                "Do not assume the participant qualifies for the maximum loan amount shown at an earlier time, because the article states eligibility can change daily.",
+                "Do not say the first payment date is visible on the dashboard. The article ties that detail to the amortization schedule during submission.",
+                "Do not say a participant can change a processed loan request if the article says changes may not be possible once processing has occurred.",
+                "Do not say early payoff can be made without including the required identifying information when the article states Plan ID, Loan number, and participant name should be included.",
+                "Do not say an early payoff will automatically stop payroll deductions unless support has been notified, because the article says the participant must notify support immediately after funds are sent.",
+                "Do not describe the dashboard balance as the amount already paid. The article says it reflects the remaining balance.",
+                "Do not guarantee support-provided details such as payment history or amortization schedule are visible directly in the portal when the article says they may need to be requested from support.",
+                "Do not present general examples or common plan limits as universal rules for every participant when the article states plan limits may vary by plan.",
+                "Do not provide the RightSignature loan request form before confirming the participant qualifies for a loan. The form is a fallback submission path only for participants who cannot create or access a ForUsAll online account, not the default path or a workaround when portal access is available.",
+                "Do not imply that the RightSignature form bypasses loan eligibility requirements, changes review timelines or approval standards, or guarantees approval, processing, or funding. Inability to access the portal does not automatically make the participant eligible.",
+                "Do not replace the standard portal submission steps with the RightSignature form unless the participant cannot create or access a ForUsAll online account and loan qualification has already been confirmed."
+            ],
+            "must_do_if_unsure": [
+                "Use only the rules, timelines, fees, and contacts stated in the article.",
+                "If plan-specific limits are unclear, explain that they may vary by plan and do not promise a specific outcome.",
+                "If critical information needed to continue is missing, gather or verify that information before concluding the participant can proceed.",
+                "If the participant asks tax-related questions, advise them to speak with a qualified tax advisor.",
+                "If an early payoff is being arranged, ensure the Plan ID and Loan number are confirmed before funds are sent.",
+                "If the participant cannot use the online portal for any reason, confirm loan qualification first before offering the RightSignature form. If qualification status is unclear, verify eligibility or redirect to support before sharing the alternate form.",
+                "Use the RightSignature form only as a fallback submission path for participants who cannot create or access a ForUsAll online account and whose loan qualification has been confirmed. Do not offer it as the default route or because the participant prefers not to use the portal.",
+                "If qualification has already been confirmed and portal access is not possible, clearly explain that the RightSignature form is the alternate submission method.",
+                "If a defaulted loan appears in the system, redirect to support before advising on a new loan request."
+            ]
+        },
+        "references": {
+            "participant_portal": "account.forusall.com/login",
+            "internal_articles": [
+                "Can I Increase My Loan Repayment Amount Per Paycheck?",
+                "LT: Understanding Your Loan Balance on the Dashboard",
+                "LT: Can 401(k) Loans be Repaid Early without Penalty?",
+                "What Happens If You Leave Your Job with an Outstanding 401(k) Loan?",
+                "LT Trust: Understanding Login Error Codes",
+                "LT: How to Set Up Your ForUsAll 401(k) Account",
+                "Can I Take Money From My 401(k) While Employed? Your Options Explained"
+            ],
+            "external_links": [
+                "https://www.irs.gov/retirement-plans/hardships-early-withdrawals-and-loans",
+                "https://secure.rightsignature.com/templates/f8b97df9-fe9b-4102-88ae-67550596a8dc/template-signer-link/54b1a5a8ac80175602c7db648ca9aa75"
+            ],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "07:00-17:00 America/Los_Angeles"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Participant's name",
+                    "meaning": "The name of the participant.",
+                    "example_values": [
+                        "John Doe",
+                        "Jane Doe",
+                        "Oscar Santiago Garcia "
+                    ],
+                    "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Record Keeper",
+                    "meaning": "The Record Keeper of the Participant.",
+                    "example_values": [
+                        "RK: LT Trust."
+                    ],
+                    "why_needed": "This article and instructions are intended for LT Trust plans. If RK is not LT Trust, and the participant is inquiring for a Loan, redirect to support.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Participant Status",
+                    "meaning": "The status of the participant in the system.",
+                    "example_values": [
+                        "Active",
+                        "Terminated",
+                        "Ineligible",
+                        "Deceased",
+                        "Unknown"
+                    ],
+                    "why_needed": "Required to confirm if the participant is still working for their employer in order to apply for a loan.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "MFA status",
+                    "meaning": "The status of the participant's MFA enrollment.",
+                    "example_values": [
+                        "enrolled",
+                        "not enrolled"
+                    ],
+                    "why_needed": "To verify whether the participant can use the ForUsAll online account that requires online access. If MFA is not enrolled, share the RightSignature form link only after confirming the participant qualifies.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Account Balance",
+                    "meaning": "The participant's Account Balance (this is the Vested Balance). The participant must have at least $2,000 or more to be eligible for a loan.",
+                    "example_values": [
+                        "$1,000.00",
+                        "$1,999.00",
+                        "$2,000.00",
+                        "$2,000.01"
+                    ],
+                    "why_needed": "Determines if the Participant has enough balance to request a new loan. Eligibility determination.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Maximum Number of Loans",
+                    "meaning": "Whether the participant's plan allows loans at all and the maximum number of loans that may be active at one time.",
+                    "example_values": [
+                        "2",
+                        "1",
+                        "0"
+                    ],
+                    "why_needed": "Determines whether the plan supports loans and sets the plan-level cap for concurrent active loans.",
+                    "source_note": "Supported by article section: Prerequisites",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Active Loans",
+                    "meaning": "A descriptive loan-status field derived from Outstanding Balance values to determine whether any listed loans are still active and unpaid.",
+                    "example_values": [
+                        "No loan history found",
+                        "Outstanding Balance $479.36",
+                        "Outstanding Balance $00.00",
+                        "Outstanding Balance $00.01"
+                    ],
+                    "why_needed": "Eligibility determination. Used with Maximum Number of Loans to determine whether the participant may qualify to take a new loan.",
+                    "source_note": "Read from the participant profile Loans section. Focus on Outstanding Balance to determine whether any listed loans are still active.",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Loan amount needed",
+                    "meaning": "The amount the participant wants to borrow.",
+                    "example_values": [
+                        "$500.00",
+                        "$12,000.00",
+                        "$50,000",
+                        "The maximum I have available"
+                    ],
+                    "why_needed": "Submission estimate and limit review",
+                    "source_note": "Supported by article section: Estimate Loan",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Requested repayment term",
+                    "meaning": "The repayment length the participant wants to select for the loan.",
+                    "example_values": [
+                        "1 year",
+                        "2 years",
+                        "3 years",
+                        "4 years",
+                        "5 years",
+                        "60 payments",
+                        "120 payments",
+                        "360 payments"
+                    ],
+                    "why_needed": "Submission step and repayment setup",
+                    "source_note": "Supported by article section: Choose Loan Type",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Selected delivery method",
+                    "meaning": "How the participant wants to receive the loan amount or send an early payoff.",
+                    "example_values": [
+                        "ACH",
+                        "Wire transfer",
+                        "Check"
+                    ],
+                    "why_needed": "Determine fees, timing, and instructions",
+                    "source_note": "Supported by article section: Select Delivery Method",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Plan ID",
+                    "meaning": "The plan identifier that the article says should be confirmed before sending an early payoff and included with payoff instructions.",
+                    "example_values": [
+                        "LT Trust (MA000218)"
+                    ],
+                    "why_needed": "Correct application of early payoff funds.",
+                    "source_note": "Supported by article section: Early Loan Payoff. The plan ID can be found in the participant profile. It is the alpha numerical code starting by MA under RK:LT Trust.",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Loan number",
+                    "meaning": "The specific loan number that the article says should be confirmed before sending an early payoff and included with payoff instructions.",
+                    "example_values": [
+                        "1",
+                        "2",
+                        "3",
+                        "4"
+                    ],
+                    "why_needed": "Correct application of early payoff funds",
+                    "source_note": "Supported by article section: Early Loan Payoff. This loan number is not visible in the participant profile. The agent can check in the participant's profile Outstanding Loan. The participant may check the loan remaining balance in My Portfolio and share the loan balance they want to pay off. The Participant must reach support, share the loan balance to pay off, this way, support will be able to confirm the exact loan number.",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Payroll Frequency",
+                    "meaning": "The current payroll frequency displayed in the participant's profile and during the loan estimate, such as weekly or biweekly.",
+                    "example_values": [
+                        "Weekly",
+                        "Bi-weekly",
+                        "Semi-monthly",
+                        "Monthly"
+                    ],
+                    "why_needed": "Helps confirm repayment schedule setup is accurate before submitting the loan online.",
+                    "source_note": "Supported by article section: Estimate Loan. Confirm in the Participant Profile if this matches with what the participant confirms they see during the loan request process. Check the Payroll section, then Payroll Frequency. If this matches what the participant says they see in the loan submission steps, then they can proceed. If it does not match, let the participant know they need to stop the process and contact support immediately for correction.",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Amortization schedule",
+                    "meaning": "The repayment schedule shown during submission and available from support if more detail is needed after loan submission.",
+                    "example_values": [],
+                    "why_needed": "Helps explain first payment date and repayment details",
+                    "source_note": "Supported by article section: Estimate Loan. Confirm and let the participant know they can download it during the loan request online before they submit it. If the participant could not download it during the process, or if the participant is requesting a copy of the amortization schedule, and the agent cannot find the document, redirect immediately to support.",
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Payment history",
+                    "meaning": "Historical loan payment details that support can provide if the participant needs more details.",
+                    "example_values": [],
+                    "why_needed": "Clarifies repayment questions",
+                    "source_note": "Supported by article section: Loan Dashboard Overview. If the agent cannot find this, redirect immediately to support.",
+                    "source_type": "agent_input"
+                },
+                {
+                    "data_point": "Whether repayment increase applies to one loan or both loans",
+                    "meaning": "For repayment increase requests, the article says the participant must specify which loan or loans the request applies to. Participant must contact support to request a loan repayment increase through their payroll.",
+                    "example_values": [
+                        "Loan number 1",
+                        "Loan number 2",
+                        "Both loans"
+                    ],
+                    "why_needed": "Needed to process or explain repayment increase guidance",
+                    "source_note": "Supported by article section: Repayment Increase",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Full name for early payoff instructions",
+                    "meaning": "The participant's full name, which the article says should be included with payoff instructions.",
+                    "example_values": [
+                        "John Doe",
+                        "Jane Doe",
+                        "Oscar Santiago Garcia "
+                    ],
+                    "why_needed": "Helps ensure early payoff funds are handled correctly",
+                    "source_note": "Supported by article section: Early Loan Payoff",
+                    "source_type": "participant_profile"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Participant's name",
+                    "ask_participant": null,
+                    "agent_note": "Needed to determine the participant is a ForUsAll participant and there is data related, retrieve from admin/portal systems or chat survey; do not ask participant"
+                },
+                {
+                    "missing_data_point": "Record Keeper",
+                    "ask_participant": null,
+                    "agent_note": "Determines if the record keeper is the correct one intended for this article guide, retrieve from admin/portal systems or chat survey; do not ask participant"
+                },
+                {
+                    "missing_data_point": "Participant Status",
+                    "ask_participant": null,
+                    "agent_note": "Participant Status must be Active to determine eligibility, retrieve from admin/portal systems or chat survey; do not ask participant"
+                },
+                {
+                    "missing_data_point": "MFA status",
+                    "ask_participant": null,
+                    "agent_note": "MFA status must be enrolled or not enrolled, retrieve from admin/portal systems or chat survey; do not ask participant. If MFA is not enrolled, the RightSignature link can be shared only after confirming the other eligibility criteria."
+                },
+                {
+                    "missing_data_point": "Total Vested Balance",
+                    "ask_participant": null,
+                    "agent_note": "Must have enough balance in the account to qualify based on the eligibility criteria, retrieve from admin/portal systems or chat survey; do not ask participant"
+                },
+                {
+                    "missing_data_point": "Maximum Number of Loans",
+                    "ask_participant": null,
+                    "agent_note": "The plan must allow loans as determined in the Maximum Number of Loans in participant profile, retrieve from admin/portal systems or chat survey; do not ask participant"
+                },
+                {
+                    "missing_data_point": "Active Loans",
+                    "ask_participant": null,
+                    "agent_note": "Must confirm if no loans are on file or if there are active loans to determine eligibility for a new loan, retrieve from admin/portal systems or chat survey; do not ask participant. Review the Loans section, use No loan history found or Outstanding Balance values to determine whether any listed loans are currently active."
+                }
+            ],
+            "disambiguation_notes": [
+                "The article uses both a general statement that the plan loan limit is generally a maximum of 2 and a plan-variation statement that a plan may allow 0, 1, or 2 loans. Treat this as plan-specific variability.",
+                "The article provides general purpose loan rules directly and mentions a longer term for a primary residence loan only as a conditional example. Do not assume the longer term applies unless that loan type is relevant, visible to the participant, or confirmed through support.",
+                "The article distinguishes between loan proceeds delivery methods and early payoff payment methods. Do not mix those instructions.",
+                "The dashboard shows loan balances and payment per paycheck, but not the amortization schedule.",
+                "The article distinguishes between historical loan records and active loans. Do not assume that the presence of loan rows means the participant currently has an active loan. Review Outstanding Balance values to determine whether any listed loan is still active.",
+                "If the Loans section shows 'No loan history found', treat this as no prior loan rows and no active loans shown in the participant profile.",
+                "If loan rows are present but all Outstanding Balance values are $0.00, treat this as prior paid-off loan history, not as current active loans.",
+                "Use Maximum Number of Loans together with Active Loans to determine whether another loan may be available. Do not use either field by itself to make the final eligibility conclusion.",
+                "The article says the participant must be actively employed, while the internal workflow uses Participant Status. Treat non-active statuses as potentially not eligible for a new loan under this guide.",
+                "The article states the vested balance must be at least $2,000 for loan eligibility. Do not confuse this with the article's separate minimum loan amount of $1,000.",
+                "The article states eligible loan amounts can change daily. Do not treat a previously displayed maximum amount as guaranteed until the request is reviewed and submitted.",
+                "The article states a $35 wire fee applies when wire is selected for loan proceeds.",
+                "The article states ACH, wire, and check can be used as loan delivery methods, while ACH, check, and wire are also listed as early payoff methods. Make sure the guidance matches the correct workflow.",
+                "The article ties the first payment date to the amortization schedule shown during submission. Do not say the first payment date is shown on the dashboard unless that is explicitly supported elsewhere.",
+                "The RightSignature form is an alternate submission path only when the participant qualifies for a loan and cannot create or access a ForUsAll online account. Do not treat it as the standard loan submission method.",
+                "MFA status is used in the internal workflow to help determine whether the participant can complete the online process. Do not treat MFA status by itself as loan eligibility; it only affects the submission path.",
+                "The article says support can provide amortization schedule and payment history details. Do not imply those documents are directly downloadable from the dashboard after issuance unless explicitly confirmed.",
+                "The article mentions tax consequences if employment ends with an unpaid loan, but it does not authorize tax advice. Provide only the general consequences listed and direct the participant to a qualified tax advisor when needed.",
+                "If a defaulted loan appears in the system, redirect to support before advising on a new loan request."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "Participant Status is Active.",
+                "Record Keeper is LT Trust.",
+                "The plan allows loans, as shown by Maximum Number of Loans greater than 0.",
+                "Participant has a total vested balance of at least $2,000.",
+                "Participant is within the plan's active loan limit, determined by comparing Maximum Number of Loans with the participant's Active Loans status derived from Outstanding Balance values.",
+                "If the participant is using the online portal submission path, the participant must use a desktop or laptop because mobile is not supported.",
+                "If the participant cannot create or access a ForUsAll online account, the RightSignature form may only be used after loan qualification is confirmed."
+            ],
+            "blocking_conditions": [
+                "Participant Status is not Active.",
+                "Record Keeper is not LT Trust.",
+                "The participant has less than a $2,000 total vested balance.",
+                "Maximum Number of Loans is 0, which means the plan does not allow loans.",
+                "The participant is already at the plan's active loan limit, determined by comparing Maximum Number of Loans with the participant's Active Loans status derived from Outstanding Balance values.",
+                "The participant has 1 active unpaid loan and Maximum Number of Loans is 1.",
+                "The participant has 2 active unpaid loans and Maximum Number of Loans is 2.",
+                "The participant had a hardship withdrawal and the remaining balance is now below $2,000.",
+                "The participant is trying to use the standard online submission path on a mobile device, even though mobile is not supported.",
+                "The participant cannot use the online portal and loan qualification has not yet been confirmed, so the alternate RightSignature path cannot be offered yet."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "Participant's name is unknown or not available in the message text, pre chat survey, or participant profile.",
+                    "missing_data_point": "Participant's name",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Record Keeper is unknown or unavailable.",
+                    "missing_data_point": "Record Keeper",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Participant Status is unknown or unavailable.",
+                    "missing_data_point": "Participant Status",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "MFA status is not enrolled and the participant cannot complete the standard online submission path, so the participant must be routed to the alternate RightSignature path only after qualification is confirmed.",
+                    "missing_data_point": "MFA status",
+                    "resulting_outcome": "can_proceed",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Total vested balance is $0.00 or below $2,000.00.",
+                    "missing_data_point": "Total Vested Balance",
+                    "resulting_outcome": "blocked_not_eligible",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Maximum Number of Loans is unknown.",
+                    "missing_data_point": "Maximum Number of Loans",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Active Loans is unknown.",
+                    "missing_data_point": "Active Loans",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Loan amount needed is unknown when the participant wants estimate or submission guidance.",
+                    "missing_data_point": "Loan amount needed",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What loan amount would you like to request? Be advised you can confirm the maximum loan amount available in your ForUsAll dashboard in Loans & Distributions, then the Borrow up to will show you the maximum amount available."
+                },
+                {
+                    "condition": "Requested repayment term is unknown or not aligning with their payroll frequency when the participant wants estimate or submission guidance.",
+                    "missing_data_point": "Requested repayment term",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What repayment term would you like to select for the loan? You should be able to get the repayment term or total payments during the online request in the # of payments section."
+                },
+                {
+                    "condition": "Selected delivery method is unknown when timing, fee, or submission guidance is needed.",
+                    "missing_data_point": "Selected delivery method",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Which delivery method would you like to use: ACH, wire transfer, or check?"
+                },
+                {
+                    "condition": "Plan ID is unknown for an early payoff request.",
+                    "missing_data_point": "Plan ID",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Loan number is unknown for an early payoff request.",
+                    "missing_data_point": "Loan number",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Which loan remaining balance are you trying to pay off? You can share this amount with Support and they will confirm what loan number belongs to that loan remaining balance."
+                },
+                {
+                    "condition": "Payroll Frequency is unknown when the participant needs help confirming repayment setup between the participant profile and the online loan request calculator.",
+                    "missing_data_point": "Payroll Frequency",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "What payroll frequency do you see in the loan calculator?"
+                },
+                {
+                    "condition": "Whether repayment increase participant intention applies to one loan or both loans is unknown for a repayment increase request.",
+                    "missing_data_point": "Whether repayment increase applies to one loan or both loans",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Should the repayment increase apply to one loan or both loans? What is the loan repayment amount you'd like to increase?"
+                }
+            ],
+            "allowed_conclusions": [
+                "The participant can be guided through the standard online loan submission steps when Record Keeper is LT Trust, Participant Status is Active, the plan allows loans, the participant has at least a $2,000 total vested balance, and the participant is within the plan's active loan limit.",
+                "The participant can be guided through the alternate RightSignature loan request path only after loan qualification is confirmed and only if the participant cannot create or access a ForUsAll online account.",
+                "The participant may be blocked from taking a new loan if the plan does not allow loans, if the participant does not meet the stated eligibility requirements, or if the participant is already at the plan's active loan limit.",
+                "The participant may request a loan only up to the limits stated in the article: minimum $1,000 and maximum 50% of vested balance or $50,000, subject to plan rules and current eligibility.",
+                "The participant may be advised that the eligible loan amount can change daily, so requesting slightly less than the maximum may help avoid delays.",
+                "The participant may choose among ACH, wire transfer, or check for loan proceeds, and the selected delivery method affects timing and fees.",
+                "The participant may be told that ACH is listed with no fee, wire has a $35 fee, and check is slower than ACH or wire.",
+                "The participant may review the amortization schedule during the online loan submission process before submitting the request.",
+                "The participant may pay off the loan early with no penalty if the payoff is for the full remaining amount in a single transaction outside payroll deductions.",
+                "The participant may be told that partial payments outside standard payroll deductions are not accepted for early payoff.",
+                "The participant may be told that repayment is made through after-tax payroll deductions and depends on the employer's payroll schedule.",
+                "Repayment increases may be requested in multiples of the current payment amount, and the participant must specify whether the increase applies to one loan or both loans if applicable.",
+                "If a payroll deduction is missed, the participant may be told that catch-up payments may be applied.",
+                "If employment ends with an outstanding loan, the participant may be told that the balance becomes due within 90 days and may have tax consequences if unpaid.",
+                "The participant may be told that an unpaid loan after employment ends may be treated as a taxable distribution, may generate Form 1099-R, and may involve a possible 10% early withdrawal penalty.",
+                "The participant may be told that the dashboard shows remaining balance, payment per paycheck, and start date, but does not show the amortization schedule.",
+                "The participant may be told that amortization schedule and payment history details can be requested from support if needed.",
+                "The participant may be told that support should confirm the Plan ID and Loan number before an early payoff is sent so the payment is applied correctly.",
+                "The participant may be advised to speak with a qualified tax advisor for tax questions or rollover-related questions.",
+                "If a defaulted loan appears in the system, the participant should be directed to support before any new-loan guidance is given."
+            ],
+            "not_allowed_conclusions": [
+                "Do not guarantee the plan allows loans without confirming Maximum Number of Loans in the participant profile.",
+                "Do not guarantee the plan allows 2 loans, because the article states plan limits may vary and may be 0, 1, or 2.",
+                "Do not conclude the participant is eligible if any required eligibility data is missing or unknown.",
+                "Do not conclude the participant is eligible based only on vested balance without also checking plan loan availability and active loan count.",
+                "Do not conclude the participant is ineligible based only on prior loan history. Review Outstanding Balance values to determine whether any listed loans are currently active.",
+                "Do not conclude that the presence of loan rows means the participant currently has active loans.",
+                "Do not conclude that a participant with paid-off prior loans is blocked from taking a new loan if Active Loans is effectively 0 and plan rules otherwise allow a new loan.",
+                "Do not guarantee that a primary residence loan term of up to 15 years is available unless that loan type is visible to the participant or support confirms next steps.",
+                "Do not say mobile submission is supported.",
+                "Do not say the participant can complete the standard online submission path on a phone.",
+                "Do not say the dashboard includes the amortization schedule.",
+                "Do not say the first payment date is shown on the dashboard unless it is being referenced from the amortization schedule during submission.",
+                "Do not say payment history is directly visible in the dashboard if it must be requested from support.",
+                "Do not say a wire transfer has no fee. The article states a $35 wire fee applies.",
+                "Do not present plan loan limits as universal for every plan.",
+                "Do not conclude that partial early-payoff payments outside payroll deductions are allowed.",
+                "Do not say early payoff outside payroll deductions can be made in multiple transactions. The article states it must be a single transaction for the full remaining amount.",
+                "Do not say an early payoff will automatically stop payroll deductions unless support has been notified.",
+                "Do not say the participant can send an early payoff without confirming or including the required identifying information such as Plan ID, Loan number, and name.",
+                "Do not provide the RightSignature loan request form before confirming the participant qualifies for a loan.",
+                "Do not present the RightSignature form as the default submission path when the participant can use the online portal.",
+                "Do not imply that inability to create or access a ForUsAll online account automatically means the participant qualifies for a loan.",
+                "Do not imply that the RightSignature form bypasses loan eligibility rules, review standards, or plan restrictions.",
+                "Do not say the RightSignature form guarantees approval, processing, or funding.",
+                "Do not conclude that hardship withdrawal has no effect on loan eligibility. The article states it may reduce eligibility.",
+                "Do not provide tax advice beyond the general information in the article.",
+                "Do not guarantee rollover options or tax outcomes. The article only says rollover options may exist and the participant should consider speaking with a qualified tax advisor.",
+                "Do not make a final eligibility conclusion if a defaulted loan appears in the system. Redirect to support."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "Confirm that the participant qualifies for a loan based on the required eligibility checks.",
+                    "If the participant can use the online account, explain that the standard submission path must be completed on a desktop or laptop.",
+                    "Summarize the online loan submission path: log in, go to Loans & Distributions, open Loans, estimate the loan, review the information, choose the delivery method, review fees and disclosures, and submit the request.",
+                    "If the participant qualifies for a loan but cannot create or access a ForUsAll online account, explain that the RightSignature loan request form may be used as the alternate submission path.",
+                    "Explain any relevant timing, delivery method, and fee information stated in the article.",
+                    "If the request involves early payoff, explain that support should confirm the Plan ID and Loan number before funds are sent."
+                ],
+                "next_steps": [
+                    "Proceed with the standard portal submission steps if the participant can use the online account.",
+                    "If the participant cannot use the online account and qualification is confirmed, provide the RightSignature loan request form as the alternate submission path.",
+                    "Have the participant review loan details, fees, and disclosures before submitting the request.",
+                    "If the participant is submitting online, have them review the amortization schedule before submission.",
+                    "If needed, direct the participant to support for amortization schedule, payment history, early payoff coordination, post-submission changes, or defaulted loan review."
+                ],
+                "warnings": [
+                    "Eligible loan amount can change daily.",
+                    "Plan limits may vary by plan.",
+                    "Wire transfer includes an additional $35 fee.",
+                    "Mobile is not supported for the standard online loan submission path.",
+                    "Partial early-payoff payments outside payroll deductions are not accepted.",
+                    "Tax consequences may apply if a loan is not repaid after employment ends."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not promise approval.",
+                    "Do not promise a plan-specific loan count unless it is confirmed.",
+                    "Do not say mobile submission is supported.",
+                    "Do not provide tax advice.",
+                    "Do not offer the RightSignature form unless loan qualification has already been confirmed.",
+                    "Do not say the dashboard includes the amortization schedule."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "Explain that more information is needed before confirming whether the participant can proceed with a new loan, alternate submission path, repayment increase, or early payoff guidance.",
+                    "Clarify that eligibility cannot be confirmed until all required system-based checks and relevant participant-provided details are available.",
+                    "Ask only for the missing participant-provided details that are needed for the specific request.",
+                    "If the missing information is system-based, do not ask the participant for it. Retrieve or verify it through admin, profile, portal, or internal support-confirmed sources as applicable."
+                ],
+                "next_steps": [
+                    "Retrieve missing system-based details such as Record Keeper, Participant Status, MFA status, Total Vested Balance, Maximum Number of Loans, Active Loans, Plan ID, or other participant profile information needed for the request.",
+                    "Collect missing participant-provided details such as requested loan amount, requested repayment term, selected delivery method, Payroll Frequency, or whether a repayment increase applies to one loan or both loans, when relevant to the request.",
+                    "If the request involves early payoff and the exact loan number is not available, direct the participant to support to confirm the correct loan number before funds are sent.",
+                    "If the request involves the alternate RightSignature path, confirm loan qualification first before sharing the alternate form.",
+                    "After all missing information is available, reassess using only the article's stated rules and the approved internal workflow."
+                ],
+                "warnings": [
+                    "Do not confirm eligibility while required information is missing.",
+                    "Do not guess plan-specific limits, participant profile values, or loan-status values.",
+                    "Do not offer the RightSignature form before qualification is confirmed.",
+                    "Do not assume prior loan history means the participant currently has an active loan. Review Outstanding Balance values.",
+                    "Do not rely on only one data point such as vested balance or loan history by itself when multiple eligibility checks are required."
+                ],
+                "questions_to_ask": [
+                    "What loan amount would you like to request?",
+                    "What repayment term would you like to select for the loan?",
+                    "Which delivery method would you like to use to receive the loan amount: ACH, wire transfer, or check?",
+                    "What payroll frequency do you see in the loan calculator?",
+                    "For a repayment increase request, should the increase apply to one loan or both loans? If so, to which Outstanding Loan amount?",
+                    "Which loan outstanding balance are you trying to pay off?"
+                ],
+                "what_not_to_say": [
+                    "Do not say the participant is eligible before all required details are confirmed.",
+                    "Do not ask the participant for system-based information the workflow treats as internal or verifiable in admin or portal systems.",
+                    "Do not promise that a loan can proceed while key eligibility checks are still missing.",
+                    "Do not offer plan-specific conclusions if Maximum Number of Loans or Active Loans is still unknown.",
+                    "Do not provide the alternate RightSignature submission path just because portal access is unavailable if qualification has not yet been confirmed."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "State the specific reason the participant cannot proceed based on the confirmed blocking condition.",
+                    "Use only the supported blocking conditions in this guide, such as Record Keeper mismatch, Participant Status not Active, Total Vested Balance below $2,000, plan not allowing loans, or the participant already being at the active loan limit.",
+                    "If the participant cannot proceed through the standard portal path because of a blocking condition, do not present the RightSignature form as a workaround unless the participant otherwise qualifies and only lacks online access.",
+                    "If employment has ended or tax effects are relevant, provide only the general tax-related information stated in the article and suggest speaking with a qualified tax advisor."
+                ],
+                "next_steps": [
+                    "Explain the blocking condition clearly and tie it to the article-supported rule.",
+                    "If the participant is at the active loan limit, explain that paying off an existing loan in full may be necessary before another loan can be available, subject to plan rules.",
+                    "If the participant has less than a $2,000 vested balance, explain that the article states this minimum balance is required for loan eligibility.",
+                    "If the issue is loss of eligibility after a hardship withdrawal, explain that the article states a hardship withdrawal may reduce loan eligibility and that balances below $2,000 are not eligible.",
+                    "If Participant Status is not Active, explain that this guide requires the participant to be actively employed to request a new loan.",
+                    "If Maximum Number of Loans is 0, explain that the plan does not allow loans under this guide.",
+                    "If the issue relates to employment ending while an outstanding loan exists, explain the 90-day repayment rule stated in the article.",
+                    "If the participant's concern is related to an unpaid loan after employment ends, explain the possible tax consequences listed in the article without giving tax advice.",
+                    "If a defaulted loan appears in the system, redirect to support before advising on a new loan request."
+                ],
+                "warnings": [
+                    "Do not provide unsupported exceptions.",
+                    "Do not provide tax advice.",
+                    "Do not imply that the RightSignature form bypasses a true eligibility block.",
+                    "Do not treat paid-off historical loans as a current active-loan block unless Outstanding Balance confirms there is an active unpaid loan."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not imply there is a workaround if the article does not state one.",
+                    "Do not state the participant can proceed when a confirmed blocking condition is present.",
+                    "Do not suggest the participant qualifies just because they want a loan or previously had one.",
+                    "Do not offer the alternate RightSignature submission path as a way around plan ineligibility, balance requirements, or active-loan limits.",
+                    "Do not guarantee future eligibility unless the article clearly supports it."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "Explain that some loan rules in this guide may vary by plan and must be confirmed before giving a final eligibility answer.",
+                    "State that the plan may allow 0, 1, or 2 loans and that the listed fees in this guide apply under LT Trust.",
+                    "Clarify that general article guidance can be shared, but plan-specific conclusions must wait until participant profile and plan-related fields are confirmed.",
+                    "If relevant, explain that loan availability must be interpreted together with Maximum Number of Loans and Active Loans, not from one field alone."
+                ],
+                "next_steps": [
+                    "Verify Record Keeper is LT Trust before using this guide for a final conclusion.",
+                    "Verify the plan's loan availability by checking Maximum Number of Loans in the Participant's profile.",
+                    "Verify the participant's current loan usage by reviewing Active Loans and Outstanding Balance values.",
+                    "Verify delivery-method implications before stating next steps.",
+                    "Use the general process steps from the article only after making clear that plan-specific rules still need confirmation when relevant.",
+                    "If the participant cannot use the online portal, confirm loan qualification first before offering the alternate RightSignature path."
+                ],
+                "warnings": [
+                    "Do not guarantee the plan allows the feature or process in question.",
+                    "Do not assume historical loan rows mean the participant currently has active loans.",
+                    "Do not assume the alternate RightSignature path is available unless the participant otherwise qualifies for a loan."
+                ],
+                "questions_to_ask": [
+                    "Which loan type are you trying to use?",
+                    "Which delivery method are you considering?",
+                    "What loan amount would you like to request?",
+                    "What repayment term would you like to select for the loan?"
+                ],
+                "what_not_to_say": [
+                    "Do not guarantee the plan allows loans.",
+                    "Do not guarantee the plan allows 2 loans.",
+                    "Do not state that the participant qualifies before Maximum Number of Loans, Active Loans, and other required eligibility checks are confirmed.",
+                    "Do not imply that portal-access issues change plan rules or make the participant eligible by default."
+                ]
+            }
+        }
+    }
+}

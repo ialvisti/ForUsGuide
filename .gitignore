@@ -3,3 +3,4 @@
 .env
 .env.*
 .env.backup*
+sa-key.json

@@ -288,8 +288,8 @@
                     "source_type": "participant_profile"
                 },
                 {
-                    "data_point": "Vested account balance amount",
-                    "meaning": "The participant's vested 401(k) account balance used to determine force-out eligibility and distribution method.",
+                    "data_point": "Account Balance",
+                    "meaning": "The participant's Account Balance (this is the Vested Balance), used to determine force-out eligibility and distribution method.",
                     "example_values": [
                         "Balance under $7,000"
                     ],

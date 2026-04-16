@@ -715,8 +715,8 @@
                     "source_type": "participant_profile"
                 },
                 {
-                    "data_point": "Available vested balance amount",
-                    "meaning": "The participant's available vested balance used for 401(k) loan eligibility and loan limit calculations.",
+                    "data_point": "Account Balance",
+                    "meaning": "The participant's Account Balance (this is the Vested Balance), used for 401(k) loan eligibility and loan limit calculations.",
                     "example_values": [
                         "$2,000.00",
                         "$50,000.00"

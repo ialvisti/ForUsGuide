@@ -839,12 +839,82 @@ google-cloud-logging>=3.10.0
 | `ENABLE_EXECUTION_LOGGING` | Env var | `true` |
 | `INDEX_NAME` | Env var | `kb-articles-production` |
 | `NAMESPACE` | Env var | `kb_articles` |
-| `OPENAI_MODEL` | Env var | `gpt-5.4` |
-| `OPENAI_REASONING_EFFORT` | Env var | `medium` |
+| `OPENAI_MODEL` | Env var | `gpt-5.4` (legacy; routing now uses `LLM_ROUTE_*`) |
+| `OPENAI_REASONING_EFFORT` | Env var | `medium` (legacy; applied by router for GPT-5) |
+| `USE_VERTEX_AI` | Env var | `true` (enables Gemini via ADC, no API key needed) |
+| `GCP_LOCATION` | Env var | `us-central1` (same region as Cloud Run) |
+| `LLM_ROUTE_DECOMPOSE` | Env var | `gemini-2.5-flash` |
+| `LLM_ROUTE_REQUIRED_DATA` | Env var | `gemini-2.5-flash` |
+| `LLM_ROUTE_GR_OUTCOME` | Env var | `gpt-5.4` (critical reasoning — do not flip without A/B) |
+| `LLM_ROUTE_GR_RESPONSE` | Env var | `gemini-2.5-flash` |
+| `LLM_ROUTE_KNOWLEDGE` | Env var | `gemini-2.5-flash` |
 
 ### Local development
 
-Keep using `.env` file. No changes needed for local dev.
+Keep using `.env` file. For Gemini locally, choose one:
+
+1. Service account key + `USE_VERTEX_AI=true` + `GCP_PROJECT=rag-kb-system` (recommended).
+2. Google AI Studio key: `GEMINI_API_KEY=AI...`.
+
+Either is enough for all routes that point at a `gemini-*` model.
+
+---
+
+## Hybrid LLM Routing
+
+### Architecture
+
+`data_pipeline/llm_router.py` holds an `LLMRouter` that every LLM call
+flows through. Each `task_type` (`decompose`, `required_data`, `gr_outcome`,
+`gr_response`, `knowledge_question`) has a primary model and a cross-
+provider fallback. Primary model per task is configured via the
+`LLM_ROUTE_*` env vars above; the fallback is automatic (OpenAI primary
+fails over to Gemini Pro and vice-versa).
+
+### Required IAM (one-time, completed during migration)
+
+```bash
+# Enable Vertex AI on the project
+gcloud services enable aiplatform.googleapis.com --project=rag-kb-system
+
+# Grant the Cloud Run service account access to Vertex AI models
+gcloud projects add-iam-policy-binding rag-kb-system \
+  --member="serviceAccount:kb-rag-runner@rag-kb-system.iam.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+```
+
+No Gemini API key is created in Secret Manager — production uses ADC.
+
+### Rollout / rollback procedure
+
+The router is reversible per route via env var. To flip one route at a
+time, update the Cloud Run revision:
+
+```bash
+gcloud run services update kb-rag-system \
+  --region=us-central1 \
+  --update-env-vars=LLM_ROUTE_DECOMPOSE=gemini-2.5-flash
+```
+
+To roll a route back, repeat with `gpt-5.4`. Cloud Run creates a new
+revision in seconds with no image rebuild.
+
+Recommended flip order (least → most sensitive):
+
+1. `LLM_ROUTE_DECOMPOSE`
+2. `LLM_ROUTE_KNOWLEDGE`
+3. `LLM_ROUTE_REQUIRED_DATA`
+4. `LLM_ROUTE_GR_RESPONSE` (run stress test first)
+5. `LLM_ROUTE_GR_OUTCOME` — keep on `gpt-5.4` unless a dedicated A/B test
+   justifies a flip.
+
+### Monitoring
+
+Each response metadata object now carries `model` / `phaseN_model` and
+`provider` / `phaseN_provider` for observability. Set up a Cloud Monitoring
+log-based metric on `metadata.provider` to track usage per provider and a
+second one on the router's WARN-level "Primary failed" log line to alert
+on fallback rate >1% over 15 min.
 
 ---
 

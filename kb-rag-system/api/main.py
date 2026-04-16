@@ -27,6 +27,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.pinecone_uploader import PineconeUploader
 from data_pipeline.execution_logger import ExecutionLogger
+from data_pipeline.llm_router import LLMRouter, build_routes_from_settings
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -95,14 +96,25 @@ async def lifespan(app: FastAPI):
             namespace=settings.NAMESPACE
         )
         logger.info("✅ Pinecone connection established")
-        
-        # Inicializar RAG Engine → app.state (shares Pinecone instance)
+
+        # Build hybrid LLM Router. In production (GCP) USE_VERTEX_AI=true
+        # authenticates via ADC with no API key. Locally either OPENAI_API_KEY
+        # or GEMINI_API_KEY (or both) must be set.
+        llm_router = LLMRouter(
+            openai_api_key=settings.OPENAI_API_KEY or None,
+            gemini_api_key=settings.GEMINI_API_KEY or None,
+            use_vertex_ai=settings.USE_VERTEX_AI,
+            gcp_project=settings.GCP_PROJECT or None,
+            gcp_location=settings.GCP_LOCATION,
+        )
+        llm_router.configure_routes(build_routes_from_settings(settings))
+        app.state.llm_router = llm_router
+        logger.info("✅ LLM Router configured")
+
+        # Inicializar RAG Engine → app.state (shares Pinecone + LLM Router)
         app.state.rag_engine = RAGEngine(
-            openai_api_key=settings.OPENAI_API_KEY,
-            model=settings.OPENAI_MODEL,
-            temperature=settings.OPENAI_TEMPERATURE,
-            reasoning_effort=settings.OPENAI_REASONING_EFFORT if "gpt-5" in settings.OPENAI_MODEL.lower() else None,
-            pinecone_uploader=app.state.pinecone_uploader
+            llm_router=llm_router,
+            pinecone_uploader=app.state.pinecone_uploader,
         )
         logger.info("✅ RAG Engine initialized")
         

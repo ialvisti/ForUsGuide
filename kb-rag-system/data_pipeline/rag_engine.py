@@ -7,22 +7,23 @@ Este módulo implementa el RAG engine con dos funciones principales:
 
 All public methods are async to avoid blocking FastAPI's event loop.
 Pinecone SDK calls (synchronous) are wrapped with asyncio.to_thread().
-OpenAI calls use the native AsyncOpenAI client.
+LLM calls are delegated to an `LLMRouter` that dispatches each task type
+(decompose, required_data, gr_outcome, gr_response, knowledge_question) to
+the configured provider (OpenAI or Gemini) with cross-provider fallback.
 """
 
-import os
 import json
 import asyncio
 import hashlib
 import logging
 import time
-from typing import Dict, Any, List, Optional, NamedTuple
+from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
-from openai import AsyncOpenAI
 from cachetools import TTLCache
 
 from .pinecone_uploader import PineconeUploader
 from .token_manager import TokenManager
+from .llm_router import LLMRouter, LLMResponse, LLMEmptyResponseError
 from collections import defaultdict
 
 from .prompts import (
@@ -35,30 +36,6 @@ from .prompts import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# LLM Response Container
-# ============================================================================
-
-class LLMResponse(NamedTuple):
-    """Return type for _call_llm: carries both text and API usage stats."""
-    content: str
-    usage: Optional[Dict[str, int]]
-
-
-# ============================================================================
-# Exceptions
-# ============================================================================
-
-class LLMEmptyResponseError(Exception):
-    """Raised when the LLM returns empty or None content after all retries."""
-    def __init__(self, finish_reason: str, usage: Any = None):
-        self.finish_reason = finish_reason
-        self.usage = usage
-        super().__init__(
-            f"LLM returned no content (finish_reason={finish_reason}, usage={usage})"
-        )
 
 
 # ============================================================================
@@ -143,52 +120,36 @@ class RAGEngine:
 
     def __init__(
         self,
-        openai_api_key: Optional[str] = None,
-        model: str = "gpt-4o-mini",
-        temperature: float = 0.1,
-        reasoning_effort: Optional[str] = None,
-        pinecone_uploader: Optional['PineconeUploader'] = None
+        llm_router: LLMRouter,
+        pinecone_uploader: Optional['PineconeUploader'] = None,
     ):
         """
         Inicializa el RAG engine.
-        
+
         Args:
-            openai_api_key: API key de OpenAI (usa .env si no se provee)
-            model: Modelo de OpenAI a usar (default: gpt-4o-mini)
-            temperature: Temperature para generación (default: 0.1)
-            reasoning_effort: Esfuerzo de razonamiento para GPT-5.4 (none, low, medium, high, xhigh)
+            llm_router: Pre-configured LLMRouter with routes installed. All
+                LLM calls are dispatched through this router by task_type.
             pinecone_uploader: Pre-configured PineconeUploader instance.
-                               If None, creates a new one (standalone usage).
+                If None, creates a new one (standalone usage).
         """
-        # Async OpenAI client — non-blocking in FastAPI's event loop
-        api_key = openai_api_key or os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            raise ValueError("OPENAI_API_KEY no está configurada")
-        
-        self.openai_client = AsyncOpenAI(api_key=api_key)
-        self.model = model
-        self.temperature = temperature
-        self.reasoning_effort = reasoning_effort
-        
-        # Detectar si es modelo GPT-5.4
-        self.is_gpt5 = "gpt-5" in model.lower()
-        
+        if llm_router is None:
+            raise ValueError("llm_router is required")
+
+        self.router = llm_router
+
         # Pinecone uploader para búsquedas (sync SDK, wrapped with asyncio.to_thread).
         # Reuse a shared instance when provided to avoid duplicate connections.
         self.pinecone = pinecone_uploader or PineconeUploader()
-        
-        # Token manager
+
         self.token_manager = TokenManager(model="gpt-4")
-        
+
         # TTL cache for Pinecone search results
         self._search_cache: TTLCache = TTLCache(
             maxsize=self.CACHE_MAX_SIZE,
             ttl=self.CACHE_TTL_SECONDS
         )
-        
-        logger.info(f"RAG Engine inicializado con modelo: {model}")
-        if self.is_gpt5 and reasoning_effort:
-            logger.info(f"  - Reasoning effort: {reasoning_effort}")
+
+        logger.info("RAG Engine initialised with LLM router")
     
     # ========================================================================
     # ENDPOINT 1: Get Required Data
@@ -301,14 +262,19 @@ class RAGEngine:
             )
             
             llm_usage = None
+            llm_provider_used: Optional[str] = None
+            llm_model_used: Optional[str] = None
             try:
                 llm_result = await self._call_llm(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    max_tokens=800
+                    max_tokens=800,
+                    task_type="required_data",
                 )
                 llm_response = llm_result.content
                 llm_usage = llm_result.usage
+                llm_provider_used = llm_result.provider_used
+                llm_model_used = llm_result.model_used
             except LLMEmptyResponseError as e:
                 logger.error(f"LLM returned empty content in required_data: {e}")
                 llm_response = json.dumps({"participant_data": [], "plan_data": [], "coverage_gaps": []})
@@ -359,6 +325,8 @@ class RAGEngine:
                     per_query_scores=pqs,
                     tokens_used=tokens_used,
                     llm_usage=llm_usage,
+                    llm_model=llm_model_used,
+                    llm_provider=llm_provider_used,
                     llm_response=llm_response,
                 )
             
@@ -392,7 +360,8 @@ class RAGEngine:
                     "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
                     "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
                     "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
-                    "model": self.model,
+                    "model": llm_model_used,
+                    "provider": llm_provider_used,
                     "sub_queries": sub_queries,
                     "per_query_scores": pqs,
                     "unique_articles": total_articles,
@@ -497,6 +466,8 @@ class RAGEngine:
             )
             
             phase1_usage = None
+            phase1_provider: Optional[str] = None
+            phase1_model: Optional[str] = None
             outcome = None
             outcome_reason = None
             
@@ -506,10 +477,13 @@ class RAGEngine:
                         system_prompt=p1_system,
                         user_prompt=p1_user,
                         max_tokens=self.GR_PHASE1_MAX_TOKENS,
+                        task_type="gr_outcome",
                     ),
                     timeout=self.GR_PHASE1_TIMEOUT_SECONDS,
                 )
                 phase1_usage = p1_result.usage
+                phase1_provider = p1_result.provider_used
+                phase1_model = p1_result.model_used
                 p1_parsed = json.loads(p1_result.content)
                 outcome = p1_parsed.get("outcome", "ambiguous_plan_rules")
                 outcome_reason = p1_parsed.get("outcome_reason", "")
@@ -528,6 +502,8 @@ class RAGEngine:
                         total_inquiries_in_ticket, sub_queries,
                         per_query_scores, enriched_queries,
                         phase="phase1_timeout",
+                        llm_model=phase1_model,
+                        llm_provider=phase1_provider,
                     ),
                 )
             except (json.JSONDecodeError, LLMEmptyResponseError) as e:
@@ -570,6 +546,8 @@ class RAGEngine:
                             total_inquiries_in_ticket, sub_queries,
                             per_query_scores, enriched_queries,
                             phase="phase1_oos",
+                            llm_model=phase1_model,
+                            llm_provider=phase1_provider,
                         ),
                         "off_topic": True,
                     },
@@ -593,17 +571,22 @@ class RAGEngine:
             )
             
             phase2_usage = None
+            phase2_provider: Optional[str] = None
+            phase2_model: Optional[str] = None
             try:
                 p2_result = await asyncio.wait_for(
                     self._call_llm(
                         system_prompt=p2_system,
                         user_prompt=p2_user,
                         max_tokens=completion_budget,
+                        task_type="gr_response",
                     ),
                     timeout=phase2_timeout,
                 )
                 llm_response = p2_result.content
                 phase2_usage = p2_result.usage
+                phase2_provider = p2_result.provider_used
+                phase2_model = p2_result.model_used
             except asyncio.TimeoutError:
                 logger.warning(f"Phase 2 timed out after {phase2_timeout:.0f}s")
                 llm_response = json.dumps(
@@ -711,7 +694,10 @@ class RAGEngine:
                     "prompt_tokens": combined_usage.get("prompt_tokens", 0),
                     "completion_tokens": combined_usage.get("completion_tokens", 0),
                     "total_tokens": combined_usage.get("total_tokens", 0),
-                    "model": self.model,
+                    "phase1_model": phase1_model,
+                    "phase1_provider": phase1_provider,
+                    "phase2_model": phase2_model,
+                    "phase2_provider": phase2_provider,
                     "total_inquiries": total_inquiries_in_ticket,
                     "sub_queries": sub_queries,
                     "per_query_scores": pqs,
@@ -829,7 +815,7 @@ class RAGEngine:
                     source_articles=[],
                     used_chunks=[],
                     confidence_note="limited_coverage",
-                    metadata={"chunks_used": 0, "model": self.model, "sub_queries": sub_queries}
+                    metadata={"chunks_used": 0, "model": None, "provider": None, "sub_queries": sub_queries}
                 )
             
             # 4. Build context with article diversity
@@ -849,14 +835,19 @@ class RAGEngine:
             )
             
             llm_usage = None
+            llm_provider_used: Optional[str] = None
+            llm_model_used: Optional[str] = None
             try:
                 llm_result = await self._call_llm(
                     system_prompt=system_prompt,
                     user_prompt=user_prompt,
-                    max_tokens=2000
+                    max_tokens=2000,
+                    task_type="knowledge_question",
                 )
                 llm_response = llm_result.content
                 llm_usage = llm_result.usage
+                llm_provider_used = llm_result.provider_used
+                llm_model_used = llm_result.model_used
             except LLMEmptyResponseError as e:
                 logger.error(f"LLM returned empty content in knowledge_question: {e}")
                 llm_response = json.dumps({
@@ -908,7 +899,8 @@ class RAGEngine:
                     "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
                     "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
                     "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
-                    "model": self.model,
+                    "model": llm_model_used,
+                    "provider": llm_provider_used,
                     "sub_queries": sub_queries,
                     "unique_articles": total_articles,
                     "relevant_articles": relevant_articles,
@@ -925,7 +917,7 @@ class RAGEngine:
                 source_articles=[],
                 used_chunks=[],
                 confidence_note="limited_coverage",
-                metadata={"error": str(e), "chunks_used": 0, "model": self.model}
+                metadata={"error": str(e), "chunks_used": 0, "model": None, "provider": None}
             )
     
     # ========================================================================
@@ -1395,7 +1387,8 @@ class RAGEngine:
             llm_result = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
-                max_tokens=150
+                max_tokens=150,
+                task_type="decompose",
             )
             parsed = json.loads(llm_result.content)
             sub_queries = parsed.get("sub_queries", [])
@@ -1693,108 +1686,43 @@ class RAGEngine:
     # ========================================================================
     # Helper Methods - LLM
     # ========================================================================
-    
-    # Multiplicador para GPT-5.4: reasoning tokens count against
-    # max_completion_tokens.  With reasoning_effort="medium" the model
-    # can spend 70-85% of the budget on internal reasoning, so we need
-    # generous headroom to avoid empty-content responses.
-    GPT5_REASONING_MULTIPLIER = 10
-    GPT5_MIN_COMPLETION_TOKENS = 16000
-    
-    LLM_EMPTY_RESPONSE_RETRIES = 1
 
     async def _call_llm(
         self,
         system_prompt: str,
         user_prompt: str,
-        max_tokens: int
+        max_tokens: int,
+        task_type: str,
     ) -> LLMResponse:
         """
-        Llama al LLM (OpenAI) de forma asíncrona.
-        
-        Retries once on empty/None content before raising
-        LLMEmptyResponseError so callers can build a proper fallback
-        instead of propagating an empty dict.
-        
+        Dispatch an LLM call through the `LLMRouter` by task type.
+
+        The router picks the configured primary model for `task_type` and
+        falls back to the secondary provider on any exception. Provider-
+        specific concerns (GPT-5 reasoning budget, Gemini thinking config,
+        empty-content retry) live inside the router.
+
         Args:
-            system_prompt: System prompt
-            user_prompt: User prompt
-            max_tokens: Máximo de tokens para el contenido de la respuesta.
-                        Para GPT-5.4, se escala automáticamente para incluir
-                        headroom para reasoning tokens.
-        
+            system_prompt: System prompt.
+            user_prompt: User prompt.
+            max_tokens: Max output tokens for the generated content (the
+                router scales this for GPT-5 reasoning headroom).
+            task_type: One of "decompose", "required_data", "gr_outcome",
+                "gr_response", "knowledge_question".
+
         Returns:
-            LLMResponse with content string and usage dict.
-        
+            LLMResponse with content, usage, provider_used, model_used.
+
         Raises:
             LLMEmptyResponseError: If the LLM returns empty content after
-                                   all retry attempts.
+                all retry and fallback attempts.
         """
-        try:
-            params = {
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "response_format": {"type": "json_object"}
-            }
-            
-            if self.is_gpt5:
-                scaled_tokens = max(
-                    max_tokens * self.GPT5_REASONING_MULTIPLIER,
-                    self.GPT5_MIN_COMPLETION_TOKENS
-                )
-                params["max_completion_tokens"] = scaled_tokens
-                logger.info(
-                    f"Llamando GPT-5.4 | requested={max_tokens} "
-                    f"| scaled max_completion_tokens={scaled_tokens}"
-                )
-                
-                if self.reasoning_effort:
-                    params["reasoning_effort"] = self.reasoning_effort
-                    logger.debug(f"Reasoning effort: {self.reasoning_effort}")
-            else:
-                params["max_tokens"] = max_tokens
-                params["temperature"] = self.temperature
-                logger.debug(f"Llamando GPT-4 con max_tokens={max_tokens}, temperature={self.temperature}")
-            
-            last_finish_reason = "unknown"
-            last_usage = None
-            
-            for attempt in range(1, self.LLM_EMPTY_RESPONSE_RETRIES + 2):
-                response = await self.openai_client.chat.completions.create(**params)
-                
-                content = response.choices[0].message.content
-                last_finish_reason = response.choices[0].finish_reason
-                last_usage = response.usage
-                
-                if content and content.strip():
-                    logger.info(f"LLM response: {len(content)} characters")
-                    usage_dict = None
-                    if last_usage:
-                        usage_dict = {
-                            "prompt_tokens": getattr(last_usage, "prompt_tokens", 0) or 0,
-                            "completion_tokens": getattr(last_usage, "completion_tokens", 0) or 0,
-                            "total_tokens": getattr(last_usage, "total_tokens", 0) or 0,
-                        }
-                    return LLMResponse(content=content, usage=usage_dict)
-                
-                logger.warning(
-                    f"LLM returned empty content (attempt {attempt}/{self.LLM_EMPTY_RESPONSE_RETRIES + 1}). "
-                    f"Finish reason: {last_finish_reason}. Usage: {last_usage}"
-                )
-            
-            raise LLMEmptyResponseError(
-                finish_reason=last_finish_reason,
-                usage=last_usage
-            )
-        
-        except LLMEmptyResponseError:
-            raise
-        except Exception as e:
-            logger.error(f"Error llamando LLM: {e}")
-            raise
+        return await self.router.call(
+            task_type=task_type,
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            max_tokens=max_tokens,
+        )
     
     # ========================================================================
     # Helper Methods - Confidence & Decision
@@ -2203,6 +2131,8 @@ class RAGEngine:
         tokens_used: int,
         llm_usage: Optional[Dict[str, int]] = None,
         llm_response: str = "",
+        llm_model: Optional[str] = None,
+        llm_provider: Optional[str] = None,
     ) -> RequiredDataResponse:
         """Build a no-match response that preserves diagnostic data.
 
@@ -2237,7 +2167,8 @@ class RAGEngine:
                 "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
                 "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
                 "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
-                "model": self.model,
+                "model": llm_model,
+                "provider": llm_provider,
                 "sub_queries": sub_queries,
                 "per_query_scores": per_query_scores,
                 "unique_articles": total_articles,
@@ -2259,6 +2190,8 @@ class RAGEngine:
         per_query_scores: Dict[str, float],
         enriched_queries: List[str],
         phase: str = "",
+        llm_model: Optional[str] = None,
+        llm_provider: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build a metadata dict for GenerateResponseResult."""
         source_articles = self._build_source_articles(selected_chunks)
@@ -2270,7 +2203,8 @@ class RAGEngine:
             "prompt_tokens": llm_usage.get("prompt_tokens", 0) if llm_usage else 0,
             "completion_tokens": llm_usage.get("completion_tokens", 0) if llm_usage else 0,
             "total_tokens": llm_usage.get("total_tokens", 0) if llm_usage else 0,
-            "model": self.model,
+            "model": llm_model,
+            "provider": llm_provider,
             "total_inquiries": total_inquiries,
             "sub_queries": sub_queries,
             "per_query_scores": pqs,

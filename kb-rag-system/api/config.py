@@ -28,10 +28,27 @@ class Settings(BaseSettings):
     
     # OpenAI
     OPENAI_API_KEY: str = ""
+    # NOTE: OPENAI_MODEL / OPENAI_TEMPERATURE / OPENAI_REASONING_EFFORT remain
+    # readable for backward compatibility, but runtime model selection now
+    # flows through the LLM_ROUTE_* vars + LLMRouter.
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_TEMPERATURE: float = 0.1
     OPENAI_REASONING_EFFORT: str = "medium"
-    
+
+    # Gemini / Vertex AI
+    GEMINI_API_KEY: str = ""
+    USE_VERTEX_AI: bool = False
+    GCP_LOCATION: str = "us-central1"
+
+    # LLM Routing (model name per task; provider is inferred from prefix).
+    # To rollout gradually, start with all routes on "gpt-5.4" (shadow deploy),
+    # then flip one route at a time to a Gemini model.
+    LLM_ROUTE_DECOMPOSE: str = "gemini-2.5-flash"
+    LLM_ROUTE_REQUIRED_DATA: str = "gemini-2.5-flash"
+    LLM_ROUTE_GR_OUTCOME: str = "gpt-5.4"
+    LLM_ROUTE_GR_RESPONSE: str = "gemini-2.5-flash"
+    LLM_ROUTE_KNOWLEDGE: str = "gemini-2.5-flash"
+
     # Pinecone
     PINECONE_API_KEY: str = ""
     INDEX_NAME: str = "kb-articles-production"
@@ -71,17 +88,53 @@ settings = Settings()
 def validate_settings():
     """Valida que todas las settings críticas estén configuradas."""
     errors = []
-    
+
     if not settings.API_KEY:
         errors.append("API_KEY no está configurada")
-    
-    if not settings.OPENAI_API_KEY:
-        errors.append("OPENAI_API_KEY no está configurada")
-    
+
     if not settings.PINECONE_API_KEY:
         errors.append("PINECONE_API_KEY no está configurada")
-    
+
+    has_openai = bool(settings.OPENAI_API_KEY)
+    has_gemini = bool(settings.GEMINI_API_KEY) or (
+        settings.USE_VERTEX_AI and bool(settings.GCP_PROJECT)
+    )
+
+    if not has_openai and not has_gemini:
+        errors.append(
+            "Debe configurarse al menos un proveedor LLM: "
+            "OPENAI_API_KEY, o GEMINI_API_KEY, o USE_VERTEX_AI=true + GCP_PROJECT"
+        )
+
+    # Each route's model must have its provider's credentials available.
+    route_models = {
+        "LLM_ROUTE_DECOMPOSE": settings.LLM_ROUTE_DECOMPOSE,
+        "LLM_ROUTE_REQUIRED_DATA": settings.LLM_ROUTE_REQUIRED_DATA,
+        "LLM_ROUTE_GR_OUTCOME": settings.LLM_ROUTE_GR_OUTCOME,
+        "LLM_ROUTE_GR_RESPONSE": settings.LLM_ROUTE_GR_RESPONSE,
+        "LLM_ROUTE_KNOWLEDGE": settings.LLM_ROUTE_KNOWLEDGE,
+    }
+    for var_name, model_name in route_models.items():
+        model_lower = (model_name or "").strip().lower()
+        if not model_lower:
+            errors.append(f"{var_name} no puede estar vacío")
+            continue
+        if model_lower.startswith("gpt-") and not has_openai:
+            errors.append(
+                f"{var_name}={model_name} requiere OPENAI_API_KEY configurada"
+            )
+        elif model_lower.startswith("gemini-") and not has_gemini:
+            errors.append(
+                f"{var_name}={model_name} requiere GEMINI_API_KEY o "
+                f"USE_VERTEX_AI=true + GCP_PROJECT"
+            )
+        elif not (model_lower.startswith("gpt-") or model_lower.startswith("gemini-")):
+            errors.append(
+                f"{var_name}={model_name} tiene un prefijo desconocido "
+                f"(se esperaba 'gpt-*' o 'gemini-*')"
+            )
+
     if errors:
         raise ValueError(f"Configuración inválida: {', '.join(errors)}")
-    
+
     return True

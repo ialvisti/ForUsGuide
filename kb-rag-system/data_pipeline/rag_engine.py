@@ -443,14 +443,18 @@ class RAGEngine:
                     confidence=0.0
                 )
             
-            # 4. Build context with diversity + tier priority
-            context, selected_chunks, tokens_used = self._build_context_with_diversity_and_tiers(
+            # 4. Build context with diversity + tier priority (or dominant-article mode)
+            context, selected_chunks, tokens_used, dominance_info = self._build_context_with_diversity_and_tiers(
                 chunks=chunks,
                 budget=context_budget,
                 max_per_article=self.GR_MAX_CHUNKS_PER_ARTICLE
             )
-            
-            logger.info(f"Context: {len(selected_chunks)} chunks, {tokens_used} tokens")
+            dominant_mode = dominance_info.get("dominant_mode", False)
+
+            logger.info(
+                f"Context: {len(selected_chunks)} chunks, {tokens_used} tokens, "
+                f"dominant_mode={dominant_mode}"
+            )
             
             # ================================================================
             # 5a. Phase 1 — Outcome Determination
@@ -463,6 +467,7 @@ class RAGEngine:
                 record_keeper=record_keeper,
                 plan_type=plan_type,
                 topic=topic,
+                dominant_mode=dominant_mode,
             )
             
             phase1_usage = None
@@ -504,6 +509,7 @@ class RAGEngine:
                         phase="phase1_timeout",
                         llm_model=phase1_model,
                         llm_provider=phase1_provider,
+                        dominance_info=dominance_info,
                     ),
                 )
             except (json.JSONDecodeError, LLMEmptyResponseError) as e:
@@ -548,6 +554,7 @@ class RAGEngine:
                             phase="phase1_oos",
                             llm_model=phase1_model,
                             llm_provider=phase1_provider,
+                            dominance_info=dominance_info,
                         ),
                         "off_topic": True,
                     },
@@ -568,6 +575,7 @@ class RAGEngine:
                 topic=topic,
                 outcome=outcome,
                 outcome_reason=outcome_reason,
+                dominant_mode=dominant_mode,
             )
             
             phase2_usage = None
@@ -706,6 +714,10 @@ class RAGEngine:
                     "coverage_gaps": coverage_gaps,
                     "phase1_elapsed_s": round(phase1_elapsed, 1),
                     "phase1_outcome": outcome,
+                    "dominant_mode": dominant_mode,
+                    "dominance_top_signal": dominance_info.get("top_signal"),
+                    "dominance_runner_up_signal": dominance_info.get("runner_up_signal"),
+                    "dominance_ratio": dominance_info.get("ratio"),
                 }
             )
         
@@ -736,6 +748,17 @@ class RAGEngine:
     GR_PHASE1_MAX_TOKENS = 500
     GR_FALLBACK_MIN_CHUNKS = 6
     GR_FALLBACK_MIN_SCORE = 0.35
+
+    # Dominant-article heuristic for Generate Response context building.
+    # When one article's retrieval signal dominates the others, skip forced
+    # multi-article diversity and focus the context on that article. Keeps
+    # cross-article synthesis intact when multiple articles score similarly.
+    GR_DOMINANCE_ENABLED           = True   # kill-switch
+    GR_DOMINANCE_MIN_TOP_SIGNAL    = 1.50   # sum of top-3 chunk scores from dominant article
+    GR_DOMINANCE_MAX_RATIO         = 0.55   # runner-up signal must be < 55% of dominant
+    GR_DOMINANCE_MIN_CHUNKS        = 3      # dominant article must have >=3 retrieved chunks
+    GR_DOMINANCE_MAX_CHUNKS_SINGLE = 8      # cap on dominant-article chunks in single mode
+    GR_DOMINANCE_SECONDARY_SLOT    = 1      # insurance chunks from runner-up article
     
     # Knowledge Question settings
     KQ_CONTEXT_BUDGET = 4000
@@ -1574,77 +1597,150 @@ class RAGEngine:
         max_per_article: int = 6
     ) -> tuple:
         """
-        Build context combining article diversity with tier-based priority.
-        
-        Phase 1 (diversity): Best chunk from each article, sorted by score.
-        Phase 2 (tier fill): Fill remaining budget from critical -> high ->
-        medium -> low, with a per-article cap.
-        
-        This prevents a single article from dominating while ensuring
-        critical/high-tier chunks are prioritized for the response.
-        
+        Build context adaptively: focus on a dominant article when one
+        clearly outscores the rest; otherwise enforce multi-article diversity.
+
+        Dominance is decided from per-article signal (sum of top-3 chunk scores).
+        Multi-article mode (existing behavior): Phase 1 best-chunk-per-article,
+        then tier-priority fill with per-article cap.
+        Dominant mode: saturate with the top article's chunks plus a single
+        insurance chunk from the runner-up; skip tier fill.
+
         Returns:
-            (context_string, selected_chunks, tokens_used)
+            (context_string, selected_chunks, tokens_used, dominance_info)
+            where dominance_info is a dict with keys:
+              dominant_mode, top_article_id, top_signal, runner_up_signal, ratio
         """
         if not chunks:
-            return "", [], 0
-        
-        # ── Phase 1: Best chunk from each article ──
-        article_best: Dict[str, Dict[str, Any]] = {}
-        for chunk in chunks:
-            aid = chunk['metadata'].get('article_id', 'unknown')
-            if aid not in article_best or chunk.get('score', 0) > article_best[aid].get('score', 0):
-                article_best[aid] = chunk
-        
-        selected = []
+            return "", [], 0, {
+                "dominant_mode": False,
+                "top_article_id": None,
+                "top_signal": 0.0,
+                "runner_up_signal": 0.0,
+                "ratio": 0.0,
+            }
+
+        # ── Compute per-article signal (sum of top-3 chunk scores) ──
+        article_scores: Dict[str, List[float]] = defaultdict(list)
+        for c in chunks:
+            aid = c['metadata'].get('article_id', 'unknown')
+            article_scores[aid].append(c.get('score', 0))
+
+        article_signal: Dict[str, float] = {
+            aid: sum(sorted(scores, reverse=True)[:3])
+            for aid, scores in article_scores.items()
+        }
+        sorted_aids = sorted(article_signal, key=article_signal.get, reverse=True)
+        top_aid = sorted_aids[0]
+        top_signal = article_signal[top_aid]
+        runner_up_signal = article_signal[sorted_aids[1]] if len(sorted_aids) > 1 else 0.0
+        ratio = (runner_up_signal / top_signal) if top_signal > 0 else 1.0
+
+        dominant_mode = (
+            self.GR_DOMINANCE_ENABLED
+            and top_signal >= self.GR_DOMINANCE_MIN_TOP_SIGNAL
+            and ratio <= self.GR_DOMINANCE_MAX_RATIO
+            and len(article_scores[top_aid]) >= self.GR_DOMINANCE_MIN_CHUNKS
+        )
+        logger.info(
+            f"Dominance: top={top_aid} signal={top_signal:.2f} "
+            f"runner_up={runner_up_signal:.2f} ratio={ratio:.2f} "
+            f"mode={'DOMINANT' if dominant_mode else 'MULTI_ARTICLE'}"
+        )
+
+        selected: List[Dict[str, Any]] = []
         selected_ids: set = set()
         tokens_used = 0
         article_counts: Dict[str, int] = defaultdict(int)
-        
-        for _aid, chunk in sorted(
-            article_best.items(),
-            key=lambda x: x[1].get('score', 0),
-            reverse=True
-        ):
-            content = chunk['metadata'].get('content', '')
-            chunk_tokens = self.token_manager.count_tokens(content)
-            if tokens_used + chunk_tokens <= budget:
-                selected.append(chunk)
-                selected_ids.add(chunk.get('id'))
-                tokens_used += chunk_tokens
-                article_counts[chunk['metadata'].get('article_id', 'unknown')] += 1
-        
-        logger.debug(
-            f"Diversity+tiers phase 1: {len(selected)} chunks from "
-            f"{len(article_counts)} articles, {tokens_used} tokens"
-        )
-        
-        # ── Phase 2: Fill by tier priority with per-article cap ──
-        by_tier = self._organize_chunks_by_tier(chunks)
-        for tier in ['critical', 'high', 'medium', 'low']:
-            for chunk in by_tier.get(tier, []):
-                cid = chunk.get('id')
-                if cid in selected_ids:
-                    continue
-                aid = chunk['metadata'].get('article_id', 'unknown')
-                if article_counts[aid] >= max_per_article:
-                    continue
+
+        if dominant_mode:
+            # ── Dominant mode: saturate with top article + 1 insurance from runner-up ──
+            top_chunks = sorted(
+                [c for c in chunks if c['metadata'].get('article_id') == top_aid],
+                key=lambda x: x.get('score', 0),
+                reverse=True
+            )
+            for chunk in top_chunks:
+                if article_counts[top_aid] >= self.GR_DOMINANCE_MAX_CHUNKS_SINGLE:
+                    break
                 content = chunk['metadata'].get('content', '')
                 chunk_tokens = self.token_manager.count_tokens(content)
                 if tokens_used + chunk_tokens <= budget:
                     selected.append(chunk)
-                    selected_ids.add(cid)
+                    selected_ids.add(chunk.get('id'))
                     tokens_used += chunk_tokens
-                    article_counts[aid] += 1
-        
+                    article_counts[top_aid] += 1
+
+            if self.GR_DOMINANCE_SECONDARY_SLOT > 0 and len(sorted_aids) > 1:
+                runner_aid = sorted_aids[1]
+                runner_chunks = sorted(
+                    [c for c in chunks if c['metadata'].get('article_id') == runner_aid],
+                    key=lambda x: x.get('score', 0),
+                    reverse=True
+                )[:self.GR_DOMINANCE_SECONDARY_SLOT]
+                for chunk in runner_chunks:
+                    content = chunk['metadata'].get('content', '')
+                    chunk_tokens = self.token_manager.count_tokens(content)
+                    if tokens_used + chunk_tokens <= budget and chunk.get('id') not in selected_ids:
+                        selected.append(chunk)
+                        selected_ids.add(chunk.get('id'))
+                        tokens_used += chunk_tokens
+                        article_counts[runner_aid] += 1
+
+            logger.debug(
+                f"Dominant-mode context: {len(selected)} chunks from "
+                f"{len(article_counts)} articles, {tokens_used} tokens"
+            )
+        else:
+            # ── Multi-article mode: Phase 1 diversity + Phase 2 tier fill ──
+            article_best: Dict[str, Dict[str, Any]] = {}
+            for chunk in chunks:
+                aid = chunk['metadata'].get('article_id', 'unknown')
+                if aid not in article_best or chunk.get('score', 0) > article_best[aid].get('score', 0):
+                    article_best[aid] = chunk
+
+            for _aid, chunk in sorted(
+                article_best.items(),
+                key=lambda x: x[1].get('score', 0),
+                reverse=True
+            ):
+                content = chunk['metadata'].get('content', '')
+                chunk_tokens = self.token_manager.count_tokens(content)
+                if tokens_used + chunk_tokens <= budget:
+                    selected.append(chunk)
+                    selected_ids.add(chunk.get('id'))
+                    tokens_used += chunk_tokens
+                    article_counts[chunk['metadata'].get('article_id', 'unknown')] += 1
+
+            logger.debug(
+                f"Diversity+tiers phase 1: {len(selected)} chunks from "
+                f"{len(article_counts)} articles, {tokens_used} tokens"
+            )
+
+            by_tier = self._organize_chunks_by_tier(chunks)
+            for tier in ['critical', 'high', 'medium', 'low']:
+                for chunk in by_tier.get(tier, []):
+                    cid = chunk.get('id')
+                    if cid in selected_ids:
+                        continue
+                    aid = chunk['metadata'].get('article_id', 'unknown')
+                    if article_counts[aid] >= max_per_article:
+                        continue
+                    content = chunk['metadata'].get('content', '')
+                    chunk_tokens = self.token_manager.count_tokens(content)
+                    if tokens_used + chunk_tokens <= budget:
+                        selected.append(chunk)
+                        selected_ids.add(cid)
+                        tokens_used += chunk_tokens
+                        article_counts[aid] += 1
+
+            logger.debug(
+                f"Diversity+tiers phase 2 total: {len(selected)} chunks from "
+                f"{len(article_counts)} articles, {tokens_used} tokens"
+            )
+
         selected.sort(key=lambda c: c.get('score', 0), reverse=True)
-        
-        logger.debug(
-            f"Diversity+tiers phase 2 total: {len(selected)} chunks from "
-            f"{len(article_counts)} articles, {tokens_used} tokens"
-        )
-        
-        # Format context with article attribution
+
         context_parts = []
         for i, chunk in enumerate(selected, 1):
             content = chunk['metadata'].get('content', '')
@@ -1653,9 +1749,16 @@ class RAGEngine:
             context_parts.append(
                 f"--- Section {i} ({chunk_type} | Source: {article_title}) ---\n{content}\n"
             )
-        
+
         context = "\n".join(context_parts)
-        return context, selected, tokens_used
+        dominance_info = {
+            "dominant_mode": dominant_mode,
+            "top_article_id": top_aid,
+            "top_signal": round(top_signal, 3),
+            "runner_up_signal": round(runner_up_signal, 3),
+            "ratio": round(ratio, 3),
+        }
+        return context, selected, tokens_used, dominance_info
     
     def _organize_chunks_by_tier(
         self,
@@ -2192,10 +2295,12 @@ class RAGEngine:
         phase: str = "",
         llm_model: Optional[str] = None,
         llm_provider: Optional[str] = None,
+        dominance_info: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Build a metadata dict for GenerateResponseResult."""
         source_articles = self._build_source_articles(selected_chunks)
         pqs = {sq: per_query_scores.get(eq, 0.0) for sq, eq in zip(sub_queries, enriched_queries)}
+        di = dominance_info or {}
         return {
             "chunks_used": len(selected_chunks),
             "context_tokens": tokens_used,
@@ -2212,6 +2317,10 @@ class RAGEngine:
             "relevant_articles": sum(1 for sa in source_articles if sa.get("used_info", False)),
             "coverage_gaps": [],
             "phase": phase,
+            "dominant_mode": di.get("dominant_mode", False),
+            "dominance_top_signal": di.get("top_signal"),
+            "dominance_runner_up_signal": di.get("runner_up_signal"),
+            "dominance_ratio": di.get("ratio"),
         }
 
     @staticmethod

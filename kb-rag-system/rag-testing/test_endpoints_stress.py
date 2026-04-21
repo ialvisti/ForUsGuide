@@ -33,6 +33,10 @@ load_dotenv(env_path)
 
 API_BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 API_KEY = os.getenv("API_KEY")
+# When the service is private (Cloud Run IAM), set this to an identity token whose
+# audience is the service URL, e.g.:
+#   gcloud auth print-identity-token --audiences="https://YOUR-SERVICE-....run.app"
+CLOUD_RUN_ID_TOKEN = os.getenv("CLOUD_RUN_ID_TOKEN", "").strip()
 
 HEADERS_AUTH = {
     "X-API-Key": API_KEY,
@@ -42,7 +46,15 @@ HEADERS_PUBLIC = {
     "Content-Type": "application/json",
 }
 
-TIMEOUT = 180.0
+
+def _req_headers(base: dict) -> dict:
+    """Merge optional Cloud Run `Authorization: Bearer` for private services."""
+    h = dict(base)
+    if CLOUD_RUN_ID_TOKEN:
+        h["Authorization"] = f"Bearer {CLOUD_RUN_ID_TOKEN}"
+    return h
+
+TIMEOUT = float(os.getenv("STRESS_HTTP_TIMEOUT", "180"))
 SLOW_RESPONSE_THRESHOLD_MS = 60_000
 
 # ============================================================================
@@ -118,7 +130,7 @@ def call_generate_response(payload: dict) -> tuple[dict, int, float]:
     start = time.time()
     resp = httpx.post(
         f"{API_BASE_URL}/api/v1/generate-response",
-        headers=HEADERS_AUTH,
+        headers=_req_headers(HEADERS_AUTH),
         json=payload,
         timeout=TIMEOUT,
     )
@@ -130,7 +142,7 @@ def call_knowledge_question(question: str) -> tuple[dict, int, float]:
     start = time.time()
     resp = httpx.post(
         f"{API_BASE_URL}/api/v1/knowledge-question",
-        headers=HEADERS_PUBLIC,
+        headers=_req_headers(HEADERS_PUBLIC),
         json={"question": question},
         timeout=TIMEOUT,
     )
@@ -1505,7 +1517,11 @@ def main():
     # Health check
     print("\n  Checking API health...", end=" ")
     try:
-        health = httpx.get(f"{API_BASE_URL}/health", timeout=10).json()
+        health = httpx.get(
+            f"{API_BASE_URL}/health",
+            headers=_req_headers({}),
+            timeout=10,
+        ).json()
         if health.get("status") != "healthy":
             print(f"DEGRADED — {health}")
         else:

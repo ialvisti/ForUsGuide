@@ -113,10 +113,10 @@ CRITICAL RULES:
 3. Use the collected participant data to personalize the response.
 4. Be specific about recordkeeper-specific procedures.
 
-CROSS-ARTICLE SYNTHESIS (MANDATORY):
-5. The context may include sections from MULTIPLE knowledge base articles. Each article was retrieved because it covers a distinct aspect of the participant's situation. You MUST incorporate relevant information from EVERY article in context — do not ignore an article just because another article appears more directly on-topic.
-6. When the inquiry touches multiple 401(k) concepts (e.g., balance thresholds AND rollover deadlines, distribution methods AND tax treatment, force-out rules AND missed-rollover consequences), address EACH concept separately in key_points or the opening. Do not omit a concept just because another concept dominates the inquiry.
-7. Before finalizing your response, verify that each article source referenced in the context contributed at least one fact to key_points, steps, or warnings. If an article's information is relevant but unused, add it.
+CROSS-ARTICLE SYNTHESIS (RELEVANCE-DRIVEN):
+5. The context may include sections from one or multiple knowledge base articles. Judge each article's relevance to THIS specific inquiry and use only those that materially contribute. It is correct — and preferred — to ignore an article whose topic is tangential to the participant's situation.
+6. When the inquiry genuinely spans multiple concepts (e.g., balance thresholds AND rollover deadlines, distribution methods AND tax treatment, force-out rules AND missed-rollover consequences), cover each relevant concept as its own key_point, step, or warning. Do not force-fit unrelated concepts to satisfy a quota.
+7. When one article comprehensively covers the procedure the inquiry asks about, a focused answer from that article is correct. Do not pad with tangential facts from other articles just because they appear in context.
 
 DEDUPLICATION RULES (MANDATORY):
 8. Every piece of information must appear EXACTLY ONCE in the entire response.
@@ -286,9 +286,9 @@ CRITICAL RULES:
 4. Be specific about recordkeeper-specific procedures.
 
 CROSS-ARTICLE SYNTHESIS:
-5. The context may include sections from MULTIPLE articles. Incorporate relevant information from EVERY article — do not ignore an article because another appears more on-topic.
-6. When the inquiry touches multiple concepts (e.g., balance thresholds AND rollover deadlines), address EACH concept separately in key_points.
-7. Verify each article in context contributed at least one fact to key_points, steps, or warnings.
+5. Use information from context articles based on relevance to the inquiry, not based on article count. A focused single-article answer is correct when one article covers the full procedure; do not pad with tangential facts from other articles just because they appear in context.
+6. When the inquiry spans multiple distinct concepts from different articles, synthesize across them — cover each relevant concept as its own key_point.
+7. Every fact included must directly serve the inquiry.
 
 DEDUPLICATION RULES:
 8. Every piece of information must appear EXACTLY ONCE in the entire response.
@@ -492,16 +492,22 @@ def build_gr_outcome_prompt(
     collected_data: dict,
     record_keeper,
     plan_type: str,
-    topic: str
+    topic: str,
+    dominant_mode: bool = False,
 ) -> tuple:
     """
     Build prompts for Phase 1 of generate_response: outcome determination.
-    
+
+    The dominant_mode flag is accepted for API symmetry with
+    build_gr_response_prompt; Phase 1 outcome determination does not
+    currently depend on it, but the caller passes a single consistent flag.
+
     Returns:
         (system_prompt, user_prompt)
     """
+    del dominant_mode  # reserved for future use; kept for API symmetry
     data_str = _format_collected_data(collected_data)
-    
+
     user_prompt = USER_PROMPT_GR_OUTCOME_TEMPLATE.format(
         context=context,
         collected_data=data_str,
@@ -510,7 +516,7 @@ def build_gr_outcome_prompt(
         plan_type=plan_type,
         topic=topic
     )
-    
+
     return SYSTEM_PROMPT_GR_OUTCOME, user_prompt
 
 
@@ -523,26 +529,41 @@ def build_gr_response_prompt(
     topic: str,
     outcome: str,
     outcome_reason: str,
+    dominant_mode: bool = False,
 ) -> tuple:
     """
     Build prompts for Phase 2 of generate_response: response generation.
-    
+
     Selects the outcome-conditional schema and content rules based on the
     determined outcome from Phase 1.
-    
+
+    When dominant_mode is True, retrieval indicates one article comprehensively
+    covers the inquiry; a short hint is appended to the system prompt so the
+    LLM prefers a focused single-article answer over forced cross-article
+    synthesis.
+
     Returns:
         (system_prompt, user_prompt)
     """
     outcome_schema = OUTCOME_SCHEMAS.get(outcome, OUTCOME_SCHEMAS["ambiguous_plan_rules"])
     content_rules = OUTCOME_CONTENT_RULES.get(outcome, OUTCOME_CONTENT_RULES["ambiguous_plan_rules"])
-    
+
     system_prompt = SYSTEM_PROMPT_GR_RESPONSE.format(
         outcome_content_rules=content_rules,
         outcome_schema=outcome_schema
     )
-    
+
+    if dominant_mode:
+        system_prompt += (
+            "\n\nCONTEXT SIGNAL: Retrieval indicates a single article "
+            "comprehensively covers this inquiry. Prefer a focused answer "
+            "grounded in that article. Include facts from secondary articles "
+            "ONLY if they add a distinct, inquiry-relevant point not present "
+            "in the dominant article."
+        )
+
     data_str = _format_collected_data(collected_data)
-    
+
     user_prompt = USER_PROMPT_GR_RESPONSE_TEMPLATE.format(
         context=context,
         collected_data=data_str,
@@ -553,7 +574,7 @@ def build_gr_response_prompt(
         outcome=outcome,
         outcome_reason=outcome_reason
     )
-    
+
     return system_prompt, user_prompt
 
 

@@ -1,0 +1,1551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FUA Knowledge Base — Cloud Infrastructure</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg-0: #060913;
+    --bg-1: #0b1020;
+    --bg-2: #0f172e;
+    --panel: #111a33;
+    --panel-2: #0d1528;
+    --panel-3: #162045;
+    --stroke: #1f2a4a;
+    --stroke-2: #2a375e;
+    --stroke-3: #3b4a7a;
+    --text: #e8eefc;
+    --text-dim: #b4c0de;
+    --muted: #7a88ae;
+    --accent: #5b8cff;
+    --accent-2: #8a5cff;
+    --accent-3: #22d3ee;
+    --gcp-blue: #4285F4;
+    --gcp-green: #34A853;
+    --gcp-yellow: #FBBC04;
+    --gcp-red: #EA4335;
+    --openai: #10a37f;
+    --pinecone: #000000;
+    --devrev: #F05B24;
+    --n8n: #EA4B71;
+    --aws: #FF9900;
+    --docker: #2496ED;
+    --python: #3776AB;
+    --github: #ffffff;
+    --green: #22c55e;
+    --red: #ef4444;
+    --amber: #f59e0b;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    padding: 0;
+    background:
+      radial-gradient(1200px 600px at 10% -10%, rgba(91,140,255,0.12), transparent 60%),
+      radial-gradient(1000px 500px at 90% 0%, rgba(138,92,255,0.10), transparent 60%),
+      radial-gradient(800px 400px at 50% 100%, rgba(34,211,238,0.08), transparent 60%),
+      var(--bg-0);
+    color: var(--text);
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    font-feature-settings: 'cv11', 'ss01';
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
+  }
+
+  code, .mono { font-family: 'JetBrains Mono', Menlo, monospace; }
+
+  .container {
+    padding: clamp(24px, 4vw, 56px) clamp(16px, 4vw, 72px) clamp(40px, 6vw, 100px);
+    max-width: 2500px;
+    margin: 0 auto;
+  }
+
+  /* ============ HEADER ============ */
+  header.page {
+    margin-bottom: 56px;
+    position: relative;
+  }
+
+  .eyebrow {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    color: var(--accent);
+    padding: 6px 14px;
+    border: 1px solid rgba(91,140,255,0.35);
+    border-radius: 999px;
+    background: rgba(91,140,255,0.08);
+    margin-bottom: 18px;
+  }
+
+  header.page h1 {
+    font-size: clamp(30px, 4vw, 54px);
+    line-height: 1.05;
+    margin: 0 0 14px;
+    font-weight: 800;
+    letter-spacing: -1.5px;
+    background: linear-gradient(135deg, #ffffff 0%, #a8c0ff 40%, #b68cff 80%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  header.page .subtitle {
+    color: var(--text-dim);
+    font-size: clamp(14px, 1.4vw, 19px);
+    max-width: 1000px;
+    line-height: 1.5;
+  }
+
+  .meta-strip {
+    margin-top: 28px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 16px;
+    padding: 20px 24px;
+    background: linear-gradient(180deg, rgba(22,32,69,0.7), rgba(13,21,40,0.7));
+    border: 1px solid var(--stroke-2);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+  }
+
+  .meta-item .label {
+    font-size: 10px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+
+  .meta-item .value {
+    font-size: 14px;
+    color: var(--text);
+    font-weight: 600;
+    font-family: 'JetBrains Mono', monospace;
+    word-break: break-all;
+  }
+
+  /* ============ LEGEND ============ */
+  .legend {
+    display: flex;
+    gap: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin: 0 0 48px;
+  }
+
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-dim);
+    padding: 8px 14px;
+    background: rgba(22,32,69,0.5);
+    border: 1px solid var(--stroke-2);
+    border-radius: 999px;
+  }
+
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    box-shadow: 0 0 10px currentColor;
+  }
+
+  /* ============ LAYERS ============ */
+  .layer {
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(17,26,51,0.9), rgba(13,21,40,0.9));
+    border: 1px solid var(--stroke-2);
+    border-radius: 20px;
+    padding: clamp(20px, 2.5vw, 34px) clamp(16px, 2.5vw, 32px) clamp(20px, 2.5vw, 30px);
+    margin-bottom: 20px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.04) inset,
+      0 20px 50px -20px rgba(0,0,0,0.6);
+    backdrop-filter: blur(8px);
+  }
+
+  .layer::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 20px;
+    padding: 1px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06), transparent 40%);
+    -webkit-mask: linear-gradient(#000, #000) content-box, linear-gradient(#000, #000);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .layer-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+
+  .layer-title {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 2.5px;
+    text-transform: uppercase;
+  }
+
+  .layer-num {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0;
+    color: var(--text);
+    background: linear-gradient(135deg, rgba(91,140,255,0.25), rgba(138,92,255,0.25));
+    border: 1px solid var(--stroke-3);
+  }
+
+  .layer-caption {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--muted);
+    letter-spacing: 0;
+    text-transform: none;
+  }
+
+  .layer-tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    padding: 5px 12px;
+    border-radius: 6px;
+    border: 1px solid;
+  }
+  .layer-tag.gcp    { color: #7aa9ff; border-color: rgba(66,133,244,0.4); background: rgba(66,133,244,0.1); }
+  .layer-tag.aws    { color: #ffb94d; border-color: rgba(255,153,0,0.4); background: rgba(255,153,0,0.1); }
+  .layer-tag.ext    { color: #c88cff; border-color: rgba(168,85,247,0.4); background: rgba(168,85,247,0.1); }
+  .layer-tag.ai     { color: #6ee7b7; border-color: rgba(16,185,129,0.4); background: rgba(16,185,129,0.1); }
+  .layer-tag.render { color: #6ee7d7; border-color: rgba(70,226,194,0.45); background: rgba(70,226,194,0.12); }
+  .layer-tag.mixed  { color: #ffd56b; border-color: rgba(255,204,102,0.4); background: rgba(255,204,102,0.1); }
+
+  .layer-row {
+    display: flex;
+    gap: 18px;
+    align-items: stretch;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  /* ============ SERVICE CARD ============ */
+  .service {
+    position: relative;
+    background: linear-gradient(180deg, #17213f 0%, #0f1833 100%);
+    border: 1px solid var(--stroke-2);
+    border-radius: 16px;
+    padding: 20px 18px 18px;
+    min-width: 180px;
+    max-width: 240px;
+    flex: 1 1 180px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 12px;
+    transition: transform 0.25s ease, border-color 0.25s, box-shadow 0.25s;
+    overflow: hidden;
+  }
+
+  .service::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(400px 80px at 50% -20px, rgba(91,140,255,0.18), transparent);
+    pointer-events: none;
+  }
+
+  .service:hover {
+    transform: translateY(-3px);
+    border-color: var(--stroke-3);
+    box-shadow: 0 18px 40px -15px rgba(91,140,255,0.35);
+  }
+
+  .service.big {
+    min-width: 240px;
+    max-width: 340px;
+    flex: 1 1 240px;
+  }
+
+  .service .icon {
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #0b1226;
+    border: 1px solid var(--stroke-2);
+    border-radius: 14px;
+    padding: 10px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .service .icon svg {
+    width: 100%;
+    height: 100%;
+  }
+
+  .service .name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text);
+    letter-spacing: -0.2px;
+    position: relative;
+    z-index: 1;
+  }
+
+  .service .role {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+    position: relative;
+    z-index: 1;
+  }
+
+  .service .role code {
+    font-size: 10.5px;
+    color: #9db3ff;
+    background: rgba(91,140,255,0.1);
+    padding: 1px 5px;
+    border-radius: 4px;
+  }
+
+  .service .tech {
+    margin-top: auto;
+    font-size: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    color: #8fb3ff;
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: rgba(91,140,255,0.1);
+    border: 1px solid rgba(91,140,255,0.25);
+    position: relative;
+    z-index: 1;
+  }
+
+  .service .pill {
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 999px;
+    border: 1px solid;
+    position: relative;
+    z-index: 1;
+  }
+  .pill.gcp { color: #7aa9ff; border-color: rgba(66,133,244,0.45); background: rgba(66,133,244,0.12); }
+  .pill.aws { color: #ffb94d; border-color: rgba(255,153,0,0.45); background: rgba(255,153,0,0.12); }
+  .pill.ext { color: #c88cff; border-color: rgba(168,85,247,0.45); background: rgba(168,85,247,0.12); }
+  .pill.render { color: #6ee7d7; border-color: rgba(70,226,194,0.45); background: rgba(70,226,194,0.12); }
+
+  .service.core {
+    background: linear-gradient(180deg, #1a2c5c 0%, #111a3a 100%);
+    border-color: rgba(91,140,255,0.6);
+    box-shadow: 0 0 0 1px rgba(91,140,255,0.15) inset, 0 20px 60px -15px rgba(91,140,255,0.35);
+  }
+  .service.core::before {
+    background: radial-gradient(500px 100px at 50% -20px, rgba(91,140,255,0.4), transparent);
+  }
+  .service.core .name { font-size: 17px; }
+
+  .service.highlight-g {
+    border-color: rgba(52,168,83,0.5);
+    box-shadow: 0 0 0 1px rgba(52,168,83,0.15) inset;
+  }
+
+  /* ============ CONNECTOR ARROW ============ */
+  .connector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 18px 0;
+    gap: 16px;
+    position: relative;
+  }
+
+  .connector .line {
+    flex: 0 1 280px;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--stroke-3), transparent);
+  }
+
+  .connector .label {
+    padding: 8px 18px;
+    background: var(--bg-1);
+    border: 1px solid var(--stroke-2);
+    border-radius: 999px;
+    font-size: 12px;
+    color: var(--text-dim);
+    font-weight: 500;
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .connector .arrow {
+    color: var(--accent);
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  /* ============ ENDPOINTS ============ */
+  .endpoints {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+    gap: 14px;
+    margin-top: 22px;
+  }
+
+  .endpoint {
+    background: linear-gradient(180deg, rgba(17,26,51,0.8), rgba(13,21,40,0.6));
+    border: 1px solid var(--stroke-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 10px;
+    padding: 14px 18px;
+    transition: border-left-color 0.2s;
+  }
+
+  .endpoint:nth-child(1) { border-left-color: var(--gcp-blue); }
+  .endpoint:nth-child(2) { border-left-color: var(--accent-2); }
+  .endpoint:nth-child(3) { border-left-color: var(--accent-3); }
+
+  .endpoint-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+
+  .method {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-weight: 700;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    background: var(--green);
+    color: #051409;
+    letter-spacing: 0.5px;
+  }
+
+  .endpoint .path {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 13px;
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  .endpoint .desc {
+    font-size: 11.5px;
+    color: var(--text-dim);
+    line-height: 1.5;
+  }
+
+  /* ============ FLOW DIAGRAM (steps) ============ */
+  section.flow-section {
+    margin-top: 40px;
+    background: linear-gradient(180deg, rgba(14,22,46,0.8), rgba(7,12,30,0.8));
+    border: 1px solid var(--stroke-2);
+    border-radius: 20px;
+    padding: clamp(24px, 3vw, 40px) clamp(18px, 3vw, 40px) clamp(28px, 3vw, 44px);
+    position: relative;
+  }
+
+  .flow-title {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin: 0 0 6px;
+    background: linear-gradient(135deg, #ffffff 0%, #a8c0ff 80%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .flow-subtitle {
+    color: var(--muted);
+    font-size: 14px;
+    margin-bottom: 32px;
+  }
+
+  .flow-steps {
+    display: grid;
+    grid-template-columns: repeat(9, 1fr);
+    gap: 10px;
+    position: relative;
+  }
+
+  @media (max-width: 1400px) {
+    .flow-steps { grid-template-columns: repeat(5, 1fr); }
+  }
+  @media (max-width: 900px) {
+    .flow-steps { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .flow-steps { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  .flow-step {
+    background: linear-gradient(180deg, #172246 0%, #0e1833 100%);
+    border: 1px solid var(--stroke-2);
+    border-radius: 14px;
+    padding: 18px 14px 16px;
+    position: relative;
+    text-align: center;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+
+  .flow-step:hover { transform: translateY(-3px); border-color: var(--stroke-3); }
+
+  .flow-step .num {
+    width: 30px;
+    height: 30px;
+    margin: 0 auto 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    color: white;
+    font-weight: 700;
+    font-size: 13px;
+    line-height: 30px;
+    box-shadow: 0 4px 12px -2px currentColor;
+  }
+
+  .flow-step .title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .flow-step .desc {
+    font-size: 10.5px;
+    color: var(--text-dim);
+    line-height: 1.4;
+  }
+
+  /* Arrow between flow steps — hidden on smaller layouts */
+  @media (min-width: 1401px) {
+    .flow-step:not(:last-child)::after {
+      content: '';
+      position: absolute;
+      right: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 2px;
+      background: linear-gradient(90deg, var(--stroke-3), transparent);
+      z-index: 2;
+    }
+    .flow-step:not(:last-child)::before {
+      content: '▶';
+      position: absolute;
+      right: -10px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--stroke-3);
+      font-size: 9px;
+      z-index: 3;
+    }
+  }
+
+  /* ============ CI/CD ============ */
+  .cicd-steps {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+
+  @media (max-width: 1200px) {
+    .cicd-steps { grid-template-columns: repeat(3, 1fr); }
+  }
+  @media (max-width: 560px) {
+    .cicd-steps { grid-template-columns: repeat(2, 1fr); }
+  }
+
+  /* ============ WEBHOOK PAYLOAD ============ */
+  .webhook-box {
+    margin-top: 28px;
+    background: #06091a;
+    border: 1px solid var(--stroke-2);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .webhook-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 18px;
+    background: linear-gradient(90deg, rgba(240,91,36,0.15), rgba(234,75,113,0.15));
+    border-bottom: 1px solid var(--stroke-2);
+  }
+
+  .webhook-head .title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .webhook-head .meta {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 11px;
+    color: var(--muted);
+  }
+
+  .webhook-body {
+    padding: 18px 22px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 12px;
+    line-height: 1.7;
+    color: #cfd9ff;
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .webhook-body .k { color: #8fb3ff; }
+  .webhook-body .s { color: #a5d9a5; }
+  .webhook-body .p { color: #ff9670; }
+  .webhook-body .c { color: var(--muted); }
+
+  /* ============ SECTION TITLES ============ */
+  h2.section {
+    font-size: 24px;
+    font-weight: 800;
+    letter-spacing: -0.5px;
+    margin: 48px 0 20px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    color: var(--text);
+  }
+
+  h2.section::before {
+    content: '';
+    width: 5px;
+    height: 28px;
+    background: linear-gradient(180deg, var(--accent), var(--accent-2));
+    border-radius: 3px;
+  }
+
+  /* ============ STACK GRID ============ */
+  .stack-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 14px;
+  }
+
+  .stack-item {
+    background: linear-gradient(180deg, #16213f 0%, #0e1832 100%);
+    border: 1px solid var(--stroke-2);
+    border-radius: 12px;
+    padding: 16px 18px;
+  }
+
+  .stack-item .cat {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .stack-item .list {
+    font-size: 12.5px;
+    color: var(--text-dim);
+    line-height: 1.55;
+  }
+
+  /* ============ FOOTER ============ */
+  footer.page {
+    margin-top: 60px;
+    padding-top: 28px;
+    border-top: 1px solid var(--stroke);
+    text-align: center;
+    color: var(--muted);
+    font-size: 12.5px;
+  }
+
+  footer.page strong { color: var(--text-dim); }
+
+  /* Glow divider */
+  .divider {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--stroke-3), transparent);
+    margin: 56px 0 0;
+  }
+
+  /* ============ RESPONSIVE BREAKPOINTS ============ */
+  @media (max-width: 1024px) {
+    .webhook-head { flex-direction: column; align-items: flex-start; gap: 6px; }
+    .meta-item .value { font-size: 13px; }
+    h2.section { font-size: 20px; }
+    .flow-title { font-size: 22px; }
+  }
+
+  @media (max-width: 720px) {
+    .legend { gap: 8px; }
+    .legend-item { font-size: 11px; padding: 6px 10px; }
+    .eyebrow { font-size: 10px; }
+    header.page .subtitle { font-size: 14px; }
+    .service .icon { width: 56px; height: 56px; }
+    .service { min-width: 100%; max-width: 100%; flex: 1 1 100%; }
+    .service.big { min-width: 100%; max-width: 100%; flex: 1 1 100%; }
+    .layer-row { gap: 14px; }
+    .flow-title { font-size: 20px; }
+    h2.section { font-size: 18px; }
+    .webhook-body { font-size: 10.5px; padding: 14px 16px; }
+    .meta-strip { padding: 16px; }
+  }
+
+  @media (max-width: 480px) {
+    .flow-step .desc { font-size: 10px; }
+    .flow-step .title { font-size: 12px; }
+    .endpoint { padding: 12px 14px; }
+  }
+
+</style>
+</head>
+<body>
+<div class="container">
+
+<!-- ==================== HEADER ==================== -->
+<header class="page">
+  <span class="eyebrow">ForUsAll · Engineering · Cloud Architecture</span>
+  <h1>FUA Knowledge Base<br>Cloud Infrastructure Blueprint</h1>
+  <div class="subtitle">
+    End-to-end architecture of the 401(k) Retrieval-Augmented Generation system: from participant inquiry to automated ticket resolution on Google Cloud Platform, orchestrated through n8n and grounded in a curated knowledge base.
+  </div>
+
+  <div class="meta-strip">
+    <div class="meta-item">
+      <div class="label">GCP Project</div>
+      <div class="value">rag-kb-system</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Region</div>
+      <div class="value">us-central1</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Organization</div>
+      <div class="value">forusall.com</div>
+    </div>
+    <div class="meta-item">
+      <div class="label">Production Endpoint</div>
+      <div class="value">kb-rag-system-900340137010.us-central1.run.app</div>
+    </div>
+  </div>
+</header>
+
+<!-- ==================== LEGEND ==================== -->
+<div class="legend">
+  <div class="legend-item"><span class="legend-dot" style="background:#4285F4; color:#4285F4;"></span>Google Cloud Platform</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#FF9900; color:#FF9900;"></span>AWS (n8n host)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#46E2C2; color:#46E2C2;"></span>Render (ForUsBots host)</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#a855f7; color:#a855f7;"></span>Third-party SaaS</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#10a37f; color:#10a37f;"></span>LLM Providers</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#4f46e5; color:#4f46e5;"></span>Vector Database</div>
+  <div class="legend-item"><span class="legend-dot" style="background:#22c55e; color:#22c55e;"></span>CI/CD Pipeline</div>
+</div>
+
+<!-- ==================== LAYER 1: USER & CRM ==================== -->
+<div class="layer">
+  <div class="layer-head">
+    <div class="layer-title">
+      <span class="layer-num">01</span>
+      <div>
+        <div>Participant &amp; CRM Layer</div>
+        <div class="layer-caption">Ticket intake and final response delivery</div>
+      </div>
+    </div>
+    <span class="layer-tag ext">External SaaS</span>
+  </div>
+
+  <div class="layer-row">
+
+    <!-- PARTICIPANT -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="ppl" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#5b8cff"/><stop offset="100%" stop-color="#8a5cff"/></linearGradient></defs>
+          <circle cx="32" cy="22" r="10" fill="url(#ppl)"/>
+          <path d="M12 56 C12 42, 22 36, 32 36 C42 36, 52 42, 52 56 Z" fill="url(#ppl)"/>
+        </svg>
+      </div>
+      <div class="name">401(k) Participant</div>
+      <div class="role">Submits retirement plan inquiries via email or portal. Starts the entire workflow.</div>
+    </div>
+
+    <!-- DEVREV -->
+    <div class="service big">
+      <div class="icon">
+        <!-- DevRev logo: stylized "D" arrow -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="dr" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FF7A3D"/><stop offset="100%" stop-color="#F0431B"/></linearGradient></defs>
+          <path d="M12 8 L12 56 L34 56 C48 56 56 46 56 32 C56 18 48 8 34 8 Z" fill="url(#dr)"/>
+          <path d="M24 22 L38 32 L24 42 Z" fill="white"/>
+        </svg>
+      </div>
+      <div class="name">DevRev</div>
+      <div class="role">CRM ticketing platform. A webhook on ticket creation triggers the n8n workflow carrying the full conversation.</div>
+      <span class="pill ext">SaaS Platform</span>
+    </div>
+
+    <!-- DEVREV AI AGENT -->
+    <div class="service big">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="drai" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FF9F5A"/><stop offset="100%" stop-color="#E63E00"/></linearGradient>
+            <radialGradient id="drai2" cx="0.3" cy="0.3"><stop offset="0%" stop-color="#FFD9B8" stop-opacity="0.5"/><stop offset="100%" stop-color="transparent"/></radialGradient>
+          </defs>
+          <circle cx="32" cy="32" r="28" fill="url(#drai)"/>
+          <circle cx="32" cy="32" r="28" fill="url(#drai2)"/>
+          <path d="M32 16 L38 28 L50 32 L38 36 L32 48 L26 36 L14 32 L26 28 Z" fill="white"/>
+          <circle cx="32" cy="32" r="4" fill="url(#drai)"/>
+        </svg>
+      </div>
+      <div class="name">DevRev AI Agent</div>
+      <div class="role">LLM-powered agent that reads the <code>kb_bundle_v1</code>, crafts the participant-facing reply, decides ticket stage &amp; writes internal notes.</div>
+      <span class="pill ext">AI Agent</span>
+    </div>
+
+  </div>
+</div>
+
+<div class="connector">
+  <span class="line"></span>
+  <span class="label"><span class="arrow">▼</span> Webhook POST · ticket payload</span>
+  <span class="line"></span>
+</div>
+
+<!-- ==================== LAYER 2: ORCHESTRATION ==================== -->
+<div class="layer">
+  <div class="layer-head">
+    <div class="layer-title">
+      <span class="layer-num">02</span>
+      <div>
+        <div>Orchestration Layer</div>
+        <div class="layer-caption">Workflow automation and RPA data collection</div>
+      </div>
+    </div>
+    <span class="layer-tag mixed">AWS + Render</span>
+  </div>
+
+  <div class="layer-row">
+
+    <!-- n8n -->
+    <div class="service big">
+      <div class="icon">
+        <!-- Official n8n logo (three connected nodes) -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect x="2" y="2" width="60" height="60" rx="14" fill="#EA4B71"/>
+          <g fill="white">
+            <circle cx="16" cy="32" r="5"/>
+            <circle cx="32" cy="18" r="5"/>
+            <circle cx="32" cy="46" r="5"/>
+            <circle cx="48" cy="32" r="5"/>
+          </g>
+          <g stroke="white" stroke-width="3" stroke-linecap="round" fill="none">
+            <path d="M16 32 L32 18"/>
+            <path d="M16 32 L32 46"/>
+            <path d="M32 18 L48 32"/>
+            <path d="M32 46 L48 32"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">n8n Workflow Engine</div>
+      <div class="role">
+        Orchestrates the full pipeline:
+        <br>· AI-driven inquiry decomposition
+        <br>· Calls <code>/required-data</code>
+        <br>· Invokes ForUsBots RPA
+        <br>· Calls <code>/generate-response</code>
+        <br>· Merges payloads into <code>kb_bundle_v1</code>
+        <br>· Final injection &amp; ticket closure
+      </div>
+      <span class="pill aws">AWS EC2</span>
+    </div>
+
+    <!-- FORUSBOTS -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="bot" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#60A5FA"/><stop offset="100%" stop-color="#1D4ED8"/></linearGradient></defs>
+          <rect x="12" y="18" width="40" height="34" rx="8" fill="url(#bot)"/>
+          <rect x="28" y="8" width="8" height="10" rx="2" fill="url(#bot)"/>
+          <circle cx="32" cy="8" r="3" fill="#22d3ee"/>
+          <circle cx="22" cy="30" r="4" fill="white"/>
+          <circle cx="42" cy="30" r="4" fill="white"/>
+          <circle cx="22" cy="30" r="2" fill="#1D4ED8"/>
+          <circle cx="42" cy="30" r="2" fill="#1D4ED8"/>
+          <rect x="24" y="40" width="16" height="3" rx="1.5" fill="white"/>
+          <rect x="6" y="26" width="6" height="18" rx="3" fill="url(#bot)"/>
+          <rect x="52" y="26" width="6" height="18" rx="3" fill="url(#bot)"/>
+        </svg>
+      </div>
+      <div class="name">ForUsBots</div>
+      <div class="role">RPA scrapers. Given a field list, they query record-keeper portals and return balances, vesting, eligibility, loan status, etc.</div>
+      <span class="pill render">Render · Internal RPA</span>
+    </div>
+
+  </div>
+</div>
+
+<div class="connector">
+  <span class="line"></span>
+  <span class="label"><span class="arrow">▼</span> HTTPS · X-API-Key · Identity Token (OAuth2)</span>
+  <span class="line"></span>
+</div>
+
+<!-- ==================== LAYER 3: KB RAG API CORE ==================== -->
+<div class="layer" style="border-color: rgba(91,140,255,0.45); box-shadow: 0 0 0 1px rgba(91,140,255,0.15) inset, 0 30px 80px -30px rgba(91,140,255,0.3);">
+  <div class="layer-head">
+    <div class="layer-title">
+      <span class="layer-num">03</span>
+      <div>
+        <div>KB RAG API — System Core</div>
+        <div class="layer-caption">FastAPI service deployed on Cloud Run, containerized with Docker</div>
+      </div>
+    </div>
+    <span class="layer-tag gcp">GCP · Cloud Run</span>
+  </div>
+
+  <div class="layer-row">
+
+    <!-- CLOUD RUN -->
+    <div class="service core big">
+      <div class="icon">
+        <!-- Cloud Run official icon (hexagonal with arrow) -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="crun" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4285F4"/><stop offset="100%" stop-color="#1A73E8"/></linearGradient></defs>
+          <path d="M32 4 L56 18 L56 46 L32 60 L8 46 L8 18 Z" fill="url(#crun)"/>
+          <path d="M24 22 L24 42 L44 32 Z" fill="white"/>
+        </svg>
+      </div>
+      <div class="name">Cloud Run</div>
+      <div class="role">
+        Serverless container runtime hosting <code>kb-rag-system</code>.<br>
+        512 MiB · 1 vCPU · 0–5 instances · IAM-protected ingress · Auto-scales to zero.
+      </div>
+      <span class="pill gcp">Serverless · us-central1</span>
+    </div>
+
+    <!-- FASTAPI -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="fapi" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#009688"/><stop offset="100%" stop-color="#005C54"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="28" fill="url(#fapi)"/>
+          <path d="M28 6 L14 36 L28 36 L24 58 L48 28 L34 28 L40 6 Z" fill="white"/>
+        </svg>
+      </div>
+      <div class="name">FastAPI</div>
+      <div class="role">Python 3.12 web framework. Three REST endpoints · Pydantic validation · OpenAPI docs · Uvicorn ASGI server.</div>
+      <span class="tech">python 3.12</span>
+    </div>
+
+    <!-- DOCKER -->
+    <div class="service">
+      <div class="icon">
+        <!-- Docker whale icon -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="64" rx="12" fill="#0B1828"/>
+          <g fill="#2496ED">
+            <rect x="14" y="28" width="6" height="6" rx="0.6"/>
+            <rect x="21" y="28" width="6" height="6" rx="0.6"/>
+            <rect x="28" y="28" width="6" height="6" rx="0.6"/>
+            <rect x="35" y="28" width="6" height="6" rx="0.6"/>
+            <rect x="21" y="21" width="6" height="6" rx="0.6"/>
+            <rect x="28" y="21" width="6" height="6" rx="0.6"/>
+            <rect x="35" y="21" width="6" height="6" rx="0.6"/>
+            <rect x="28" y="14" width="6" height="6" rx="0.6"/>
+          </g>
+          <path d="M52 30 C50 28 47 28 45 29 C44 26 40 25 37 27 C37 32 39 36 44 36 L51 36 C55 36 58 33 58 30 C56 30 54 30 52 30 Z" fill="#2496ED"/>
+          <path d="M10 37 C10 44 16 48 24 48 L40 48 C48 48 54 44 56 37 L10 37 Z" fill="#2496ED"/>
+        </svg>
+      </div>
+      <div class="name">Docker</div>
+      <div class="role">Multi-stage image on <code>python:3.12-slim</code> bundling API, pipeline &amp; dependencies.</div>
+      <span class="tech">python:3.12-slim</span>
+    </div>
+
+    <!-- PYTHON/RAG ENGINE -->
+    <div class="service">
+      <div class="icon">
+        <!-- Python logo (double snake) -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="py1" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#387EB8"/><stop offset="100%" stop-color="#366994"/></linearGradient>
+            <linearGradient id="py2" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFE873"/><stop offset="100%" stop-color="#FFD43B"/></linearGradient>
+          </defs>
+          <path d="M32 6 C22 6 22 11 22 18 L22 22 L32 22 L32 24 L18 24 C12 24 8 28 8 36 C8 44 11 48 18 48 L22 48 L22 42 C22 36 26 32 32 32 L42 32 C48 32 52 28 52 22 L52 18 C52 11 48 6 32 6 Z M26 12 C28 12 30 14 30 16 C30 18 28 20 26 20 C24 20 22 18 22 16 C22 14 24 12 26 12 Z" fill="url(#py1)"/>
+          <path d="M32 58 C42 58 42 53 42 46 L42 42 L32 42 L32 40 L46 40 C52 40 56 36 56 28 C56 20 53 16 46 16 L42 16 L42 22 C42 28 38 32 32 32 L22 32 C16 32 12 36 12 42 L12 46 C12 53 16 58 32 58 Z M38 52 C36 52 34 50 34 48 C34 46 36 44 38 44 C40 44 42 46 42 48 C42 50 40 52 38 52 Z" fill="url(#py2)"/>
+        </svg>
+      </div>
+      <div class="name">RAG Engine</div>
+      <div class="role">Core Python pipeline: semantic search · reranking · token budgeting · multi-tier chunk selection · structured response generation.</div>
+      <span class="tech">rag_engine.py · 103 KB</span>
+    </div>
+
+  </div>
+
+  <!-- ENDPOINTS -->
+  <div class="endpoints">
+    <div class="endpoint">
+      <div class="endpoint-head"><span class="method">POST</span><span class="path">/api/v1/required-data</span></div>
+      <div class="desc">Returns the list of participant fields the RAG engine needs to resolve a given inquiry (balance, vesting, plan rules, eligibility, etc.).</div>
+    </div>
+    <div class="endpoint">
+      <div class="endpoint-head"><span class="method">POST</span><span class="path">/api/v1/generate-response</span></div>
+      <div class="desc">Outcome-driven response: <code>can_proceed</code> · <code>blocked_not_eligible</code> · <code>blocked_missing_data</code> · <code>ambiguous_plan_rules</code>, with source citations.</div>
+    </div>
+    <div class="endpoint">
+      <div class="endpoint-head"><span class="method">POST</span><span class="path">/api/v1/knowledge-question</span></div>
+      <div class="desc">General 401(k) question answering backed by retrieval over the curated knowledge base with confidence &amp; coverage metrics.</div>
+    </div>
+  </div>
+</div>
+
+<div class="connector">
+  <span class="line"></span>
+  <span class="label"><span class="arrow">▼</span> Semantic retrieval + LLM generation</span>
+  <span class="line"></span>
+</div>
+
+<!-- ==================== LAYER 4: AI & VECTOR DB ==================== -->
+<div class="layer">
+  <div class="layer-head">
+    <div class="layer-title">
+      <span class="layer-num">04</span>
+      <div>
+        <div>Intelligence Layer — Hybrid LLM Routing &amp; Vector Search</div>
+        <div class="layer-caption">Cost-optimized model dispatch and semantic retrieval over the knowledge base</div>
+      </div>
+    </div>
+    <span class="layer-tag ai">AI Providers</span>
+  </div>
+
+  <div class="layer-row">
+
+    <!-- OPENAI -->
+    <div class="service">
+      <div class="icon">
+        <!-- OpenAI logo -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="64" rx="14" fill="#0B1828"/>
+          <path d="M54 28 C54 22 49 18 43 18 C41 18 39 18 37 19 C35 17 33 16 30 16 C24 16 20 20 20 26 L20 30 C15 31 12 36 12 41 C12 46 16 50 21 51 C23 53 25 54 28 54 C34 54 38 50 38 44 L38 40 C43 39 46 34 46 29 C46 28 46 27 45 27 L45 27 Z" fill="none" stroke="#10A37F" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M22 32 L32 38 L42 32 M32 26 L32 38" stroke="#10A37F" stroke-width="1.6" fill="none" stroke-linecap="round"/>
+        </svg>
+      </div>
+      <div class="name">OpenAI</div>
+      <div class="role">Primary reasoning model for outcome decisions and structured response bodies.</div>
+      <span class="tech">gpt-5.4 · gpt-4o-mini</span>
+    </div>
+
+    <!-- GEMINI -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="gem" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0%" stop-color="#4285F4"/>
+              <stop offset="40%" stop-color="#9B72F5"/>
+              <stop offset="75%" stop-color="#E94E77"/>
+              <stop offset="100%" stop-color="#EA4335"/>
+            </linearGradient>
+          </defs>
+          <path d="M32 4 C34 18 46 30 60 32 C46 34 34 46 32 60 C30 46 18 34 4 32 C18 30 30 18 32 4 Z" fill="url(#gem)"/>
+        </svg>
+      </div>
+      <div class="name">Google Gemini</div>
+      <div class="role">Default router target for decomposition and response bodies. Lower cost, lower latency.</div>
+      <span class="tech">gemini-2.5-flash</span>
+    </div>
+
+    <!-- VERTEX AI -->
+    <div class="service">
+      <div class="icon">
+        <!-- Vertex AI GCP icon: diamond with node -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="vx" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#4285F4"/><stop offset="100%" stop-color="#1967D2"/></linearGradient></defs>
+          <path d="M32 4 L60 32 L32 60 L4 32 Z" fill="url(#vx)"/>
+          <circle cx="32" cy="32" r="10" fill="white"/>
+          <circle cx="32" cy="32" r="5" fill="url(#vx)"/>
+          <g fill="white">
+            <circle cx="32" cy="14" r="3"/>
+            <circle cx="50" cy="32" r="3"/>
+            <circle cx="32" cy="50" r="3"/>
+            <circle cx="14" cy="32" r="3"/>
+          </g>
+          <g stroke="white" stroke-width="1.5" fill="none">
+            <path d="M32 14 L32 22"/>
+            <path d="M50 32 L42 32"/>
+            <path d="M32 50 L32 42"/>
+            <path d="M14 32 L22 32"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Vertex AI</div>
+      <div class="role">GCP-native Gemini access via Application Default Credentials. No API keys in production.</div>
+      <span class="pill gcp">GCP · ADC</span>
+    </div>
+
+    <!-- PINECONE -->
+    <div class="service highlight-g">
+      <div class="icon">
+        <!-- Pinecone-inspired pine cone geometry -->
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="64" rx="14" fill="#0B1828"/>
+          <g fill="#ffffff">
+            <path d="M32 8 L38 16 L26 16 Z"/>
+            <path d="M22 18 L32 14 L42 18 L42 24 L32 20 L22 24 Z"/>
+            <path d="M20 26 L32 22 L44 26 L44 32 L32 28 L20 32 Z"/>
+            <path d="M18 34 L32 30 L46 34 L46 40 L32 36 L18 40 Z"/>
+            <path d="M20 42 L32 38 L44 42 L44 48 L32 44 L20 48 Z"/>
+            <path d="M24 50 L32 47 L40 50 L36 56 L28 56 Z"/>
+          </g>
+        </svg>
+      </div>
+      <div class="name">Pinecone</div>
+      <div class="role">
+        Serverless vector DB<br>
+        Namespace <code>kb_articles</code><br>
+        1024-dim · llama-text-embed-v2<br>
+        ~547 vectors indexed
+      </div>
+      <span class="pill ext">Serverless Vector DB</span>
+    </div>
+
+    <!-- CHUNKS -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <rect width="64" height="64" rx="14" fill="#0B1828"/>
+          <rect x="10" y="10" width="20" height="10" rx="2" fill="#EF4444"/>
+          <rect x="34" y="10" width="20" height="10" rx="2" fill="#F59E0B"/>
+          <rect x="10" y="24" width="24" height="10" rx="2" fill="#22C55E"/>
+          <rect x="38" y="24" width="16" height="10" rx="2" fill="#3B82F6"/>
+          <rect x="10" y="38" width="16" height="10" rx="2" fill="#A855F7"/>
+          <rect x="30" y="38" width="24" height="10" rx="2" fill="#06B6D4"/>
+          <text x="32" y="58" text-anchor="middle" font-family="JetBrains Mono" font-size="7" font-weight="700" fill="#7a88ae">MULTI-TIER</text>
+        </svg>
+      </div>
+      <div class="name">Multi-Tier Chunks</div>
+      <div class="role">CRITICAL · HIGH · MEDIUM · LOW tiers with reranking and token-budget-aware assembly.</div>
+      <span class="tech">~8,400 chunks</span>
+    </div>
+
+  </div>
+</div>
+
+<div class="connector">
+  <span class="line"></span>
+  <span class="label"><span class="arrow">▼</span> Managed persistence, observability &amp; security</span>
+  <span class="line"></span>
+</div>
+
+<!-- ==================== LAYER 5: GCP MANAGED SERVICES ==================== -->
+<div class="layer">
+  <div class="layer-head">
+    <div class="layer-title">
+      <span class="layer-num">05</span>
+      <div>
+        <div>Google Cloud Managed Services</div>
+        <div class="layer-caption">Storage, analytics, security and operations backbone</div>
+      </div>
+    </div>
+    <span class="layer-tag gcp">Google Cloud Platform</span>
+  </div>
+
+  <div class="layer-row">
+
+    <!-- CLOUD STORAGE -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="gcs" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#FCD34D"/><stop offset="100%" stop-color="#F59E0B"/></linearGradient></defs>
+          <path d="M32 4 L58 18 L58 46 L32 60 L6 46 L6 18 Z" fill="url(#gcs)"/>
+          <rect x="16" y="22" width="32" height="6" rx="1" fill="white"/>
+          <rect x="16" y="30" width="32" height="6" rx="1" fill="white" opacity="0.7"/>
+          <rect x="16" y="38" width="32" height="6" rx="1" fill="white" opacity="0.5"/>
+          <circle cx="22" cy="25" r="1.4" fill="#F59E0B"/>
+          <circle cx="22" cy="33" r="1.4" fill="#F59E0B"/>
+          <circle cx="22" cy="41" r="1.4" fill="#F59E0B"/>
+        </svg>
+      </div>
+      <div class="name">Cloud Storage</div>
+      <div class="role">Bucket <code>rag-kb-system-kb-articles</code> · versioning enabled · source of truth for KB JSON.</div>
+      <span class="pill gcp">Object Store</span>
+    </div>
+
+    <!-- FIRESTORE -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="fs" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFCA28"/><stop offset="100%" stop-color="#FFA000"/></linearGradient></defs>
+          <path d="M32 4 L58 18 L58 46 L32 60 L6 46 L6 18 Z" fill="url(#fs)"/>
+          <path d="M18 24 L46 24 L42 32 L22 32 Z" fill="white"/>
+          <path d="M14 34 L50 34 L46 42 L18 42 Z" fill="white" opacity="0.85"/>
+          <path d="M20 44 L44 44 L40 50 L24 50 Z" fill="white" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="name">Firestore</div>
+      <div class="role">Native-mode NoSQL. Collection <code>execution_logs</code> for full trace observability.</div>
+      <span class="pill gcp">NoSQL</span>
+    </div>
+
+    <!-- BIGQUERY -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="bq" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#669DF6"/><stop offset="100%" stop-color="#1967D2"/></linearGradient></defs>
+          <circle cx="30" cy="30" r="22" fill="url(#bq)"/>
+          <circle cx="30" cy="30" r="12" fill="none" stroke="white" stroke-width="3"/>
+          <rect x="42" y="42" width="16" height="5" rx="1.5" transform="rotate(45 50 44.5)" fill="white"/>
+          <rect x="25" y="24" width="3" height="12" fill="white"/>
+          <rect x="30" y="20" width="3" height="16" fill="white"/>
+          <rect x="35" y="28" width="3" height="8" fill="white"/>
+        </svg>
+      </div>
+      <div class="name">BigQuery</div>
+      <div class="role">Dataset <code>kb_analytics</code> for instrumentation, KPIs, and retrieval-quality analysis.</div>
+      <span class="pill gcp">Data Warehouse</span>
+    </div>
+
+    <!-- SECRET MANAGER -->
+    <div class="service highlight-g">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="sm" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#34A853"/><stop offset="100%" stop-color="#0B8043"/></linearGradient></defs>
+          <path d="M32 4 L54 14 L54 34 C54 48 44 56 32 60 C20 56 10 48 10 34 L10 14 Z" fill="url(#sm)"/>
+          <rect x="24" y="28" width="16" height="16" rx="2" fill="white"/>
+          <path d="M26 28 L26 22 C26 18 29 16 32 16 C35 16 38 18 38 22 L38 28" fill="none" stroke="white" stroke-width="2.5"/>
+          <circle cx="32" cy="36" r="2.5" fill="#0B8043"/>
+        </svg>
+      </div>
+      <div class="name">Secret Manager</div>
+      <div class="role">Holds <code>api-key</code>, <code>openai-api-key</code>, <code>pinecone-api-key</code>. Injected at Cloud Run runtime.</div>
+      <span class="pill gcp">Secrets</span>
+    </div>
+
+    <!-- CLOUD LOGGING -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="log" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#669DF6"/><stop offset="100%" stop-color="#4285F4"/></linearGradient></defs>
+          <rect x="8" y="8" width="48" height="48" rx="8" fill="url(#log)"/>
+          <rect x="16" y="16" width="32" height="4" rx="1.5" fill="white"/>
+          <rect x="16" y="24" width="32" height="4" rx="1.5" fill="white" opacity="0.75"/>
+          <rect x="16" y="32" width="24" height="4" rx="1.5" fill="white" opacity="0.55"/>
+          <rect x="16" y="40" width="28" height="4" rx="1.5" fill="white" opacity="0.4"/>
+          <rect x="16" y="48" width="20" height="4" rx="1.5" fill="white" opacity="0.3"/>
+        </svg>
+      </div>
+      <div class="name">Cloud Logging</div>
+      <div class="role">Structured logs with correlation IDs · per-request tracing · auto-ingested from Cloud Run.</div>
+      <span class="pill gcp">Observability</span>
+    </div>
+
+    <!-- CLOUD MONITORING -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="cm" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#EA4335"/><stop offset="100%" stop-color="#B31412"/></linearGradient></defs>
+          <circle cx="32" cy="32" r="26" fill="url(#cm)"/>
+          <path d="M14 36 L22 28 L28 34 L38 20 L46 28 L50 24" stroke="white" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <circle cx="22" cy="28" r="2" fill="white"/>
+          <circle cx="38" cy="20" r="2" fill="white"/>
+          <circle cx="50" cy="24" r="2" fill="white"/>
+        </svg>
+      </div>
+      <div class="name">Cloud Monitoring</div>
+      <div class="role">Alerts: 5xx error rate &gt; 5 · latency &gt; 30s · uptime checks on <code>/health</code>.</div>
+      <span class="pill gcp">Alerting</span>
+    </div>
+
+    <!-- ARTIFACT REGISTRY -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4DB66E"/><stop offset="100%" stop-color="#0B8043"/></linearGradient></defs>
+          <path d="M10 14 L54 14 L50 22 L14 22 Z" fill="url(#ar)"/>
+          <path d="M14 22 L50 22 L50 54 L14 54 Z" fill="url(#ar)"/>
+          <rect x="24" y="30" width="16" height="4" fill="white"/>
+          <rect x="22" y="38" width="20" height="4" fill="white" opacity="0.8"/>
+          <rect x="20" y="46" width="24" height="4" fill="white" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="name">Artifact Registry</div>
+      <div class="role">Repo <code>kb-rag/kb-rag-system</code> — tagged <code>$SHORT_SHA</code> &amp; <code>latest</code>.</div>
+      <span class="pill gcp">Docker Registry</span>
+    </div>
+
+    <!-- CLOUD BUILD -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="cb" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#FFCA28"/><stop offset="100%" stop-color="#F09F00"/></linearGradient></defs>
+          <rect x="8" y="8" width="48" height="48" rx="8" fill="url(#cb)"/>
+          <circle cx="24" cy="24" r="5" fill="white"/>
+          <circle cx="40" cy="24" r="5" fill="white"/>
+          <circle cx="24" cy="40" r="5" fill="white"/>
+          <circle cx="40" cy="40" r="5" fill="white"/>
+          <path d="M24 24 L40 24 M24 40 L40 40 M24 24 L24 40 M40 24 L40 40 M24 24 L40 40" stroke="white" stroke-width="1.6"/>
+        </svg>
+      </div>
+      <div class="name">Cloud Build</div>
+      <div class="role">CI/CD runner. <code>cloudbuild.yaml</code> triggered on push to <code>main</code> automates build &amp; deploy.</div>
+      <span class="pill gcp">CI/CD</span>
+    </div>
+
+    <!-- IAM -->
+    <div class="service">
+      <div class="icon">
+        <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="iam" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#4285F4"/><stop offset="100%" stop-color="#174EA6"/></linearGradient></defs>
+          <rect x="8" y="12" width="48" height="40" rx="8" fill="url(#iam)"/>
+          <circle cx="32" cy="28" r="7" fill="white"/>
+          <path d="M18 44 C18 38 24 36 32 36 C40 36 46 38 46 44 L46 46 L18 46 Z" fill="white"/>
+          <rect x="12" y="16" width="6" height="3" rx="1" fill="white" opacity="0.6"/>
+          <rect x="46" y="16" width="6" height="3" rx="1" fill="white" opacity="0.6"/>
+        </svg>
+      </div>
+      <div class="name">IAM &amp; Service Accounts</div>
+      <div class="role"><code>kb-rag-runner@rag-kb-system.iam</code> with least-privilege · OAuth2 for n8n → Cloud Run.</div>
+      <span class="pill gcp">Identity</span>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== CI/CD ==================== -->
+<h2 class="section">Continuous Delivery Pipeline</h2>
+<div class="layer">
+  <div class="layer-head">
+    <div class="layer-title">
+      <span class="layer-num">CI</span>
+      <div>
+        <div>Deployment Flow</div>
+        <div class="layer-caption">Push-to-deploy from GitHub into Cloud Run in under 4 minutes</div>
+      </div>
+    </div>
+    <span class="layer-tag gcp">Cloud Build</span>
+  </div>
+
+  <div class="cicd-steps">
+
+    <div class="flow-step">
+      <div class="num" style="background:#ffffff; color:#0b1020;">1</div>
+      <div class="title">GitHub</div>
+      <div class="desc">Push to <code>main</code><br><code>ialvist/ForUsGuide</code></div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#FBBC04;">2</div>
+      <div class="title">Cloud Build Trigger</div>
+      <div class="desc">Reads <code>cloudbuild.yaml</code> and starts the build</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#2496ED;">3</div>
+      <div class="title">Docker Build</div>
+      <div class="desc">python:3.12-slim · requirements.txt · source</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#34A853;">4</div>
+      <div class="title">Push Image</div>
+      <div class="desc">Artifact Registry tagged <code>$SHORT_SHA</code> + <code>latest</code></div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#4285F4;">5</div>
+      <div class="title">Deploy Cloud Run</div>
+      <div class="desc">Rolling update · secrets injected from Secret Manager</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#22c55e;">6</div>
+      <div class="title">Health Check</div>
+      <div class="desc"><code>GET /health</code> validates Pinecone &amp; LLMs</div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ==================== FULL FLOW: 9 STEPS ==================== -->
+<section class="flow-section">
+  <h2 class="flow-title">End-to-End Ticket Resolution — 9 Stages</h2>
+  <div class="flow-subtitle">From participant inquiry to closed DevRev ticket, including the final DevRev AI → n8n webhook that seals the loop.</div>
+
+  <div class="flow-steps">
+
+    <div class="flow-step">
+      <div class="num" style="background:#F05B24;">1</div>
+      <div class="title">DevRev Ticket</div>
+      <div class="desc">Participant raises an inquiry. Ticket created &amp; webhook fires.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#EA4B71;">2</div>
+      <div class="title">n8n Decomposition</div>
+      <div class="desc">AI splits the ticket into distinct inquiries &amp; topics.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#4285F4;">3</div>
+      <div class="title">Required Data</div>
+      <div class="desc">KB API returns the fields each inquiry needs.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#22d3ee;">4</div>
+      <div class="title">ForUsBots RPA</div>
+      <div class="desc">Scrapes portal &amp; returns participant data to n8n.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#4f46e5;">5</div>
+      <div class="title">Pinecone Search</div>
+      <div class="desc">Filtered semantic retrieval by record_keeper &amp; topic.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#10a37f;">6</div>
+      <div class="title">LLM Routing</div>
+      <div class="desc">Gemini / GPT generate the structured outcome response.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#a855f7;">7</div>
+      <div class="title">kb_bundle_v1</div>
+      <div class="desc">n8n consolidates responses &amp; sends to DevRev AI Agent.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#F0431B;">8</div>
+      <div class="title">DevRev AI → n8n</div>
+      <div class="desc">AI crafts reply &amp; posts <code>final-handling</code> webhook to n8n.</div>
+    </div>
+
+    <div class="flow-step">
+      <div class="num" style="background:#22c55e;">9</div>
+      <div class="title">Ticket Injected &amp; Closed</div>
+      <div class="desc">n8n writes reply + internal notes into DevRev &amp; closes the ticket.</div>
+    </div>
+
+  </div>
+
+  <!-- STEP 8 PAYLOAD -->
+  <div class="webhook-box">
+    <div class="webhook-head">
+      <div class="title">
+        <svg width="18" height="18" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#EA4B71"/><g fill="white"><circle cx="16" cy="32" r="5"/><circle cx="32" cy="18" r="5"/><circle cx="32" cy="46" r="5"/><circle cx="48" cy="32" r="5"/></g><g stroke="white" stroke-width="3" fill="none"><path d="M16 32 L32 18"/><path d="M16 32 L32 46"/><path d="M32 18 L48 32"/><path d="M32 46 L48 32"/></g></svg>
+        Step 8 · DevRev AI Agent callback payload
+      </div>
+      <div class="meta">POST https://n8nhooks.forusall.com/webhook/final-handling</div>
+    </div>
+    <div class="webhook-body"><span class="c">// Inbound from DevRev AI → received by n8n, used in Step 9 to update the ticket</span>
+<span class="p">{</span>
+  <span class="k">"agentResponse"</span>: <span class="s">"{</span>
+    <span class="k">  \"participant_reply\"</span>: <span class="s">\"Hi Selecia, thank you for reaching out about your hardship withdrawal...\"</span>,
+    <span class="k">  \"set_stage_solved\"</span>: <span class="s">false</span>,
+    <span class="k">  \"stage_reason\"</span>: <span class="s">\"ResponseSource is Knowledge-Question, live status cannot be determined — escalation required.\"</span>,
+    <span class="k">  \"internal_notes\"</span>: <span class="s">\"Participant inquired about status of hardship withdrawal. Provided general info &amp; advised Support.\"</span>
+  <span class="s">}"</span>,
+  <span class="k">"ticketId"</span>: <span class="s">"TKT-874561"</span>
+<span class="p">}</span></div>
+  </div>
+
+</section>
+
+<!-- ==================== TECH STACK ==================== -->
+<h2 class="section">Complete Technology Stack</h2>
+<div class="stack-grid">
+  <div class="stack-item">
+    <div class="cat" style="color:var(--accent);">Compute</div>
+    <div class="list">Python 3.12 · FastAPI · Uvicorn · Docker · Cloud Run</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--gcp-green);">Storage &amp; Data</div>
+    <div class="list">Cloud Storage · Firestore · BigQuery</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:#818cf8;">Vector DB</div>
+    <div class="list">Pinecone serverless · llama-text-embed-v2 · 1024-dim</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--openai);">Language Models</div>
+    <div class="list">OpenAI GPT-5.4 · Gemini 2.5 Flash · Vertex AI</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--devrev);">CRM</div>
+    <div class="list">DevRev · DevRev AI Agent · webhooks</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--n8n);">Orchestration</div>
+    <div class="list">n8n on AWS · ForUsBots RPA on Render</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--gcp-yellow);">CI/CD</div>
+    <div class="list">GitHub · Cloud Build · Artifact Registry</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--green);">Security</div>
+    <div class="list">IAM · Secret Manager · OAuth2 · X-API-Key</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--red);">Observability</div>
+    <div class="list">Cloud Logging · Cloud Monitoring · Alerts</div>
+  </div>
+  <div class="stack-item">
+    <div class="cat" style="color:var(--accent-2);">Testing</div>
+    <div class="list">pytest · httpx · stress tests · 280 KB articles</div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<footer class="page">
+  <div><strong>FUA Knowledge Base RAG System</strong> · ForUsAll Engineering · 2026</div>
+  <div style="margin-top:6px;">Generated 2026-04-21 · Project <code>rag-kb-system</code> · Endpoint <code>kb-rag-system-900340137010.us-central1.run.app</code></div>
+</footer>
+
+</div>
+</body>
+</html>

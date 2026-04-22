@@ -430,10 +430,12 @@ class RAGEngine:
                 fallback_parts = [inquiry, topic]
                 enriched_queries.append(" ".join(fallback_parts))
             
-            # 3. Simplified parallel search (KQ-style)
-            chunks, per_query_scores = await self._search_for_response_simple(
+            # 3. Parallel RK/topic-aware cascade search
+            chunks, per_query_scores = await self._search_for_response_parallel_cascade(
                 enriched_queries=enriched_queries,
+                record_keeper=record_keeper,
                 plan_type=plan_type,
+                topic=topic,
             )
             
             if not chunks:
@@ -475,7 +477,8 @@ class RAGEngine:
             phase1_model: Optional[str] = None
             outcome = None
             outcome_reason = None
-            
+            p1_parsed: Optional[Dict[str, Any]] = None
+
             try:
                 p1_result = await asyncio.wait_for(
                     self._call_llm(
@@ -523,11 +526,18 @@ class RAGEngine:
             # ── Fast path: out_of_scope_inquiry ──
             if outcome == "out_of_scope_inquiry":
                 logger.info(f"Off-topic inquiry (fast path): {outcome_reason}")
+                oos_opening = (p1_parsed.get("opening") or "").strip() if isinstance(p1_parsed, dict) else ""
+                if not oos_opening:
+                    oos_opening = (
+                        "I can only assist with retirement plan-related questions such as "
+                        "401(k) distributions, rollovers, loans, and account access. "
+                        "Your inquiry appears to be outside this scope."
+                    )
                 oos_parsed = {
                     "outcome": "out_of_scope_inquiry",
                     "outcome_reason": outcome_reason,
                     "response_to_participant": {
-                        "opening": "I can only assist with retirement plan-related questions such as 401(k) distributions, rollovers, loans, and account access. Your inquiry appears to be outside this scope.",
+                        "opening": oos_opening,
                         "key_points": [],
                         "steps": [],
                         "warnings": []
@@ -745,7 +755,7 @@ class RAGEngine:
     GR_UNFILTERED_TOP_K = 15
     GR_LLM_TIMEOUT_SECONDS = 180
     GR_PHASE1_TIMEOUT_SECONDS = 45
-    GR_PHASE1_MAX_TOKENS = 500
+    GR_PHASE1_MAX_TOKENS = 800
     GR_FALLBACK_MIN_CHUNKS = 6
     GR_FALLBACK_MIN_SCORE = 0.35
 
@@ -959,7 +969,59 @@ class RAGEngine:
     RK_FALLBACK_DEFAULT = "LT Trust"
     RK_CASCADE_MIN_CHUNKS = 1
     RK_CASCADE_MIN_SCORE = 0.15
-    
+
+    # Callers send topics in their own vocabulary (often plural, colloquial,
+    # or hyphenated) while Pinecone chunks are tagged with a fixed set of
+    # canonical values. This table translates caller-side topics to the
+    # exact metadata values used at chunking time. An empty list means
+    # "no meaningful mapping — skip the topic filter entirely". Unmapped
+    # topics fall through to ``[topic_lower]`` so new vocabulary keeps
+    # working if it happens to match.
+    TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
+        "distribution": ["distribution"],
+        "distributions": ["distribution"],
+        "rollover": ["rollover"],
+        "rollovers": ["rollover"],
+        "loan": ["loan"],
+        "loans": ["loan"],
+        "hardship": ["hardship_withdrawal"],
+        "hardships": ["hardship_withdrawal"],
+        "hardship_withdrawal": ["hardship_withdrawal"],
+        "termination": ["termination_distribution_request"],
+        "termination_distribution": ["termination_distribution_request"],
+        "termination_distribution_request": ["termination_distribution_request"],
+        "excess_contribution": ["excess_contribution_refund"],
+        "excess_contributions": ["excess_contribution_refund"],
+        "excess_contribution_refund": ["excess_contribution_refund"],
+        "in_service": ["in_service_withdrawal_options"],
+        "in-service": ["in_service_withdrawal_options"],
+        "in_service_withdrawal": ["in_service_withdrawal_options"],
+        "in_service_withdrawal_options": ["in_service_withdrawal_options"],
+        # RMDs are a distribution sub-type in the KB
+        "rmd": ["distribution"],
+        "rmds": ["distribution"],
+        # No indexed topic exists for these — skip the topic filter
+        "investments": [],
+        "investment": [],
+        "contributions": [],
+        "contribution": [],
+    }
+
+    def _resolve_topic_filter(self, topic: Optional[str]) -> Optional[List[str]]:
+        """Translate a caller topic into Pinecone ``topic`` metadata values.
+
+        Returns ``None`` when no topic filter should be applied (either
+        because the caller did not provide a topic or because the mapping
+        is explicitly empty).
+        """
+        if not topic:
+            return None
+        key = topic.lower().strip()
+        mapped = self.TOPIC_NORMALIZATION_MAP.get(key)
+        if mapped is not None:
+            return mapped or None
+        return [key]
+
     def _get_topic_variations(self, topic: str) -> List[str]:
         """
         Genera variaciones de case para un topic (Pinecone es case-sensitive).
@@ -1266,67 +1328,113 @@ class RAGEngine:
         all_chunks.sort(key=lambda c: c.get('score', 0), reverse=True)
         return all_chunks
     
-    async def _search_for_response_simple(
+    async def _search_for_response_parallel_cascade(
         self,
         enriched_queries: List[str],
+        record_keeper: Optional[str],
         plan_type: str,
+        topic: str,
     ) -> tuple:
         """
-        KQ-style parallel search for generate_response endpoint.
-        
-        For each enriched query, fires two lanes in parallel:
-        1. Unfiltered semantic search (top_k=15) — relies on embedding
-           relevance; the enriched query text already contains topic +
-           participant data for natural RK/topic matching.
-        2. Plan-type filtered search (top_k=10) — safety net ensuring
-           plan-specific articles surface even if embeddings are noisy.
-        
-        This replaces the RK cascade + topic-strategy approach, reducing
-        Pinecone calls from ~24-28 to ~6-8 per request.
-        
-        Returns:
-            (merged_chunks, per_query_scores)
+        Parallel RK/topic-aware search for generate_response endpoint.
+
+        Runs the full cascade (RK + topic exact + tags variations + global
+        scope + LT Trust fallback + semantic) in a single asyncio.gather
+        round instead of the sequential short-circuit cascade used by
+        required_data. Adds a conditional fallback pass (plan_type-only)
+        when the primary pass yields too few or low-scoring chunks.
         """
-        per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
-        tasks = []
-        task_queries: List[str] = []
+        plan_filter = {"$in": [plan_type, "all"]}
+        has_rk = bool(record_keeper)
+        resolved_topics = self._resolve_topic_filter(topic)
+        has_topic_filter = resolved_topics is not None
+        rk_is_default = record_keeper == self.RK_FALLBACK_DEFAULT
+        topic_variations = self._get_topic_variations(topic) if topic else []
+
+        tasks: List = []
+        task_meta: List[tuple] = []
+
+        def add(eq: str, lane: str, top_k: int, filter_dict: Dict[str, Any]):
+            tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=filter_dict))
+            task_meta.append((eq, lane))
 
         for eq in enriched_queries:
-            tasks.append(
-                self._cached_query(eq, top_k=self.KQ_TOP_K_PER_QUERY, filter_dict=None)
-            )
-            task_queries.append(eq)
-            tasks.append(
-                self._cached_query(
-                    eq,
-                    top_k=10,
-                    filter_dict={"plan_type": {"$in": [plan_type, "all"]}}
-                )
-            )
-            task_queries.append(eq)
+            if has_rk and has_topic_filter:
+                add(eq, "A:rk+topic", 10, {
+                    "plan_type": plan_filter,
+                    "record_keeper": {"$eq": record_keeper},
+                    "topic": {"$in": resolved_topics},
+                })
+            if has_rk and topic_variations:
+                add(eq, "B:rk+tags", 8, {
+                    "plan_type": plan_filter,
+                    "record_keeper": {"$eq": record_keeper},
+                    "tags": {"$in": topic_variations},
+                })
+            if has_rk:
+                add(eq, "C:rk_broad", 12, {
+                    "plan_type": plan_filter,
+                    "record_keeper": {"$eq": record_keeper},
+                })
+            if has_topic_filter:
+                add(eq, "D:global+topic", 10, {
+                    "plan_type": plan_filter,
+                    "scope": {"$eq": "global"},
+                    "topic": {"$in": resolved_topics},
+                })
+            add(eq, "E:global_broad", 10, {
+                "plan_type": plan_filter,
+                "scope": {"$eq": "global"},
+            })
+            if has_rk and not rk_is_default:
+                add(eq, "F:lt_trust", 10, {
+                    "plan_type": plan_filter,
+                    "record_keeper": {"$eq": self.RK_FALLBACK_DEFAULT},
+                })
+            add(eq, "G:semantic", self.GR_UNFILTERED_TOP_K, None)
 
         results = await asyncio.gather(*tasks)
 
-        for i, eq in enumerate(enriched_queries):
-            unfiltered = results[2 * i]
-            filtered = results[2 * i + 1]
-            best = max(
-                (c.get('score', 0) for c in unfiltered + filtered),
-                default=0
-            )
-            per_query_scores[eq] = round(best, 4)
+        per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
+        for (eq, _lane), result_list in zip(task_meta, results):
+            best = max((c.get('score', 0) for c in result_list), default=0)
+            if best > per_query_scores[eq]:
+                per_query_scores[eq] = round(best, 4)
 
         chunks = self._merge_and_rank_chunks(*results)
 
+        lane_counts = {}
+        for (_eq, lane), result_list in zip(task_meta, results):
+            lane_counts[lane] = lane_counts.get(lane, 0) + len(result_list)
+
+        top_score = chunks[0].get('score', 0) if chunks else 0
+        if len(chunks) < self.GR_FALLBACK_MIN_CHUNKS or top_score < self.GR_FALLBACK_MIN_SCORE:
+            logger.info(
+                f"GR fallback triggered: {len(chunks)} chunks, top_score={top_score:.3f}"
+            )
+            fallback_tasks = [
+                self._cached_query(eq, top_k=15, filter_dict={"plan_type": plan_filter})
+                for eq in enriched_queries
+            ]
+            fallback_results = await asyncio.gather(*fallback_tasks)
+            for eq, result_list in zip(enriched_queries, fallback_results):
+                best = max((c.get('score', 0) for c in result_list), default=0)
+                if best > per_query_scores[eq]:
+                    per_query_scores[eq] = round(best, 4)
+            chunks = self._merge_and_rank_chunks(chunks, *fallback_results)
+            lane_counts["H:fallback"] = sum(len(r) for r in fallback_results)
+
+        total_calls = len(tasks) + (len(enriched_queries) if "H:fallback" in lane_counts else 0)
+
         if not chunks:
-            logger.warning("generate_response: no results from simplified search")
+            logger.warning("generate_response: no results from parallel cascade search")
         else:
             unique_articles = len(set(
                 c['metadata'].get('article_id') for c in chunks
             ))
             logger.info(
-                f"generate_response (simple): {len(chunks)} chunks from "
-                f"{unique_articles} articles ({len(tasks)} Pinecone calls)"
+                f"generate_response (parallel_cascade): {len(chunks)} chunks from "
+                f"{unique_articles} articles ({total_calls} Pinecone calls, lanes={lane_counts})"
             )
 
         return chunks, per_query_scores

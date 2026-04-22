@@ -16,7 +16,7 @@ See Development Docs/HYBRID_LLM_ARCHITECTURE.md for the full rationale.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Any, Dict, NamedTuple, Optional
 
@@ -382,6 +382,20 @@ def _model_config_from_name(model_name: str) -> ModelConfig:
     )
 
 
+# Per-task effort overrides applied on top of the defaults from
+# `_model_config_from_name`. Mirrors the guidance in HYBRID_LLM_ARCHITECTURE.md:
+# simple tasks get minimal reasoning/thinking; critical tasks keep their
+# provider-default budgets. Only tasks that need an override appear here.
+_TASK_EFFORT_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    # Decompose splits a question into 1–3 sub-queries. On Gemini, zero
+    # thinking budget is enough — the few-shot prompt is sufficient
+    # without a thinking pass. On GPT-5 we keep the provider default
+    # (medium reasoning) because dropping it below medium causes the
+    # model to skip decomposition on multi-concept inquiries.
+    "decompose": {"thinking_budget": 0},
+}
+
+
 def build_routes_from_settings(settings: Any) -> Dict[str, TaskRoute]:
     """
     Build the routing table from the Settings object.
@@ -398,17 +412,15 @@ def build_routes_from_settings(settings: Any) -> Dict[str, TaskRoute]:
         "knowledge_question": settings.LLM_ROUTE_KNOWLEDGE,
     }
 
-    # For `decompose` we want zero thinking budget — it's a trivial task.
     routes: Dict[str, TaskRoute] = {}
     for task, model_name in route_map.items():
         primary = _model_config_from_name(model_name)
-        if task == "decompose" and primary.provider == LLMProvider.GEMINI:
-            primary = ModelConfig(
-                provider=primary.provider,
-                model=primary.model,
-                temperature=primary.temperature,
-                thinking_budget=0,
-            )
+        override = _TASK_EFFORT_OVERRIDES.get(task)
+        if override:
+            if primary.provider == LLMProvider.OPENAI and "reasoning_effort" in override:
+                primary = replace(primary, reasoning_effort=override["reasoning_effort"])
+            elif primary.provider == LLMProvider.GEMINI and "thinking_budget" in override:
+                primary = replace(primary, thinking_budget=override["thinking_budget"])
         fallback = _DEFAULT_FALLBACK_BY_PROVIDER.get(primary.provider)
         routes[task] = TaskRoute(primary=primary, fallback=fallback)
 

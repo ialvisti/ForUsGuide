@@ -250,7 +250,7 @@ CRITICAL DISTINCTIONS between outcomes:
 Using the eligibility requirements, blocking conditions, and decision guide from the knowledge base context, determine which outcome applies.
 
 Output valid JSON:
-{"outcome": "one_of_the_five_outcomes", "outcome_reason": "Concise explanation referencing specific data points and rules."}"""
+{"outcome": "one_of_the_five_outcomes", "outcome_reason": "Concise explanation referencing specific data points and rules.", "opening": "Only when outcome is out_of_scope_inquiry: a 1-2 sentence personalized opening that (a) references what the inquiry was about, (b) politely tells the participant you can only assist with retirement plan operations (401(k) distributions, rollovers, loans, account access, etc.). Omit this field for all other outcomes."}"""
 
 USER_PROMPT_GR_OUTCOME_TEMPLATE = """KNOWLEDGE BASE CONTEXT:
 {context}

@@ -280,18 +280,39 @@ class RAGEngine:
                 llm_response = json.dumps({"participant_data": [], "plan_data": [], "coverage_gaps": []})
             
             # 5. Parse LLM response + extract coverage gaps
-            try:
-                parsed = json.loads(llm_response)
-            except json.JSONDecodeError as e:
-                logger.error(f"Error parseando JSON del LLM: {e}")
-                logger.error(f"Respuesta: {llm_response[:500]}")
-                parsed = {"participant_data": [], "plan_data": [], "coverage_gaps": []}
-            
-            coverage_gaps = parsed.get("coverage_gaps", [])
-            if not isinstance(coverage_gaps, list):
-                coverage_gaps = []
-            coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
-            
+            parsed, coverage_gaps = self._parse_required_data_response(llm_response)
+
+            # 5b. Safety net: if rdmh chunks cleared the retrieval gate but the
+            #     LLM emitted empty arrays AND flagged no coverage gaps, the
+            #     primary model silently mis-extracted. Retry once on the
+            #     fallback provider before accepting the empty result.
+            if self._should_retry_required_data(parsed, coverage_gaps, best_rdmh_score):
+                logger.warning(
+                    f"Safety net triggered: rdmh score {best_rdmh_score:.4f} >= "
+                    f"{self.RD_RETRIEVAL_MIN_SCORE} but primary LLM "
+                    f"({llm_provider_used}:{llm_model_used}) returned empty "
+                    f"required_fields with no coverage_gaps. Retrying via fallback. "
+                    f"Original response: {llm_response[:300]}"
+                )
+                try:
+                    llm_result = await self.router.call(
+                        task_type="required_data",
+                        system_prompt=system_prompt,
+                        user_prompt=user_prompt,
+                        max_tokens=800,
+                        force_fallback=True,
+                    )
+                    llm_response = llm_result.content
+                    llm_usage = llm_result.usage
+                    llm_provider_used = llm_result.provider_used
+                    llm_model_used = llm_result.model_used
+                    parsed, coverage_gaps = self._parse_required_data_response(llm_response)
+                except Exception as retry_error:
+                    logger.error(
+                        f"Fallback retry failed: {type(retry_error).__name__}: "
+                        f"{retry_error}. Keeping original empty response."
+                    )
+
             # Remove coverage_gaps from required_fields (it's a separate response field)
             required_fields = {k: v for k, v in parsed.items() if k != "coverage_gaps"}
             
@@ -571,63 +592,69 @@ class RAGEngine:
                 )
             
             # ================================================================
-            # 5b. Phase 2 — Response Generation
+            # 5b. Unified LLM call (outcome + response in a single pass)
             # ================================================================
+            # Phase 1's outcome is used only as an out-of-scope gate (handled
+            # above); for in-scope inquiries we discard it and let the unified
+            # call determine outcome + redact the full response with access to
+            # its own reasoning and the richer cross-article / deduplication
+            # rules in SYSTEM_PROMPT_GENERATE_RESPONSE.
             completion_budget = max(self.RESPONSE_MIN_TOKENS, max_response_tokens - tokens_used)
-            phase2_timeout = max(30, self.GR_LLM_TIMEOUT_SECONDS - phase1_elapsed - 5)
-            
-            p2_system, p2_user = build_gr_response_prompt(
+            unified_timeout = max(30, self.GR_LLM_TIMEOUT_SECONDS - phase1_elapsed - 5)
+
+            unified_system, unified_user = build_generate_response_prompt(
                 context=context,
                 inquiry=inquiry,
                 collected_data=collected_data,
                 record_keeper=record_keeper,
                 plan_type=plan_type,
                 topic=topic,
-                outcome=outcome,
-                outcome_reason=outcome_reason,
+                max_tokens=completion_budget,
                 dominant_mode=dominant_mode,
             )
-            
+
             phase2_usage = None
             phase2_provider: Optional[str] = None
             phase2_model: Optional[str] = None
             try:
-                p2_result = await asyncio.wait_for(
+                unified_result = await asyncio.wait_for(
                     self._call_llm(
-                        system_prompt=p2_system,
-                        user_prompt=p2_user,
+                        system_prompt=unified_system,
+                        user_prompt=unified_user,
                         max_tokens=completion_budget,
                         task_type="gr_response",
                     ),
-                    timeout=phase2_timeout,
+                    timeout=unified_timeout,
                 )
-                llm_response = p2_result.content
-                phase2_usage = p2_result.usage
-                phase2_provider = p2_result.provider_used
-                phase2_model = p2_result.model_used
+                llm_response = unified_result.content
+                phase2_usage = unified_result.usage
+                phase2_provider = unified_result.provider_used
+                phase2_model = unified_result.model_used
             except asyncio.TimeoutError:
-                logger.warning(f"Phase 2 timed out after {phase2_timeout:.0f}s")
+                logger.warning(f"Unified LLM call timed out after {unified_timeout:.0f}s")
                 llm_response = json.dumps(
                     self._build_llm_timeout_fallback(inquiry, selected_chunks)
                 )
             except LLMEmptyResponseError as e:
-                logger.error(f"Phase 2 LLM empty: {e}")
+                logger.error(f"Unified LLM empty: {e}")
                 llm_response = json.dumps(
                     self._build_llm_fallback_parsed(f"finish_reason={e.finish_reason}")
                 )
             except Exception as e:
-                logger.error(f"Phase 2 LLM error: {type(e).__name__}: {e}")
+                logger.error(f"Unified LLM error: {type(e).__name__}: {e}")
                 llm_response = json.dumps(
                     self._build_llm_timeout_fallback(inquiry, selected_chunks)
                 )
-            
-            # 6. Parse Phase 2 response
+
+            # 6. Parse unified LLM response
             try:
                 parsed = json.loads(llm_response)
             except json.JSONDecodeError as e:
-                logger.error(f"Phase 2 JSON parse error: {e}")
+                logger.error(f"Unified LLM JSON parse error: {e}")
                 logger.error(f"Raw response: {llm_response[:500]}")
                 parsed = {
+                    "outcome": "ambiguous_plan_rules",
+                    "outcome_reason": "Response parsing failed — raw LLM output could not be parsed as JSON.",
                     "response_to_participant": {
                         "opening": "We were unable to generate a structured response for your inquiry.",
                         "key_points": [llm_response[:1000]] if llm_response else [],
@@ -643,44 +670,41 @@ class RAGEngine:
                     "data_gaps": ["LLM response was not valid JSON"],
                     "coverage_gaps": []
                 }
-            
-            # Inject Phase 1 outcome into parsed response
-            parsed["outcome"] = outcome
-            parsed["outcome_reason"] = outcome_reason
-            
+
             # Validate required structure
             missing_keys = self._LLM_RESPONSE_REQUIRED_KEYS - parsed.keys()
             if missing_keys:
                 logger.error(
-                    f"Phase 2 response missing required keys: {missing_keys}. "
+                    f"Unified response missing required keys: {missing_keys}. "
                     f"Keys present: {list(parsed.keys())}"
                 )
                 parsed = self._build_llm_fallback_parsed(
                     f"missing keys: {', '.join(sorted(missing_keys))}"
                 )
-                parsed["outcome"] = outcome
-                parsed["outcome_reason"] = outcome_reason
-            
+
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
                 coverage_gaps = []
             coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
-            
-            # 7. Hybrid confidence
+
+            # 7. Hybrid confidence (retrieval + LLM gap signal + outcome floor)
             confidence = self._calculate_confidence(chunks, coverage_gaps=coverage_gaps)
-            
-            # Phase 1 outcome is a stronger signal than retrieval metrics alone.
-            # When the LLM determined a concrete outcome and Phase 2 produced
-            # a real response, ensure the decision aligns with the outcome.
+
+            # Outcome is a stronger signal than retrieval metrics alone.
+            # Index the floor by the outcome produced by the unified LLM call.
+            final_outcome = parsed.get("outcome")
             OUTCOME_CONFIDENCE_FLOORS = {
                 "can_proceed": 0.65,
                 "blocked_not_eligible": 0.65,
                 "blocked_missing_data": 0.55,
                 "ambiguous_plan_rules": 0.50,
             }
-            floor = OUTCOME_CONFIDENCE_FLOORS.get(outcome, 0.0)
+            floor = OUTCOME_CONFIDENCE_FLOORS.get(final_outcome, 0.0)
             if floor and confidence < floor:
-                logger.info(f"Confidence floor applied: {confidence:.3f} -> {floor} (outcome={outcome})")
+                logger.info(
+                    f"Confidence floor applied: {confidence:.3f} -> {floor} "
+                    f"(outcome={final_outcome})"
+                )
                 confidence = floor
             
             decision = self._determine_decision(confidence)
@@ -723,7 +747,8 @@ class RAGEngine:
                     "relevant_articles": relevant_articles,
                     "coverage_gaps": coverage_gaps,
                     "phase1_elapsed_s": round(phase1_elapsed, 1),
-                    "phase1_outcome": outcome,
+                    "phase1_relevance_signal": outcome,
+                    "final_outcome": final_outcome,
                     "dominant_mode": dominant_mode,
                     "dominance_top_signal": dominance_info.get("top_signal"),
                     "dominance_runner_up_signal": dominance_info.get("runner_up_signal"),
@@ -754,8 +779,8 @@ class RAGEngine:
     GR_MAX_CHUNKS_PER_ARTICLE = 6
     GR_UNFILTERED_TOP_K = 15
     GR_LLM_TIMEOUT_SECONDS = 180
-    GR_PHASE1_TIMEOUT_SECONDS = 45
-    GR_PHASE1_MAX_TOKENS = 800
+    GR_PHASE1_TIMEOUT_SECONDS = 20
+    GR_PHASE1_MAX_TOKENS = 500
     GR_FALLBACK_MIN_CHUNKS = 6
     GR_FALLBACK_MIN_SCORE = 0.35
 
@@ -764,9 +789,9 @@ class RAGEngine:
     # multi-article diversity and focus the context on that article. Keeps
     # cross-article synthesis intact when multiple articles score similarly.
     GR_DOMINANCE_ENABLED           = True   # kill-switch
-    GR_DOMINANCE_MIN_TOP_SIGNAL    = 1.50   # sum of top-3 chunk scores from dominant article
-    GR_DOMINANCE_MAX_RATIO         = 0.55   # runner-up signal must be < 55% of dominant
-    GR_DOMINANCE_MIN_CHUNKS        = 3      # dominant article must have >=3 retrieved chunks
+    GR_DOMINANCE_MIN_TOP_SIGNAL    = 2.00   # sum of top-3 chunk scores from dominant article
+    GR_DOMINANCE_MAX_RATIO         = 0.40   # runner-up signal must be < 40% of dominant
+    GR_DOMINANCE_MIN_CHUNKS        = 4      # dominant article must have >=4 retrieved chunks
     GR_DOMINANCE_MAX_CHUNKS_SINGLE = 8      # cap on dominant-article chunks in single mode
     GR_DOMINANCE_SECONDARY_SLOT    = 1      # insurance chunks from runner-up article
     
@@ -2302,7 +2327,46 @@ class RAGEngine:
     # ========================================================================
     # Helper Methods - Fallbacks
     # ========================================================================
-    
+
+    def _parse_required_data_response(
+        self, llm_response: str
+    ) -> tuple[Dict[str, Any], List[str]]:
+        """Parse the LLM JSON for required_data and return (parsed, coverage_gaps).
+
+        Returns an empty-arrays default on JSON errors so callers can detect
+        the empty state with the same code path used for valid-but-empty
+        responses.
+        """
+        try:
+            parsed = json.loads(llm_response)
+        except json.JSONDecodeError as e:
+            logger.error(f"Error parseando JSON del LLM: {e}")
+            logger.error(f"Respuesta: {llm_response[:500]}")
+            parsed = {"participant_data": [], "plan_data": [], "coverage_gaps": []}
+
+        coverage_gaps = parsed.get("coverage_gaps", [])
+        if not isinstance(coverage_gaps, list):
+            coverage_gaps = []
+        coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
+        return parsed, coverage_gaps
+
+    def _should_retry_required_data(
+        self,
+        parsed: Dict[str, Any],
+        coverage_gaps: List[str],
+        best_rdmh_score: float,
+    ) -> bool:
+        """True when the primary LLM returned an empty extraction despite the
+        retrieval gate finding a relevant required_data_must_have chunk."""
+        if best_rdmh_score < self.RD_RETRIEVAL_MIN_SCORE:
+            return False
+        if coverage_gaps:
+            return False
+        arrays = [v for k, v in parsed.items() if k != "coverage_gaps"]
+        if not arrays:
+            return True
+        return all(isinstance(v, list) and len(v) == 0 for v in arrays)
+
     def _build_empty_required_data_response(self, reason: str) -> RequiredDataResponse:
         """Construye respuesta vacía para required_data."""
         return RequiredDataResponse(

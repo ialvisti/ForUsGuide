@@ -24,6 +24,13 @@ from pathlib import Path
 # Agregar parent directory al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Load .env into os.environ so vars consumed by SDKs (e.g. Google ADC reading
+# GOOGLE_APPLICATION_CREDENTIALS) are visible. pydantic-settings only populates
+# the Settings object, it does not export to os.environ. No-op in Cloud Run
+# where .env is absent and ADC comes from the metadata server.
+from dotenv import load_dotenv
+load_dotenv()
+
 from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.pinecone_uploader import PineconeUploader
 from data_pipeline.execution_logger import ExecutionLogger

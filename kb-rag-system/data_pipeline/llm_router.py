@@ -155,6 +155,7 @@ class LLMRouter:
         system_prompt: str,
         user_prompt: str,
         max_tokens: int,
+        force_fallback: bool = False,
     ) -> LLMResponse:
         """
         Route an LLM call based on task type.
@@ -162,10 +163,24 @@ class LLMRouter:
         Tries the primary model first. On ANY exception, falls back to the
         secondary model if one is configured. Raises if both fail, or if the
         primary fails and there is no fallback.
+
+        When `force_fallback=True`, the primary is skipped and the fallback
+        model is used directly. Callers use this to retry after the primary
+        produced a valid but semantically wrong response (e.g., empty
+        extraction despite relevant context).
         """
         route = self._routes.get(task_type)
         if not route:
             raise ValueError(f"No route configured for task_type={task_type}")
+
+        if force_fallback:
+            if not route.fallback:
+                raise ValueError(
+                    f"force_fallback=True but no fallback configured for {task_type}"
+                )
+            return await self._dispatch(
+                route.fallback, system_prompt, user_prompt, max_tokens
+            )
 
         try:
             return await self._dispatch(route.primary, system_prompt, user_prompt, max_tokens)

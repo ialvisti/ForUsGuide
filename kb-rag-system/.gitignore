@@ -27,6 +27,10 @@ wheels/
 .env
 .env.local
 
+# GCP credentials
+sa-key.json
+*-sa-key.json
+
 # IDE
 .vscode/
 .idea/

@@ -19,19 +19,40 @@ RECORDKEEPER CONTEXT:
 - When referencing LT Trust procedures, treat them as ForUsAll procedures.
 
 CRITICAL RULES:
-1. Extract ONLY the data fields explicitly listed in the "Must Have" section of the context
-2. These are fields that must be retrieved from the participant portal or profile system
-3. Do NOT invent or add fields that are not explicitly listed in the "Must Have" section
-4. Do NOT include fields from "Nice to Have" or any other section — those are handled separately
-5. Categorize fields into participant_data and plan_data based on their source
+1. Extract EVERY data field that appears under any `# Required Data — Must Have` heading in the context. Multiple Must Have sections from different articles may be present — include fields from all of them, deduplicating by field name.
+2. The `**Source:**` value on each field (e.g., `participant_profile`, `message_text`, `agent_input`) is INFORMATIONAL ONLY — it tells downstream systems where to fetch the value. It is NOT a filter. A field with `Source: message_text` or `Source: agent_input` is just as required as one with `Source: participant_profile`, and MUST be included.
+3. Do NOT invent or add fields that are not explicitly listed under a Must Have heading.
+4. Do NOT include fields from "Nice to Have" or any other section — those are handled separately.
+5. Categorize each field into `participant_data` or `plan_data` based on WHAT THE FIELD DESCRIBES:
+   - participant_data: attributes of the participant or their specific account (name, status, balance, termination date, MFA status, chosen option, requested amount, etc.)
+   - plan_data: attributes of the plan configuration itself (maximum number of loans allowed, vesting schedule, plan-level thresholds, record keeper, etc.)
+   Do NOT categorize based on the `Source:` tag.
 6. For each field, specify:
    - field: Clear, snake_case name derived from the data point name
    - description: What this field represents (from the "Description" in context)
    - why_needed: Why we need this specific data (from "Why needed" in context)
    - data_type: Use one of [text, currency, date, boolean, number] for scalar fields. For list fields, specify the element type inside brackets: list[text], list[currency], list[date], list[boolean], list[number]. NEVER use bare "list" — always include the element type.
    - required: true (all must-have fields are required)
-7. If the context contains no "Must Have" section, return empty arrays
+7. Return empty arrays ONLY IF no `# Required Data — Must Have` heading appears anywhere in the context. If even one Must Have section is present, at least one of `participant_data` / `plan_data` MUST be non-empty.
 8. In the "coverage_gaps" field, list ONLY data points or topics the inquiry asks about that are ENTIRELY ABSENT from the context. Do NOT report as gaps: (a) fine-grained details when the general topic IS covered, (b) tangential topics the inquiry mentions but is not primarily about. If the context addresses the main subject matter, return an empty list.
+
+EXAMPLE (illustrative — do not copy these fields verbatim):
+Context snippet:
+  # Required Data — Must Have (Portal/Profile Data)
+  ### Termination date
+  **Description:** The date the participant terminated their employment.
+  **Why needed:** To verify eligibility for distribution.
+  **Source:** participant_profile
+  ### Chosen 401(k) option
+  **Description:** Which path the participant wants to take with the 401(k).
+  **Why needed:** Needed to explain the correct rules and next steps.
+  **Source:** message_text
+
+Correct extraction (both fields included despite different Source values):
+  "participant_data": [
+    {"field": "termination_date", "description": "The date the participant terminated their employment.", "why_needed": "To verify eligibility for distribution.", "data_type": "date", "required": true},
+    {"field": "chosen_401k_option", "description": "Which path the participant wants to take with the 401(k).", "why_needed": "Needed to explain the correct rules and next steps.", "data_type": "text", "required": true}
+  ]
 
 Output must be valid JSON with this structure:
 {
@@ -463,16 +484,32 @@ def build_generate_response_prompt(
     record_keeper,
     plan_type: str,
     topic: str,
-    max_tokens: int
+    max_tokens: int,
+    dominant_mode: bool = False,
 ) -> tuple:
     """
-    Construye los prompts para el endpoint generate_response (legacy single-phase).
-    
+    Construye los prompts para el endpoint generate_response (unified single-call).
+
+    When dominant_mode is True, retrieval indicates one article comprehensively
+    covers the inquiry; a short hint is appended to the system prompt so the
+    LLM prefers a focused single-article answer over forced cross-article
+    synthesis.
+
     Returns:
         (system_prompt, user_prompt)
     """
     data_str = _format_collected_data(collected_data)
-    
+
+    system_prompt = SYSTEM_PROMPT_GENERATE_RESPONSE
+    if dominant_mode:
+        system_prompt += (
+            "\n\nCONTEXT SIGNAL: Retrieval indicates a single article "
+            "comprehensively covers this inquiry. Prefer a focused answer "
+            "grounded in that article. Include facts from secondary articles "
+            "ONLY if they add a distinct, inquiry-relevant point not present "
+            "in the dominant article."
+        )
+
     user_prompt = USER_PROMPT_GENERATE_RESPONSE_TEMPLATE.format(
         context=context,
         collected_data=data_str,
@@ -482,8 +519,8 @@ def build_generate_response_prompt(
         topic=topic,
         max_tokens=max_tokens
     )
-    
-    return SYSTEM_PROMPT_GENERATE_RESPONSE, user_prompt
+
+    return system_prompt, user_prompt
 
 
 def build_gr_outcome_prompt(

@@ -1,0 +1,1587 @@
+{
+    "metadata": {
+      "article_id": "401k_loan_basics_and_support_guide",
+      "title": "401(k) Loan Basics and Support Guide",
+      "description": "Global AI support guide for 401(k) loan requests covering participant and plan eligibility checks, record-keeper-based routing, MFA-dependent online access considerations, general loan availability rules, vested-balance-based loan limits, repayment terms, primary residence documentation, loan status review, missing-funds troubleshooting, repayment increase rules, full payoff handling, provider transitions, employment and plan termination impacts, loan offset tax treatment, rollover timing, record-keeper-dependent fee-disclosure rules for Vanguard and LT Trust plans, and support-routing requirements when plan-specific or prior 12-month loan-history details cannot be confirmed.",
+      "topic": "loan",
+      "subtopics": [
+        "eligibility",
+        "record_keeper_routing",
+        "mfa_access",
+        "loan_availability",
+        "loan_limits",
+        "concurrent_loan_limits",
+        "repayment",
+        "primary_residence",
+        "loan_status",
+        "disbursement_methods",
+        "missing_funds",
+        "repayment_increase",
+        "early_payoff",
+        "provider_transition",
+        "employment_termination",
+        "plan_termination",
+        "loan_offset",
+        "rollover_timing",
+        "tax_treatment",
+        "fees",
+        "support_routing"
+      ],
+      "audience": "Internal AI Support Agent",
+      "record_keeper": null,
+      "plan_type": "401(k)",
+      "scope": "global",
+      "tags": [
+        "Loan Request",
+        "Participant Dashboard",
+        "MFA",
+        "Taxes",
+        "Payroll Issue"
+      ],
+      "language": "en-US",
+      "last_updated": null,
+      "schema_version": "kb_article_v2",
+      "transformed_at": "2026-04-24",
+      "source_last_updated": null,
+      "source_system": "DevRev"
+    },
+    "details": {
+      "business_rules": [
+        {
+          "category": "eligibility",
+          "rules": [
+            "Not every retirement plan offers loans, so eligibility depends on the employer's plan rules.",
+            "In general, a participant must be actively employed, have enough vested balance available, and meet IRS loan requirements.",
+            "Plans may set their own minimum vested balance and may limit how many loans a participant can have at once."
+          ]
+        },
+        {
+          "category": "loan_limits",
+          "rules": [
+            "The maximum amount a participant can generally borrow is 50% of the vested account balance, up to $50,000.",
+            "The $50,000 cap is reduced by the highest outstanding loan balance the participant had during the previous 12 months, even if that earlier loan has already been repaid.",
+            "A plan may require a minimum loan amount, such as $1,000."
+          ]
+        },
+        {
+          "category": "repayment",
+          "rules": [
+            "Most 401(k) loans are repaid automatically through payroll deductions.",
+            "The standard repayment term is usually up to 5 years.",
+            "If the loan is used to purchase a primary residence, the repayment term may extend up to 15 years, and supporting documentation is required."
+          ]
+        },
+        {
+          "category": "payment_change_and_payoff",
+          "rules": [
+            "Participants who want to repay faster may be able to increase payroll deductions only in exact multiples of the original scheduled payment.",
+            "The repayment schedule is not reamortized when higher payroll deductions are used.",
+            "Participants cannot choose an arbitrary increased payment amount.",
+            "A participant may pay off the loan early by increasing payroll deductions or paying the entire remaining balance in one full payoff.",
+            "Partial external payments by check, ACH, or wire are not accepted unless they cover the full remaining balance.",
+            "There is no prepayment penalty for paying the loan off in full."
+          ]
+        },
+        {
+          "category": "delivery_and_missing_funds",
+          "rules": [
+            "Loan proceeds may appear as a withdrawal, check, wire, or ACH transfer.",
+            "If funds were sent by check and more than two weeks have passed since the check was issued, a stop payment and reissue may be requested.",
+            "If a replacement check is being switched to ACH, updated authorization forms can be sent by support.",
+            "If the original delivery method was wire or ACH, the transfer is typically processed by Mid Atlantic Trust Company.",
+            "If a wire or ACH fails because of incorrect banking details, name mismatch, or account type issues, the funds are automatically reissued by check to the address on file.",
+            "When funds are automatically reissued by check after a failed wire or ACH, the participant is asked to wait two full weeks from the check issue date before requesting another reissue."
+          ]
+        },
+        {
+          "category": "provider_transition",
+          "rules": [
+            "If an employer changes 401(k) providers, an outstanding loan will usually transfer with the participant's account as long as the participant is still actively employed.",
+            "The remaining balance and repayment schedule generally stay the same, and payroll deductions continue after the transition is complete.",
+            "Participants do not usually need to reapply for the loan or restart repayment.",
+            "There may be a short blackout period during the provider change when account access and loan activity are temporarily unavailable.",
+            "After the transition, there may be a brief delay before the loan appears on the new provider's dashboard."
+          ]
+        },
+        {
+          "category": "employment_termination_and_plan_termination",
+          "rules": [
+            "If employment ends while a loan is still outstanding, the participant will typically have about 90 days to repay the remaining balance.",
+            "If the balance is not repaid in time after employment ends, it is generally treated as a loan offset or deemed distribution and becomes taxable income.",
+            "The amount will be reported on Form 1099-R, and if the participant is under age 59 1/2, a 10% early withdrawal penalty may also apply.",
+            "A participant may avoid taxes and penalties after a loan offset by completing a rollover of an amount equal to the offset into an IRA or another eligible retirement plan by the federal tax return due date for the year of the offset, including extensions.",
+            "If the employer terminates the 401(k) plan, payroll loan repayments stop, and the remaining balance is generally due in full before the plan closes.",
+            "If the loan is not repaid before plan closure, it is treated as a taxable distribution and may be subject to taxes and penalties.",
+            "Once the plan is fully terminated and distributed, online account access is disabled."
+          ]
+        },
+        {
+          "category": "fees",
+          "rules": [
+            "Record Keeper must be identified first before disclosing any loan-related fee.",
+            "If the Record Keeper is RK: Vanguard, disclose the Vanguard fee rules only.",
+            "If the Record Keeper is RK: LT Trust, disclose the LT Trust fee rules only.",
+            "If the Record Keeper is neither RK: Vanguard nor RK: LT Trust, support must confirm any loan-related fees before they are disclosed."
+          ]
+        }
+      ],
+      "fees": [
+        {
+          "service": "Vanguard loan processing fee",
+          "fee": "$150",
+          "notes": "Applies only to RK: Vanguard plans. The fee is taken out of the loan proceeds. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
+        },
+        {
+          "service": "LT Trust loan processing fee",
+          "fee": "$100",
+          "notes": "Applies only to RK: LT Trust plans. Deducted from participant account balance. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
+        },
+        {
+          "service": "LT Trust loan maintenance fee",
+          "fee": "$75",
+          "notes": "Annual fee. Applies only to RK: LT Trust plans. Deducted from participant account balance. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
+        },
+        {
+          "service": "LT Trust regular mail check fee",
+          "fee": "$0",
+          "notes": "No additional charges apply for a Regular Mail Check for LT Trust plans. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
+        },
+        {
+          "service": "LT Trust wire fee",
+          "fee": "$35",
+          "notes": "Additional fee if wire is selected as the disbursal payment method when requesting a loan. Applies only to RK: LT Trust plans. This fee applies per wire, not per request, and is non-refundable. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
+        },
+        {
+          "service": "LT Trust overnight check fee",
+          "fee": "$50",
+          "notes": "Additional fee if Overnight Check is selected as the disbursal payment method when requesting a loan. Applies only to RK: LT Trust plans. This fee applies per overnight check, not per request, and is non-refundable. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
+        }
+      ],
+      "steps": [
+        {
+          "step_number": 1,
+          "type": "internal-check",
+          "visibility": "agent-only",
+          "description": "Check the participant's status in the profile.",
+          "notes": "Confirm whether the profile's Eligibility Status supports mapping the participant to an Active Participant Status for this workflow. Only active employees should be guided through the loan-request path described here."
+        },
+        {
+          "step_number": 2,
+          "type": "internal-check",
+          "visibility": "agent-only",
+          "description": "Check the participant's MFA status.",
+          "notes": "Confirm whether MFA status is enrolled. MFA status is only used to determine whether the LT Trust online account flow may be available."
+        },
+        {
+          "step_number": 3,
+          "type": "internal-check",
+          "visibility": "agent-only",
+          "description": "Check the participant's record keeper in the RK section.",
+          "notes": "The record keeper determines which article, login path, website guidance, and fee rules should be used. For RK: LT Trust, use the LT Trust article path. For RK: Vanguard, use the Vanguard article path."
+        },
+        {
+          "step_number": 4,
+          "type": "internal-check",
+          "visibility": "agent-only",
+          "description": "Check whether the participant's plan offers loans.",
+          "notes": "Review the Maximum Number of Loans section in the participant profile or other plan loan availability fields used internally. The participant can only request a loan if the plan offers loans."
+        },
+        {
+          "step_number": 5,
+          "type": "internal-check",
+          "visibility": "agent-only",
+          "description": "Check whether the participant already has active unpaid loan balances.",
+          "notes": "Review loan records and Outstanding Balance values to determine whether any current loans are still active and unpaid, because this may affect how many new loans the participant can request."
+        },
+        {
+          "step_number": 6,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "After steps 1 through 5 are confirmed, guide the participant using the correct route.",
+          "notes": "If the record keeper is 'RK: LT Trust', follow the article 'LT: 401(k) Loan Complete Guide — Submission, Repayment & Support'. If the record keeper is 'RK: Vanguard', follow the article 'Vanguard: How to Submit a Loan Request'. If the record keeper is neither 'RK: LT Trust' nor 'RK: Vanguard', do not route to those record-keeper-specific articles. Instead, provide only the participant's confirmed general loan guidance from this article and direct the participant to support for record-keeper-specific help."
+        },
+        {
+          "step_number": 7,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the participant asks about loan-related fees, confirm the Record Keeper before disclosing any fee details.",
+          "notes": "If the Record Keeper is RK: Vanguard, disclose the one-time $150 loan fee taken from proceeds. If the Record Keeper is RK: LT Trust, disclose only the LT Trust fee rules confirmed in scope. If the Record Keeper is neither, do not disclose or estimate a fee and redirect the participant to support for fee confirmation."
+        },
+        {
+          "step_number": 8,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the participant is considering a primary residence loan, advise that supporting documentation is required, such as a signed purchase agreement or loan estimate.",
+          "notes": "The longer repayment term may extend up to 15 years for this purpose."
+        },
+        {
+          "step_number": 9,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the participant submitted the wrong loan purpose, direct them to contact support so the request can be rejected and resubmitted correctly.",
+          "notes": "This applies when the participant accidentally chose the wrong loan purpose."
+        },
+        {
+          "step_number": 10,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "After submission, have the participant check status in the plan dashboard under Loans, Distributions, or Transaction History.",
+          "notes": "Pending or completed activity may show the disbursement method and amount."
+        },
+        {
+          "step_number": 11,
+          "type": "internal-check",
+          "visibility": "agent-only",
+          "description": "If status is unclear, help verify the request and the expected delivery timeline.",
+          "notes": "Processing usually takes about 1 to 2 business days, but timing may vary by provider and delivery method."
+        },
+        {
+          "step_number": 12,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If funds were supposed to arrive by check and more than two weeks have passed since issue, explain that a stop payment and reissue may be requested.",
+          "notes": "The participant will need to confirm the correct mailing address."
+        },
+        {
+          "step_number": 13,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the participant wants to switch from a replacement check to ACH, explain that support can send updated authorization forms.",
+          "notes": "This applies only when the participant is changing the replacement delivery method."
+        },
+        {
+          "step_number": 14,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the original delivery method was wire or ACH and the transfer failed, explain that the funds are automatically reissued by check to the address on file.",
+          "notes": "Common failure reasons listed in the article are incorrect banking details, name mismatch, or account type issues."
+        },
+        {
+          "step_number": 15,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If funds were automatically reissued by check after a failed wire or ACH, tell the participant to wait two full weeks from the check issue date before requesting another reissue.",
+          "notes": "Do not shorten this waiting period."
+        },
+        {
+          "step_number": 16,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the participant wants to repay faster, explain that payroll deductions may be increased only in exact multiples of the original scheduled payment.",
+          "notes": "The loan is not reamortized, so terms and interest calculation do not change."
+        },
+        {
+          "step_number": 17,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the participant wants to pay off the loan early, explain that they may either increase payroll deductions or make one full payoff of the entire remaining balance.",
+          "notes": "Partial external payments are not accepted unless they cover the full remaining balance."
+        },
+        {
+          "step_number": 18,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If an employer changes providers, explain that the loan will usually transfer with the account if the participant is still actively employed.",
+          "notes": "There may be a short blackout period and a brief delay before the loan appears on the new provider's dashboard."
+        },
+        {
+          "step_number": 19,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the participant leaves employment with an outstanding loan, explain that the remaining balance will typically need to be repaid within about 90 days.",
+          "notes": "If not repaid in time, the unpaid amount is generally treated as a taxable loan offset or deemed distribution."
+        },
+        {
+          "step_number": 20,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If a loan offset occurs after job separation, explain that the participant may avoid taxes and penalties by rolling over an equal amount into an IRA or another eligible retirement plan by the federal tax return due date for the year of the offset, including extensions.",
+          "notes": "The article provides an example with April 15, 2026 and October 15, 2026 for a 2025 offset."
+        },
+        {
+          "step_number": 21,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "If the employer terminates the plan, explain that payroll repayments stop and the remaining balance is generally due in full before the plan closes.",
+          "notes": "Once the plan is fully terminated and distributed, online account access is disabled."
+        },
+        {
+          "step_number": 22,
+          "type": "participant-facing",
+          "visibility": "both",
+          "description": "Provide support contact options when the participant needs help with eligibility, payoff requests, repayment changes, missing funds, provider transitions, or tax-related loan questions.",
+          "notes": "The article lists help@forusall.com and 844-401-2253."
+        }
+      ],
+      "common_issues": [
+        {
+          "issue": "Participant wants the exact maximum loan amount, but prior 12-month highest outstanding loan balance cannot be verified.",
+          "resolution": "Explain the general rule that the maximum amount is typically 50% of the vested account balance up to $50,000, but that this cap may be reduced by the participant's highest outstanding loan balance during the previous 12 months. If that 12-month loan history is not available, do not confirm the exact maximum and refer the participant to human support."
+        },
+        {
+          "issue": "Participant disputes the estimated maximum loan amount because they had a prior loan within the last 12 months.",
+          "resolution": "Do not override or recalculate the amount without verified 12-month outstanding loan history. Explain that prior loan history may reduce the cap and direct the participant to human support for confirmation."
+        },
+        {
+          "issue": "Participant cannot tell whether the plan allows loans.",
+          "resolution": "Review internal profile checks first, including the Maximum Number of Loans section and other plan loan-availability fields. The participant may also review the Loans & Distributions section in the portal, but internal verification should come first."
+        },
+        {
+          "issue": "Participant selected the wrong loan purpose.",
+          "resolution": "Advise the participant to contact support so the request can be rejected and resubmitted correctly."
+        },
+        {
+          "issue": "Loan status is unclear after submission.",
+          "resolution": "Have the participant review Loans, Distributions, or Transaction History in the dashboard. If status is still unclear, help verify the request and expected delivery timeline."
+        },
+        {
+          "issue": "Loan funds sent by check have not arrived.",
+          "resolution": "If more than two weeks have passed since the check was issued, explain that a stop payment and reissue may be requested and confirm the mailing address."
+        },
+        {
+          "issue": "Wire or ACH transfer failed.",
+          "resolution": "Explain that failed transfers caused by incorrect banking details, name mismatch, or account type issues are automatically reissued by check to the address on file."
+        },
+        {
+          "issue": "Participant wants to make an irregular larger payment.",
+          "resolution": "Explain that increased payroll deductions must be exact multiples of the original scheduled payment and that arbitrary amounts are not allowed."
+        },
+        {
+          "issue": "Loan does not appear after a provider transition.",
+          "resolution": "Explain that there may be a brief delay after the transition. If the loan still does not appear after a few business days, the participant should contact the new provider or custodian, and ForUsAll can also help verify whether the loan transferred correctly."
+        },
+        {
+          "issue": "Participant left employment and is unsure what happens to the outstanding loan.",
+          "resolution": "Explain that the participant will typically have about 90 days to repay the remaining balance and that failure to repay may result in a taxable loan offset or deemed distribution reported on Form 1099-R."
+        },
+        {
+          "issue": "Participant is active but MFA is not enrolled, so the LT Trust online submission path is uncertain.",
+          "resolution": "Confirm the participant's MFA status internally before directing them to an LT Trust online loan path. If MFA is not enrolled, do not assume the participant can use the LT Trust online account flow."
+        },
+        {
+          "issue": "Participant is not sure which record keeper applies to the plan.",
+          "resolution": "Check the RK section in the participant profile before sharing any login website or article. If the record keeper is RK: LT Trust, use the LT Trust article and ForUsAll login route. If the record keeper is RK: Vanguard, use the Vanguard article and Vanguard login route. If the record keeper is neither, provide only the general article guidance supported by the participant's confirmed profile data and route record-keeper-specific help to support."
+        },
+        {
+          "issue": "Participant is asking for a loan path before participant status has been confirmed.",
+          "resolution": "Confirm internally whether the profile's Eligibility Status supports an Active Participant Status before guiding the participant through the loan-request route. Do not direct a participant through the standard loan-request path until the profile confirms the required status for that path."
+        },
+        {
+          "issue": "Participant wants to request a loan, but the plan's loan availability has not been confirmed.",
+          "resolution": "Review the plan loan availability fields, including the Maximum Number of Loans section in the participant profile, before telling the participant how to proceed. Do not assume the plan offers loans."
+        },
+        {
+          "issue": "Participant may already have an active unpaid loan and wants to know whether another loan can be requested.",
+          "resolution": "Review current loan records and Outstanding Balance values to determine whether any listed loans are still active and unpaid. Any Outstanding Balance greater than $0.00 should be treated as active or unpaid; $0.00 should be treated as not active or unpaid."
+        },
+        {
+          "issue": "Participant wants to use a primary residence loan but has not provided supporting documentation.",
+          "resolution": "Explain that a longer repayment term for a primary residence loan may require supporting documentation, such as a signed purchase agreement or loan estimate. Do not confirm the longer term until that documentation requirement is satisfied."
+        },
+        {
+          "issue": "Participant wants to know the maximum amount they can borrow.",
+          "resolution": "Explain the general rule that the maximum amount is typically 50% of the vested account balance, up to $50,000, but that the cap is reduced by the highest outstanding loan balance during the previous 12 months. Also note that plan-specific minimums or other limits may apply."
+        },
+        {
+          "issue": "Participant had a prior loan in the last 12 months and does not understand why the new maximum is reduced.",
+          "resolution": "Explain that the general $50,000 cap is reduced by the highest outstanding loan balance the participant had during the previous 12 months, even if that prior loan has already been repaid. Use the article's example logic when clarifying the rule."
+        },
+        {
+          "issue": "Participant wants to switch from a replacement check to ACH.",
+          "resolution": "Explain that if the participant wants to switch from a replacement check to ACH, support can send updated authorization forms. Do not promise the change will happen automatically without the required updated forms."
+        },
+        {
+          "issue": "Participant wants to make a partial payoff by check, ACH, or wire.",
+          "resolution": "Explain that partial external payments are not accepted unless they cover the full remaining balance. If the participant wants to pay off the loan early, they may either increase payroll deductions in exact multiples or make one full payoff of the entire remaining balance."
+        },
+        {
+          "issue": "Participant asks about loan fees before the Record Keeper is confirmed, or available workflow data is incomplete for fee disclosure.",
+          "resolution": "Explain that the Record Keeper must be identified first before any loan-related fee can be disclosed. Fees may vary by Record Keeper or custodian and should not be generalized across all plans. If the Record Keeper cannot be determined from available data or fee details cannot be safely confirmed, redirect the participant to support for fee confirmation."
+        },
+        {
+          "issue": "Participant with RK: Vanguard asks about loan fees, including whether the fee is deducted separately or taken from the loan amount.",
+          "resolution": "If the Record Keeper is confirmed as RK: Vanguard, explain that there is a one-time loan fee of $150 and that it is taken out of the loan proceeds."
+        },
+        {
+          "issue": "Participant with RK: LT Trust asks what fees apply, including delivery fee details and refundability.",
+          "resolution": "If the Record Keeper is confirmed as RK: LT Trust, disclose only the LT Trust fee rules that are confirmed in the article or workflow, including any applicable processing, maintenance, wire, overnight check, or regular mail check fee rules. Wire transfer and overnight check fees are non-refundable. No additional charges apply for a Regular Mail Check."
+        },
+        {
+          "issue": "Participant asks about loan fees for a plan whose Record Keeper is neither RK: Vanguard nor RK: LT Trust.",
+          "resolution": "Explain that support must confirm any loan-related fees first for non-Vanguard and non-LT Trust plans. Do not disclose or estimate a fee before support confirmation."
+        },
+        {
+          "issue": "Participant disputes a disclosed fee because they expected a different amount.",
+          "resolution": "Reconfirm the participant's Record Keeper and disclose only the fee rules that apply to that confirmed route. If the Record Keeper is not Vanguard or LT Trust, or if the fee rule cannot be confirmed, direct the participant to support."
+        }
+      ],
+      "examples": [
+        {
+          "scenario": "A participant asks about loan fees, but the Record Keeper has not yet been confirmed.",
+          "outcome": "Explain that the Record Keeper must be identified first before any loan-related fee can be disclosed. If the Record Keeper cannot be determined, redirect the participant to support for fee confirmation."
+        },
+        {
+          "scenario": "A participant's Record Keeper is confirmed as RK: Vanguard and they ask whether a loan fee applies.",
+          "outcome": "Explain that for RK: Vanguard plans, there is a one-time loan fee of $150 and that it is taken out of the loan proceeds."
+        },
+        {
+          "scenario": "A participant's Record Keeper is confirmed as RK: LT Trust and they ask what loan fees may apply.",
+          "outcome": "Explain only the LT Trust fee rules that are confirmed in the article or workflow, including any applicable processing, maintenance, wire, overnight check, or regular mail check fee rules."
+        },
+        {
+          "scenario": "A participant's Record Keeper is neither RK: Vanguard nor RK: LT Trust and they ask for the exact loan processing fee.",
+          "outcome": "Do not disclose or estimate a fee. Explain that support must confirm any loan-related fees first for non-Vanguard and non-LT Trust plans."
+        },
+        {
+          "scenario": "A participant asks whether the same loan processing fee applies to every plan.",
+          "outcome": "Explain that fees may vary by Record Keeper or custodian and should not be generalized across all plans."
+        },
+        {
+          "scenario": "A participant with RK: Vanguard asks whether the loan fee is paid separately or comes out of the loan amount.",
+          "outcome": "Explain that for RK: Vanguard plans, the one-time $150 loan fee is taken out of the loan proceeds."
+        },
+        {
+          "scenario": "A participant with RK: LT Trust asks whether Regular Mail Check has an extra delivery charge.",
+          "outcome": "Explain that for LT Trust plans, no additional charges apply for a Regular Mail Check, if that fee rule is confirmed in scope for the request."
+        },
+        {
+          "scenario": "A participant with RK: LT Trust asks what happens if wire delivery is chosen for the loan disbursal.",
+          "outcome": "Explain that for LT Trust plans, an additional $35 wire fee applies if wire is selected, and that the fee applies per wire, not per request."
+        },
+        {
+          "scenario": "A participant with RK: LT Trust asks what happens if Overnight Check is selected for loan delivery.",
+          "outcome": "Explain that for LT Trust plans, an additional $50 Overnight Check fee applies, and that the fee applies per overnight check, not per request."
+        },
+        {
+          "scenario": "A participant with RK: LT Trust asks whether wire or Overnight Check fees can be refunded later.",
+          "outcome": "Explain that for LT Trust plans, wire transfer and Overnight Check fees are non-refundable."
+        },
+        {
+          "scenario": "A participant asks for the exact maximum loan amount, but the available data does not show the highest outstanding loan balance during the previous 12 months.",
+          "outcome": "Explain the general loan limit rule, but do not confirm the exact maximum amount. Refer the participant to human support because the prior 12-month outstanding loan history may reduce the cap and cannot be fully verified."
+        },
+        {
+          "scenario": "A participant says they had a loan within the last year, but the available system view does not confirm the highest outstanding balance during that period.",
+          "outcome": "Do not estimate or assume the reduction amount. Explain that the prior 12-month loan history may affect the maximum new loan amount and route the participant to human support for confirmation."
+        },
+        {
+          "scenario": "A participant appears eligible based on active status, vested balance, and plan loan availability, but the exact borrowing limit may depend on prior 12-month loan history that is not visible.",
+          "outcome": "Provide only the general borrowing rule and explain that the final maximum amount requires human support review if the prior 12-month highest outstanding balance cannot be verified."
+        },
+        {
+          "scenario": "A participant had a $10,000 outstanding loan at some point during the previous 12 months and is now requesting a new loan.",
+          "outcome": "Explain that the general $50,000 maximum new loan cap could be reduced to $40,000 because the cap is reduced by the highest outstanding loan balance during the previous 12 months."
+        },
+        {
+          "scenario": "A participant wants to use a loan to purchase a primary residence.",
+          "outcome": "Explain that the repayment term may extend up to 15 years, but supporting documentation such as a signed purchase agreement or loan estimate is required."
+        },
+        {
+          "scenario": "A participant's original scheduled payment is $91.09 per paycheck and they want to pay faster.",
+          "outcome": "Explain that they may choose exact multiples such as $182.18 or $273.27, but not an arbitrary amount like $100 or $110."
+        },
+        {
+          "scenario": "A participant leaves a job in March 2025 with a $6,000 unpaid loan balance that becomes an offset.",
+          "outcome": "Explain that they may avoid taxation by rolling over $6,000 into an IRA or another eligible retirement plan by April 15, 2026, or October 15, 2026 if they file an extension."
+        },
+        {
+          "scenario": "A participant is active, MFA status is enrolled, the record keeper is RK: LT Trust, and the plan profile shows loans are available.",
+          "outcome": "Guide the participant using the LT Trust article path and the ForUsAll login route, because the internal checks support using the record-keeper-specific online guidance."
+        },
+        {
+          "scenario": "A participant is active, the record keeper is RK: Vanguard, and the plan offers loans.",
+          "outcome": "Guide the participant using the Vanguard article path and the Vanguard login route, because the participant matches the Vanguard-specific routing criteria."
+        },
+        {
+          "scenario": "A participant is active and the plan offers loans, but the record keeper is neither RK: LT Trust nor RK: Vanguard.",
+          "outcome": "Do not route the participant to the LT Trust or Vanguard-specific articles. Continue with the remaining general loan guidance based on confirmed profile eligibility criteria and the article content, then direct record-keeper-specific help to support."
+        },
+        {
+          "scenario": "A participant asks how to request a loan, but their profile does not support Active Participant Status.",
+          "outcome": "Do not guide the participant through the standard loan-request path described for active employees. Explain that the internal status check does not support proceeding through that route."
+        },
+        {
+          "scenario": "A participant says they want a loan, but the plan profile does not show that loans are available.",
+          "outcome": "Do not tell the participant they can request a loan. Explain that loan availability depends on the employer's plan rules and must be confirmed before proceeding."
+        },
+        {
+          "scenario": "A participant cannot access the account and wants to know whether loans are available under the plan.",
+          "outcome": "Use internal profile checks to confirm whether the plan offers loans. If participant access is unavailable, provide support help instead of relying only on self-service guidance."
+        },
+        {
+          "scenario": "A participant has an existing unpaid loan with an outstanding balance and asks whether they can take another loan.",
+          "outcome": "Review current loan records and the plan's loan-limit fields before giving a conclusion, because an existing active unpaid loan may affect how many new loans can be requested."
+        },
+        {
+          "scenario": "A participant sees a pending loan request in the dashboard but does not know whether the money was sent by check, wire, or ACH.",
+          "outcome": "Direct the participant to review the Loans, Distributions, or Transaction History section for the disbursement method and amount, then use that information to explain the next steps."
+        },
+        {
+          "scenario": "A participant submitted a loan request yesterday and wants to know why the funds have not arrived yet.",
+          "outcome": "Explain that loan processing usually takes about 1 to 2 business days, although actual timing may vary depending on the provider and the delivery method selected."
+        },
+        {
+          "scenario": "A participant reports that a check was issued for the loan, but only one week has passed and the check has not arrived.",
+          "outcome": "Explain that the article supports requesting a stop payment and reissue only if more than two weeks have passed since the check was issued."
+        },
+        {
+          "scenario": "A participant reports that more than two weeks have passed since the check issue date and the funds still have not arrived.",
+          "outcome": "Explain that a stop payment and reissue may be requested and that the participant will need to confirm the correct mailing address."
+        },
+        {
+          "scenario": "A participant's ACH transfer failed because the bank account details were entered incorrectly.",
+          "outcome": "Explain that failed ACH or wire transfers are typically automatically reissued by check to the address on file."
+        },
+        {
+          "scenario": "A participant wants another reissue immediately after a failed ACH was reissued by check yesterday.",
+          "outcome": "Explain that the participant is asked to wait two full weeks from the check issue date before requesting another reissue."
+        },
+        {
+          "scenario": "A participant wants to round the payroll deduction from $91.09 to $100 per paycheck to pay the loan off faster.",
+          "outcome": "Explain that the participant cannot choose an arbitrary amount and must use an exact multiple of the original scheduled payment."
+        },
+        {
+          "scenario": "A participant wants to pay extra toward the loan by sending a small ACH payment that does not cover the full remaining balance.",
+          "outcome": "Explain that partial external payments by check, ACH, or wire are not accepted unless they cover the full remaining balance."
+        },
+        {
+          "scenario": "A participant wants to pay the entire remaining loan balance before the scheduled end date.",
+          "outcome": "Explain that a full early payoff is allowed and that there is no prepayment penalty for paying the loan off in full."
+        },
+        {
+          "scenario": "An employer changes 401(k) providers while the participant still has an outstanding loan and remains actively employed.",
+          "outcome": "Explain that the loan will usually transfer with the participant's account, the repayment schedule generally stays the same, and payroll deductions usually continue after the transition is complete."
+        },
+        {
+          "scenario": "A participant does not see the outstanding loan immediately after the plan transitions to a new provider.",
+          "outcome": "Explain that there may be a short blackout period and a brief delay before the loan appears on the new provider's dashboard. If it still does not appear after a few business days, the participant should contact the new provider or custodian, and ForUsAll can also help verify the transfer."
+        },
+        {
+          "scenario": "A participant leaves employment with an outstanding loan and does not repay the balance within the typical repayment window.",
+          "outcome": "Explain that the unpaid balance is generally treated as a loan offset or deemed distribution, becomes taxable income, and is reported on Form 1099-R. If the participant is under age 59 1/2, a 10% early withdrawal penalty may also apply."
+        },
+        {
+          "scenario": "An employer terminates the 401(k) plan while the participant still has an outstanding loan balance.",
+          "outcome": "Explain that payroll loan repayments stop, the remaining balance is generally due in full before the plan closes, and if it is not repaid, it is treated as a taxable distribution. Also explain that online account access is disabled once the plan is fully terminated and distributed."
+        }
+      ],
+      "additional_notes": [
+        {
+          "category": "loan_basics",
+          "notes": [
+            "No credit check is required for a 401(k) loan under this article's guidance."
+          ]
+        },
+        {
+          "category": "loan_limit_limitations",
+          "notes": [
+            "The general maximum loan amount is typically 50% of the vested account balance up to $50,000.",
+            "That general cap may be reduced by the participant's highest outstanding loan balance during the previous 12 months, even if the earlier loan has already been repaid.",
+            "If the available data does not include enough 12-month outstanding loan history to confirm that reduction, the exact maximum loan amount should not be confirmed by the bot.",
+            "When the prior 12-month loan-balance reduction cannot be verified, the participant should be referred to human support."
+          ]
+        },
+        {
+          "category": "processing_times",
+          "notes": [
+            "After submitting a loan request, processing usually takes about 1 to 2 business days.",
+            "Actual timing may vary depending on the provider and the delivery method selected.",
+            "If the loan status is unclear, the participant can review the dashboard for pending or completed activity, including disbursement method and amount.",
+            "If loan funds were sent by check and more than two weeks have passed since the check was issued, a stop payment and reissue may be requested.",
+            "If a failed wire or ACH transfer is automatically reissued by check, the participant should wait two full weeks from the check issue date before requesting another reissue.",
+            "There may be a short blackout period during a provider change when account access and loan activity are temporarily unavailable.",
+            "After a provider transition, there may be a brief delay before the loan appears on the new provider's dashboard."
+          ]
+        },
+        {
+          "category": "tax_treatment",
+          "notes": [
+            "A loan is not treated as a taxable distribution as long as it is repaid according to the rules.",
+            "If employment ends while a loan is still outstanding and the balance is not repaid in time, it is generally treated as a loan offset or deemed distribution and becomes taxable income.",
+            "If the employer terminates the 401(k) plan and the remaining loan balance is not repaid before the plan closes, it is generally treated as a taxable distribution.",
+            "Taxable unpaid loan amounts are generally reported on Form 1099-R.",
+            "If the participant is under age 59 1/2, a 10% early withdrawal penalty may also apply.",
+            "A participant may avoid taxes and penalties after a loan offset by rolling over an amount equal to the offset into an IRA or another eligible retirement plan by the federal tax return due date for the year of the offset, including extensions."
+          ]
+        }
+      ],
+      "faq_pairs": [
+        {
+          "question": "Can a loan fee be disclosed before the Record Keeper is confirmed?",
+          "answer": "No. The Record Keeper must be identified first before any loan-related fee is disclosed."
+        },
+        {
+          "question": "What should happen if the Record Keeper cannot be determined and the participant asks about fees?",
+          "answer": "The participant should be redirected to support for fee confirmation before any loan-related fee is disclosed."
+        },
+        {
+          "question": "Does the same loan fee apply to every plan?",
+          "answer": "No. Fees may vary depending on the Record Keeper or custodian and should not be generalized across all plans."
+        },
+        {
+          "question": "Is there a loan fee for RK: Vanguard plans?",
+          "answer": "Yes. For RK: Vanguard plans, there is a one-time loan fee of $150 that is taken out of the loan proceeds."
+        },
+        {
+          "question": "How is the Vanguard loan fee charged?",
+          "answer": "For RK: Vanguard plans, the one-time $150 loan fee is taken out of the loan proceeds."
+        },
+        {
+          "question": "Can the bot disclose LT Trust loan fees before confirming the Record Keeper?",
+          "answer": "No. LT Trust fee rules should only be disclosed after the Record Keeper is confirmed as RK: LT Trust."
+        },
+        {
+          "question": "What should the bot do if the participant's Record Keeper is neither RK: Vanguard nor RK: LT Trust and they ask about fees?",
+          "answer": "The bot should explain that support must confirm any loan-related fees first for non-Vanguard and non-LT Trust plans."
+        },
+        {
+          "question": "Is there an additional fee for wire delivery on LT Trust plans?",
+          "answer": "Yes. For LT Trust plans, an additional $35 wire fee applies if wire is selected, and it applies per wire, not per request."
+        },
+        {
+          "question": "Is there an additional fee for Overnight Check on LT Trust plans?",
+          "answer": "Yes. For LT Trust plans, an additional $50 Overnight Check fee applies, and it applies per overnight check, not per request."
+        },
+        {
+          "question": "Are LT Trust wire and Overnight Check fees refundable?",
+          "answer": "No. For LT Trust plans, wire transfer and Overnight Check fees are non-refundable."
+        },
+        {
+          "question": "Can the exact maximum loan amount always be confirmed automatically?",
+          "answer": "Not always. Although the general rule is 50% of the vested account balance up to $50,000, that cap may be reduced by the participant's highest outstanding loan balance during the previous 12 months, even if that earlier loan has already been repaid. If that 12-month loan history cannot be confirmed from the available data, only the general rule should be shared and the participant should be referred to human support for confirmation of the exact maximum."
+        },
+        {
+          "question": "Does every 401(k) plan offer loans?",
+          "answer": "No. Not every retirement plan offers loans, and eligibility depends on the employer's plan rules."
+        },
+        {
+          "question": "How can a participant check whether their plan allows loans?",
+          "answer": "The participant can review the Loans & Distributions section in the portal, but the workflow should first confirm loan availability through internal profile checks such as Maximum Number of Loans and related plan fields."
+        },
+        {
+          "question": "What is the general maximum amount a participant can borrow?",
+          "answer": "The general maximum is 50% of the participant's vested account balance, up to $50,000, subject to reduction by the highest outstanding loan balance during the previous 12 months."
+        },
+        {
+          "question": "How long does repayment usually last?",
+          "answer": "The standard repayment term is usually up to 5 years. If the loan is used to purchase a primary residence, the term may extend up to 15 years with supporting documentation."
+        },
+        {
+          "question": "How are most loans repaid?",
+          "answer": "Most 401(k) loans are repaid automatically through payroll deductions."
+        },
+        {
+          "question": "What should a participant do if they selected the wrong loan purpose?",
+          "answer": "They should contact support so the request can be rejected and resubmitted correctly."
+        },
+        {
+          "question": "How can a participant check loan status after submitting a request?",
+          "answer": "They should log in to the plan dashboard and review the Loans, Distributions, or Transaction History section for pending or completed activity, including the disbursement method and amount."
+        },
+        {
+          "question": "What happens if loan funds do not arrive?",
+          "answer": "The answer depends on the delivery method. If funds were sent by check and more than two weeks have passed since issue, a stop payment and reissue may be requested. If the original method was wire or ACH and the transfer failed, the funds are typically automatically reissued by check to the address on file."
+        },
+        {
+          "question": "Can a participant make partial external payments to reduce the balance faster?",
+          "answer": "No. Partial external payments by check, ACH, or wire are not accepted unless they cover the full remaining balance."
+        },
+        {
+          "question": "Is there a prepayment penalty for paying off the loan in full?",
+          "answer": "No. There is no prepayment penalty for paying the loan off in full."
+        },
+        {
+          "question": "What happens to an outstanding loan if the employer changes 401(k) providers?",
+          "answer": "It will usually transfer with the participant's account as long as the participant is still actively employed. The remaining balance and repayment schedule generally stay the same, and payroll deductions continue after the transition is complete."
+        },
+        {
+          "question": "What happens if the participant leaves employment with an outstanding loan?",
+          "answer": "The participant will typically have about 90 days to repay the remaining balance. If not repaid in time, the amount is generally treated as a taxable loan offset or deemed distribution and reported on Form 1099-R."
+        },
+        {
+          "question": "Does a participant need a credit check to take a 401(k) loan?",
+          "answer": "No. The article states that no credit check is required for a 401(k) loan."
+        },
+        {
+          "question": "Is a 401(k) loan treated as a taxable distribution when it is first issued?",
+          "answer": "No. A 401(k) loan is not treated as a taxable distribution as long as it is repaid according to the rules."
+        },
+        {
+          "question": "Can a participant borrow the full $50,000 maximum in every case?",
+          "answer": "No. The general limit is 50% of the participant's vested account balance, up to $50,000, and that cap may also be reduced by the highest outstanding loan balance during the previous 12 months."
+        },
+        {
+          "question": "Can a plan require a minimum loan amount?",
+          "answer": "Yes. The article states that a plan may require a minimum loan amount, such as $1,000."
+        },
+        {
+          "question": "What documentation may be required for a primary residence loan?",
+          "answer": "Supporting documentation may be required, such as a signed purchase agreement or a loan estimate."
+        },
+        {
+          "question": "How can a participant see how the loan proceeds were sent?",
+          "answer": "The participant can review the plan dashboard under Loans, Distributions, or Transaction History for pending or completed activity, including the disbursement method and amount."
+        },
+        {
+          "question": "What if a participant wants to switch from a replacement check to ACH?",
+          "answer": "Support can send updated authorization forms if the participant wants to switch from a replacement check to ACH."
+        },
+        {
+          "question": "Can a participant choose any larger payroll deduction amount to repay the loan faster?",
+          "answer": "No. Increased payroll deductions must be exact multiples of the original scheduled payment. Arbitrary amounts are not allowed."
+        },
+        {
+          "question": "Does increasing payroll deductions change the loan's amortization or interest calculation?",
+          "answer": "No. The repayment schedule is not reamortized, so the loan terms and interest calculation do not change, although the loan will be paid off sooner if higher payments continue."
+        },
+        {
+          "question": "What happens to online account access if the employer terminates the 401(k) plan?",
+          "answer": "Once the plan is fully terminated and distributed, online account access is disabled. Participants should make sure their mailing address is current so they can receive tax forms and instructions."
+        }
+      ],
+      "definitions": [
+        {
+          "term": "401(k) loan",
+          "definition": "A loan that lets a participant borrow money from the retirement account and repay it over time, usually through payroll deductions. The interest paid goes back into the participant's own 401(k). No credit check is required under this article's guidance."
+        },
+        {
+          "term": "Vested account balance",
+          "definition": "The vested portion of the participant's account balance used to determine general loan availability and loan amount limits described in the article."
+        },
+        {
+          "term": "Primary residence loan",
+          "definition": "A 401(k) loan used to purchase a primary residence. The repayment term may extend up to 15 years if the required supporting documentation is provided."
+        },
+        {
+          "term": "Payroll deductions",
+          "definition": "Automatic loan repayments taken from the participant's pay and used to repay the 401(k) loan over time."
+        },
+        {
+          "term": "Outstanding loan balance",
+          "definition": "The unpaid amount remaining on a participant's loan. Any Outstanding Balance greater than $0.00 should be treated as active or unpaid; $0.00 should be treated as not active or unpaid."
+        },
+        {
+          "term": "Loan offset",
+          "definition": "The treatment of an unpaid outstanding loan balance as a distribution for tax purposes when repayment is not completed on time after job separation or plan termination."
+        },
+        {
+          "term": "Deemed distribution",
+          "definition": "A tax treatment applied to an unpaid loan balance when the loan is not repaid according to the rules described in the article."
+        },
+        {
+          "term": "Taxable distribution",
+          "definition": "An amount treated as taxable income for tax purposes. Under the article, an unpaid loan balance may become a taxable distribution if it is not repaid as required after certain events."
+        },
+        {
+          "term": "Form 1099-R",
+          "definition": "The tax form used to report the taxable amount of a loan offset or other distribution described in the article."
+        },
+        {
+          "term": "Rollover",
+          "definition": "A deposit of an amount equal to the loan offset into an IRA or another eligible retirement plan to avoid taxation, if completed by the applicable federal tax return due date, including extensions."
+        },
+        {
+          "term": "Disbursement method",
+          "definition": "The way loan proceeds are delivered to the participant, such as check, wire, or ACH transfer."
+        },
+        {
+          "term": "Stop payment and reissue",
+          "definition": "A process that may be requested when a check was issued but has not arrived after more than two weeks, so the original check can be stopped and a replacement issued."
+        },
+        {
+          "term": "Blackout period",
+          "definition": "A short period during a provider change when account access and loan activity may be temporarily unavailable."
+        },
+        {
+          "term": "Record keeper",
+          "definition": "The provider associated with the participant's plan that determines which login path, article guidance, fee rules, or loan-request route should be used in the workflow."
+        },
+        {
+          "term": "MFA status",
+          "definition": "The participant's multi-factor authentication enrollment status, used in the workflow only to determine whether the LT Trust online account path may be available."
+        },
+        {
+          "term": "ACH",
+          "definition": "Automated Clearing House, an electronic funds transfer system used to send or receive loan proceeds or repayment amounts between bank accounts."
+        },
+        {
+          "term": "IRA",
+          "definition": "Individual Retirement Account, an eligible retirement account into which a participant may roll over a loan offset amount to avoid taxes and penalties."
+        },
+        {
+          "term": "Reamortization",
+          "definition": "The recalculation of a loan's repayment schedule to reflect changes in the payment amount or term. Under this article's guidance, 401(k) loans are not reamortized when higher payroll deductions are used."
+        },
+        {
+          "term": "RightSignature",
+          "definition": "An electronic signature tool that may be used as an alternate submission path for loan requests when online portal access is unavailable, depending on the record keeper's workflow."
+        }
+      ],
+      "guardrails": {
+        "must_not": [
+          "Do not guarantee that a participant's plan allows loans.",
+          "Do not assert eligibility requirements beyond active employment, enough vested balance, IRS loan requirements, and plan-specific rules stated in the article.",
+          "Do not provide any processing or delivery timeline other than the timing stated in the article.",
+          "Do not say a participant can increase payroll deductions by any arbitrary amount.",
+          "Do not say partial external payments are accepted unless they cover the full remaining balance.",
+          "Do not guarantee that a loan transfer during a provider change is immediate or visible without delay.",
+          "Do not guarantee that taxes or penalties will be avoided unless the participant completes the rollover described in the article within the applicable deadline.",
+          "Do not imply online account access remains available after the plan is fully terminated and distributed.",
+          "Do not tell a participant they can request a loan until plan loan availability has been confirmed.",
+          "Do not treat MFA enrollment by itself as proof that the participant is eligible for a loan.",
+          "Do not assume the same login website or article path applies to every record keeper.",
+          "Do not route a participant to the LT Trust or Vanguard article path unless the record keeper matches that route.",
+          "Do not promise that a participant can submit a loan online unless the participant's profile and record-keeper-specific route support that path.",
+          "Do not tell a participant that the loan purpose can simply be edited after submission.",
+          "Do not confirm the primary residence repayment term without the required supporting documentation.",
+          "Do not state that a participant can ignore an unpaid loan after job separation or plan termination without tax consequences.",
+          "Do not say a failed wire or ACH will be corrected using any delivery method other than the check reissue outcome described in the article.",
+          "Do not allow another check reissue request before the article's stated two-week waiting period has passed when funds were reissued by check.",
+          "Do not say a participant must reapply for an existing loan after a provider change unless the applicable guidance explicitly says so.",
+          "Do not claim that a participant will always avoid taxes and penalties after a loan offset without mentioning the rollover deadline requirements.",
+          "Do not ask the participant for internal profile data that should be checked in internal systems, such as participant status, MFA status, record keeper, or active loan profile details, when the workflow expects the agent to verify those fields internally.",
+          "Do not share record-keeper-specific login links or article guidance before confirming the participant's record keeper.",
+          "Do not state that all participants can take multiple loans at once; concurrent loan limits may depend on the plan.",
+          "Do not convert operational assumptions into article facts when the article only states general rules or plan variation.",
+          "Do not disclose any loan-related fee before the participant's Record Keeper is confirmed.",
+          "Do not assume the same loan fee applies to all plans or all Record Keepers.",
+          "Do not apply Vanguard fee rules unless the participant's Record Keeper is confirmed as RK: Vanguard.",
+          "Do not apply LT Trust fee rules unless the participant's Record Keeper is confirmed as RK: LT Trust.",
+          "Do not disclose or estimate a loan-related fee for a non-Vanguard and non-LT Trust plan without support confirmation.",
+          "Do not generalize Vanguard or LT Trust fee rules to other Record Keepers.",
+          "Do not present a loan-related fee as guaranteed when the Record Keeper is unknown or the fee rule is not confirmed.",
+          "Do not state that a participant has no loan-related fee unless the applicable Record Keeper fee rule has been confirmed.",
+          "Do not disclose LT Trust delivery fees, maintenance fees, or processing fees unless the participant's Record Keeper is confirmed as RK: LT Trust.",
+          "Do not disclose the Vanguard $150 loan fee unless the participant's Record Keeper is confirmed as RK: Vanguard.",
+          "Do not treat support confirmation as optional when the participant's Record Keeper is neither RK: Vanguard nor RK: LT Trust and a fee question is being asked.",
+          "Do not guess, infer, or improvise a fee amount when fee details cannot be confirmed from the applicable Record Keeper rules."
+        ],
+        "must_do_if_unsure": [
+          "Confirm the participant's status internally before guiding them through a loan-request path.",
+          "Confirm MFA status internally before relying on an LT Trust online account route.",
+          "Confirm the participant's record keeper before sharing a login website or record-keeper-specific article.",
+          "Confirm that the plan offers loans before explaining how the participant can request one.",
+          "Review current loan records and outstanding balances before discussing whether another loan may be available.",
+          "Use only the general guidance in this article when the participant's record keeper is neither LT Trust nor Vanguard unless another matching record-keeper-specific article is confirmed.",
+          "Direct the participant to support when account access, loan status, delivery status, or request routing remains unclear after the available checks.",
+          "Keep the explanation grounded in the participant's confirmed profile data and the article content when plan rules or routing are uncertain.",
+          "If the prior 12-month highest outstanding loan balance cannot be verified, explain the general loan-limit rule and refer the participant to human support for the exact maximum amount.",
+          "If available data is not sufficient to confirm the prior 12-month loan-balance reduction, do not estimate the participant's exact borrowing limit.",
+          "When a participant asks for the exact maximum loan amount and the prior 12-month highest outstanding balance is unavailable, share only the general rule and escalate the exact calculation to human support.",
+          "Confirm the participant's Record Keeper before disclosing any loan-related fee.",
+          "If the Record Keeper cannot be determined, redirect the participant to support for fee confirmation.",
+          "If the Record Keeper is confirmed as RK: Vanguard, disclose only the Vanguard fee rules.",
+          "If the Record Keeper is confirmed as RK: LT Trust, disclose only the LT Trust fee rules that are confirmed in scope.",
+          "If the Record Keeper is neither RK: Vanguard nor RK: LT Trust, direct the participant to support before disclosing any loan-related fee.",
+          "When a participant asks about fees and the applicable Record Keeper fee rule is not confirmed, explain that fees may vary by Record Keeper or custodian and avoid quoting an amount.",
+          "Use only the fee rules tied to the participant's confirmed Record Keeper, and do not generalize those fees to other plans.",
+          "If fee details remain unclear after available checks, provide only the support-routing outcome rather than a fee estimate."
+        ]
+      },
+      "references": {
+        "participant_portal": "https://account.forusall.com/login",
+        "internal_articles": [
+          "LT: 401(k) Loan Complete Guide — Submission, Repayment & Support",
+          "Vanguard: How to Submit a Loan Request"
+        ],
+        "external_links": [
+          "https://account.forusall.com/login",
+          "https://my.vanguardplan.com/login/Participant"
+        ],
+        "contact": {
+          "email": "help@forusall.com",
+          "phone": "844-401-2253",
+          "support_hours": "9 am to 5 pm PST"
+        }
+      },
+      "required_data": {
+        "must_have": [
+          {
+            "data_point": "Participant's name",
+            "meaning": "The name of the participant.",
+            "example_values": ["John Doe", "Jane Doe", "Oscar Santiago Garcia"],
+            "why_needed": "Required to confirm that the correct participant profile is being reviewed in the system before applying loan guidance.",
+            "source_note": "Supported by internal workflow prerequisites shared for this article.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Record Keeper",
+            "meaning": "The Record Keeper of the Participant.",
+            "example_values": [
+              "RK: LT Trust",
+              "RK: Vanguard",
+              "RK: Fidelity",
+              "RK: Empower",
+              "RK: ADP"
+            ],
+            "why_needed": "This article and instructions are intended as global information. If the Record Keeper is RK: LT Trust or RK: Vanguard, use the matching route. If the Record Keeper is any other value, provide only general loan guidance from this article and redirect to support for record-keeper-specific assistance.",
+            "source_note": "Supported by article section: Prerequisites",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Participant Status",
+            "meaning": "The status of the participant in the system.",
+            "example_values": [
+              "Active",
+              "Terminated",
+              "Ineligible",
+              "Deceased",
+              "Unknown"
+            ],
+            "why_needed": "Required to confirm if the participant is still working for their employer in order to apply for a loan.",
+            "source_note": "The profile's Eligibility Status should be mapped into this canonical Participant Status field for workflow use.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "MFA status",
+            "meaning": "The status of the participant's MFA enrollment.",
+            "example_values": ["enrolled", "not enrolled"],
+            "why_needed": "Used only to determine whether the LT Trust online account route may be available. MFA status does not control Vanguard routing and does not control support routing for non-LT Trust and non-Vanguard record keepers.",
+            "source_note": "Supported by article section: Prerequisites",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Total Vested Balance",
+            "meaning": "The participant's vested account balance used to evaluate loan eligibility and general loan-limit review.",
+            "example_values": [
+              "$1,000.00",
+              "$1,999.00",
+              "$2,000.00",
+              "$2,000.01"
+            ],
+            "why_needed": "Required to determine whether the participant has enough vested balance available for loan eligibility review and general loan-limit review.",
+            "source_note": "Supported by article language stating the participant must have enough vested balance available and that plans may set their own minimums.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Maximum Number of Loans",
+            "meaning": "Whether the participant's plan allows loans at all and the maximum number of loans that may be active at one time.",
+            "example_values": ["2", "1", "0"],
+            "why_needed": "Determines whether the plan supports loans and sets the plan-level cap for concurrent active loans.",
+            "source_note": "Supported by article section: Prerequisites",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Active Loans",
+            "meaning": "A descriptive loan-status field derived from Outstanding Balance values to determine whether any listed loans are still active and unpaid.",
+            "example_values": [
+              "No loan history found",
+              "Outstanding Balance $479.36",
+              "Outstanding Balance $00.00",
+              "Outstanding Balance $00.01"
+            ],
+            "why_needed": "Eligibility determination. Used with Maximum Number of Loans to determine whether the participant may qualify to take a new loan.",
+            "source_note": "Read from the participant profile Loans section. Any Outstanding Balance greater than $0.00 should be treated as active or unpaid; $0.00 should be treated as not active or unpaid.",
+            "source_type": "participant_profile"
+          }
+        ],
+        "nice_to_have": [
+          {
+            "data_point": "Prior 12-month highest outstanding loan balance availability",
+            "meaning": "Whether the participant's highest outstanding loan balance during the previous 12 months can be confirmed from the available data sources.",
+            "example_values": ["available", "not available", "unknown"],
+            "why_needed": "Helpful when determining whether the exact maximum loan amount can be confirmed or whether the participant must be referred to human support.",
+            "source_note": "Supported by article section stating that the general $50,000 cap is reduced by the highest outstanding loan balance during the previous 12 months.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Supporting documentation for primary residence purpose",
+            "meaning": "Documentation showing the loan is for a primary residence purchase, such as a signed purchase agreement or loan estimate.",
+            "example_values": ["Signed purchase agreement", "Loan estimate"],
+            "why_needed": "Helpful to support the longer repayment term for a primary residence loan.",
+            "source_note": "Supported by article section stating that supporting documentation is required for a primary residence loan.",
+            "source_type": "message_text"
+          },
+          {
+            "data_point": "Requested loan purpose",
+            "meaning": "The purpose selected or intended for the loan request, including whether the participant is requesting a primary residence loan.",
+            "example_values": [
+              "General purpose loan",
+              "Primary residence purchase"
+            ],
+            "why_needed": "Helpful to determine whether the standard repayment term or the possible primary residence repayment term applies, and whether supporting documentation is needed.",
+            "source_note": "Supported by article sections about loan purpose and primary residence loans.",
+            "source_type": "message_text"
+          },
+          {
+            "data_point": "Disbursement method",
+            "meaning": "How the loan proceeds were or will be sent, such as check, wire, ACH transfer, or a withdrawal display in the dashboard.",
+            "example_values": ["check", "wire", "ACH transfer", "withdrawal"],
+            "why_needed": "Helpful when checking status or troubleshooting missing funds.",
+            "source_note": "Supported by article section stating that loan proceeds may appear as a withdrawal, check, wire, or ACH transfer.",
+            "source_type": "message_text"
+          },
+          {
+            "data_point": "Loan Amount Requested",
+            "meaning": "The total loan amount the participant requested.",
+            "example_values": [
+              "$1,000.00",
+              "$9,000.00",
+              "$10,000.00",
+              "$50,000.00"
+            ],
+            "why_needed": "Helpful when the participant wants to confirm whether the request appears to be processing or whether the funds may already be on the way.",
+            "source_note": "Supported by workflow use of participant-provided loan amount when comparing against available loan records.",
+            "source_type": "message_text"
+          },
+          {
+            "data_point": "Loan request status",
+            "meaning": "The current status of the participant's loan request as shown in the dashboard or transaction history.",
+            "example_values": [
+              "pending",
+              "completed",
+              "recent start date shown",
+              "outstanding balance shown"
+            ],
+            "why_needed": "Helpful when determining whether the request is still processing or whether the participant should review delivery details.",
+            "source_note": "Supported by article section about reviewing pending or completed activity. Internal workflow may compare recent loan start information and outstanding balance for context, but human support is required for confirmation.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Mailing address on file",
+            "meaning": "The participant's current mailing address used for mailed checks, reissues, tax forms, and plan-termination instructions.",
+            "example_values": ["Address on file in participant profile"],
+            "why_needed": "Helpful when requesting a check reissue and when plan termination affects mailed tax forms and instructions.",
+            "source_note": "Supported by article section stating that the correct mailing address should be confirmed and kept current.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Original scheduled payroll payment amount",
+            "meaning": "The normal per-paycheck loan repayment amount before any increase is requested.",
+            "example_values": ["$91.09"],
+            "why_needed": "Helpful to determine valid exact multiples for faster repayment.",
+            "source_note": "Supported by the article example showing a scheduled payment of $91.09 per paycheck.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Requested increased payroll deduction amount",
+            "meaning": "The higher repayment amount the participant wants to use when asking to repay the loan faster.",
+            "example_values": ["$182.18", "$273.27"],
+            "why_needed": "Helpful to verify whether the requested amount is an exact multiple of the original scheduled payment.",
+            "source_note": "Supported by article section about increased payroll deductions and exact multiples.",
+            "source_type": "message_text"
+          },
+          {
+            "data_point": "Full payoff request",
+            "meaning": "Whether the participant wants to pay the entire remaining loan balance in one full payoff.",
+            "example_values": [
+              "full payoff requested",
+              "participant wants to pay off the remaining balance"
+            ],
+            "why_needed": "Helpful to distinguish a full payoff request from an unsupported partial external payment request.",
+            "source_note": "Supported by article section about full payoff and no prepayment penalty.",
+            "source_type": "message_text"
+          },
+          {
+            "data_point": "Previous highest outstanding loan balance during the last 12 months",
+            "meaning": "The largest outstanding loan balance the participant had during the previous 12 months.",
+            "example_values": ["$10,000.00"],
+            "why_needed": "Helpful when explaining why the general $50,000 cap may be reduced for a new loan request.",
+            "source_note": "Supported by article section about the prior 12-month highest outstanding balance reduction.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Provider transition status",
+            "meaning": "Whether the employer's plan is in the middle of a provider change or has recently completed one.",
+            "example_values": [
+              "provider transition in progress",
+              "recent provider transition completed",
+              "unknown"
+            ],
+            "why_needed": "Helpful when explaining blackout periods, delayed loan visibility, or loan transfer expectations.",
+            "source_note": "Supported by article section about employer changes to 401(k) providers.",
+            "source_type": "plan_profile"
+          },
+          {
+            "data_point": "Loan visibility on new provider dashboard",
+            "meaning": "Whether the transferred loan is already visible in the new provider's dashboard.",
+            "example_values": ["visible", "not visible", "unknown"],
+            "why_needed": "Helpful when troubleshooting loan display issues after a provider transition.",
+            "source_note": "Supported by article section about a brief delay before the loan appears on the new provider's dashboard.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Employment separation date",
+            "meaning": "The date the participant's employment ended, if applicable.",
+            "example_values": ["date shown in participant profile"],
+            "why_needed": "Helpful when explaining the typical repayment window after job separation and the potential tax treatment if the loan is not repaid in time.",
+            "source_note": "Supported by article section about what happens if employment ends while a loan is still outstanding.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Plan termination status",
+            "meaning": "Whether the employer has terminated the 401(k) plan.",
+            "example_values": [
+              "plan terminated",
+              "plan pending termination",
+              "unknown"
+            ],
+            "why_needed": "Helpful when determining whether payroll loan repayments stop, whether the remaining balance is due before plan closure, and whether online access may be disabled.",
+            "source_note": "Supported by article section about employer plan termination.",
+            "source_type": "plan_profile"
+          },
+          {
+            "data_point": "Loan offset amount",
+            "meaning": "The unpaid loan amount treated as an offset or taxable distribution after job separation or plan termination if not repaid in time.",
+            "example_values": ["$6,000.00", "$0.00"],
+            "why_needed": "Helpful when explaining Form 1099-R treatment and the amount that may need to be rolled over to avoid taxation.",
+            "source_note": "Supported by article section and example about loan offsets.",
+            "source_type": "participant_profile"
+          },
+          {
+            "data_point": "Participant age for penalty context",
+            "meaning": "Whether the participant is under age 59 1/2 when discussing possible early withdrawal penalty treatment.",
+            "example_values": ["under age 59 1/2", "age 59 1/2 or older"],
+            "why_needed": "Helpful when explaining that a 10% early withdrawal penalty may also apply to a taxable unpaid loan balance.",
+            "source_note": "Supported by article section stating that a 10% early withdrawal penalty may apply if the participant is under age 59 1/2.",
+            "source_type": "participant_profile"
+          }
+        ],
+        "if_missing": [
+          {
+            "missing_data_point": "Participant's name",
+            "ask_participant": null,
+            "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Use this to confirm the correct participant profile is being reviewed before continuing."
+          },
+          {
+            "missing_data_point": "Record Keeper",
+            "ask_participant": null,
+            "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Record keeper determines whether to use the LT Trust path, the Vanguard path, or provide only general loan guidance plus support routing for other record keepers."
+          },
+          {
+            "missing_data_point": "Participant Status",
+            "ask_participant": null,
+            "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Map the profile's Eligibility Status into this canonical Participant Status field before continuing."
+          },
+          {
+            "missing_data_point": "MFA status",
+            "ask_participant": null,
+            "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Use this only to determine whether the LT Trust online account flow may be available."
+          },
+          {
+            "missing_data_point": "Total Vested Balance",
+            "ask_participant": null,
+            "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Use this to evaluate loan eligibility and general loan-limit review."
+          },
+          {
+            "missing_data_point": "Maximum Number of Loans",
+            "ask_participant": null,
+            "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Use this to confirm whether the plan offers loans and how many loans may be active at one time."
+          },
+          {
+            "missing_data_point": "Active Loans",
+            "ask_participant": null,
+            "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Review Outstanding Balance values to determine whether any loans are still active and unpaid."
+          }
+        ],
+        "disambiguation_notes": [
+          "Plan rules may vary for loan availability, minimum vested balance, minimum loan amount, and number of concurrent loans.",
+          "The article distinguishes the standard repayment term from the possible longer primary residence term.",
+          "Missing-funds handling depends on the delivery method.",
+          "Tax treatment differs depending on whether the loan is repaid on time after job separation or plan termination and whether the participant completes a qualifying rollover.",
+          "Record Keeper determines the routing path: LT Trust can follow the LT Trust article, Vanguard can follow the Vanguard article, and other record keepers should receive only general loan guidance plus support for record-keeper-specific assistance.",
+          "MFA status helps determine whether an LT Trust online account route may be available, but MFA status alone does not confirm loan eligibility and does not control Vanguard or non-LT Trust and non-Vanguard routing.",
+          "Maximum Number of Loans confirms whether the plan offers loans and the plan-level cap for concurrent active loans.",
+          "Active Loans should be interpreted from Outstanding Balance values to determine whether any listed loans are still active and unpaid.",
+          "Total Vested Balance supports general eligibility review and balance-based loan limit review, but the exact maximum loan amount may still depend on prior 12-month loan history.",
+          "If the highest outstanding loan balance during the previous 12 months cannot be verified, only the general loan-limit rule should be shared and the participant should be redirected to human support for the exact maximum amount.",
+          "Participant Status should be interpreted operationally: Active supports the standard loan-request path, while other statuses should not be treated as automatically eligible for the same route.",
+          "If the Record Keeper is LT Trust or Vanguard, the bot may use record-keeper-specific login and article guidance; if the Record Keeper is any other value, the participant should receive only general guidance plus support for record-keeper-specific help.",
+          "Participant name is an identity-confirmation field, not a loan-eligibility rule; it is used to confirm that the correct participant profile is being reviewed before applying any loan logic.",
+          "The exact maximum loan amount may be lower than the general formula suggests if prior 12-month loan history affects the cap.",
+          "A participant may appear generally eligible for a loan but still require human support if the exact borrowing limit cannot be confirmed from available prior loan history.",
+          "A primary residence loan requires both the correct purpose and supporting documentation before the longer repayment term should be discussed as applicable.",
+          "If the participant selected the wrong loan purpose, the request should not be treated as correctable within the existing submission unless the applicable workflow explicitly supports rejection and resubmission.",
+          "A failed wire or ACH transfer should not be treated the same as a delayed mailed check, because the article describes different follow-up handling for each case.",
+          "The presence of prior loan records does not by itself mean a participant currently has an active loan; Outstanding Balance must be checked to determine whether a loan is still unpaid.",
+          "A loan may transfer during a provider change, but temporary blackout periods and delayed dashboard visibility can make the loan appear missing even when the transfer is still in progress.",
+          "A participant asking for an exact borrowing limit is a different case from a participant asking for general loan rules; the former may require human support if prior 12-month balance history cannot be verified.",
+          "Online account access and article routing are separate concepts: a participant may match a record-keeper route, but the online path should still depend on the workflow checks such as MFA status.",
+          "The article's general loan guidance can be shared globally, but record-keeper-specific submission steps should only be used when the participant's record keeper matches that path.",
+          "The article distinguishes between increasing payroll deductions to repay faster and making external payments; those are not interchangeable options.",
+          "A full payoff is treated differently from a partial external payment, so the participant's intent should be clarified before explaining payoff options.",
+          "The participant's mailing address is especially important when funds are reissued by check or when plan termination affects the delivery of tax forms and instructions.",
+          "The dashboard may show loan proceeds using different labels or transaction types, so the bot should not assume that only one display label confirms disbursement.",
+          "Job separation and plan termination can both lead to taxable treatment of an unpaid loan, but they are operationally different scenarios and should not be merged into one explanation.",
+          "The rollover option after a loan offset avoids taxation only if an amount equal to the offset is deposited into an IRA or another eligible retirement plan by the applicable deadline.",
+          "Support routing should be treated as a fallback for cases where the workflow cannot safely confirm eligibility, route selection, or exact loan-limit calculations from available data.",
+          "Loan-related fee disclosure is Record-Keeper-dependent and must not be generalized across all plans.",
+          "The Vanguard one-time $150 loan fee should only be disclosed when the Record Keeper is confirmed as RK: Vanguard.",
+          "LT Trust fee rules should only be disclosed when the Record Keeper is confirmed as RK: LT Trust.",
+          "If the Record Keeper is neither RK: Vanguard nor RK: LT Trust, support must confirm any loan-related fees before they are disclosed.",
+          "If the Record Keeper cannot be determined, the bot should not quote, estimate, or imply a loan-related fee."
+        ]
+      },
+      "decision_guide": {
+        "supported_outcomes": [
+          "can_proceed",
+          "blocked_missing_data",
+          "blocked_not_eligible",
+          "ambiguous_plan_rules"
+        ],
+        "eligibility_requirements": [
+          "The participant's plan must offer loans.",
+          "The participant must be actively employed.",
+          "The participant must have enough vested balance available to satisfy the applicable loan requirements.",
+          "The participant must meet IRS loan requirements.",
+          "The participant's Participant Status must support the active-employee loan-request path used in the workflow.",
+          "The participant's profile must be correctly matched before any loan eligibility or routing conclusion is given.",
+          "The participant's Record Keeper must be confirmed before the correct submission route, article path, or fee disclosure is selected.",
+          "If the participant is being guided through an online account route for LT Trust handling, MFA status must support that route before online submission guidance is given.",
+          "The participant's plan-level Maximum Number of Loans must allow another loan based on the current plan limit.",
+          "The participant must not already have active unpaid loans that meet or exceed the plan's concurrent-loan limit.",
+          "The participant's current loan history must be reviewed using Outstanding Balance values to determine whether any listed loans are still active and unpaid.",
+          "If the participant is requesting a primary residence loan term, the required supporting documentation must be available before the longer repayment term is treated as applicable.",
+          "If the participant is asking for the exact maximum loan amount, the prior 12-month highest outstanding loan balance must be verifiable; otherwise the exact maximum cannot be confirmed through the bot flow.",
+          "If the participant is asking about any loan-related fee, the Record Keeper must be confirmed before any fee is disclosed.",
+          "The participant's loan route must align with the confirmed Record Keeper: LT Trust and Vanguard may follow their respective guided paths, while other Record Keepers receive only general guidance plus support handling."
+        ],
+        "blocking_conditions": [
+          "The participant's plan does not offer loans.",
+          "The participant is not actively employed when active employment is required for the requested outcome.",
+          "The participant's Participant Status does not support the active-employee loan-request path used in the workflow.",
+          "The participant does not have enough vested balance available to satisfy the applicable loan requirements.",
+          "The participant's plan-level Maximum Number of Loans does not allow another active loan.",
+          "The participant already has active unpaid loans that meet or exceed the plan's concurrent-loan limit.",
+          "The participant submitted the wrong loan purpose and the request must be rejected and resubmitted correctly.",
+          "The participant is requesting a primary residence loan term, but the required supporting documentation has not been provided or confirmed.",
+          "The participant is asking for a route or submission method that does not match the confirmed Record Keeper.",
+          "The participant is requesting an unsupported repayment method, such as a partial external payment that does not cover the full remaining balance."
+        ],
+        "missing_data_conditions": [
+          {
+            "condition": "The participant profile cannot be confidently matched because the participant's name is not confirmed in the system.",
+            "missing_data_point": "Participant's name",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          },
+          {
+            "condition": "The participant's Record Keeper has not been confirmed, so the correct routing path, login guidance, article path, and fee-disclosure path cannot be determined.",
+            "missing_data_point": "Record Keeper",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          },
+          {
+            "condition": "The participant's Participant Status has not been confirmed, so the workflow cannot determine whether the active-employee loan-request path applies.",
+            "missing_data_point": "Participant Status",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          },
+          {
+            "condition": "The participant's MFA status has not been confirmed, so the workflow cannot determine whether the LT Trust online account route may be used.",
+            "missing_data_point": "MFA status",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          },
+          {
+            "condition": "The participant's Total Vested Balance has not been confirmed, so balance-based loan eligibility and general loan-limit review cannot be completed.",
+            "missing_data_point": "Total Vested Balance",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          },
+          {
+            "condition": "The participant's Maximum Number of Loans has not been confirmed, so the workflow cannot determine whether the plan offers loans or how many loans may be active at one time.",
+            "missing_data_point": "Maximum Number of Loans",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          },
+          {
+            "condition": "The participant's Active Loans status has not been confirmed, so the workflow cannot determine whether any listed loans are still active and unpaid.",
+            "missing_data_point": "Active Loans",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          },
+          {
+            "condition": "The requested loan purpose is not known, so the applicable repayment term and any primary-residence documentation requirements cannot be determined.",
+            "missing_data_point": "Requested loan purpose",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": "What loan purpose are you requesting, and is this for the purchase of a primary residence?"
+          },
+          {
+            "condition": "The participant's highest outstanding loan balance during the previous 12 months is required to confirm the exact maximum loan amount, but that data cannot be verified from the available sources.",
+            "missing_data_point": "Highest outstanding loan balance during the previous 12 months",
+            "resulting_outcome": "blocked_missing_data",
+            "ask_participant": null
+          }
+        ],
+        "allowed_conclusions": [
+          "The participant may be able to take a 401(k) loan if the plan allows loans and the general conditions in the article are met.",
+          "The general maximum loan amount is 50% of vested balance up to $50,000, subject to the prior-12-month outstanding-loan reduction described in the article.",
+          "Most loans are repaid through payroll deductions and usually have a term of up to 5 years.",
+          "A primary residence loan may have a term of up to 15 years if supporting documentation is provided.",
+          "If the participant leaves employment with an outstanding loan and does not repay it on time, the unpaid amount is generally treated as taxable income and reported on Form 1099-R.",
+          "A participant may avoid taxes and penalties after a loan offset by completing the rollover described in the article by the applicable federal tax return deadline, including extensions.",
+          "The bot may explain the general loan limit rule, but should not confirm the exact maximum amount when the prior 12-month highest outstanding loan balance cannot be verified.",
+          "If prior 12-month loan history is unavailable, the participant may be referred to human support for confirmation of the exact borrowing limit.",
+          "The bot may state that the general maximum is typically 50% of vested balance up to $50,000, while clarifying that the final amount may be reduced by prior 12-month loan history.",
+          "If the participant's Record Keeper is RK: LT Trust and the required workflow checks support the online path, the participant may be guided using the LT Trust article and ForUsAll login route.",
+          "If the participant's Record Keeper is RK: Vanguard and the required workflow checks support that path, the participant may be guided using the Vanguard article and Vanguard login route.",
+          "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, the participant may be given only the general loan guidance from this article and redirected to support for record-keeper-specific assistance.",
+          "MFA status may be used only to determine whether the LT Trust online account route is available, but not as a standalone loan-eligibility conclusion.",
+          "If the participant's plan does not offer loans, the bot may conclude that the participant cannot proceed with a loan request through this workflow.",
+          "If the participant selected the wrong loan purpose, the bot may conclude that the request should be rejected and resubmitted correctly through support.",
+          "If the participant wants to repay the loan faster, the bot may conclude that payroll deductions may be increased only in exact multiples of the original scheduled payment.",
+          "If the participant wants to pay off the loan early, the bot may conclude that a full payoff is allowed and that there is no prepayment penalty for paying the loan off in full.",
+          "If loan funds were sent by check and more than two weeks have passed since the check was issued, the bot may conclude that a stop payment and reissue may be requested.",
+          "If a wire or ACH transfer failed because of incorrect banking details, name mismatch, or account type issues, the bot may conclude that the funds are typically automatically reissued by check to the address on file.",
+          "If an employer changes 401(k) providers while the participant remains actively employed, the bot may conclude that the loan will usually transfer with the account and that payroll deductions generally continue after the transition is complete.",
+          "If the loan does not appear immediately after a provider transition, the bot may conclude that there may be a short blackout period or a brief delay before the loan appears on the new provider's dashboard.",
+          "If the participant leaves employment with an outstanding loan, the bot may conclude that the participant will typically have about 90 days to repay the remaining balance.",
+          "If the employer terminates the 401(k) plan, the bot may conclude that payroll loan repayments stop and the remaining balance is generally due in full before the plan closes.",
+          "If the plan is fully terminated and distributed, the bot may conclude that online account access is disabled and that the participant should make sure the mailing address on file is current for tax forms and instructions.",
+          "If the participant's Record Keeper is confirmed as RK: Vanguard, the bot may conclude that there is a one-time loan fee of $150 taken out of the loan proceeds.",
+          "If the participant asks about loan-related fees and the Record Keeper cannot be determined, the bot may conclude that fee disclosure cannot be completed and that the participant should be redirected to support.",
+          "If the participant's Record Keeper is neither RK: Vanguard nor RK: LT Trust, the bot may conclude that support must confirm any loan-related fees before they are disclosed.",
+          "If the participant's Record Keeper is confirmed as RK: LT Trust, the bot may disclose only the LT Trust fee rules that are confirmed in scope for that request.",
+          "If the participant asks about fees, the bot may conclude that fee disclosure depends on the confirmed Record Keeper and should not be generalized across all plans."
+        ],
+        "not_allowed_conclusions": [
+          "Do not guarantee the plan allows loans.",
+          "Do not conclude the participant is eligible without confirming plan rules and the required participant data points described in the article.",
+          "Do not conclude a participant can choose any increased payroll deduction amount.",
+          "Do not conclude that partial external payments are accepted unless they cover the full remaining balance.",
+          "Do not conclude that missing funds will be reissued by the participant's preferred method unless the article states that outcome.",
+          "Do not conclude that taxes or penalties will not apply after job separation or plan termination unless the participant completes the rollover described in the article.",
+          "Do not conclude that provider-transition timing will be immediate or identical for all participants.",
+          "Do not conclude the participant's exact maximum loan amount if the highest outstanding loan balance during the previous 12 months cannot be verified from the available data.",
+          "Do not guarantee that the participant can borrow the full general maximum of 50% of vested balance up to $50,000 without confirming whether the prior 12-month loan-balance reduction applies.",
+          "Do not estimate, infer, or guess the participant's prior 12-month highest outstanding loan balance from incomplete loan history.",
+          "Do not present the exact borrowing limit as final when the prior 12-month loan history is unavailable and human support review is required.",
+          "Do not tell the participant that a prior loan from the last 12 months has no effect on the new loan limit unless that can be verified from available data.",
+          "Do not override or recalculate the participant's exact maximum loan amount when the prior 12-month highest outstanding balance cannot be confirmed.",
+          "Do not treat the general loan-limit formula alone as sufficient to confirm the participant's final maximum borrowing amount when prior 12-month loan history may reduce the cap.",
+          "Do not conclude that the LT Trust article path applies unless the participant's Record Keeper is confirmed as RK: LT Trust.",
+          "Do not conclude that the Vanguard article path applies unless the participant's Record Keeper is confirmed as RK: Vanguard.",
+          "Do not conclude that a participant with any other Record Keeper can follow the LT Trust or Vanguard submission path.",
+          "Do not conclude that MFA status alone makes the participant eligible for a loan.",
+          "Do not conclude that the participant can use the online account route unless the required workflow checks support that path.",
+          "Do not conclude that the participant is eligible for the standard loan-request path unless Participant Status supports that route.",
+          "Do not conclude that the participant can request another loan without checking both Maximum Number of Loans and Active Loans.",
+          "Do not conclude that a prior loan record is still active without reviewing Outstanding Balance values.",
+          "Do not conclude that a primary residence repayment term applies unless the loan purpose and supporting documentation are confirmed.",
+          "Do not conclude that the participant can correct the wrong loan purpose within the existing request unless the workflow explicitly supports rejection and resubmission handling.",
+          "Do not conclude that a delayed mailed check and a failed wire or ACH transfer should follow the same resolution path.",
+          "Do not conclude that a participant may make a partial external payoff unless it covers the full remaining balance.",
+          "Do not conclude that online account access remains available during a blackout period or after full plan termination.",
+          "Do not conclude that support is unnecessary when the workflow cannot safely confirm routing, eligibility, or the exact borrowing limit from available data.",
+          "Do not conclude that general article guidance can replace record-keeper-specific routing when the workflow requires support handling for non-LT Trust and non-Vanguard plans.",
+          "Do not conclude that a loan-related fee applies before the participant's Record Keeper is confirmed.",
+          "Do not conclude that the Vanguard $150 loan fee applies unless the participant's Record Keeper is confirmed as RK: Vanguard.",
+          "Do not conclude that LT Trust fee rules apply unless the participant's Record Keeper is confirmed as RK: LT Trust.",
+          "Do not conclude that the same loan-related fee applies across all plans or all Record Keepers.",
+          "Do not disclose or estimate a loan-related fee for a plan whose Record Keeper is neither RK: Vanguard nor RK: LT Trust without support confirmation.",
+          "Do not conclude that there is no loan-related fee when the participant's Record Keeper is unknown.",
+          "Do not generalize Vanguard or LT Trust fee rules to other Record Keepers.",
+          "Do not conclude that fee disclosure can proceed when the Record Keeper cannot be determined from available data."
+        ]
+      },
+      "response_frames": {
+        "can_proceed": {
+          "participant_message_components": [
+            "Explain that 401(k) loan availability depends on the participant's employer plan rules.",
+            "Confirm that the participant's profile supports proceeding through the applicable loan guidance path.",
+            "If the participant's Record Keeper is RK: LT Trust and the workflow checks support the online route, explain that they can be guided using the LT Trust article and ForUsAll login path.",
+            "If the participant's Record Keeper is RK: Vanguard and the workflow checks support that route, explain that they can be guided using the Vanguard article and Vanguard login path.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, explain that only general loan guidance can be shared from this article and that record-keeper-specific help must go through support.",
+            "State the general loan limit rule of 50% of vested balance up to $50,000, subject to the prior-12-month loan reduction described in the article.",
+            "Clarify that the exact maximum loan amount should only be confirmed when the prior 12-month highest outstanding loan balance can be verified.",
+            "Explain the usual repayment method through payroll deductions.",
+            "State the standard repayment term of up to 5 years and mention the possible primary residence term of up to 15 years if the participant's loan purpose and supporting documentation support that treatment.",
+            "If relevant, explain that participants who want to repay faster may increase payroll deductions only in exact multiples of the original scheduled payment.",
+            "If relevant, explain that a full early payoff is allowed and that there is no prepayment penalty for paying the loan off in full.",
+            "If the participant asks about fees, explain that the Record Keeper must be confirmed before any loan-related fee can be disclosed.",
+            "If the participant's Record Keeper is RK: Vanguard, explain that there is a one-time loan fee of $150 and that it is taken out of the loan proceeds.",
+            "If the participant's Record Keeper is RK: LT Trust, explain only the LT Trust fee rules that are confirmed in scope for the request.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, explain that support must confirm any loan-related fees before they are disclosed."
+          ],
+          "next_steps": [
+            "Have the participant review the Loans & Distributions section in the ForUsAll portal.",
+            "If needed, help verify the request, status, delivery method, or repayment handling using the support paths described in the article.",
+            "If the participant's Record Keeper is RK: LT Trust and the workflow checks support the online route, direct the participant to use the ForUsAll login path and follow the LT Trust loan article guidance.",
+            "If the participant's Record Keeper is RK: Vanguard and the workflow checks support that route, direct the participant to use the Vanguard login path and follow the Vanguard loan article guidance.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, continue sharing only the general loan guidance from this article and redirect the participant to support for record-keeper-specific assistance.",
+            "Have the participant review the applicable Loans, Distributions, or Transaction History section when checking loan request status, disbursement method, or completed activity.",
+            "If the participant is requesting a primary residence loan term, confirm that the required supporting documentation is available before treating the longer repayment term as applicable.",
+            "If the participant wants to repay the loan faster, explain that increased payroll deductions must be exact multiples of the original scheduled payment.",
+            "If the participant wants to pay off the loan early, explain the full-payoff option and clarify that partial external payments are not accepted unless they cover the full remaining balance.",
+            "If needed, help verify the request, status, delivery method, repayment handling, or support-routing path using the workflow and article guidance.",
+            "Confirm the participant's Record Keeper before disclosing any loan-related fee.",
+            "If the participant's Record Keeper is RK: Vanguard, disclose the one-time $150 loan fee and explain that it is taken out of the loan proceeds.",
+            "If the participant's Record Keeper is RK: LT Trust, disclose only the LT Trust fee rules that are confirmed in scope for the request.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, redirect the participant to support for fee confirmation before disclosing any loan-related fee."
+          ],
+          "warnings": [
+            "Actual processing timing may vary depending on the provider and delivery method selected.",
+            "Plan-specific minimums or loan-count limits may apply.",
+            "The exact maximum loan amount may not be confirmable through the bot flow if the participant's highest outstanding loan balance during the previous 12 months cannot be verified.",
+            "The general loan limit formula should not be treated as the participant's final maximum borrowing amount when prior 12-month loan history may reduce the cap.",
+            "Record-keeper-specific submission guidance applies only when the participant's confirmed Record Keeper matches that route.",
+            "MFA status may affect whether an LT Trust online account route is available, but MFA status alone does not confirm loan eligibility.",
+            "The longer primary residence repayment term should not be treated as applicable unless the loan purpose and required supporting documentation are confirmed.",
+            "Participants cannot choose an arbitrary increased payroll deduction amount; only exact multiples of the original scheduled payment are allowed.",
+            "Partial external payments are not accepted unless they cover the full remaining balance.",
+            "A provider transition may include a short blackout period or a brief delay before a loan appears on the new provider's dashboard.",
+            "Loan-related fee disclosure depends on the participant's confirmed Record Keeper and should not be generalized across all plans.",
+            "Do not disclose any loan-related fee until the participant's Record Keeper is confirmed.",
+            "The Vanguard $150 loan fee applies only when the participant's Record Keeper is confirmed as RK: Vanguard.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, support must confirm any loan-related fees before they are disclosed."
+          ],
+          "questions_to_ask": [],
+          "what_not_to_say": [
+            "Do not guarantee loan approval.",
+            "Do not promise exact funding timing beyond the article's stated timing.",
+            "Do not imply the participant can choose any repayment increase amount.",
+            "Do not say the participant can borrow the exact maximum amount unless the prior 12-month highest outstanding loan balance has been verified.",
+            "Do not say the participant can borrow the full general maximum of 50% of vested balance up to $50,000 without considering the prior 12-month reduction rule.",
+            "Do not say the LT Trust submission path applies unless the participant's Record Keeper is confirmed as RK: LT Trust.",
+            "Do not say the Vanguard submission path applies unless the participant's Record Keeper is confirmed as RK: Vanguard.",
+            "Do not say that any non-LT Trust or non-Vanguard participant can follow those same record-keeper-specific submission steps.",
+            "Do not say that MFA status alone makes the participant eligible for a loan.",
+            "Do not say the participant can use the online account route unless the workflow checks support that path.",
+            "Do not say a primary residence repayment term applies unless the participant's loan purpose and required supporting documentation are confirmed.",
+            "Do not say partial external payments are allowed unless they cover the full remaining balance.",
+            "Do not say a failed wire or ACH transfer will be reissued by any method other than the outcome described in the article.",
+            "Do not say provider-transition timing will be immediate or identical for all participants.",
+            "Do not say the participant does not need support when the workflow cannot safely confirm routing, eligibility, or the exact borrowing limit from available data.",
+            "Do not say that a loan-related fee applies before the participant's Record Keeper is confirmed.",
+            "Do not say that the Vanguard $150 loan fee applies unless the participant's Record Keeper is confirmed as RK: Vanguard.",
+            "Do not say that LT Trust fee rules apply unless the participant's Record Keeper is confirmed as RK: LT Trust.",
+            "Do not say that the same loan-related fee applies to all plans or all Record Keepers.",
+            "Do not say that a non-Vanguard and non-LT Trust plan can use Vanguard or LT Trust fee rules.",
+            "Do not say that support confirmation is unnecessary when the participant's Record Keeper is neither RK: Vanguard nor RK: LT Trust and a fee question is being asked.",
+            "Do not say that no loan-related fee applies when the participant's Record Keeper is still unknown.",
+            "Do not say that a fee amount is final when the applicable Record Keeper fee rule has not been confirmed."
+          ]
+        },
+        "blocked_missing_data": {
+          "participant_message_components": [
+            "Explain that more information is needed before confirming loan availability, exact limits, routing, or next steps.",
+            "State only the specific missing data points that are necessary to continue.",
+            "Clarify that some required checks must be verified internally from the participant profile or plan profile, rather than asked to the participant.",
+            "If the missing information affects record-keeper routing, explain that the correct login path or article guidance cannot be confirmed yet.",
+            "If the missing information affects the exact maximum loan amount, explain the general loan-limit rule but clarify that the final amount cannot be confirmed yet.",
+            "If the missing information cannot be verified through the available bot-accessible data, explain that human support is needed for confirmation.",
+            "If the missing information affects fee disclosure, explain that the participant's Record Keeper must be confirmed before any loan-related fee can be shared.",
+            "If the participant is asking about fees and the Record Keeper is missing or unclear, explain that fee confirmation must wait until the Record Keeper is verified or support confirms the applicable fee."
+          ],
+          "next_steps": [
+            "Retrieve required participant-profile and plan-profile data from internal or portal systems before giving a loan eligibility, routing, or limit conclusion.",
+            "Confirm the participant's name first so the correct profile is being reviewed before any loan-related guidance is given.",
+            "Confirm the participant's Record Keeper before sharing any login website, article path, or record-keeper-specific submission guidance.",
+            "Confirm Participant Status, MFA status, Total Vested Balance, Maximum Number of Loans, and Active Loans through internal systems before proceeding.",
+            "Ask the participant only for information that is appropriately participant-provided, such as the requested loan purpose or whether the request is for a primary residence.",
+            "If the missing information affects the exact maximum loan amount and the prior 12-month highest outstanding loan balance cannot be verified from available data, explain the general rule and route the participant to human support for exact amount confirmation.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, provide only general loan guidance from this article and redirect the participant to support for record-keeper-specific assistance.",
+            "Once all required data is confirmed, continue using the correct record-keeper-specific path or the general article guidance, depending on the participant's confirmed profile.",
+            "Confirm the participant's Record Keeper before disclosing any loan-related fee.",
+            "If the participant is asking about fees and the Record Keeper is still missing or unclear, do not quote a fee and redirect to support for fee confirmation.",
+            "If the Record Keeper is confirmed as RK: Vanguard, disclose only the Vanguard fee rule.",
+            "If the Record Keeper is confirmed as RK: LT Trust, disclose only the LT Trust fee rules that are confirmed in scope for the request."
+          ],
+          "warnings": [
+            "Do not confirm eligibility, limits, routing, or repayment terms until the missing information is confirmed.",
+            "Do not confirm the exact maximum loan amount if the prior 12-month highest outstanding loan balance cannot be verified.",
+            "Do not share record-keeper-specific login or article guidance until the participant's Record Keeper is confirmed.",
+            "Do not treat MFA status alone as sufficient to confirm loan eligibility or online-path availability.",
+            "Do not disclose any loan-related fee until the participant's Record Keeper is confirmed.",
+            "Do not generalize Vanguard or LT Trust fee rules across all plans or Record Keepers.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, support must confirm any loan-related fees before they are disclosed."
+          ],
+          "questions_to_ask": [
+            "What loan purpose are you requesting, and is this for the purchase of a primary residence?"
+          ],
+          "what_not_to_say": [
+            "Do not say the participant is eligible before plan rules and required participant data are confirmed.",
+            "Do not ask the participant for internal profile data that should be retrieved from admin or portal systems.",
+            "Do not say the participant can borrow the exact maximum amount unless the prior 12-month highest outstanding loan balance has been verified.",
+            "Do not say the LT Trust or Vanguard route applies until the participant's Record Keeper is confirmed.",
+            "Do not say the participant can use the online account path unless the workflow checks support that path.",
+            "Do not say a primary residence repayment term applies unless the participant's loan purpose and required supporting documentation are confirmed.",
+            "Do not say that a loan-related fee applies before the participant's Record Keeper is confirmed.",
+            "Do not say that the Vanguard $150 loan fee applies unless the participant's Record Keeper is confirmed as RK: Vanguard.",
+            "Do not say that LT Trust fee rules apply unless the participant's Record Keeper is confirmed as RK: LT Trust.",
+            "Do not say that the same fee applies to all plans or all Record Keepers.",
+            "Do not say that support confirmation is unnecessary when the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard and a fee question is being asked."
+          ]
+        },
+        "blocked_not_eligible": {
+          "participant_message_components": [
+            "Explain the specific article-supported or workflow-supported reason the request cannot proceed through the current path.",
+            "If relevant, explain whether the issue is plan loan availability, participant status, insufficient vested balance, plan loan-count limits, existing active unpaid loans, or an incorrect loan purpose submission.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, explain that record-keeper-specific guided assistance is not available through this workflow and that support is required.",
+            "If applicable, explain the difference between being unable to proceed through this workflow and the general loan rules described in the article.",
+            "If the participant is asking about fees and the confirmed Record Keeper is neither RK: LT Trust nor RK: Vanguard, explain that record-keeper-specific fee disclosure cannot be completed through this workflow and that support is required."
+          ],
+          "next_steps": [
+            "If the wrong loan purpose was submitted, direct the participant to contact support so the request can be rejected and resubmitted correctly.",
+            "If the participant's plan does not offer loans or the participant does not meet the required profile conditions for this workflow, explain that the request cannot proceed through the current path.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, provide only general loan information from this article and redirect the participant to support for record-keeper-specific assistance.",
+            "If the issue involves an outstanding loan after job separation or plan termination, explain the repayment and tax-treatment rules described in the article.",
+            "If the participant has reached the plan's concurrent-loan limit or already has active unpaid loans that block another request, explain that another loan cannot proceed through this workflow unless plan conditions allow it.",
+            "If the participant is asking about fees for a non-LT Trust and non-Vanguard plan, provide only general loan information from this article and redirect the participant to support for fee confirmation."
+          ],
+          "warnings": [
+            "If an unpaid balance is not repaid after job separation or plan termination, it is generally treated as taxable income and may be subject to penalties.",
+            "Plan-specific loan limits and concurrent-loan rules may prevent a new loan even when other general conditions appear to be met.",
+            "A participant may be blocked from the guided route even when general article information can still be shared.",
+            "A participant may be blocked from record-keeper-specific fee guidance even when general loan information can still be shared."
+          ],
+          "questions_to_ask": [],
+          "what_not_to_say": [
+            "Do not invent alternative eligibility paths not stated in the article or workflow.",
+            "Do not promise that taxes or penalties can be avoided except through the rollover option described in the article.",
+            "Do not say the participant can proceed through the LT Trust or Vanguard path when the confirmed Record Keeper does not match that route.",
+            "Do not say that MFA status alone can override a blocked eligibility outcome.",
+            "Do not say that an existing active unpaid loan has no effect on a new loan request without checking the plan's concurrent-loan limits.",
+            "Do not present a support redirect as optional when the workflow requires support handling for the participant's route.",
+            "Do not say that a loan-related fee can be confirmed through this workflow when the participant's confirmed Record Keeper is neither RK: LT Trust nor RK: Vanguard.",
+            "Do not present support confirmation as optional when fee disclosure depends on a non-LT Trust and non-Vanguard Record Keeper."
+          ]
+        },
+        "ambiguous_plan_rules": {
+          "participant_message_components": [
+            "Explain that some loan rules depend on the employer's specific 401(k) plan.",
+            "Clarify that plan-specific minimums, loan availability, and loan-count limits may apply beyond the general rules in the article.",
+            "Explain that general article guidance can be shared, but plan-specific conclusions should only be given when the participant's plan and profile details are confirmed.",
+            "If relevant, explain that the exact maximum loan amount may depend on prior 12-month loan history that may not be fully verifiable through the bot flow.",
+            "If the participant is asking about fees, explain that fee rules may depend on the confirmed Record Keeper and should not be generalized across all plans."
+          ],
+          "next_steps": [
+            "Confirm the specific plan's loan rules before giving a final answer.",
+            "Confirm the participant's Record Keeper before giving any record-keeper-specific login or article guidance.",
+            "Use the portal review path or support contact methods described in the article when plan details are not clear.",
+            "If the participant's Record Keeper is neither RK: LT Trust nor RK: Vanguard, provide only general loan guidance from this article and redirect the participant to support for record-keeper-specific assistance.",
+            "If the exact borrowing limit depends on prior 12-month loan history that cannot be verified, explain the general rule and refer the participant to human support for exact amount confirmation.",
+            "Confirm the participant's Record Keeper before disclosing any loan-related fee.",
+            "If the participant is asking about fees and the Record Keeper is neither RK: LT Trust nor RK: Vanguard, provide only general loan guidance and redirect the participant to support for fee confirmation."
+          ],
+          "warnings": [
+            "General loan rules in the article do not override plan-specific rules.",
+            "The exact maximum loan amount should not be treated as confirmed if prior 12-month loan history cannot be verified.",
+            "Record-keeper-specific submission paths should not be used until the participant's Record Keeper is confirmed.",
+            "Loan-related fee disclosure should not be treated as confirmed until the participant's Record Keeper is known and the applicable fee rule is verified."
+          ],
+          "questions_to_ask": [
+            "Are you able to access the Loans & Distributions section in your account so we can compare the plan-specific options shown there?",
+            "What loan purpose are you requesting, and is this for the purchase of a primary residence?"
+          ],
+          "what_not_to_say": [
+            "Do not guarantee the plan allows the feature or process in question.",
+            "Do not present plan-specific minimums or limits unless they are confirmed for that plan.",
+            "Do not say the participant can use the LT Trust or Vanguard route until the Record Keeper is confirmed.",
+            "Do not say the exact maximum loan amount is final when prior 12-month loan history may still reduce the cap.",
+            "Do not treat general article guidance as a substitute for confirmed plan-specific rules when the workflow requires support handling or further verification.",
+            "Do not say that a loan-related fee applies when the participant's Record Keeper or plan fee rule is still unclear.",
+            "Do not present Vanguard or LT Trust fee rules as universal when the participant's Record Keeper has not been confirmed.",
+            "Do not treat general loan guidance as sufficient to confirm a loan-related fee when fee disclosure depends on Record Keeper confirmation or support review."
+          ]
+        }
+      },
+      "critical_flags": {
+        "portal_required": false,
+        "mfa_relevant": true,
+        "record_keeper_must_be": null
+      }
+    }
+  }
+  

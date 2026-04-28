@@ -16,6 +16,8 @@ import json
 import asyncio
 import hashlib
 import logging
+import os
+import re
 import time
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
@@ -190,6 +192,17 @@ class RAGEngine:
         try:
             # 1. Decompose inquiry into sub-queries
             sub_queries = await self._decompose_question(inquiry)
+            advisory_signal = self._detect_advisory_concepts(
+                inquiry=inquiry,
+                topic=topic,
+                collected_data=None,
+            )
+            sub_queries = self._expand_queries_with_advisory_concepts(
+                sub_queries=sub_queries,
+                inquiry=inquiry,
+                topic=topic,
+                advisory_signal=advisory_signal,
+            )
             enriched_queries = [f"{sq} {topic}" for sq in sub_queries]
             
             # Include original inquiry as fallback if decomposition didn't preserve it
@@ -387,7 +400,9 @@ class RAGEngine:
                     "per_query_scores": pqs,
                     "unique_articles": total_articles,
                     "relevant_articles": relevant_articles,
-                    "coverage_gaps": coverage_gaps
+                    "coverage_gaps": coverage_gaps,
+                    "detected_concepts": advisory_signal.get("detected_concepts", []),
+                    "alternative_concepts": advisory_signal.get("alternative_concepts", []),
                 }
             )
         
@@ -437,6 +452,17 @@ class RAGEngine:
             
             # 2. Decompose inquiry into sub-queries
             sub_queries = await self._decompose_question(inquiry)
+            advisory_signal = self._detect_advisory_concepts(
+                inquiry=inquiry,
+                topic=topic,
+                collected_data=collected_data,
+            )
+            sub_queries = self._expand_queries_with_advisory_concepts(
+                sub_queries=sub_queries,
+                inquiry=inquiry,
+                topic=topic,
+                advisory_signal=advisory_signal,
+            )
             logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
             
             enriched_queries = []
@@ -465,12 +491,23 @@ class RAGEngine:
                     "No relevant articles found for this topic",
                     confidence=0.0
                 )
+
+            chunks, bundle_info = await self._add_response_article_bundles(
+                chunks=chunks,
+                advisory_signal=advisory_signal,
+            )
+            chunks = self._rank_response_chunks(
+                chunks=chunks,
+                advisory_signal=advisory_signal,
+                topic=topic,
+            )
             
             # 4. Build context with diversity + tier priority (or dominant-article mode)
             context, selected_chunks, tokens_used, dominance_info = self._build_context_with_diversity_and_tiers(
                 chunks=chunks,
                 budget=context_budget,
-                max_per_article=self.GR_MAX_CHUNKS_PER_ARTICLE
+                max_per_article=self.GR_MAX_CHUNKS_PER_ARTICLE,
+                advisory_signal=advisory_signal,
             )
             dominant_mode = dominance_info.get("dominant_mode", False)
 
@@ -519,22 +556,10 @@ class RAGEngine:
                 logger.info(f"Phase 1 outcome: {outcome} ({outcome_reason[:80]}...)")
             except asyncio.TimeoutError:
                 logger.warning(f"Phase 1 timed out after {self.GR_PHASE1_TIMEOUT_SECONDS}s")
-                return GenerateResponseResult(
-                    decision="uncertain",
-                    confidence=0.3,
-                    response=self._build_llm_timeout_fallback(inquiry, selected_chunks),
-                    source_articles=self._build_source_articles(selected_chunks),
-                    used_chunks=self._serialize_used_chunks(selected_chunks),
-                    coverage_gaps=[],
-                    metadata=self._gr_metadata(
-                        selected_chunks, tokens_used, "", None,
-                        total_inquiries_in_ticket, sub_queries,
-                        per_query_scores, enriched_queries,
-                        phase="phase1_timeout",
-                        llm_model=phase1_model,
-                        llm_provider=phase1_provider,
-                        dominance_info=dominance_info,
-                    ),
+                outcome = "ambiguous_plan_rules"
+                outcome_reason = (
+                    "Phase 1 outcome determination timed out; proceeding with "
+                    "the full response-generation pass."
                 )
             except (json.JSONDecodeError, LLMEmptyResponseError) as e:
                 logger.error(f"Phase 1 failed ({type(e).__name__}): {e}")
@@ -688,7 +713,7 @@ class RAGEngine:
             coverage_gaps = [g for g in coverage_gaps if isinstance(g, str) and g.strip()]
 
             # 7. Hybrid confidence (retrieval + LLM gap signal + outcome floor)
-            confidence = self._calculate_confidence(chunks, coverage_gaps=coverage_gaps)
+            confidence = self._calculate_confidence(selected_chunks, coverage_gaps=coverage_gaps)
 
             # Outcome is a stronger signal than retrieval metrics alone.
             # Index the floor by the outcome produced by the unified LLM call.
@@ -753,6 +778,10 @@ class RAGEngine:
                     "dominance_top_signal": dominance_info.get("top_signal"),
                     "dominance_runner_up_signal": dominance_info.get("runner_up_signal"),
                     "dominance_ratio": dominance_info.get("ratio"),
+                    "concept_quotas_applied": dominance_info.get("concept_quotas_applied", []),
+                    "detected_concepts": advisory_signal.get("detected_concepts", []),
+                    "alternative_concepts": advisory_signal.get("alternative_concepts", []),
+                    "article_bundles_added": bundle_info.get("articles_added", []),
                 }
             )
         
@@ -783,6 +812,29 @@ class RAGEngine:
     GR_PHASE1_MAX_TOKENS = 500
     GR_FALLBACK_MIN_CHUNKS = 6
     GR_FALLBACK_MIN_SCORE = 0.35
+    GR_MAX_ADVISORY_QUERIES = 3
+    GR_MAX_QUERY_COUNT = 6
+    GR_BUNDLE_MAX_ARTICLES = 6
+    GR_BUNDLE_MAX_CHUNKS_PER_ARTICLE = 8
+    GR_BUNDLE_MIN_SCORE = 0.20
+    GR_BUNDLE_CHUNK_TYPES = frozenset({
+        "decision_guide",
+        "response_frames",
+        "eligibility",
+        "business_rules",
+        "steps",
+        "fees_details",
+    })
+    GR_CONTEXT_QUOTA_CONCEPTS = frozenset({
+        "termination_distribution_request",
+        "in_service_withdrawal_options",
+        "hardship_withdrawal",
+        "loan",
+    })
+    GR_CONTEXT_MIN_CHUNKS_PER_CONCEPT = 1
+    GR_RERANK_ENABLED = os.getenv("GR_RERANK_ENABLED", "false").lower() in {
+        "1", "true", "yes", "on"
+    }
 
     # Dominant-article heuristic for Generate Response context building.
     # When one article's retrieval signal dominates the others, skip forced
@@ -1065,19 +1117,494 @@ class RAGEngine:
             topic.upper()
         ]))
         return variations
+
+    @staticmethod
+    def _contains_any(text: str, needles: List[str]) -> bool:
+        return any(needle in text for needle in needles)
+
+    @staticmethod
+    def _contains_bounded_phrase(text: str, phrase: str) -> bool:
+        pattern = rf"(?<![a-z0-9]){re.escape(phrase.lower())}(?![a-z0-9])"
+        return re.search(pattern, text) is not None
+
+    @staticmethod
+    def _ordered_unique(values: List[str]) -> List[str]:
+        seen = set()
+        unique = []
+        for value in values:
+            if not value:
+                continue
+            if value not in seen:
+                seen.add(value)
+                unique.append(value)
+        return unique
+
+    def _detect_advisory_concepts(
+        self,
+        inquiry: str,
+        topic: str,
+        collected_data: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Deterministically detect cross-topic advisory paths before retrieval.
+
+        This is intentionally conservative: it does not decide eligibility. It
+        only expands retrieval when the participant appears to be active and is
+        asking how to access 401(k) funds, especially around hardship/housing
+        or a possible future separation.
+        """
+        inquiry_text = (inquiry or "").lower()
+        topic_text = (topic or "").lower().strip()
+        text = f"{inquiry_text} {topic_text}"
+
+        participant_data = (collected_data or {}).get("participant_data") or {}
+        status_values = [
+            participant_data.get("employment_status"),
+            participant_data.get("participant_status"),
+            participant_data.get("eligibility_status"),
+            participant_data.get("status"),
+        ]
+        normalized_statuses = [
+            re.sub(r"[^a-z0-9]+", " ", str(v).lower()).strip()
+            for v in status_values
+            if v is not None
+        ]
+
+        active_from_status = any(
+            status == "active" or status.startswith("active ")
+            for status in normalized_statuses
+        )
+        inactive_from_status = any(
+            status == "inactive"
+            or status.startswith("inactive ")
+            or status in {"terminated", "separated", "former"}
+            or status.startswith("terminated ")
+            or status.startswith("separated ")
+            for status in normalized_statuses
+        )
+
+        active_text_signal = (
+            self._contains_any(text, [
+                "still working",
+                "while employed",
+                "currently employed",
+                "considering quitting",
+                "quit in",
+                "quitting in",
+                "next 4 weeks",
+                "next four weeks",
+            ])
+            or self._contains_bounded_phrase(text, "active participant")
+        )
+        active_participant = (
+            active_from_status
+            or (not inactive_from_status and active_text_signal)
+        )
+        wants_funds = self._contains_any(text, [
+            "cash out",
+            "cashout",
+            "withdraw",
+            "withdrawal",
+            "take money",
+            "take some money",
+            "access money",
+            "access funds",
+            "need money",
+            "money from",
+            "distribution",
+        ])
+        separation_signal = self._contains_any(text, [
+            "separation",
+            "separated",
+            "quit",
+            "quitting",
+            "leave my job",
+            "leaving my job",
+            "left my job",
+            "termination",
+            "terminated",
+            "after employment",
+        ])
+        hardship_signal = self._contains_any(text, [
+            "hardship",
+            "financial emergency",
+            "emergency",
+            "eviction",
+            "foreclosure",
+            "rent",
+            "rented",
+            "house",
+            "home",
+            "primary residence",
+            "medical",
+            "funeral",
+            "tuition",
+        ])
+        loan_signal = self._contains_any(text, ["loan", "borrow", "401(k) loan", "401k loan"])
+        while_employed_funds_access = active_participant and wants_funds
+
+        resolved_topic = self._resolve_topic_filter(topic) or ([topic_text] if topic_text else [])
+        detected = list(resolved_topic)
+
+        if separation_signal and wants_funds:
+            detected.append("termination_distribution_request")
+        if hardship_signal:
+            detected.append("hardship_withdrawal")
+        if loan_signal:
+            detected.append("loan")
+        if while_employed_funds_access:
+            detected.append("in_service_withdrawal_options")
+
+        alternatives: List[str] = []
+        if while_employed_funds_access:
+            alternatives.extend([
+                "in_service_withdrawal_options",
+                "hardship_withdrawal",
+                "loan",
+            ])
+        elif hardship_signal:
+            alternatives.append("hardship_withdrawal")
+        if loan_signal:
+            alternatives.append("loan")
+
+        detected = self._ordered_unique(detected)
+        alternatives = [
+            concept for concept in self._ordered_unique(alternatives)
+            if concept not in {"termination_distribution_request"}
+        ]
+
+        return {
+            "active_participant": active_participant,
+            "wants_funds": wants_funds,
+            "separation_signal": separation_signal,
+            "hardship_signal": hardship_signal,
+            "loan_signal": loan_signal,
+            "detected_concepts": detected,
+            "alternative_concepts": alternatives,
+        }
+
+    def _expand_queries_with_advisory_concepts(
+        self,
+        sub_queries: List[str],
+        inquiry: str,
+        topic: str,
+        advisory_signal: Dict[str, Any],
+    ) -> List[str]:
+        """Add bounded, deterministic retrieval queries for advisory options."""
+        del inquiry, topic  # kept in the signature for future richer expansion
+        expanded = [q for q in sub_queries if isinstance(q, str) and q.strip()]
+
+        advisory_queries = {
+            "in_service_withdrawal_options": (
+                "while employed 401k access options hardship withdrawal "
+                "401k loan rollover source"
+            ),
+            "hardship_withdrawal": (
+                "hardship withdrawal eviction foreclosure primary residence "
+                "financial emergency self certification"
+            ),
+            "loan": (
+                "401k loan eligibility active employee plan allows loans "
+                "vested balance active loans"
+            ),
+        }
+
+        additions = []
+        for concept in advisory_signal.get("alternative_concepts", []):
+            query = advisory_queries.get(concept)
+            if query:
+                additions.append(query)
+
+        advisory_additions = additions[:self.GR_MAX_ADVISORY_QUERIES]
+        base_limit = max(1, self.GR_MAX_QUERY_COUNT - len(advisory_additions))
+        expanded = self._ordered_unique(expanded)[:base_limit]
+
+        for query in advisory_additions:
+            expanded.append(query)
+
+        return self._ordered_unique(expanded)[:self.GR_MAX_QUERY_COUNT]
+
+    @staticmethod
+    def _concept_aliases(concept: str) -> List[str]:
+        aliases = {
+            "hardship_withdrawal": [
+                "hardship_withdrawal",
+                "hardship",
+                "hardship request",
+                "eviction",
+                "foreclosure",
+            ],
+            "loan": ["loan", "loans", "loan request", "borrow"],
+            "in_service_withdrawal_options": [
+                "in_service_withdrawal_options",
+                "in service",
+                "in-service",
+                "while employed",
+                "rollover source",
+            ],
+            "termination_distribution_request": [
+                "termination_distribution_request",
+                "termination",
+                "separation",
+                "terminated",
+            ],
+        }
+        return aliases.get(concept, [concept])
+
+    def _chunk_matches_response_concepts(
+        self,
+        chunk: Dict[str, Any],
+        concepts: List[str],
+    ) -> bool:
+        meta = chunk.get("metadata", {})
+        def metadata_text(value: Any) -> str:
+            if isinstance(value, (list, tuple, set)):
+                return " ".join(str(v) for v in value)
+            return str(value or "")
+
+        searchable_parts = [
+            str(meta.get("topic", "")),
+            str(meta.get("article_id", "")),
+            str(meta.get("article_title", "")),
+            metadata_text(meta.get("tags")),
+            metadata_text(meta.get("subtopics")),
+            metadata_text(meta.get("specific_topics")),
+        ]
+        searchable = " ".join(searchable_parts).lower()
+        for concept in concepts:
+            for alias in self._concept_aliases(concept):
+                if alias and alias.lower() in searchable:
+                    return True
+        return False
+
+    def _chunk_response_concept_matches(
+        self,
+        chunk: Dict[str, Any],
+        concepts: List[str],
+    ) -> List[str]:
+        meta = chunk.get("metadata", {})
+
+        def metadata_text(value: Any) -> str:
+            if isinstance(value, (list, tuple, set)):
+                return " ".join(str(v) for v in value)
+            return str(value or "")
+
+        searchable_parts = [
+            str(meta.get("topic", "")),
+            str(meta.get("article_id", "")),
+            str(meta.get("article_title", "")),
+            metadata_text(meta.get("tags")),
+            metadata_text(meta.get("subtopics")),
+            metadata_text(meta.get("specific_topics")),
+        ]
+        searchable = " ".join(searchable_parts).lower()
+
+        matched = []
+        for concept in concepts:
+            if any(
+                alias and alias.lower() in searchable
+                for alias in self._concept_aliases(concept)
+            ):
+                matched.append(concept)
+        return matched
+
+    async def _add_response_article_bundles(
+        self,
+        chunks: List[Dict[str, Any]],
+        advisory_signal: Dict[str, Any],
+    ) -> tuple:
+        """
+        If a relevant article appears through a weak chunk, add its high-value
+        chunks so the LLM sees decision rules and steps instead of only links.
+        """
+        if not chunks:
+            return chunks, {"articles_added": [], "chunks_added": 0}
+
+        concepts = self._ordered_unique(
+            advisory_signal.get("detected_concepts", [])
+            + advisory_signal.get("alternative_concepts", [])
+        )
+        if not concepts:
+            return chunks, {"articles_added": [], "chunks_added": 0}
+
+        article_best_score: Dict[str, float] = defaultdict(float)
+        candidate_info: Dict[str, Dict[str, Any]] = {}
+        for chunk in chunks:
+            aid = chunk.get("metadata", {}).get("article_id")
+            if not aid:
+                continue
+            article_best_score[aid] = max(article_best_score[aid], chunk.get("score", 0.0))
+            if chunk.get("score", 0.0) < self.GR_BUNDLE_MIN_SCORE:
+                continue
+
+            matched_concepts = self._chunk_response_concept_matches(chunk, concepts)
+            if not matched_concepts:
+                continue
+
+            if aid not in candidate_info:
+                candidate_info[aid] = {
+                    "score": 0.0,
+                    "concepts": set(),
+                    "order": len(candidate_info),
+                }
+            candidate_info[aid]["score"] = max(candidate_info[aid]["score"], chunk.get("score", 0.0))
+            candidate_info[aid]["concepts"].update(matched_concepts)
+
+        candidate_articles: List[str] = []
+        priority_concepts = self._ordered_unique(
+            advisory_signal.get("alternative_concepts", [])
+            + advisory_signal.get("detected_concepts", [])
+        )
+
+        for concept in priority_concepts:
+            if len(candidate_articles) >= self.GR_BUNDLE_MAX_ARTICLES:
+                break
+            matches = [
+                aid for aid, info in candidate_info.items()
+                if concept in info["concepts"] and aid not in candidate_articles
+            ]
+            if not matches:
+                continue
+            matches.sort(
+                key=lambda aid: (
+                    candidate_info[aid]["score"],
+                    -candidate_info[aid]["order"],
+                ),
+                reverse=True,
+            )
+            candidate_articles.append(matches[0])
+
+        remaining = [
+            aid for aid in candidate_info
+            if aid not in candidate_articles
+        ]
+        remaining.sort(
+            key=lambda aid: (
+                candidate_info[aid]["score"],
+                -candidate_info[aid]["order"],
+            ),
+            reverse=True,
+        )
+        for aid in remaining:
+            if len(candidate_articles) >= self.GR_BUNDLE_MAX_ARTICLES:
+                break
+            candidate_articles.append(aid)
+
+        if not candidate_articles:
+            return chunks, {"articles_added": [], "chunks_added": 0}
+
+        fetch_tasks = [
+            asyncio.to_thread(
+                self.pinecone.list_and_fetch_chunks,
+                prefix=aid,
+                limit=100,
+            )
+            for aid in candidate_articles
+        ]
+        fetched_lists = await asyncio.gather(*fetch_tasks)
+
+        seen_ids = {chunk.get("id") for chunk in chunks}
+        enriched = list(chunks)
+        articles_added: List[str] = []
+        chunks_added = 0
+
+        for aid, bundle_chunks in zip(candidate_articles, fetched_lists):
+            added_for_article = 0
+            high_value = [
+                chunk for chunk in bundle_chunks
+                if chunk.get("metadata", {}).get("chunk_type") in self.GR_BUNDLE_CHUNK_TYPES
+            ]
+            high_value.sort(
+                key=lambda c: self._response_chunk_rank_score(c, advisory_signal, None),
+                reverse=True,
+            )
+            for chunk in high_value[:self.GR_BUNDLE_MAX_CHUNKS_PER_ARTICLE]:
+                cid = chunk.get("id")
+                if cid in seen_ids:
+                    continue
+                copied = {
+                    "id": cid,
+                    "score": min(0.95, article_best_score.get(aid, 0.0) + 0.05),
+                    "metadata": chunk.get("metadata", {}),
+                }
+                enriched.append(copied)
+                seen_ids.add(cid)
+                added_for_article += 1
+                chunks_added += 1
+            if added_for_article:
+                articles_added.append(aid)
+
+        return enriched, {"articles_added": articles_added, "chunks_added": chunks_added}
+
+    def _response_chunk_rank_score(
+        self,
+        chunk: Dict[str, Any],
+        advisory_signal: Dict[str, Any],
+        topic: Optional[str],
+    ) -> float:
+        score = float(chunk.get("score", 0.0) or 0.0)
+        meta = chunk.get("metadata", {})
+
+        tier_bonus = {
+            "critical": 0.08,
+            "high": 0.05,
+            "medium": 0.02,
+            "low": 0.0,
+        }.get(meta.get("chunk_tier", "low"), 0.0)
+        type_bonus = 0.06 if meta.get("chunk_type") in self._GR_HIGH_VALUE_TYPES else 0.0
+        if meta.get("chunk_type") in self.GR_BUNDLE_CHUNK_TYPES:
+            type_bonus = max(type_bonus, 0.05)
+
+        concepts = self._ordered_unique(
+            advisory_signal.get("detected_concepts", [])
+            + advisory_signal.get("alternative_concepts", [])
+        )
+        concept_bonus = 0.08 if self._chunk_matches_response_concepts(chunk, concepts) else 0.0
+
+        topic_bonus = 0.0
+        if topic:
+            resolved = self._resolve_topic_filter(topic) or [topic.lower().strip()]
+            if self._chunk_matches_response_concepts(chunk, resolved):
+                topic_bonus = 0.04
+
+        reference_penalty = -0.12 if meta.get("chunk_type") == "references" else 0.0
+        return score + tier_bonus + type_bonus + concept_bonus + topic_bonus + reference_penalty
+
+    def _rank_response_chunks(
+        self,
+        chunks: List[Dict[str, Any]],
+        advisory_signal: Dict[str, Any],
+        topic: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        ranked = list(chunks)
+        ranked.sort(
+            key=lambda chunk: self._response_chunk_rank_score(chunk, advisory_signal, topic),
+            reverse=True,
+        )
+        return ranked
     
     # ── Cached Pinecone query wrapper ──
     
-    def _cache_key(self, query_text: str, top_k: int, filter_dict: Optional[Dict]) -> str:
+    def _cache_key(
+        self,
+        query_text: str,
+        top_k: int,
+        filter_dict: Optional[Dict],
+        rerank: Optional[Dict[str, Any]] = None,
+    ) -> str:
         """Build a deterministic cache key from query parameters."""
-        raw = json.dumps({"q": query_text, "k": top_k, "f": filter_dict}, sort_keys=True)
+        raw = json.dumps(
+            {"q": query_text, "k": top_k, "f": filter_dict, "r": rerank},
+            sort_keys=True,
+        )
         return hashlib.md5(raw.encode()).hexdigest()
     
     async def _cached_query(
         self,
         query_text: str,
         top_k: int,
-        filter_dict: Optional[Dict[str, Any]] = None
+        filter_dict: Optional[Dict[str, Any]] = None,
+        rerank: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Async Pinecone query with TTL caching.
@@ -1091,7 +1618,7 @@ class RAGEngine:
         result). This trade-off enables true parallel execution across
         all search lanes.
         """
-        key = self._cache_key(query_text, top_k, filter_dict)
+        key = self._cache_key(query_text, top_k, filter_dict, rerank)
         
         if key in self._search_cache:
             logger.debug("Cache HIT for Pinecone query")
@@ -1101,7 +1628,8 @@ class RAGEngine:
             self.pinecone.query_chunks,
             query_text=query_text,
             top_k=top_k,
-            filter_dict=filter_dict
+            filter_dict=filter_dict,
+            rerank=rerank,
         )
         
         self._search_cache[key] = result
@@ -1380,7 +1908,23 @@ class RAGEngine:
         task_meta: List[tuple] = []
 
         def add(eq: str, lane: str, top_k: int, filter_dict: Dict[str, Any]):
-            tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=filter_dict))
+            rerank = None
+            query_top_k = top_k
+            if self.GR_RERANK_ENABLED:
+                rerank = {
+                    "model": "bge-reranker-v2-m3",
+                    "top_n": top_k,
+                    "rank_fields": ["content"],
+                }
+                query_top_k = top_k * 2
+            tasks.append(
+                self._cached_query(
+                    eq,
+                    top_k=query_top_k,
+                    filter_dict=filter_dict,
+                    rerank=rerank,
+                )
+            )
             task_meta.append((eq, lane))
 
         for eq in enriched_queries:
@@ -1727,17 +2271,20 @@ class RAGEngine:
         self,
         chunks: List[Dict[str, Any]],
         budget: int,
-        max_per_article: int = 6
+        max_per_article: int = 6,
+        advisory_signal: Optional[Dict[str, Any]] = None,
     ) -> tuple:
         """
         Build context adaptively: focus on a dominant article when one
         clearly outscores the rest; otherwise enforce multi-article diversity.
 
         Dominance is decided from per-article signal (sum of top-3 chunk scores).
+        If advisory concepts are present, reserve a small quota for each
+        mandatory concept before filling the remaining budget by score/tier.
         Multi-article mode (existing behavior): Phase 1 best-chunk-per-article,
         then tier-priority fill with per-article cap.
         Dominant mode: saturate with the top article's chunks plus a single
-        insurance chunk from the runner-up; skip tier fill.
+        insurance chunk from the runner-up after concept quotas are satisfied.
 
         Returns:
             (context_string, selected_chunks, tokens_used, dominance_info)
@@ -1751,7 +2298,10 @@ class RAGEngine:
                 "top_signal": 0.0,
                 "runner_up_signal": 0.0,
                 "ratio": 0.0,
+                "concept_quotas_applied": [],
             }
+
+        advisory_signal = advisory_signal or {}
 
         # ── Compute per-article signal (sum of top-3 chunk scores) ──
         article_scores: Dict[str, List[float]] = defaultdict(list)
@@ -1785,6 +2335,64 @@ class RAGEngine:
         selected_ids: set = set()
         tokens_used = 0
         article_counts: Dict[str, int] = defaultdict(int)
+        concept_quotas_applied: List[str] = []
+
+        def try_add_chunk(chunk: Dict[str, Any], article_cap: int = max_per_article) -> bool:
+            nonlocal tokens_used
+            cid = chunk.get('id')
+            if cid in selected_ids:
+                return True
+
+            aid = chunk['metadata'].get('article_id', 'unknown')
+            if article_counts[aid] >= article_cap:
+                return False
+
+            content = chunk['metadata'].get('content', '')
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens > budget:
+                return False
+
+            selected.append(chunk)
+            selected_ids.add(cid)
+            tokens_used += chunk_tokens
+            article_counts[aid] += 1
+            return True
+
+        # ── Phase 0: mandatory concept quotas ──
+        required_concepts = [
+            concept for concept in self._ordered_unique(
+                advisory_signal.get("detected_concepts", [])
+                + advisory_signal.get("alternative_concepts", [])
+            )
+            if concept in self.GR_CONTEXT_QUOTA_CONCEPTS
+        ]
+        for concept in required_concepts:
+            concept_chunks = [
+                chunk for chunk in chunks
+                if self._chunk_matches_response_concepts(chunk, [concept])
+            ]
+            concept_chunks.sort(
+                key=lambda c: self._response_chunk_rank_score(
+                    c,
+                    advisory_signal,
+                    concept,
+                ),
+                reverse=True,
+            )
+            added_for_concept = 0
+            for chunk in concept_chunks:
+                if added_for_concept >= self.GR_CONTEXT_MIN_CHUNKS_PER_CONCEPT:
+                    break
+                already_selected = chunk.get('id') in selected_ids
+                if try_add_chunk(chunk):
+                    added_for_concept += 0 if already_selected else 1
+                    if concept not in concept_quotas_applied:
+                        concept_quotas_applied.append(concept)
+
+        logger.debug(
+            f"Concept quota phase: {len(selected)} chunks for "
+            f"{concept_quotas_applied}, {tokens_used} tokens"
+        )
 
         if dominant_mode:
             # ── Dominant mode: saturate with top article + 1 insurance from runner-up ──
@@ -1796,13 +2404,7 @@ class RAGEngine:
             for chunk in top_chunks:
                 if article_counts[top_aid] >= self.GR_DOMINANCE_MAX_CHUNKS_SINGLE:
                     break
-                content = chunk['metadata'].get('content', '')
-                chunk_tokens = self.token_manager.count_tokens(content)
-                if tokens_used + chunk_tokens <= budget:
-                    selected.append(chunk)
-                    selected_ids.add(chunk.get('id'))
-                    tokens_used += chunk_tokens
-                    article_counts[top_aid] += 1
+                try_add_chunk(chunk, article_cap=self.GR_DOMINANCE_MAX_CHUNKS_SINGLE)
 
             if self.GR_DOMINANCE_SECONDARY_SLOT > 0 and len(sorted_aids) > 1:
                 runner_aid = sorted_aids[1]
@@ -1812,13 +2414,7 @@ class RAGEngine:
                     reverse=True
                 )[:self.GR_DOMINANCE_SECONDARY_SLOT]
                 for chunk in runner_chunks:
-                    content = chunk['metadata'].get('content', '')
-                    chunk_tokens = self.token_manager.count_tokens(content)
-                    if tokens_used + chunk_tokens <= budget and chunk.get('id') not in selected_ids:
-                        selected.append(chunk)
-                        selected_ids.add(chunk.get('id'))
-                        tokens_used += chunk_tokens
-                        article_counts[runner_aid] += 1
+                    try_add_chunk(chunk)
 
             logger.debug(
                 f"Dominant-mode context: {len(selected)} chunks from "
@@ -1837,13 +2433,7 @@ class RAGEngine:
                 key=lambda x: x[1].get('score', 0),
                 reverse=True
             ):
-                content = chunk['metadata'].get('content', '')
-                chunk_tokens = self.token_manager.count_tokens(content)
-                if tokens_used + chunk_tokens <= budget:
-                    selected.append(chunk)
-                    selected_ids.add(chunk.get('id'))
-                    tokens_used += chunk_tokens
-                    article_counts[chunk['metadata'].get('article_id', 'unknown')] += 1
+                try_add_chunk(chunk)
 
             logger.debug(
                 f"Diversity+tiers phase 1: {len(selected)} chunks from "
@@ -1856,16 +2446,7 @@ class RAGEngine:
                     cid = chunk.get('id')
                     if cid in selected_ids:
                         continue
-                    aid = chunk['metadata'].get('article_id', 'unknown')
-                    if article_counts[aid] >= max_per_article:
-                        continue
-                    content = chunk['metadata'].get('content', '')
-                    chunk_tokens = self.token_manager.count_tokens(content)
-                    if tokens_used + chunk_tokens <= budget:
-                        selected.append(chunk)
-                        selected_ids.add(cid)
-                        tokens_used += chunk_tokens
-                        article_counts[aid] += 1
+                    try_add_chunk(chunk)
 
             logger.debug(
                 f"Diversity+tiers phase 2 total: {len(selected)} chunks from "
@@ -1890,6 +2471,7 @@ class RAGEngine:
             "top_signal": round(top_signal, 3),
             "runner_up_signal": round(runner_up_signal, 3),
             "ratio": round(ratio, 3),
+            "concept_quotas_applied": concept_quotas_applied,
         }
         return context, selected, tokens_used, dominance_info
     
@@ -2493,6 +3075,7 @@ class RAGEngine:
             "dominance_top_signal": di.get("top_signal"),
             "dominance_runner_up_signal": di.get("runner_up_signal"),
             "dominance_ratio": di.get("ratio"),
+            "concept_quotas_applied": di.get("concept_quotas_applied", []),
         }
 
     @staticmethod

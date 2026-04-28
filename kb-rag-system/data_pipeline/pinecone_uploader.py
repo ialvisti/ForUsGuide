@@ -230,7 +230,8 @@ class PineconeUploader:
         query_text: str,
         top_k: int = 10,
         filter_dict: Optional[Dict[str, Any]] = None,
-        include_metadata: bool = True
+        include_metadata: bool = True,
+        rerank: Optional[Dict[str, Any]] = None,
     ) -> List[Dict[str, Any]]:
         """
         Busca chunks en Pinecone usando embeddings integrados.
@@ -240,6 +241,7 @@ class PineconeUploader:
             top_k: Número de resultados
             filter_dict: Filtros a aplicar
             include_metadata: Incluir metadata en resultados
+            rerank: Optional Pinecone rerank config. Disabled unless caller passes it.
         
         Returns:
             Lista de chunks encontrados
@@ -257,10 +259,14 @@ class PineconeUploader:
             if filter_dict:
                 query_params["filter"] = filter_dict
             
-            results = self.index.search(
-                namespace=self.namespace,
-                query=query_params
-            )
+            search_kwargs = {
+                "namespace": self.namespace,
+                "query": query_params,
+            }
+            if rerank:
+                search_kwargs["rerank"] = rerank
+
+            results = self.index.search(**search_kwargs)
             
             # Para embeddings integrados, la estructura es diferente:
             # results['result']['hits'] contiene los matches

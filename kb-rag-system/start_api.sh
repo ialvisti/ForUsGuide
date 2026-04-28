@@ -30,9 +30,19 @@ else
 fi
 
 # Mostrar configuración de modelo
+env_value() {
+    local value
+    value=$(grep "^$1=" .env | cut -d '=' -f2-)
+    echo "${value:-$2}"
+}
+
 echo -e "\n${BLUE}📋 Configuration:${NC}"
-echo -e "  Model: ${GREEN}$(grep OPENAI_MODEL .env | cut -d '=' -f2)${NC}"
-echo -e "  Reasoning: ${GREEN}$(grep OPENAI_REASONING_EFFORT .env | cut -d '=' -f2)${NC}"
+echo -e "  LLM Routes:${NC}"
+echo -e "    Decompose: ${GREEN}$(env_value LLM_ROUTE_DECOMPOSE "gpt-5.5 (default)")${NC}"
+echo -e "    Required Data: ${GREEN}$(env_value LLM_ROUTE_REQUIRED_DATA "gpt-5.5 (default)")${NC}"
+echo -e "    GR Outcome: ${GREEN}$(env_value LLM_ROUTE_GR_OUTCOME "gpt-5.5 (default)")${NC}"
+echo -e "    GR Response: ${GREEN}$(env_value LLM_ROUTE_GR_RESPONSE "gpt-5.5 (default)")${NC}"
+echo -e "    Knowledge: ${GREEN}$(env_value LLM_ROUTE_KNOWLEDGE "gpt-5.5 (default)")${NC}"
 echo -e "  Port: ${GREEN}$(grep API_PORT .env | cut -d '=' -f2)${NC}\n"
 
 # Iniciar servidor

@@ -98,7 +98,7 @@ class TestOpenAIDispatch:
 
         router.configure_routes({
             "gr_outcome": TaskRoute(primary=ModelConfig(
-                provider=LLMProvider.OPENAI, model="gpt-5.4", reasoning_effort="medium"
+                provider=LLMProvider.OPENAI, model="gpt-5.5", reasoning_effort="medium"
             )),
         })
 
@@ -106,7 +106,7 @@ class TestOpenAIDispatch:
 
         assert resp.content == '{"ok": true}'
         assert resp.provider_used == "openai"
-        assert resp.model_used == "gpt-5.4"
+        assert resp.model_used == "gpt-5.5"
         assert resp.usage == {
             "prompt_tokens": 10,
             "completion_tokens": 20,
@@ -114,7 +114,7 @@ class TestOpenAIDispatch:
         }
 
         kwargs = mock_create.call_args.kwargs
-        assert kwargs["model"] == "gpt-5.4"
+        assert kwargs["model"] == "gpt-5.5"
         assert kwargs["reasoning_effort"] == "medium"
         assert kwargs["max_completion_tokens"] >= LLMRouter.GPT5_MIN_COMPLETION_TOKENS
         assert "temperature" not in kwargs
@@ -150,7 +150,7 @@ class TestOpenAIDispatch:
 
         router.configure_routes({
             "gr_outcome": TaskRoute(primary=ModelConfig(
-                provider=LLMProvider.OPENAI, model="gpt-5.4",
+                provider=LLMProvider.OPENAI, model="gpt-5.5",
             )),
         })
 
@@ -169,7 +169,7 @@ class TestOpenAIDispatch:
 
         router.configure_routes({
             "gr_outcome": TaskRoute(primary=ModelConfig(
-                provider=LLMProvider.OPENAI, model="gpt-5.4",
+                provider=LLMProvider.OPENAI, model="gpt-5.5",
             )),
         })
 
@@ -203,7 +203,7 @@ class TestFallback:
         openai_router.configure_routes({
             "gr_outcome": TaskRoute(
                 primary=ModelConfig(
-                    provider=LLMProvider.OPENAI, model="gpt-5.4",
+                    provider=LLMProvider.OPENAI, model="gpt-5.5",
                 ),
                 fallback=ModelConfig(
                     provider=LLMProvider.GEMINI, model="gemini-2.5-pro",
@@ -226,7 +226,7 @@ class TestFallback:
 
         router.configure_routes({
             "gr_outcome": TaskRoute(primary=ModelConfig(
-                provider=LLMProvider.OPENAI, model="gpt-5.4",
+                provider=LLMProvider.OPENAI, model="gpt-5.5",
             )),
         })
 
@@ -297,7 +297,7 @@ class TestRoutingTable:
             )
 
     def test_model_config_from_name_gpt5(self):
-        cfg = _model_config_from_name("gpt-5.4")
+        cfg = _model_config_from_name("gpt-5.5")
         assert cfg.provider == LLMProvider.OPENAI
         assert cfg.reasoning_effort == "medium"
 
@@ -325,7 +325,7 @@ class TestRoutingTable:
         settings = SimpleNamespace(
             LLM_ROUTE_DECOMPOSE="gemini-2.5-flash",
             LLM_ROUTE_REQUIRED_DATA="gemini-2.5-flash",
-            LLM_ROUTE_GR_OUTCOME="gpt-5.4",
+            LLM_ROUTE_GR_OUTCOME="gpt-5.5",
             LLM_ROUTE_GR_RESPONSE="gemini-2.5-flash",
             LLM_ROUTE_KNOWLEDGE="gemini-2.5-flash",
         )
@@ -336,13 +336,13 @@ class TestRoutingTable:
         assert routes["required_data"].primary.thinking_budget == 4096
         # gr_outcome stays on OpenAI.
         assert routes["gr_outcome"].primary.provider == LLMProvider.OPENAI
-        assert routes["gr_outcome"].primary.model == "gpt-5.4"
+        assert routes["gr_outcome"].primary.model == "gpt-5.5"
 
     def test_build_routes_cross_provider_fallback(self):
         settings = SimpleNamespace(
             LLM_ROUTE_DECOMPOSE="gemini-2.5-flash",
             LLM_ROUTE_REQUIRED_DATA="gemini-2.5-flash",
-            LLM_ROUTE_GR_OUTCOME="gpt-5.4",
+            LLM_ROUTE_GR_OUTCOME="gpt-5.5",
             LLM_ROUTE_GR_RESPONSE="gemini-2.5-flash",
             LLM_ROUTE_KNOWLEDGE="gemini-2.5-flash",
         )
@@ -356,11 +356,11 @@ class TestRoutingTable:
     def test_build_routes_all_openai_shadow_deploy(self):
         """Shadow deploy config: all routes on OpenAI keeps current behaviour."""
         settings = SimpleNamespace(
-            LLM_ROUTE_DECOMPOSE="gpt-5.4",
-            LLM_ROUTE_REQUIRED_DATA="gpt-5.4",
-            LLM_ROUTE_GR_OUTCOME="gpt-5.4",
-            LLM_ROUTE_GR_RESPONSE="gpt-5.4",
-            LLM_ROUTE_KNOWLEDGE="gpt-5.4",
+            LLM_ROUTE_DECOMPOSE="gpt-5.5",
+            LLM_ROUTE_REQUIRED_DATA="gpt-5.5",
+            LLM_ROUTE_GR_OUTCOME="gpt-5.5",
+            LLM_ROUTE_GR_RESPONSE="gpt-5.5",
+            LLM_ROUTE_KNOWLEDGE="gpt-5.5",
         )
         routes = build_routes_from_settings(settings)
         for route in routes.values():

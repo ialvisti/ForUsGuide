@@ -168,14 +168,14 @@ This layer explains why the system can answer at all: it is the set of AI provid
 ### 6.1 OpenAI
 - **Icon**: the green knot spiral that OpenAI uses as its mark.
 - **Role**: Primary reasoning model for outcome decisions and structured response bodies.
-- **Tech pill**: `gpt-5.4 · gpt-4o-mini`.
+- **Tech pill**: `gpt-5.5 · gpt-4o-mini`.
 - **When it is used**: specifically for the `gr_outcome` routing lane, where the system needs its strongest reasoning.
 
 ### 6.2 Google Gemini
 - **Icon**: the four-point gradient star (Google blue → purple → pink → red).
 - **Role**: Default router target for the other lanes (decomposition, knowledge, response body).
 - **Tech pill**: `gemini-2.5-flash`.
-- **Why default**: ~5× cheaper and ~2× faster than GPT-5.4 for equivalent routing lanes — this is the source of the 51 % cost reduction documented in commit `2fe1735`.
+- **Why default**: materially cheaper and faster than GPT-5.5 for equivalent routing lanes — this is the source of the hybrid-routing cost reduction documented in commit `2fe1735`.
 
 ### 6.3 Vertex AI
 - **Icon**: a blue diamond with a central node and four satellite connection points — GCP-style.
@@ -339,7 +339,7 @@ A ten-card grid summarizing every technology touching the system, grouped by cat
 | **Compute** | Accent blue | Python 3.12 · FastAPI · Uvicorn · Docker · Cloud Run |
 | **Storage & Data** | GCP green | Cloud Storage · Firestore · BigQuery |
 | **Vector DB** | Indigo | Pinecone serverless · `llama-text-embed-v2` · 1024-dim |
-| **Language Models** | OpenAI green | OpenAI GPT-5.4 · Gemini 2.5 Flash · Vertex AI |
+| **Language Models** | OpenAI green | OpenAI GPT-5.5 · Gemini 2.5 Flash · Vertex AI |
 | **CRM** | DevRev orange | DevRev · DevRev AI Agent · webhooks |
 | **Orchestration** | n8n pink | n8n on AWS · ForUsBots RPA on Render |
 | **CI/CD** | GCP yellow | GitHub · Cloud Build · Artifact Registry |

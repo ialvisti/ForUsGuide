@@ -1,10 +1,10 @@
 #!/bin/bash
-# Script para actualizar la configuración a GPT-5.4
+# Script para actualizar la configuración de rutas LLM a GPT-5.5
 
 set -e
 
 echo "=========================================="
-echo "🚀 Actualización a GPT-5.4"
+echo "🚀 Actualización a GPT-5.5"
 echo "=========================================="
 echo ""
 
@@ -17,36 +17,27 @@ fi
 
 echo "📋 Selecciona el modelo que quieres usar:"
 echo ""
-echo "1) GPT-5.4 (Thinking) - Razonamiento profundo [RECOMENDADO]"
-echo "2) GPT-5.4 Chat (Instant) - Respuestas rápidas"
-echo "3) GPT-5.4 Pro - Máxima capacidad"
-echo "4) GPT-4o - Modelo anterior confiable"
-echo "5) Mantener configuración actual"
+echo "1) GPT-5.5 (Reasoning) - Razonamiento avanzado [RECOMENDADO]"
+echo "2) GPT-5.4 (anterior) - Rollback / menor costo"
+echo "3) GPT-4o - Modelo legacy confiable"
+echo "4) Mantener configuración actual"
 echo ""
-read -p "Selecciona una opción (1-5): " option
+read -p "Selecciona una opción (1-4): " option
 
 case $option in
     1)
-        MODEL="gpt-5.4"
-        EFFORT="medium"
-        echo "✅ Seleccionado: GPT-5.4 (Thinking) con effort=medium"
+        MODEL="gpt-5.5"
+        echo "✅ Seleccionado: GPT-5.5 con reasoning_effort=medium"
         ;;
     2)
-        MODEL="gpt-5.4-chat-latest"
-        EFFORT="low"
-        echo "✅ Seleccionado: GPT-5.4 Chat (Instant) con effort=low"
+        MODEL="gpt-5.4"
+        echo "✅ Seleccionado: GPT-5.4 con reasoning_effort=medium"
         ;;
     3)
-        MODEL="gpt-5.4-pro"
-        EFFORT="high"
-        echo "✅ Seleccionado: GPT-5.4 Pro con effort=high"
-        ;;
-    4)
         MODEL="gpt-4o"
-        EFFORT="medium"
         echo "✅ Seleccionado: GPT-4o"
         ;;
-    5)
+    4)
         echo "ℹ️  Manteniendo configuración actual"
         exit 0
         ;;
@@ -63,29 +54,39 @@ echo "📝 Actualizando archivo .env..."
 cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
 echo "✅ Backup creado: .env.backup.*"
 
-# Actualizar o agregar OPENAI_MODEL
-if grep -q "^OPENAI_MODEL=" .env; then
-    # Reemplazar línea existente
-    sed -i.tmp "s/^OPENAI_MODEL=.*/OPENAI_MODEL=$MODEL/" .env
-    rm .env.tmp
-else
-    # Agregar nueva línea
-    echo "OPENAI_MODEL=$MODEL" >> .env
-fi
+update_env_var() {
+    local key="$1"
+    local value="$2"
 
-# Actualizar o agregar OPENAI_REASONING_EFFORT
-if grep -q "^OPENAI_REASONING_EFFORT=" .env; then
-    sed -i.tmp "s/^OPENAI_REASONING_EFFORT=.*/OPENAI_REASONING_EFFORT=$EFFORT/" .env
-    rm .env.tmp
-else
-    echo "OPENAI_REASONING_EFFORT=$EFFORT" >> .env
-fi
+    if grep -q "^${key}=" .env; then
+        sed -i.tmp "s/^${key}=.*/${key}=${value}/" .env
+        rm -f .env.tmp
+    else
+        echo "${key}=${value}" >> .env
+    fi
+}
+
+ROUTE_VARS=(
+    LLM_ROUTE_DECOMPOSE
+    LLM_ROUTE_REQUIRED_DATA
+    LLM_ROUTE_GR_OUTCOME
+    LLM_ROUTE_GR_RESPONSE
+    LLM_ROUTE_KNOWLEDGE
+)
+
+for route_var in "${ROUTE_VARS[@]}"; do
+    update_env_var "$route_var" "$MODEL"
+done
 
 echo "✅ Archivo .env actualizado"
 echo ""
 echo "📋 Nueva configuración:"
-echo "   OPENAI_MODEL=$MODEL"
-echo "   OPENAI_REASONING_EFFORT=$EFFORT"
+for route_var in "${ROUTE_VARS[@]}"; do
+    echo "   $route_var=$MODEL"
+done
+echo ""
+echo "ℹ️  OPENAI_MODEL queda como variable legacy; el runtime usa LLM_ROUTE_*."
+echo "ℹ️  Para modelos GPT-5, el router aplica reasoning_effort=medium."
 echo ""
 
 # Preguntar si reiniciar la API
@@ -116,4 +117,4 @@ echo "=========================================="
 echo "✨ Actualización completada"
 echo "=========================================="
 echo ""
-echo "📚 Para más información, consulta: UPGRADE_TO_GPT5.md"
+echo "📚 Para más información, consulta: QUICK_START.md"

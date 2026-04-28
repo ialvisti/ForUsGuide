@@ -62,8 +62,13 @@ PINECONE_NAMESPACE=kb_articles
 
 # OpenAI Configuration
 OPENAI_API_KEY=your_openai_api_key_here
-OPENAI_MODEL=gpt-4o-mini
-OPENAI_TEMPERATURE=0.1
+
+# LLM Routing (provider is inferred from the model prefix)
+LLM_ROUTE_DECOMPOSE=gpt-5.5
+LLM_ROUTE_REQUIRED_DATA=gpt-5.5
+LLM_ROUTE_GR_OUTCOME=gpt-5.5
+LLM_ROUTE_GR_RESPONSE=gpt-5.5
+LLM_ROUTE_KNOWLEDGE=gpt-5.5
 
 # API Configuration
 API_KEY=your_secure_api_key_here

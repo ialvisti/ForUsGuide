@@ -19,11 +19,11 @@
 
 This document describes the hybrid LLM architecture that routes different RAG engine tasks to optimal models across OpenAI and Google Gemini, maximizing quality on critical calls while minimizing cost on routine ones.
 
-**Current state:** All LLM calls go through OpenAI GPT-5.4 with reasoning (`medium` effort, 16K min completion tokens).
+**Current state:** OpenAI routes use GPT-5.5 with reasoning (`medium` effort, 16K min completion tokens).
 
 **Target state:** An LLM Router directs each task type to the best-fit model:
 
-- **GPT-5.4** for critical eligibility reasoning (outcome determination)
+- **GPT-5.5** for critical eligibility reasoning (outcome determination)
 - **Gemini 2.5 Flash** (thinking) for structured extraction and response generation
 - Automatic fallback chains for reliability
 
@@ -35,16 +35,16 @@ This document describes the hybrid LLM architecture that routes different RAG en
 
 | LLM Call | Purpose | Est. Tokens (in+out) | Est. Cost |
 |----------|---------|---------------------|-----------|
-| `_decompose_question()` | Break inquiry into sub-queries | ~2K + 16K | ~$0.08 |
-| Phase 1: `gr_outcome` | Determine eligibility outcome | ~5K + 16K | ~$0.15 |
-| Phase 2: `gr_response` | Generate structured response | ~8K + 16K | ~$0.12 |
-| **Total** | | | **~$0.35** |
+| `_decompose_question()` | Break inquiry into sub-queries | ~2K + 16K | ~$0.16 |
+| Phase 1: `gr_outcome` | Determine eligibility outcome | ~5K + 16K | ~$0.30 |
+| Phase 2: `gr_response` | Generate structured response | ~8K + 16K | ~$0.24 |
+| **Total** | | | **~$0.70** |
 
-At 100 requests/day = **~$1,050/month** just for LLM on this endpoint.
+At 100 requests/day = **~$2,100/month** just for LLM on this endpoint.
 
-### Not all calls need GPT-5.4
+### Not all calls need GPT-5.5
 
-- **`_decompose_question()`**: Simple task — break a question into 1-3 sub-queries. Any capable model handles this. Using GPT-5.4 with 16K reasoning budget is extreme overkill.
+- **`_decompose_question()`**: Simple task — break a question into 1-3 sub-queries. Any capable model handles this. Using GPT-5.5 with 16K reasoning budget is extreme overkill.
 - **Phase 2 (`gr_response`)**: The outcome is already determined. The model follows a prescriptive schema with explicit content rules. Flash-tier thinking models handle this well.
 - **Phase 1 (`gr_outcome`)**: This IS the critical call. An incorrect outcome (e.g., `can_proceed` when participant is blocked) has direct business impact. Keep the strongest model here.
 
@@ -80,7 +80,7 @@ At 100 requests/day = **~$1,050/month** just for LLM on this endpoint.
                     │            │  │              │
                     │ AsyncOpenAI│  │ genai.Client │
                     │            │  │  (aio)       │
-                    │ - GPT-5.4  │  │ - 2.5 Flash  │
+                    │ - GPT-5.5  │  │ - 2.5 Flash  │
                     │ - GPT-4o-m │  │ - 2.5 Pro    │
                     └────────────┘  └──────────────┘
 ```
@@ -143,7 +143,7 @@ class TaskRoute:
 class LLMRouter:
     """Routes LLM calls to optimal providers based on task type."""
 
-    # GPT-5.4 needs extra headroom for reasoning tokens
+    # GPT-5 reasoning models need extra headroom for reasoning tokens
     GPT5_REASONING_MULTIPLIER = 10
     GPT5_MIN_COMPLETION_TOKENS = 16000
 
@@ -370,14 +370,14 @@ DEFAULT_ROUTES = {
         ),
         fallback=ModelConfig(
             provider=LLMProvider.OPENAI,
-            model="gpt-5.4",
+            model="gpt-5.5",
             reasoning_effort="medium",
         ),
     ),
     "gr_outcome": TaskRoute(
         primary=ModelConfig(
             provider=LLMProvider.OPENAI,
-            model="gpt-5.4",
+            model="gpt-5.5",
             reasoning_effort="medium",
         ),
         fallback=ModelConfig(
@@ -396,7 +396,7 @@ DEFAULT_ROUTES = {
         ),
         fallback=ModelConfig(
             provider=LLMProvider.OPENAI,
-            model="gpt-5.4",
+            model="gpt-5.5",
             reasoning_effort="medium",
         ),
     ),
@@ -409,7 +409,7 @@ DEFAULT_ROUTES = {
         ),
         fallback=ModelConfig(
             provider=LLMProvider.OPENAI,
-            model="gpt-5.4",
+            model="gpt-5.5",
             reasoning_effort="medium",
         ),
     ),
@@ -424,7 +424,7 @@ Every route can be overridden with env vars. The config reads these and builds t
 # Override any route to use a different model
 LLM_ROUTE_DECOMPOSE=gemini-2.5-flash
 LLM_ROUTE_REQUIRED_DATA=gemini-2.5-flash
-LLM_ROUTE_GR_OUTCOME=gpt-5.4          # keep strongest model here
+LLM_ROUTE_GR_OUTCOME=gpt-5.5          # keep strongest model here
 LLM_ROUTE_GR_RESPONSE=gemini-2.5-flash
 LLM_ROUTE_KNOWLEDGE=gemini-2.5-flash
 
@@ -466,7 +466,7 @@ class Settings(BaseSettings):
     # LLM Routing (model names — provider is inferred from prefix)
     LLM_ROUTE_DECOMPOSE: str = "gemini-2.5-flash"
     LLM_ROUTE_REQUIRED_DATA: str = "gemini-2.5-flash"
-    LLM_ROUTE_GR_OUTCOME: str = "gpt-5.4"
+    LLM_ROUTE_GR_OUTCOME: str = "gpt-5.5"
     LLM_ROUTE_GR_RESPONSE: str = "gemini-2.5-flash"
     LLM_ROUTE_KNOWLEDGE: str = "gemini-2.5-flash"
 ```
@@ -650,7 +650,7 @@ def build_routes_from_settings(settings) -> Dict[str, TaskRoute]:
         ),
         LLMProvider.GEMINI: ModelConfig(
             provider=LLMProvider.OPENAI,
-            model="gpt-5.4",
+            model="gpt-5.5",
             reasoning_effort="medium",
         ),
     }
@@ -708,7 +708,7 @@ The `google-genai` SDK automatically uses Application Default Credentials when `
 | `GCP_LOCATION` | No | `us-central1` | Vertex AI region |
 | `LLM_ROUTE_DECOMPOSE` | No | `gemini-2.5-flash` | Model for query decomposition |
 | `LLM_ROUTE_REQUIRED_DATA` | No | `gemini-2.5-flash` | Model for required data extraction |
-| `LLM_ROUTE_GR_OUTCOME` | No | `gpt-5.4` | Model for outcome determination |
+| `LLM_ROUTE_GR_OUTCOME` | No | `gpt-5.5` | Model for outcome determination |
 | `LLM_ROUTE_GR_RESPONSE` | No | `gemini-2.5-flash` | Model for response generation |
 | `LLM_ROUTE_KNOWLEDGE` | No | `gemini-2.5-flash` | Model for knowledge questions |
 
@@ -716,7 +716,7 @@ The `google-genai` SDK automatically uses Application Default Credentials when `
 
 | Model | Provider | Thinking | Use Case |
 |-------|----------|----------|----------|
-| `gpt-5.4` | OpenAI | Yes (reasoning_effort) | Critical reasoning |
+| `gpt-5.5` | OpenAI | Yes (reasoning_effort) | Critical reasoning |
 | `gpt-4o-mini` | OpenAI | No | Simple/fast tasks |
 | `gemini-2.5-flash` | Gemini | Optional (thinking_budget) | Cost-effective reasoning |
 | `gemini-2.5-pro` | Gemini | Yes (thinking_budget) | High-quality reasoning |
@@ -727,28 +727,28 @@ The `google-genai` SDK automatically uses Application Default Credentials when `
 
 ### Per-call cost estimates
 
-| Task Type | GPT-5.4 (current) | Gemini 2.5 Flash | Savings |
+| Task Type | GPT-5.5 (current OpenAI baseline) | Gemini 2.5 Flash | Savings |
 |-----------|--------------------|-------------------|---------|
-| decompose | ~$0.08 | ~$0.001 | 99% |
-| required_data | ~$0.15 | ~$0.01 | 93% |
-| gr_outcome | ~$0.15 | (keep GPT-5.4) | 0% |
-| gr_response | ~$0.12 | ~$0.02 | 83% |
-| knowledge_question | ~$0.20 | ~$0.01 | 95% |
+| decompose | ~$0.16 | ~$0.001 | 99% |
+| required_data | ~$0.30 | ~$0.01 | 97% |
+| gr_outcome | ~$0.30 | (keep GPT-5.5) | 0% |
+| gr_response | ~$0.24 | ~$0.02 | 92% |
+| knowledge_question | ~$0.40 | ~$0.01 | 98% |
 
 ### Monthly cost projection (100 requests/day)
 
 | Scenario | LLM Cost/month |
 |----------|----------------|
-| All GPT-5.4 (current) | ~$1,050 |
-| Hybrid (recommended) | ~$510 |
+| All GPT-5.5 (current OpenAI baseline) | ~$2,100 |
+| Hybrid (recommended) | ~$900 |
 | All Gemini Flash | ~$120 |
 
 ### Per generate_response call
 
 | Configuration | Cost | Quality |
 |---------------|------|---------|
-| All GPT-5.4 | ~$0.35 | Maximum |
-| **Hybrid (recommended)** | **~$0.17** | **Maximum where it matters** |
+| All GPT-5.5 | ~$0.70 | Maximum |
+| **Hybrid (recommended)** | **~$0.32** | **Maximum where it matters** |
 | All Gemini Flash | ~$0.03 | Good (but riskier on outcome) |
 
 ---
@@ -758,7 +758,7 @@ The `google-genai` SDK automatically uses Application Default Credentials when `
 ### Pre-implementation
 
 - [ ] Get a Gemini API key from Google AI Studio (for local dev)
-- [ ] Run the existing stress test suite to establish a quality baseline with GPT-5.4
+- [ ] Run the existing stress test suite to establish a quality baseline with GPT-5.5
 - [ ] Save baseline results for comparison
 
 ### Implementation
@@ -777,8 +777,8 @@ The `google-genai` SDK automatically uses Application Default Credentials when `
 
 - [ ] Run existing unit tests (`pytest`)
 - [ ] Run stress test suite with hybrid routing
-- [ ] Compare outcome determination accuracy between GPT-5.4 and Gemini Pro
-- [ ] Compare response quality on Flash vs GPT-5.4 for Phase 2
+- [ ] Compare outcome determination accuracy between GPT-5.5 and Gemini Pro
+- [ ] Compare response quality on Flash vs GPT-5.5 for Phase 2
 - [ ] Monitor latency differences (Gemini may be faster for Flash calls)
 
 ### Production deployment

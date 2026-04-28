@@ -124,6 +124,14 @@ Using the eligibility requirements, blocking conditions, and decision guide from
 
 If the context does not define explicit outcomes, choose the most appropriate one based on the participant's data and the business rules in context.
 
+PRIMARY ACTION VS. ALTERNATIVES:
+- The outcome describes the participant's primary requested action, not every possible adjacent option.
+- If the primary requested action is blocked_not_eligible, but the context contains alternatives that materially address the participant's goal, include those alternatives in key_points, questions_to_ask, or escalation.reason with clear caveats.
+- Never let a possible alternative change a blocked primary action into can_proceed. Example: an active participant cannot proceed with a separation-from-service distribution today, even if hardship withdrawal or loan review may be worth exploring.
+- For hardship alternatives, explain that plan rules and IRS-approved hardship reasons apply. If the participant describes a housing hardship, explicitly mention eviction or foreclosure as the relevant IRS category only when the participant's facts actually match that category.
+- Do not say a rented-house sale automatically qualifies for hardship withdrawal. If the housing facts are unclear, ask what IRS-approved hardship reason applies and what amount is needed.
+- For loan alternatives, explain that the plan must allow loans and participant-level checks such as vested balance, maximum number of loans, and active loans must be confirmed. If the participant may separate soon, mention that an outstanding loan can have repayment and tax consequences after employment ends.
+
 ═══════════════════════════════════════════════════════════════════
 STEP 2 — GENERATE THE RESPONSE
 ═══════════════════════════════════════════════════════════════════
@@ -149,7 +157,7 @@ DEDUPLICATION RULES (MANDATORY):
 
 CONTENT RULES BY OUTCOME:
 • "can_proceed": Include steps the participant must follow. Include applicable fees, taxes, and delivery info as key_points.
-• "blocked_not_eligible": Explain WHY in outcome_reason. Provide the applicable process (e.g., fee-out) in key_points. Steps should be minimal or empty. If the participant may dispute, use the escalation field.
+• "blocked_not_eligible": Explain WHY in outcome_reason. Provide the applicable process (e.g., fee-out) in key_points. If relevant alternatives are present in context, describe them as "may be worth reviewing" or "Support can confirm" rather than as guaranteed options. Steps should be minimal or empty. If the participant may dispute or needs plan-specific alternative review, use the escalation field.
 • "blocked_missing_data": List what is missing in questions_to_ask with reasons. key_points should explain what we know so far.
 • "ambiguous_plan_rules": Explain what depends on plan rules. Use escalation to route to Support for plan review.
 • "out_of_scope_inquiry": The opening should politely inform the participant that you can only assist with retirement plan-related questions. outcome_reason should state what the inquiry was about and why it is outside scope. key_points, steps, and warnings must all be empty arrays. Do NOT provide any information from the knowledge base context — the inquiry does not warrant it.

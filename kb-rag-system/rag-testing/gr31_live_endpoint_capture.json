@@ -1,0 +1,467 @@
+{
+  "request_payload": {
+    "inquiry": "The participant is considering quitting in the next 4 weeks due to a financial emergency involving their rented house being sold, and wants to know if they can withdraw money from their ForUsAll 401(k) plan at Check Out My LLC due to separation from employment.",
+    "record_keeper": "LT Trust",
+    "plan_type": "401(k)",
+    "topic": "hardship_withdrawal",
+    "collected_data": {
+      "participant_data": {
+        "employment_status": "Active",
+        "termination_date": null,
+        "rehire_date": null,
+        "first_name": "JERRY",
+        "last_name": "FREED",
+        "birth_date": "1968-05-11",
+        "account_balance": 18176.94,
+        "latest_payroll": {
+          "Pay Date": "2026-04-24",
+          "Pre-tax": 110.31,
+          "Roth": 0,
+          "Employer Match": 91.93,
+          "Loan": 148.76,
+          "Plan comp": 1838.55,
+          "Hours": 80.81
+        },
+        "mfa_status": "Enrolled"
+      },
+      "plan_data": {
+        "company_name": "Check Out My LLC",
+        "company_status": "Ongoing"
+      }
+    },
+    "context": {
+      "ticket_id": "TKT-877252",
+      "agent_name": "JERRY FREED",
+      "agent_email": "jerry_freed@hotmail.com",
+      "email_subject": "Participant Advisory - Form Submission",
+      "first_contact": true,
+      "devrev_tag": "NOT FOUND",
+      "participant_id": "266866",
+      "plan_id": "898"
+    },
+    "max_response_tokens": 5500,
+    "total_inquiries_in_ticket": 1
+  },
+  "status_code": 200,
+  "elapsed_ms": 76325.0,
+  "response": {
+    "decision": "can_proceed",
+    "confidence": 0.833,
+    "response": {
+      "outcome": "blocked_not_eligible",
+      "outcome_reason": "JERRY is currently listed as Active with no termination date in the system, so he does not meet the ForUsAll/LT Trust requirement for a separation-of-service distribution. A termination cash withdrawal or rollover requires Terminated status and a termination date in the system.",
+      "response_to_participant": {
+        "opening": "JERRY, you are currently Active at Check Out My LLC with an account balance of $18,176.94 and no termination date on file. Based on that status, you cannot take a separation-of-service withdrawal from your ForUsAll 401(k) yet.",
+        "key_points": [
+          "Once employment has actually ended, ForUsAll/LT Trust requires a Terminated status and termination date in the system before a termination cash withdrawal or rollover can be requested.",
+          "Only vested balances are eligible for a termination distribution, so the distributable amount may need to be confirmed when you become eligible.",
+          "For cash distributions, 20% federal mandatory withholding applies, state withholding may also apply depending on state law, and the distribution is taxable income for the calendar year processed.",
+          "A $75 distribution fee applies to all termination distribution requests; ACH and regular mail check have no additional charge, while wire or overnight check adds a non-refundable $35 fee.",
+          "Because you described a current financial emergency, a hardship withdrawal may be worth reviewing separately, but a rented house being sold does not automatically establish hardship eligibility; hardship withdrawals require an immediate and serious financial need and a qualifying IRS hardship reason, and the request should be limited to the amount necessary for that need.",
+          "A 401(k) loan may also be worth reviewing only if the plan allows loans and you have enough vested balance available, but if you separate soon, any outstanding loan can have repayment and tax consequences after employment ends."
+        ],
+        "steps": [
+          {
+            "step_number": 1,
+            "action": "Wait until your employment has ended and the system reflects your termination.",
+            "detail": "ForUsAll cannot process a separation-of-service withdrawal while your employment status remains Active."
+          },
+          {
+            "step_number": 2,
+            "action": "After your status is updated, request the distribution through the ForUsAll portal.",
+            "detail": "Select \u201cSeparation of Service\u201d if you have already left your employer. If the portal shows \u201cDefault\u201d instead because of a website issue, select \u201cDefault\u201d and continue because it is the same option."
+          },
+          {
+            "step_number": 3,
+            "action": "Contact ForUsAll Support if you need to review hardship or loan options before your separation date.",
+            "detail": "Support can help confirm whether those alternatives are available under your plan and participant-level details."
+          }
+        ],
+        "warnings": [
+          "Hardship withdrawal funds cannot be repaid once taken.",
+          "ForUsAll does not collect hardship supporting documents, so you must retain documentation in case of an IRS audit.",
+          "Funds taken through a hardship withdrawal are subject to federal income taxes, and a 10% early withdrawal penalty may apply if you are under age 59.5."
+        ]
+      },
+      "questions_to_ask": [
+        {
+          "question": "If you want to explore a hardship withdrawal, what IRS-approved hardship reason applies to your situation, and what amount is necessary to meet that financial need?",
+          "why": "Hardship withdrawals require a qualifying hardship reason and should not exceed the amount needed for the documented financial need."
+        }
+      ],
+      "escalation": {
+        "needed": true,
+        "reason": "ForUsAll Support should review any hardship or loan alternative because the separation-of-service withdrawal is currently blocked by Active employment status, and hardship or loan availability depends on qualifying facts and plan rules."
+      },
+      "guardrails_applied": [
+        "Did not say JERRY can take a separation-of-service distribution while still actively employed.",
+        "Did not treat the rented house being sold as automatically qualifying for a hardship withdrawal.",
+        "Did not guarantee a hardship withdrawal amount, employer match availability, loan availability, or a specific delivery date.",
+        "Did not state that a 10% early withdrawal penalty definitely will or will not apply."
+      ],
+      "data_gaps": [
+        "Vested balance was not provided.",
+        "Plan loan availability and any plan-specific loan limits were not provided.",
+        "The specific IRS-approved hardship reason and amount needed were not provided.",
+        "Whether the plan is in a blackout period was not provided."
+      ],
+      "coverage_gaps": []
+    },
+    "source_articles": [
+      {
+        "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+        "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+        "chunk_types_used": "business_rules, eligibility",
+        "relevance": "Covers in_service_withdrawal_options (business_rules, eligibility)",
+        "used_info": true,
+        "max_score": 0.6353
+      },
+      {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_types_used": "business_rules",
+        "relevance": "Covers termination_distribution_request (business_rules)",
+        "used_info": true,
+        "max_score": 0.628
+      },
+      {
+        "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "chunk_types_used": "business_rules, decision_guide, eligibility, response_frames",
+        "relevance": "Covers distribution (business_rules, decision_guide, eligibility, response_frames)",
+        "used_info": true,
+        "max_score": 0.5902
+      },
+      {
+        "article_id": "401k_loan_basics_and_support_guide",
+        "article_title": "401(k) Loan Basics and Support Guide",
+        "chunk_types_used": "business_rules, eligibility",
+        "relevance": "Covers loan (business_rules, eligibility)",
+        "used_info": true,
+        "max_score": 0.587
+      },
+      {
+        "article_id": "lt_trust_401k_loan_complete_guide_submission_repayment_support",
+        "article_title": "LT: 401(k) Loan Complete Guide \u2014 Submission, Repayment & Support",
+        "chunk_types_used": "business_rules",
+        "relevance": "Covers loan (business_rules)",
+        "used_info": true,
+        "max_score": 0.5851
+      },
+      {
+        "article_id": "how_do_i_cancel_or_change_a_pending_distribution_request",
+        "article_title": "How Do I Cancel or Change a Pending Distribution Request?",
+        "chunk_types_used": "decision_guide, response_frames",
+        "relevance": "Covers distribution (decision_guide, response_frames)",
+        "used_info": true,
+        "max_score": 0.5582
+      },
+      {
+        "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+        "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+        "chunk_types_used": "references",
+        "relevance": "Covers distribution (references)",
+        "used_info": true,
+        "max_score": 0.5122
+      },
+      {
+        "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+        "article_title": "ForUsAll 401(k) Hardship Withdrawal \u2014 Complete Guide (Rules, Fees, Steps, Timelines)",
+        "chunk_types_used": "decision_guide",
+        "relevance": "Covers hardship_withdrawal (decision_guide)",
+        "used_info": true,
+        "max_score": 0.5065
+      },
+      {
+        "article_id": "can_i_split_my_401_k_rollover_between_multiple_providers",
+        "article_title": "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+        "chunk_types_used": "business_rules",
+        "relevance": "Covers distribution (business_rules)",
+        "used_info": true,
+        "max_score": 0.506
+      },
+      {
+        "article_id": "401k_force_out_process_sponsor_faq",
+        "article_title": "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance",
+        "chunk_types_used": "references",
+        "relevance": "Covers distribution (references)",
+        "used_info": true,
+        "max_score": 0.4832
+      }
+    ],
+    "used_chunks": [
+      {
+        "chunk_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained_chunk_5",
+        "score": 0.6353,
+        "chunk_type": "eligibility",
+        "chunk_tier": "critical",
+        "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+        "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- In-service distributions are typically available if the participant is age 59 1/2 or older, if the plan allows.\n- Hardship withdrawals require an immed...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- In-service distributions are typically available if the participant is age 59 1/2 or older, if the plan allows.\n- Hardship withdrawals require an immediate and serious financial need and a qualifying hardship under IRS guidelines; plans may allow self-certification.\n- Rollover source withdrawals may be available for assets rolled over from another retirement account into the current plan.\n- 401(k) loans require the participant to be an active employee with an available vested balance.\n"
+      },
+      {
+        "chunk_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained_chunk_14",
+        "score": 0.6353,
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+        "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+        "content_preview": "# Business Rules: Repayment_And_Reversibility\n\n## Repayment And Reversibility:\n- Hardship withdrawal funds cannot be repaid.\n- Rollover funds withdrawals cannot be repaid.\n- 401(k) loans are repaid th...",
+        "content": "# Business Rules: Repayment_And_Reversibility\n\n## Repayment And Reversibility:\n- Hardship withdrawal funds cannot be repaid.\n- Rollover funds withdrawals cannot be repaid.\n- 401(k) loans are repaid through payroll deductions over a fixed term and can be paid off in full in a one time payment only at any time with no penalties.\n- 401(k) loan interest is repaid to the participant's own account.\n"
+      },
+      {
+        "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_12",
+        "score": 0.628,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "content_preview": "# Business Rules: Tax_Withholding\n\n## Tax Withholding:\n- For cash distributions, 20% federal MANDATORY withholding applies.\n- State withholding may also apply (Subject to the state's tax laws).\n- Cash...",
+        "content": "# Business Rules: Tax_Withholding\n\n## Tax Withholding:\n- For cash distributions, 20% federal MANDATORY withholding applies.\n- State withholding may also apply (Subject to the state's tax laws).\n- Cash distributions are taxable income for the calendar year processed.\n"
+      },
+      {
+        "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_11",
+        "score": 0.628,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "content_preview": "# Business Rules: Fees\n\n## Fees:\n- A $75 distribution fee applies to all requests.\n- No additional charges apply for ACH or Regular Mail Check.\n- An additional $35 wire fee applies if a wire or OverNi...",
+        "content": "# Business Rules: Fees\n\n## Fees:\n- A $75 distribution fee applies to all requests.\n- No additional charges apply for ACH or Regular Mail Check.\n- An additional $35 wire fee applies if a wire or OverNight Check is chosen.\n- Wire transfer and OverNight Check fees are non-refundable.\n"
+      },
+      {
+        "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_5",
+        "score": 0.5902,
+        "chunk_type": "eligibility",
+        "chunk_tier": "critical",
+        "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- Force-outs apply only to former employees with vested account balances under $7,000.\n- A sponsor can initiate a force-out only after employment ends an...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- Force-outs apply only to former employees with vested account balances under $7,000.\n- A sponsor can initiate a force-out only after employment ends and the participant's vested balance is under $7,000.\n"
+      },
+      {
+        "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_13",
+        "score": 0.5902,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "content_preview": "# Business Rules: Fees\n\n## Fees:\n- Most recordkeepers charge an industry-standard $80 administrative fee for force-outs.\n- If a participant's balance is $80 or less, it will be fully absorbed by the $...",
+        "content": "# Business Rules: Fees\n\n## Fees:\n- Most recordkeepers charge an industry-standard $80 administrative fee for force-outs.\n- If a participant's balance is $80 or less, it will be fully absorbed by the $80 administrative fee and the account will be closed with no funds transferred.\n- A balance fully absorbed by the administrative fee is referred to as a fee-out.\n"
+      },
+      {
+        "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_7",
+        "score": 0.5902,
+        "chunk_type": "decision_guide",
+        "chunk_tier": "critical",
+        "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "content_preview": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- Employment has ended.\n- Vested account balan...",
+        "content": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- Employment has ended.\n- Vested account balance is under $7,000.\n\n## Blocking Conditions:\n- Participant is still employed.\n- Vested account balance is $7,000 or more.\n\n## Missing Data Scenarios:\n\n**Condition:** Employment status is not confirmed.\n**Missing:** Employment status has ended\n**Outcome:** blocked_missing_data\n**Ask:** None\n\n**Condition:** Vested account balance amount is not available.\n**Missing:** Vested account balance amount\n**Outcome:** blocked_missing_data\n**Ask:** None\n\n**Condition:** Participant response to advance notice is not documented.\n**Missing:** Participant response to advance notice\n**Outcome:** blocked_missing_data\n**Ask:** None\n\n## Allowed Conclusions:\n- A force-out may be initiated if employment has ended and the vested balance is under $7,000.\n- Balances of $80 or less may be fully absorbed by the $80 administrative fee, resulting in account closure with no funds transferred (fee-out).\n- Greater than $80 and under $1,000 may be paid in cash with mandatory 20% withholding.\n- Balances between $1,000 and $7,000 must be rolled into a safe harbor IRA unless the participant elects otherwise.\n- Participants must receive advance written notice before an involuntary distribution.\n\n## Not Allowed Conclusions:\n- Do not conclude a force-out can occur while the participant is still employed.\n- Do not conclude balances of $7,000 or more are eligible for force-out.\n- Do not state that notice is optional before an involuntary distribution."
+      },
+      {
+        "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_10",
+        "score": 0.5902,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- Force-outs apply only to former employees with vested account balances under $7,000.\n- A sponsor can initiate a force-out only after employment ends an...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- Force-outs apply only to former employees with vested account balances under $7,000.\n- A sponsor can initiate a force-out only after employment ends and the participant's vested balance is under $7,000.\n"
+      },
+      {
+        "chunk_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_8",
+        "score": 0.5902,
+        "chunk_type": "response_frames",
+        "chunk_tier": "critical",
+        "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "content_preview": "# Response Frames by Outcome\n\n\n## Outcome: can_proceed\n\n### Message Components:\n- A force-out can proceed because employment has ended and the vested balance is under $7,000.\n- Advance written notice ...",
+        "content": "# Response Frames by Outcome\n\n\n## Outcome: can_proceed\n\n### Message Components:\n- A force-out can proceed because employment has ended and the vested balance is under $7,000.\n- Advance written notice must be provided before any involuntary distribution.\n- If the balance is $80 or less, the $80 administrative fee may fully absorb the balance (fee-out) and the account is closed with no funds transferred.\n- If the balance is greater than $80 and under $1,000, the plan may issue a cash distribution with mandatory 20% withholding.\n- If the balance is between $1,000 and $7,000 and no election is made, the balance must be rolled into a safe harbor IRA.\n\n### Next Steps:\n- Confirm notice has been sent timely via reliable delivery methods.\n- If no response is received, execute the outcome according to the applicable balance threshold.\n\n### Warnings:\n- Failure to provide proper notice can invalidate the distribution and increase fiduciary risk.\n\n### Questions to Ask:\n- What is the participant's current vested balance?\n- Has the advance written notice already been sent, and has the notice period expired?\n- Did the participant respond to the notice or elect a voluntary distribution?\n\n### Do NOT Say:\n- Do not guarantee a specific outcome without confirming the balance threshold and whether a participant election was made.\n- Do not state that notice requirements can be skipped.\n\n## Outcome: blocked_missing_data\n\n### Message Components:\n- We need to confirm eligibility details before proceeding with a force-out.\n\n### Next Steps:\n- Confirm employment has ended.\n- Confirm the vested account balance amount.\n- Confirm whether the participant responded to the advance notice.\n\n### Questions to Ask:\n- Has the participant's employment been terminated?\n- What is the participant's current vested account balance?\n- Has the participant been sent an advance written notice, and did they respond?\n\n### Do NOT Say:\n- Do not proceed with a force-out without confirming termination status and balance threshold.\n\n## Outcome: blocked_not_eligible\n\n### Message Components:\n- A force-out cannot proceed because eligibility requirements are not met.\n\n### Next Steps:\n- If the participant is still employed or the balance is $7,000 or more, continue regular plan administration in accordance with plan terms.\n\n### Do NOT Say:\n- Do not state that a force-out can occur if the participant is still employed or has a balance of $7,000 or more.\n\n## Outcome: ambiguous_plan_rules\n\n### Message Components:\n- Force-outs must follow IRS, DOL, and ERISA rules, including safe harbor IRA requirements and proper notice procedures.\n\n### Next Steps:\n- Confirm compliance with IRS Regulation \u00a7 401(a)(31)(B), DOL Safe Harbor Rules, and ERISA standards before proceeding.\n\n### Warnings:\n- Noncompliance can lead to plan errors, penalties, or audits.\n\n### Do NOT Say:\n- Do not guarantee compliance without confirming all regulatory requirements are met."
+      },
+      {
+        "chunk_id": "401k_loan_basics_and_support_guide_chunk_5",
+        "score": 0.587,
+        "chunk_type": "eligibility",
+        "chunk_tier": "critical",
+        "article_id": "401k_loan_basics_and_support_guide",
+        "article_title": "401(k) Loan Basics and Support Guide",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- Not every retirement plan offers loans, so eligibility depends on the employer's plan rules.\n- In general, a participant must be actively employed, hav...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- Not every retirement plan offers loans, so eligibility depends on the employer's plan rules.\n- In general, a participant must be actively employed, have enough vested balance available, and meet IRS loan requirements.\n- Plans may set their own minimum vested balance and may limit how many loans a participant can have at once.\n"
+      },
+      {
+        "chunk_id": "401k_loan_basics_and_support_guide_chunk_17",
+        "score": 0.587,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "401k_loan_basics_and_support_guide",
+        "article_title": "401(k) Loan Basics and Support Guide",
+        "content_preview": "# Business Rules: Fees\n\n## Fees:\n- Record Keeper must be identified first before disclosing any loan-related fee.\n- If the Record Keeper is RK: Vanguard, disclose the Vanguard fee rules only.\n- If the...",
+        "content": "# Business Rules: Fees\n\n## Fees:\n- Record Keeper must be identified first before disclosing any loan-related fee.\n- If the Record Keeper is RK: Vanguard, disclose the Vanguard fee rules only.\n- If the Record Keeper is RK: LT Trust, disclose the LT Trust fee rules only.\n- If the Record Keeper is neither RK: Vanguard nor RK: LT Trust, support must confirm any loan-related fees before they are disclosed.\n"
+      },
+      {
+        "chunk_id": "401k_loan_basics_and_support_guide_chunk_10",
+        "score": 0.587,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "401k_loan_basics_and_support_guide",
+        "article_title": "401(k) Loan Basics and Support Guide",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- Not every retirement plan offers loans, so eligibility depends on the employer's plan rules.\n- In general, a participant must be actively employed, hav...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- Not every retirement plan offers loans, so eligibility depends on the employer's plan rules.\n- In general, a participant must be actively employed, have enough vested balance available, and meet IRS loan requirements.\n- Plans may set their own minimum vested balance and may limit how many loans a participant can have at once.\n"
+      },
+      {
+        "chunk_id": "lt_trust_401k_loan_complete_guide_submission_repayment_support_chunk_12",
+        "score": 0.5851,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "lt_trust_401k_loan_complete_guide_submission_repayment_support",
+        "article_title": "LT: 401(k) Loan Complete Guide \u2014 Submission, Repayment & Support",
+        "content_preview": "# Business Rules: Fees\n\n## Fees:\n- A $100 processing fee is taken from participant's balance.\n- A $75 annual maintenance fee will apply.\n- A $35 fee for wire delivery will apply; there is no additiona...",
+        "content": "# Business Rules: Fees\n\n## Fees:\n- A $100 processing fee is taken from participant's balance.\n- A $75 annual maintenance fee will apply.\n- A $35 fee for wire delivery will apply; there is no additional charge for ACH delivery.\n- Fees and disclosures must be reviewed before submitting the request because fees are non-refundable.\n"
+      },
+      {
+        "chunk_id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_10",
+        "score": 0.578,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- The participant must have a Terminated status & Termination date in the system.\n- Only vested balances are eligible for distribution.\n- If there is a R...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- The participant must have a Terminated status & Termination date in the system.\n- Only vested balances are eligible for distribution.\n- If there is a Rehire date in the system, the Termination date must be after or higher than the Rehire date.\n- Not mentioned from the Plan Data, that the plan is in a Blackout period.\n- The Participant must have MFA enrolled for participant portal access.\n- Select Separation of Service if the participant has already left their employer. If the portal shows 'Default' instead of Separation of Service due to a website issue, the participant should select Default and continue because it is the same option.\n- If the participant is still employed and wants to roll over eligible funds (such as rollover source balances), they must contact ForUsAll Support first to confirm eligibility.\n"
+      },
+      {
+        "chunk_id": "how_do_i_cancel_or_change_a_pending_distribution_request_chunk_6",
+        "score": 0.5582,
+        "chunk_type": "decision_guide",
+        "chunk_tier": "critical",
+        "article_id": "how_do_i_cancel_or_change_a_pending_distribution_request",
+        "article_title": "How Do I Cancel or Change a Pending Distribution Request?",
+        "content_preview": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- Eligibility to cancel or edit cannot be determined by the AI and re...",
+        "content": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- Eligibility to cancel or edit cannot be determined by the AI and requires support to review the request status.\n\n## Blocking Conditions:\n- If support review confirms the request cannot be canceled, cancellation is not possible and alternate solutions should be discussed.\n\n## Missing Data Scenarios:\n\n**Condition:** Participant full name is not provided.\n**Missing:** Participant full name\n**Outcome:** blocked_missing_data\n**Ask:** What is your full name?\n\n**Condition:** Type of request is not provided.\n**Missing:** Type of request\n**Outcome:** blocked_missing_data\n**Ask:** What type of request is it (for example, hardship, loan, in-service, or termination distribution)?\n\n**Condition:** Approximate date submitted is not provided.\n**Missing:** Approximate date submitted\n**Outcome:** blocked_missing_data\n**Ask:** About when did you submit the request?\n\n**Condition:** Reason for change or cancellation is not provided.\n**Missing:** Reason for change or cancellation\n**Outcome:** blocked_missing_data\n**Ask:** What is the reason you want to change or cancel the request?\n\n## Allowed Conclusions:\n- Because distribution requests begin processing quickly, contacting ForUsAll immediately is important for changes or cancellation.\n- Support must review the request status to determine whether cancellation or edits may be possible.\n- If the request has been initiated or processed, cancellation may not be possible and options to stop or reissue may be available depending on delivery method and status after support review.\n- Available options depend on the current status of the request and, in some cases, the delivery method.\n- ForUsAll will review the request status and provide next steps or alternate solutions if cancellation is not possible.\n\n## Not Allowed Conclusions:\n- Do not guarantee that the request will be canceled or changed.\n- Do not state or imply that cancellation is certain simply because the participant contacted ForUsAll quickly.\n- Do not claim specific processing, turnaround, or delivery timelines.\n- Do not say when the custodian will process the request unless the article explicitly states it.\n- Do not claim a stop or reissue will occur without reviewing delivery method and status.\n- Do not claim cancellation is impossible without support review.\n- Do not assume the request is still pending unless its status has been reviewed by support.\n- Do not assume that initiated or processed requests can still be stopped or reissued.\n- Do not present available options as the same for every request type or every status.\n- Do not conclude what changes are possible if the participant has not provided enough information to identify the request.\n- Do not tell the participant to use a portal, platform, or system path not mentioned in the article.\n- Do not treat email as the preferred option for urgent requests when the article says calling is preferred.\n- Do not infer the request type, submission date, or reason for change if the participant has not provided them.\n- Do not state that support can resolve the request immediately.\n- Do not promise alternate solutions before the request status has been reviewed by support."
+      },
+      {
+        "chunk_id": "how_do_i_cancel_or_change_a_pending_distribution_request_chunk_7",
+        "score": 0.5582,
+        "chunk_type": "response_frames",
+        "chunk_tier": "critical",
+        "article_id": "how_do_i_cancel_or_change_a_pending_distribution_request",
+        "article_title": "How Do I Cancel or Change a Pending Distribution Request?",
+        "content_preview": "# Response Frames by Outcome\n\n\n## Outcome: can_proceed\n\n### Message Components:\n- ForUsAll will review whether your distribution request can be canceled or changed based on its current status.\n- Becau...",
+        "content": "# Response Frames by Outcome\n\n\n## Outcome: can_proceed\n\n### Message Components:\n- ForUsAll will review whether your distribution request can be canceled or changed based on its current status.\n- Because distribution requests begin processing quickly, contacting support as soon as possible is important.\n- If the request is still pending and not processed by the custodian, cancellation or edits may be possible after support review.\n\n### Next Steps:\n- Support reviews the request status to determine whether cancellation or edits may be possible.\n- If cancellation or edits are possible, explain the available next steps.\n- If cancellation is not possible, explain that alternate solutions may be available depending on delivery method and status.\n\n### Warnings:\n- Options depend on the current status of the request and, in some cases, the delivery method.\n- Cancellation or changes are not guaranteed.\n\n### Do NOT Say:\n- Do not promise that the request will definitely be canceled or changed.\n- Do not provide specific time estimates for processing or resolution.\n- Do not imply that status has already been verified if support has not yet reviewed it.\n- Do not guarantee that contacting support immediately will result in successful cancellation or changes.\n- Do not state that the request is still pending without confirmation from support.\n- Do not claim that cancellation is still possible after processing without verifying the request status.\n- Do not suggest that all requests can be edited or modified after submission.\n- Do not imply that support can stop or reissue the payment without reviewing delivery method and status.\n- Do not present outcomes as certain when they depend on request status and delivery method.\n- Do not assume the participant's request details without confirmation.\n- Do not suggest alternative solutions before confirming that cancellation is not possible.\n- Do not state that the request has already been processed unless confirmed.\n- Do not imply that calling guarantees faster resolution outcomes beyond being the preferred method for urgent requests.\n\n## Outcome: blocked_missing_data\n\n### Message Components:\n- To help with your cancellation or change request, we need a few details so we can locate and review your distribution request.\n\n### Next Steps:\n- Collect the missing participant-provided details.\n- Once enough information is provided to identify the request, advise the participant to contact support.\n- Support will review the request status to determine what options may be available.\n\n### Warnings:\n- We cannot confirm what changes are possible until support reviews the request status.\n- Cancellation or changes are not guaranteed and depend on the request status and, in some cases, the delivery method.\n\n### Questions to Ask:\n- What is your full name?\n- What type of request is it (for example, hardship, loan, in-service, or termination distribution)?\n- About when did you submit the request?\n- What is the reason you want to change or cancel the request?\n\n### Do NOT Say:\n- Do not confirm cancellation or change options without the information needed to locate the request.\n- Do not guess the request type or submission date.\n- Do not imply that the request status has already been reviewed.\n- Do not guarantee that cancellation or changes will be possible.\n- Do not suggest outcomes before support has reviewed the request status.\n\n## Outcome: ambiguous_plan_rules\n\n### Message Components:\n- Options depend on the current status of the distribution request and may also depend on the delivery method.\n- ForUsAll will review the request status and walk the participant through next steps or alternate solutions.\n\n### Next Steps:\n- Collect the participant details needed to identify the request.\n- Advise the participant that support will review the request status to determine available options.\n- If cancellation is not possible, explain that alternate solutions may be available depending on the request status and delivery method.\n\n### Warnings:\n- Available options cannot be confirmed until support reviews the request status.\n- Cancellation, edits, stop, or reissue options are not guaranteed.\n\n### Questions to Ask:\n- What is your full name?\n- What type of request is it (for example, hardship, loan, in-service, or termination distribution)?\n- About when did you submit the request?\n- What is the reason you want to change or cancel the request?\n\n### Do NOT Say:\n- Do not guarantee the request can be canceled or changed.\n- Do not claim stopping or reissuing will be available without confirming status and delivery method.\n- Do not imply that the request status has already been reviewed.\n- Do not present available options as certain before support review."
+      },
+      {
+        "chunk_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained_chunk_11",
+        "score": 0.5354,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+        "article_title": "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- In-service distributions are typically available if the participant is age 59 1/2 or older, if the plan allows.\n- Hardship withdrawals require an immed...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- In-service distributions are typically available if the participant is age 59 1/2 or older, if the plan allows.\n- Hardship withdrawals require an immediate and serious financial need and a qualifying hardship under IRS guidelines; plans may allow self-certification.\n- Rollover source withdrawals may be available for assets rolled over from another retirement account into the current plan.\n- 401(k) loans require the participant to be an active employee with an available vested balance.\n"
+      },
+      {
+        "chunk_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact_chunk_38",
+        "score": 0.5122,
+        "chunk_type": "references",
+        "chunk_tier": "low",
+        "article_id": "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+        "article_title": "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+        "content_preview": "# References and Resources\n\n## Contact Information:\n**Email:** help@forusall.com\n**Phone:** 844-401-2253\n**Hours:** Monday to Friday, 7 AM to 5 PM Pacific Time\n\n## Related Internal Articles:\n- lt_requ...",
+        "content": "# References and Resources\n\n## Contact Information:\n**Email:** help@forusall.com\n**Phone:** 844-401-2253\n**Hours:** Monday to Friday, 7 AM to 5 PM Pacific Time\n\n## Related Internal Articles:\n- lt_request_401k_termination_withdrawal_or_rollover\n- 401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance\n- how_do_i_cancel_or_change_a_pending_distribution_request\n- can_i_take_money_from_my_401k_while_employed_your_options_explained\n- 401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax\n- missed_60_day_rollover_window\n"
+      },
+      {
+        "chunk_id": "forusall_401k_hardship_withdrawal_complete_guide_chunk_5",
+        "score": 0.5065,
+        "chunk_type": "decision_guide",
+        "chunk_tier": "critical",
+        "article_id": "forusall_401k_hardship_withdrawal_complete_guide",
+        "article_title": "ForUsAll 401(k) Hardship Withdrawal \u2014 Complete Guide (Rules, Fees, Steps, Timelines)",
+        "content_preview": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- The participant should select an IRS-approve...",
+        "content": "# Decision Guide\n\n## Supported Outcomes:\n- can_proceed\n- blocked_missing_data\n- blocked_not_eligible\n- ambiguous_plan_rules\n\n## Eligibility Requirements:\n- The participant should select an IRS-approved hardship reason listed in this article that applies to their situation (self-certification).\n- The participant should request only the amount necessary to meet the financial need and should not exceed the documented hardship expenses (self-certification).\n- Only one request per hardship reason is allowed at a time.\n- All of the eligibility requirements are not mandatory to request a hardship withdrawal as this process is a Self-Certification process, so participants are not required to meet all eligibility criteria before submitting a request.\n\n\n## Allowed Conclusions:\n- After setting expectations and providing the Hardship Distribution Guidelines, send the participant the Hardship Withdrawal RightSignature Request Form link to complete the form: https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133\n- Standard processing has a $75 fee, with an additional +$35 for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.\n- Funds are subject to federal income taxes, and a 10% early withdrawal penalty may apply if the participant is under age 59.5.\n- ForUsAll does not collect supporting documents; the participant must retain documentation in case of an IRS audit.\n\n## Not Allowed Conclusions:\n- Do not guarantee employer match funds are eligible for hardship withdrawal.\n- Do not guarantee a specific dollar amount will be available for hardship withdrawal.\n- Do not promise an exact delivery date beyond the estimated timelines listed in the article.\n- Do not state the participant will definitely owe (or definitely will not owe) a 10% early withdrawal penalty."
+      },
+      {
+        "chunk_id": "can_i_split_my_401_k_rollover_between_multiple_providers_chunk_13",
+        "score": 0.506,
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "article_id": "can_i_split_my_401_k_rollover_between_multiple_providers",
+        "article_title": "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+        "content_preview": "# Business Rules: Eligibility\n\n## Eligibility:\n- The participant must have a Terminated status and Termination date in the system.\n- Only vested balances are eligible for distribution.\n- If there is a...",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- The participant must have a Terminated status and Termination date in the system.\n- Only vested balances are eligible for distribution.\n- If there is a Rehire date in the system, the Termination date must be after the Rehire date.\n- Plan Status in the system must be Active or Pending Termination.\n- The plan must not be in a Blackout period.\n- The participant must have MFA enrolled for any workflow that requires online access.\n"
+      },
+      {
+        "chunk_id": "401k_force_out_process_sponsor_faq_chunk_31",
+        "score": 0.4832,
+        "chunk_type": "references",
+        "chunk_tier": "low",
+        "article_id": "401k_force_out_process_sponsor_faq",
+        "article_title": "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance",
+        "content_preview": "# References and Resources\n\n## Contact Information:\n\n## Related Internal Articles:\n- 401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and C...",
+        "content": "# References and Resources\n\n## Contact Information:\n\n## Related Internal Articles:\n- 401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance\n- 401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax\n- How Do I Cancel or Change a Pending Distribution Request?\n"
+      }
+    ],
+    "coverage_gaps": [],
+    "metadata": {
+      "chunks_used": 21,
+      "context_tokens": 4296,
+      "response_tokens": 965,
+      "prompt_tokens": 7488,
+      "completion_tokens": 2004,
+      "total_tokens": 9492,
+      "phase1_model": null,
+      "phase1_provider": null,
+      "phase2_model": "gpt-5.5",
+      "phase2_provider": "openai",
+      "total_inquiries": 1,
+      "sub_queries": [
+        "ForUsAll Check Out My LLC 401k withdrawal eligibility after separation from employment termination",
+        "401k hardship withdrawal financial emergency rented home sold eviction or housing expense eligibility",
+        "while employed 401k access options hardship withdrawal 401k loan rollover source",
+        "hardship withdrawal eviction foreclosure primary residence financial emergency self certification",
+        "401k loan eligibility active employee plan allows loans vested balance active loans"
+      ],
+      "per_query_scores": {
+        "ForUsAll Check Out My LLC 401k withdrawal eligibility after separation from employment termination": 0.578,
+        "401k hardship withdrawal financial emergency rented home sold eviction or housing expense eligibility": 0.4945,
+        "while employed 401k access options hardship withdrawal 401k loan rollover source": 0.5185,
+        "hardship withdrawal eviction foreclosure primary residence financial emergency self certification": 0.438,
+        "401k loan eligibility active employee plan allows loans vested balance active loans": 0.596
+      },
+      "unique_articles": 10,
+      "relevant_articles": 10,
+      "coverage_gaps": [],
+      "phase1_elapsed_s": 20.0,
+      "phase1_relevance_signal": "ambiguous_plan_rules",
+      "final_outcome": "blocked_not_eligible",
+      "dominant_mode": false,
+      "dominance_top_signal": 1.906,
+      "dominance_runner_up_signal": 1.884,
+      "dominance_ratio": 0.988,
+      "concept_quotas_applied": [
+        "hardship_withdrawal",
+        "termination_distribution_request",
+        "in_service_withdrawal_options",
+        "loan"
+      ],
+      "detected_concepts": [
+        "hardship_withdrawal",
+        "termination_distribution_request",
+        "in_service_withdrawal_options"
+      ],
+      "alternative_concepts": [
+        "in_service_withdrawal_options",
+        "hardship_withdrawal",
+        "loan"
+      ],
+      "article_bundles_added": [
+        "can_i_take_money_from_my_401k_while_employed_your_options_explained",
+        "how_do_i_cancel_or_change_a_pending_distribution_request",
+        "lt_request_401k_termination_withdrawal_or_rollover",
+        "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "401k_loan_basics_and_support_guide",
+        "lt_trust_401k_loan_complete_guide_submission_repayment_support"
+      ]
+    }
+  }
+}

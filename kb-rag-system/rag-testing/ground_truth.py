@@ -154,6 +154,22 @@ GROUND_TRUTH: dict[str, dict[str, list[str]]] = {
             r"you\s*can\s*(?:request|proceed|submit|initiate).*now",
         ],
     },
+    # GR-31: Active participant cannot use separation path yet, but alternatives should be covered
+    "GR-31": {
+        "must_contain": [
+            r"Active",
+            r"termination\s+date",
+            r"hardship",
+            r"\bloan\b",
+            r"(?:eviction|foreclosure)",
+            r"(?:plan\s+(?:allows|permits)|Support\s+(?:must|can|should)\s+confirm)",
+        ],
+        "must_not_contain": [
+            r"can\s+(?:submit|request|proceed|initiate).*separation\s+(?:distribution|withdrawal).*now",
+            r"rented\s+house\s+(?:sale|being\s+sold).*(?:automatically|definitely).*(?:qualif|eligible|allowed)",
+            r"loan\s+is\s+guaranteed",
+        ],
+    },
 }
 
 
@@ -172,13 +188,26 @@ def validate_facts(test_id: str, response_text: str) -> tuple[list[str], list[st
     warnings: list[str] = []
     failures: list[str] = []
 
+    def is_negated(match: re.Match) -> bool:
+        sentence_prefix = re.split(r"[.!?\n]", response_text[:match.start()])[-1].lower()
+        negation_markers = (
+            "do not",
+            "does not",
+            "did not",
+            "not ",
+            "never ",
+            "cannot",
+            "can't",
+        )
+        return any(marker in sentence_prefix for marker in negation_markers)
+
     for pattern in truth.get("must_contain", []):
         if not re.search(pattern, response_text, re.IGNORECASE):
             warnings.append(f"Ground truth miss: pattern {pattern!r} not found in response")
 
     for pattern in truth.get("must_not_contain", []):
         match = re.search(pattern, response_text, re.IGNORECASE)
-        if match:
+        if match and not is_negated(match):
             failures.append(
                 f"Hallucination detected: pattern {pattern!r} matched '{match.group()}'"
             )

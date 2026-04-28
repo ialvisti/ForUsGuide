@@ -1,398 +1,136 @@
 {
-  "timestamp": "2026-04-22T12:29:52.191916",
+  "timestamp": "2026-04-27T21:24:57.339437",
   "api_base_url": "http://localhost:8000",
-  "total_tests": 5,
-  "passed": 5,
+  "total_tests": 1,
+  "passed": 1,
   "failed": 0,
   "results": [
     {
-      "test_id": "GR-01",
-      "name": "Standard termination rollover \u2014 LT Trust to Fidelity",
+      "test_id": "GR-31",
+      "name": "Active participant emergency \u2014 blocked separation with alternatives",
       "endpoint": "generate-response",
-      "category": "happy_path",
+      "category": "advisory_alternatives",
       "passed": true,
-      "response_time_ms": 95588.3,
+      "response_time_ms": 70721.1,
       "status_code": 200,
       "decision": "can_proceed",
-      "confidence": 0.65,
+      "confidence": 0.834,
       "confidence_note": null,
       "source_articles": [
-        "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
-        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-        "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
-        "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance",
-        "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
-        "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
-        "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional"
-      ],
-      "chunks_used": 13,
-      "error": null,
-      "validation_notes": [
-        "Slow response: 95588ms exceeds 60000ms threshold"
-      ],
-      "request_payload": {
-        "inquiry": "I left my job and want to roll over my 401(k) balance to my Fidelity IRA.",
-        "record_keeper": "LT Trust",
-        "plan_type": "401(k)",
-        "topic": "rollover",
-        "collected_data": {
-          "participant_data": {
-            "employment_status": "Terminated",
-            "termination_date": "2025-12-15",
-            "total_vested_balance": "$45,000",
-            "pre_tax_balance": "$35,000",
-            "roth_balance": "$10,000",
-            "outstanding_loans": "None",
-            "receiving_institution": "Fidelity",
-            "rollover_type": "Direct rollover"
-          },
-          "plan_data": {
-            "plan_allows_rollovers": true,
-            "blackout_period": false
-          }
-        },
-        "max_response_tokens": 3000
-      },
-      "response_answer": null,
-      "response_key_points": [
-        "Only vested balances can be distributed, and your eligible vested amount currently includes $35,000 in pre-tax funds and $10,000 in Roth funds.",
-        "A $75 processing fee applies to this distribution request.",
-        "For a direct rollover, the funds can be sent by Regular Mail Check to the receiving IRA provider or by wire transfer directly to the receiving account; wire transfer requires wire instructions, carries an additional wire fee, and a returned wire may be converted to a mailed check. OverNight Check is also an expedited check option with an additional fee.",
-        "When a rollover is completed as a direct transfer to an IRA or another qualified retirement plan, it avoids immediate taxes or penalties if done properly.",
-        "A Form 1099-R will be issued next year to report the rollover."
-      ],
-      "response_outcome": "can_proceed",
-      "response_outcome_reason": "The participant meets the core LT Trust termination rollover requirements: employment status is Terminated, a termination date is on file (2025-12-15), and the Total Vested Balance is verified at $45,000, which is above the $75 fee-out threshold. The plan is not in blackout and rollovers are allowed, so the participant is eligible to request a standard termination direct rollover of the vested balance to Fidelity through the ForUsAll process.",
-      "response_opening": "You can proceed with a termination direct rollover of your LT Trust 401(k) to your Fidelity IRA. Your account shows Terminated status with a termination date of 2025-12-15, your plan allows rollovers, and no blackout period is in effect.",
-      "response_steps": [
-        {
-          "step_number": 1,
-          "action": "Log in to the ForUsAll participant portal and go to your Participant Dashboard.",
-          "detail": null
-        },
-        {
-          "step_number": 2,
-          "action": "Open Loans & Distributions and start the termination distribution workflow.",
-          "detail": "If the portal presents a Termination Distribution option, use that to begin."
-        },
-        {
-          "step_number": 3,
-          "action": "Select the distribution reason shown for leaving employment.",
-          "detail": "Choose Separation of Service. If the dropdown shows Default instead, select Default and continue because it is the same option."
-        },
-        {
-          "step_number": 4,
-          "action": "Enter the receiving account details and choose the delivery method for the rollover.",
-          "detail": "Complete the direct rollover information for the IRA and provide wire instructions if you choose wire delivery."
-        },
-        {
-          "step_number": 5,
-          "action": "Review the request and submit it through the ForUsAll process.",
-          "detail": "If you cannot access Loans & Distributions, do not see Get Started, or the workflow will not let you continue, contact ForUsAll Support at help@forusall.com or 844-401-2253, Monday to Friday, 7 AM to 5 PM Pacific Time, to request the Separation of Service: Rollover Request Form through RightSignature."
-        }
-      ],
-      "response_warnings": [
-        "If the funds are paid to you instead of being sent directly to the receiving IRA, the rollover generally must be completed within 60 days of when you receive the funds to avoid taxes and penalties; if you are under age 59\u00bd, a 10% early withdrawal penalty may also apply."
-      ],
-      "response_questions": [],
-      "response_guardrails": [
-        "Did not provide any processing or delivery timeline because none is stated in the provided LT Trust context.",
-        "Did not discuss unvested funds as distributable because only vested balances are eligible.",
-        "Did not guarantee faster completion, approval, or payout timing."
-      ],
-      "response_escalation": {
-        "needed": false,
-        "reason": null
-      },
-      "response_data_gaps": [
-        "The knowledge base does not include Fidelity-specific mailing or wire instructions; those must come from the receiving institution.",
-        "The exact additional wire fee and OverNight Check fee amounts are not stated in the provided context."
-      ]
-    },
-    {
-      "test_id": "GR-02",
-      "name": "Force-out $900 balance \u2014 mandatory cash distribution",
-      "endpoint": "generate-response",
-      "category": "force_out_cash",
-      "passed": true,
-      "response_time_ms": 85881.3,
-      "status_code": 200,
-      "decision": "can_proceed",
-      "confidence": 0.65,
-      "confidence_note": null,
-      "source_articles": [
-        "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance",
-        "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
-        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover"
-      ],
-      "chunks_used": 13,
-      "error": null,
-      "validation_notes": [
-        "Slow response: 85881ms exceeds 60000ms threshold"
-      ],
-      "request_payload": {
-        "inquiry": "A terminated participant has $900 in their 401(k) and has not responded to the force-out notice. What will happen?",
-        "record_keeper": null,
-        "plan_type": "401(k)",
-        "topic": "distributions",
-        "collected_data": {
-          "participant_data": {
-            "employment_status": "Terminated",
-            "total_vested_balance": "$900",
-            "responded_to_notice": false
-          },
-          "plan_data": {
-            "force_out_threshold": "$7,000"
-          }
-        }
-      },
-      "response_answer": null,
-      "response_key_points": [
-        "Since your vested balance is more than $80 and less than $1,000, the force-out may be processed as an involuntary cash distribution.",
-        "The $80 administrative fee-out applies only to balances of $80 or less, so it would not absorb a $900 balance.",
-        "This type of cash distribution is subject to mandatory 20% federal withholding, so $180 would be withheld from $900 and $720 would be distributed.",
-        "A Form 1099-R must be issued for the tax year in which the distribution occurs."
-      ],
-      "response_outcome": "can_proceed",
-      "response_outcome_reason": "The participant is eligible for a force-out because employment has ended, the vested balance is $900, and the plan\u2019s force-out threshold is $7,000. Since the participant did not respond to the advance notice and the balance is over $80 but under $1,000, the plan may proceed with an involuntary cash distribution subject to mandatory 20% federal withholding, and a Form 1099-R must be issued.",
-      "response_opening": "Because you are terminated and your vested balance is $900, which is below the plan\u2019s $7,000 force-out threshold, the plan can move forward if you do not respond to the notice. Here is what that means for your distribution.",
-      "response_steps": [
-        {
-          "step_number": 1,
-          "action": "Review the advance notice you received.",
-          "detail": "Use the instructions in that notice if you want to make your own election before the force-out is processed."
-        },
-        {
-          "step_number": 2,
-          "action": "If you want a different outcome, respond before processing occurs.",
-          "detail": "If you do not respond, the plan may complete the default force-out treatment for your account."
-        },
-        {
-          "step_number": 3,
-          "action": "Keep the tax reporting document you receive for your records.",
-          "detail": null
-        }
-      ],
-      "response_warnings": [
-        "If you believe you did not receive the advance written notice, raise that promptly, because improper or mistimed notice can invalidate the distribution and increase fiduciary risk."
-      ],
-      "response_questions": [],
-      "response_guardrails": [
-        "Did not say that advance written notice can be skipped.",
-        "Did not add facts about force-out eligibility or outcomes outside the confirmed $900 balance tier."
-      ],
-      "response_escalation": {
-        "needed": false,
-        "reason": null
-      },
-      "response_data_gaps": []
-    },
-    {
-      "test_id": "GR-06",
-      "name": "Hardship \u2014 non-qualifying reason rejection",
-      "endpoint": "generate-response",
-      "category": "ineligibility",
-      "passed": true,
-      "response_time_ms": 43012.7,
-      "status_code": 200,
-      "decision": "can_proceed",
-      "confidence": 0.774,
-      "confidence_note": null,
-      "source_articles": [
-        "ForUsAll 401(k) Hardship Withdrawal \u2014 Complete Guide (Rules, Fees, Steps, Timelines)",
         "Can I Take Money From My 401(k) While Employed? Your Options Explained",
+        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
         "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "LT: 401(k) Loan Complete Guide \u2014 Submission, Repayment & Support",
+        "How Do I Cancel or Change a Pending Distribution Request?",
+        "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+        "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+        "EACA Refunds After 401(k) Auto-Enrollment: 90-Day Deadline, Eligibility, Fees, and Tax Reporting",
+        "ForUsAll 401(k) Hardship Withdrawal \u2014 Complete Guide (Rules, Fees, Steps, Timelines)",
         "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance"
       ],
-      "chunks_used": 11,
+      "chunks_used": 17,
       "error": null,
-      "validation_notes": [],
+      "validation_notes": [
+        "Slow response: 70721ms exceeds 60000ms threshold"
+      ],
       "request_payload": {
-        "inquiry": "I want a hardship withdrawal to pay for a family vacation to Europe.",
+        "inquiry": "The participant is considering quitting in the next 4 weeks due to a financial emergency involving their rented house being sold, and wants to know if they can withdraw money from their ForUsAll 401(k) plan at Check Out My LLC due to separation from employment.",
+        "record_keeper": "LT Trust",
         "plan_type": "401(k)",
-        "topic": "hardship",
+        "topic": "hardship_withdrawal",
         "collected_data": {
           "participant_data": {
             "employment_status": "Active",
-            "age": 40,
-            "total_vested_balance": "$30,000",
-            "hardship_reason": "Family vacation",
-            "hardship_amount_requested": "$8,000"
+            "termination_date": null,
+            "rehire_date": null,
+            "first_name": "JERRY",
+            "last_name": "FREED",
+            "birth_date": "1968-05-11",
+            "account_balance": 18176.94,
+            "latest_payroll": {
+              "Pay Date": "2026-04-24",
+              "Pre-tax": 110.31,
+              "Roth": 0,
+              "Employer Match": 91.93,
+              "Loan": 148.76,
+              "Plan comp": 1838.55,
+              "Hours": 80.81
+            },
+            "mfa_status": "Enrolled"
           },
           "plan_data": {
-            "plan_allows_hardship": true
+            "company_name": "Check Out My LLC",
+            "company_status": "Ongoing"
           }
-        }
+        },
+        "context": {
+          "ticket_id": "TKT-877252",
+          "agent_name": "JERRY FREED",
+          "agent_email": "jerry_freed@hotmail.com",
+          "email_subject": "Participant Advisory - Form Submission",
+          "first_contact": true,
+          "devrev_tag": "NOT FOUND",
+          "participant_id": "266866",
+          "plan_id": "898"
+        },
+        "max_response_tokens": 5500,
+        "total_inquiries_in_ticket": 1
       },
       "response_answer": null,
       "response_key_points": [
-        "IRS-approved hardship categories include certain medical or dental expenses, post-secondary education costs for the next 12 months, purchase of a primary residence, amounts needed to prevent eviction or foreclosure from a primary residence, funeral or burial expenses, and certain casualty damage repairs to a primary residence.",
-        "A hardship withdrawal must be limited to the amount necessary to meet the financial need and cannot exceed the documented hardship expense.",
-        "Even if a hardship request is self-certified, it still must meet IRS hardship rules, and supporting documentation must be retained in case of an IRS audit.",
-        "If you later request a qualifying hardship withdrawal, it would be subject to federal income taxes, and because you are age 40, a 10% early withdrawal penalty may apply.",
-        "Hardship withdrawal funds cannot be repaid to the plan.",
-        "For a qualifying hardship request that the plan allows, approval is generally within 1\u20132 days and disbursal is typically within 1 to 3 weeks."
+        "For any future eligible termination cash withdrawal or rollover, ForUsAll procedures apply; a $75 distribution fee applies to all requests, ACH or Regular Mail Check has no additional charge, and wire or OverNight Check adds a non-refundable $35 fee.",
+        "If you take a cash distribution after becoming eligible, 20% federal withholding is mandatory, state withholding may also apply depending on state law, and the distribution is taxable income for the calendar year processed.",
+        "While still employed, in-service distributions are typically available only at age 59 1/2 or older if the plan allows; based on your birth date of 1968-05-11, that age-based route is not available to you yet.",
+        "A hardship withdrawal may be worth reviewing only if there is an immediate and serious financial need that matches an IRS-approved reason: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, or repair of damage to a primary residence.",
+        "A rented-house sale does not automatically qualify as a hardship reason; if your situation involves an actual eviction risk from your primary residence, Support can help review whether the facts fit the applicable hardship category and whether the amount requested is limited to the documented need.",
+        "A 401(k) loan may also be worth reviewing while you are still active, but the plan must allow loans and participant-level checks such as vested balance, maximum number of loans, and current active loans must be confirmed."
       ],
       "response_outcome": "blocked_not_eligible",
-      "response_outcome_reason": "The plan allows hardship withdrawals, but the stated reason\u2014paying for a family vacation to Europe\u2014does not match an IRS-approved hardship category. Hardship withdrawals require an immediate and serious financial need that fits a qualifying reason, and vacation expenses are not listed as eligible.",
-      "response_opening": "Your plan allows hardship withdrawals, but paying for a family vacation to Europe is not an IRS-approved hardship reason. Hardship withdrawals must be for an immediate and serious financial need that fits a qualifying category, so this request is not eligible.",
-      "response_steps": [],
-      "response_warnings": [],
-      "response_questions": [],
-      "response_guardrails": [
-        "Did not treat a family vacation as a qualifying hardship because only the IRS-approved categories listed in the context can be used.",
-        "Did not guarantee approval for any future hardship request.",
-        "Did not provide any portal URL, submission workflow, or fees that were not stated in the context."
-      ],
-      "response_escalation": {
-        "needed": true,
-        "reason": "Escalation is appropriate if the participant believes the expense is actually tied to a different IRS-approved hardship category and wants the request reviewed under that category."
-      },
-      "response_data_gaps": []
-    },
-    {
-      "test_id": "GR-09",
-      "name": "Loan blocks hardship \u2014 contingent amount exceeds balance",
-      "endpoint": "generate-response",
-      "category": "cross_topic_conflict",
-      "passed": true,
-      "response_time_ms": 53915.2,
-      "status_code": 200,
-      "decision": "can_proceed",
-      "confidence": 0.651,
-      "confidence_note": null,
-      "source_articles": [
-        "Can I Take Money From My 401(k) While Employed? Your Options Explained",
-        "ForUsAll 401(k) Hardship Withdrawal \u2014 Complete Guide (Rules, Fees, Steps, Timelines)",
-        "LT: 401(k) Loan Complete Guide \u2014 Submission, Repayment & Support",
-        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-        "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance",
-        "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance"
-      ],
-      "chunks_used": 9,
-      "error": null,
-      "validation_notes": [],
-      "request_payload": {
-        "inquiry": "I have an outstanding loan and need a hardship withdrawal for medical bills. Can I do both?",
-        "plan_type": "401(k)",
-        "topic": "hardship",
-        "collected_data": {
-          "participant_data": {
-            "employment_status": "Active",
-            "total_vested_balance": "$25,000",
-            "outstanding_loans": "$15,000",
-            "hardship_reason": "Medical expenses \u2014 surgery not covered by insurance",
-            "hardship_amount_requested": "$10,000",
-            "age": 38
-          },
-          "plan_data": {
-            "plan_allows_hardship": true,
-            "maximum_loans_allowed": 1
-          }
-        }
-      },
-      "response_answer": null,
-      "response_key_points": [
-        "Medical expenses that are not covered by insurance are one of the IRS-approved hardship reasons.",
-        "A hardship withdrawal is limited to the amount necessary to relieve the financial need and cannot be more than the documented cost of the hardship.",
-        "Even if a hardship request is self-certified, you must still be able to demonstrate the qualifying hardship and keep supporting documentation in case of an IRS audit.",
-        "If a hardship withdrawal later becomes available, distributions from pre-tax funds may be subject to ordinary income tax, and because you are age 38, a 10% early withdrawal penalty would typically apply unless an exception is met.",
-        "If eligibility changes later and the request can move forward, hardship approval is generally within 1\u20132 days and disbursal is typically within 1 to 3 weeks."
-      ],
-      "response_outcome": "blocked_not_eligible",
-      "response_outcome_reason": "The participant\u2019s medical expenses are a qualifying hardship reason and the plan allows hardship withdrawals, but they already have an active loan. Under the LT hardship/in-service rule, a participant with active loans must leave a required contingent amount in the account, and here that required amount would exceed the vested balance on file. That is a listed blocking condition, so they cannot proceed with the hardship withdrawal based on the data provided.",
-      "response_opening": "Your plan allows hardship withdrawals and your medical expenses are a qualifying hardship reason, but you already have an active 401(k) loan. Under the loan-related contingent amount rule that applies when a participant has an active loan, enough money would need to remain in the account, and based on the data on file that requirement is greater than your vested balance, so this hardship withdrawal request is blocked.",
-      "response_steps": [],
-      "response_warnings": [
-        "A hardship withdrawal cannot be repaid back into the plan."
-      ],
-      "response_questions": [],
-      "response_guardrails": [
-        "Did not disclose internal account balance figures, outstanding loan figures, or the computed contingent amount.",
-        "Did not guarantee approval, future eligibility, or any tax-penalty exception beyond what is stated in the context.",
-        "Did not state any hardship withdrawal fee amount because none is provided in the available context."
-      ],
-      "response_escalation": {
-        "needed": true,
-        "reason": "Participants with active loans need ForUsAll Support to confirm the contingent-balance requirement; if you believe the loan or balance information on file is incorrect or changes, Support should review your eligibility."
-      },
-      "response_data_gaps": []
-    },
-    {
-      "test_id": "GR-21",
-      "name": "Out-of-scope \u2014 cryptocurrency investment in 401(k)",
-      "endpoint": "generate-response",
-      "category": "out_of_scope",
-      "passed": true,
-      "response_time_ms": 30988.7,
-      "status_code": 200,
-      "decision": "uncertain",
-      "confidence": 0.5,
-      "confidence_note": null,
-      "source_articles": [
-        "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
-        "Can I Take Money From My 401(k) While Employed? Your Options Explained",
-        "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
-        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-        "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
-        "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
-        "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance",
-        "ForUsAll 401(k) Hardship Withdrawal \u2014 Complete Guide (Rules, Fees, Steps, Timelines)",
-        "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention"
-      ],
-      "chunks_used": 21,
-      "error": null,
-      "validation_notes": [],
-      "request_payload": {
-        "inquiry": "Can I invest my 401(k) in Bitcoin and Ethereum? How do I allocate crypto in my plan?",
-        "plan_type": "401(k)",
-        "topic": "investments",
-        "collected_data": {
-          "participant_data": {
-            "employment_status": "Active",
-            "age": 29,
-            "total_vested_balance": "$18,000"
-          },
-          "plan_data": {}
-        }
-      },
-      "response_answer": null,
-      "response_key_points": [
-        "You can only allocate to Bitcoin or Ethereum if your 401(k) plan\u2019s investment lineup or other plan-approved investment option allows it.",
-        "Your current plan details do not show whether crypto investing is available, so this requires a plan-specific review by Support.",
-        "No crypto-specific allocation process, fees, or timelines are provided in the available context."
-      ],
-      "response_outcome": "ambiguous_plan_rules",
-      "response_outcome_reason": "This is a retirement-plan investment inquiry, but eligibility depends on plan-specific investment rules that are not provided. A participant can only allocate to Bitcoin/Ethereum if the 401(k) plan\u2019s investment lineup or brokerage/crypto option allows it; with no plan data showing crypto availability, it cannot be confirmed from the provided information.",
-      "response_opening": "Because you\u2019re still actively employed and participating in the plan, whether you can invest your 401(k) in Bitcoin or Ethereum depends entirely on your specific plan\u2019s investment rules and available options. Based on the information provided, we can\u2019t confirm that your plan offers a crypto allocation, brokerage window, or any Bitcoin/Ethereum investment option.",
+      "response_outcome_reason": "JERRY is currently Active at Check Out My LLC, has no termination date on file, and is only considering quitting in the next 4 weeks; a separation-from-employment withdrawal cannot proceed until employment has actually ended and the plan/recordkeeping status reflects that separation.",
+      "response_opening": "JERRY, because you are currently listed as Active with Check Out My LLC and no termination date is on file, you cannot take a separation-from-employment withdrawal from your ForUsAll 401(k) right now. Your current account balance is $18,176.94, and LT Trust procedures are handled through ForUsAll.",
       "response_steps": [
         {
           "step_number": 1,
-          "action": "Contact Support for a plan review.",
-          "detail": "Ask Support to confirm whether your 401(k) plan includes any Bitcoin, Ethereum, crypto, or brokerage-based investment option and whether participant allocations to that option are permitted under your plan."
+          "action": "Wait until your employment has actually ended before trying to request a separation-from-employment withdrawal.",
+          "detail": "A future separation request depends on your employment status being updated after you leave Check Out My LLC."
         },
         {
           "step_number": 2,
-          "action": "If Support confirms crypto is available, follow the plan\u2019s approved allocation process.",
-          "detail": "Support can tell you which option is available in your plan and how to make the allocation within the plan\u2019s permitted investment menu."
+          "action": "Contact ForUsAll Support if you want hardship or loan options reviewed before you separate.",
+          "detail": "You can call 844-401-2253 Monday to Friday, 7 AM to 5 PM Pacific Time, or email help@forusall.com."
         }
       ],
       "response_warnings": [
-        "Do not assume crypto investing is available in your 401(k) unless Support confirms your plan permits it."
+        "Your latest payroll shows a loan deduction; if you have an outstanding loan when employment ends, repayment and tax consequences may apply after separation.",
+        "Do not assume a separation withdrawal, hardship withdrawal, or loan is approved until the applicable eligibility checks and plan rules are confirmed."
       ],
-      "response_questions": [],
+      "response_questions": [
+        {
+          "question": "If you want a hardship withdrawal reviewed, which IRS-approved hardship reason applies to your situation, and what amount is needed to address that expense?",
+          "why": "Hardship withdrawals require a qualifying hardship reason and the withdrawal amount cannot exceed the documented financial need."
+        },
+        {
+          "question": "Does the sale of the rented house create an eviction situation involving your primary residence?",
+          "why": "The relevant housing hardship category in the provided rules is preventing foreclosure or eviction, and a rental sale by itself is not enough to confirm eligibility."
+        }
+      ],
       "response_guardrails": [
-        "Did not guarantee that Bitcoin or Ethereum investing is available in the plan.",
-        "Did not provide any crypto allocation workflow, fees, or timing that are not stated in the provided context.",
-        "Did not assume LT Trust or any recordkeeper-specific portal process because the recordkeeper was not specified."
+        "Did not state that a separation-from-employment withdrawal can proceed while the participant is still active.",
+        "Did not say that quitting in the future makes the participant currently eligible.",
+        "Did not treat the rented-house sale as automatically qualifying for a hardship withdrawal.",
+        "Did not guarantee that the plan allows loans or that the participant qualifies for a new loan.",
+        "Did not provide tax advice or promise approval of any withdrawal, rollover, or loan."
       ],
       "response_escalation": {
         "needed": true,
-        "reason": "Specific plan rules must be verified by Support."
+        "reason": "Support should review any possible hardship or loan alternative because the primary separation-from-employment withdrawal is blocked while JERRY remains active, and plan-specific loan availability or hardship documentation details must be confirmed."
       },
       "response_data_gaps": [
-        "The plan\u2019s investment lineup is not provided.",
-        "There is no plan data showing whether a crypto or brokerage option exists."
+        "Whether the participant's employment status will be updated after any future separation date.",
+        "Whether the plan allows loans and how many active loans are permitted.",
+        "Whether the participant currently has an outstanding loan balance, beyond the payroll loan deduction shown.",
+        "Whether the rented-house situation involves an actual eviction from the participant's primary residence.",
+        "The hardship amount needed and supporting expense details."
       ]
     }
   ]

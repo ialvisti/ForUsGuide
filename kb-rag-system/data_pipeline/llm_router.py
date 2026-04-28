@@ -357,7 +357,7 @@ class LLMRouter:
 # ============================================================================
 
 # Default cross-provider fallback. An OpenAI primary falls back to Gemini Pro
-# (high-quality reasoning) and vice-versa to GPT-5.4.
+# (high-quality reasoning) and vice-versa to GPT-5.5.
 _DEFAULT_FALLBACK_BY_PROVIDER: Dict[LLMProvider, ModelConfig] = {
     LLMProvider.OPENAI: ModelConfig(
         provider=LLMProvider.GEMINI,
@@ -367,7 +367,7 @@ _DEFAULT_FALLBACK_BY_PROVIDER: Dict[LLMProvider, ModelConfig] = {
     ),
     LLMProvider.GEMINI: ModelConfig(
         provider=LLMProvider.OPENAI,
-        model="gpt-5.4",
+        model="gpt-5.5",
         reasoning_effort="medium",
     ),
 }

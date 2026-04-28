@@ -132,6 +132,9 @@ class TestRequiredDataEndpoint:
             "plan_data": []
         }
         mock_response.confidence = 0.9
+        mock_response.source_articles = []
+        mock_response.used_chunks = []
+        mock_response.coverage_gaps = []
         mock_response.metadata = {}
         
         # The mock is on app.state from the lifespan; set async return value
@@ -195,6 +198,9 @@ class TestGenerateResponseEndpoint:
             "guardrails_applied": [],
             "data_gaps": []
         }
+        mock_response.source_articles = []
+        mock_response.used_chunks = []
+        mock_response.coverage_gaps = []
         mock_response.metadata = {}
         
         # The mock is on app.state from the lifespan; set async return value

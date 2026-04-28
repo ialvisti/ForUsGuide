@@ -41,11 +41,11 @@ class Settings(BaseSettings):
     GCP_LOCATION: str = "us-central1"
 
     # LLM Routing (model name per task; provider is inferred from prefix).
-    LLM_ROUTE_DECOMPOSE: str = "gpt-5.4"
-    LLM_ROUTE_REQUIRED_DATA: str = "gpt-5.4"
-    LLM_ROUTE_GR_OUTCOME: str = "gpt-5.4"
-    LLM_ROUTE_GR_RESPONSE: str = "gpt-5.4"
-    LLM_ROUTE_KNOWLEDGE: str = "gpt-5.4"
+    LLM_ROUTE_DECOMPOSE: str = "gpt-5.5"
+    LLM_ROUTE_REQUIRED_DATA: str = "gpt-5.5"
+    LLM_ROUTE_GR_OUTCOME: str = "gpt-5.5"
+    LLM_ROUTE_GR_RESPONSE: str = "gpt-5.5"
+    LLM_ROUTE_KNOWLEDGE: str = "gpt-5.5"
 
     # Pinecone
     PINECONE_API_KEY: str = ""

@@ -1354,6 +1354,65 @@ GENERATE_TESTS = [
         "expect_outcome": "can_proceed",
         "min_confidence": 0.3,
     },
+    # ------------------------------------------------------------------
+    # GR-31: Active participant asks about future separation + emergency
+    # ------------------------------------------------------------------
+    {
+        "id": "GR-31",
+        "name": "Active participant emergency — blocked separation with alternatives",
+        "category": "advisory_alternatives",
+        "payload": {
+            "inquiry": (
+                "The participant is considering quitting in the next 4 weeks due to "
+                "a financial emergency involving their rented house being sold, and "
+                "wants to know if they can withdraw money from their ForUsAll 401(k) "
+                "plan at Check Out My LLC due to separation from employment."
+            ),
+            "record_keeper": "LT Trust",
+            "plan_type": "401(k)",
+            "topic": "hardship_withdrawal",
+            "collected_data": {
+                "participant_data": {
+                    "employment_status": "Active",
+                    "termination_date": None,
+                    "rehire_date": None,
+                    "first_name": "JERRY",
+                    "last_name": "FREED",
+                    "birth_date": "1968-05-11",
+                    "account_balance": 18176.94,
+                    "latest_payroll": {
+                        "Pay Date": "2026-04-24",
+                        "Pre-tax": 110.31,
+                        "Roth": 0,
+                        "Employer Match": 91.93,
+                        "Loan": 148.76,
+                        "Plan comp": 1838.55,
+                        "Hours": 80.81,
+                    },
+                    "mfa_status": "Enrolled",
+                },
+                "plan_data": {
+                    "company_name": "Check Out My LLC",
+                    "company_status": "Ongoing",
+                },
+            },
+            "context": {
+                "ticket_id": "TKT-877252",
+                "agent_name": "JERRY FREED",
+                "agent_email": "jerry_freed@hotmail.com",
+                "email_subject": "Participant Advisory - Form Submission",
+                "first_contact": True,
+                "devrev_tag": "NOT FOUND",
+                "participant_id": "266866",
+                "plan_id": "898",
+            },
+            "max_response_tokens": 5500,
+            "total_inquiries_in_ticket": 1,
+        },
+        "expect_decision": "can_proceed",
+        "expect_outcome": "blocked_not_eligible",
+        "min_confidence": 0.3,
+    },
 ]
 
 

@@ -29,7 +29,7 @@ This document details the kb-rag-system production deployment on Google Cloud Pl
 
 ### What stays the same
 
-- **OpenAI** as LLM provider (GPT-5.4 with reasoning)
+- **OpenAI + Gemini** as LLM providers (GPT-5.5 for OpenAI reasoning routes)
 - **Pinecone** as vector database (serverless, integrated embeddings)
 - **FastAPI** application code (minimal changes)
 - **Dockerfile** (minor adjustments for GCP)
@@ -133,7 +133,8 @@ Developer ──IAM Token─────▶    │
                                           (dashboards)
 
 Cloud Run also connects to:
-  → OpenAI (GPT-5.4 LLM)
+  → OpenAI (GPT-5.5 LLM)
+  → Gemini (hybrid routing via Vertex AI)
   → Pinecone (547 vectors, semantic search)
   → Cloud Logging (structured logs, automatic)
   → Cloud Monitoring (2 alerts: error rate, latency)
@@ -161,7 +162,7 @@ gcloud run deploy kb-rag-system \
   --max-instances 5 \
   --timeout 300 \
   --service-account=kb-rag-runner@rag-kb-system.iam.gserviceaccount.com \
-  --set-env-vars "ENVIRONMENT=production,LOG_LEVEL=INFO,GCP_PROJECT=rag-kb-system,INDEX_NAME=kb-articles-production,NAMESPACE=kb_articles,OPENAI_MODEL=gpt-5.4,OPENAI_REASONING_EFFORT=medium,ENABLE_EXECUTION_LOGGING=true,GCS_BUCKET=rag-kb-system-kb-articles" \
+  --set-env-vars "ENVIRONMENT=production,LOG_LEVEL=INFO,GCP_PROJECT=rag-kb-system,INDEX_NAME=kb-articles-production,NAMESPACE=kb_articles,USE_VERTEX_AI=true,GCP_LOCATION=us-central1,LLM_ROUTE_DECOMPOSE=gemini-2.5-flash,LLM_ROUTE_REQUIRED_DATA=gemini-2.5-flash,LLM_ROUTE_GR_OUTCOME=gpt-5.5,LLM_ROUTE_GR_RESPONSE=gemini-2.5-flash,LLM_ROUTE_KNOWLEDGE=gemini-2.5-flash,ENABLE_EXECUTION_LOGGING=true,GCS_BUCKET=rag-kb-system-kb-articles" \
   --set-secrets "API_KEY=api-key:latest,OPENAI_API_KEY=openai-api-key:latest,PINECONE_API_KEY=pinecone-api-key:latest"
 ```
 
@@ -172,7 +173,7 @@ gcloud run deploy kb-rag-system \
 | Setting | Value | Reason |
 |---------|-------|--------|
 | Memory | 512Mi | Sufficient for FastAPI + tiktoken + Pinecone SDK |
-| CPU | 1 | GPT-5.4 calls are I/O bound (network wait), not CPU bound |
+| CPU | 1 | GPT-5.5 and Gemini calls are I/O bound (network wait), not CPU bound |
 | Min instances | 0 | Scale to zero when no traffic (cost savings) |
 | Max instances | 5 | Cap to control costs; increase as traffic grows |
 | Timeout | 300s | `generate_response` can take up to 180s (LLM timeout) + buffer |
@@ -839,13 +840,13 @@ google-cloud-logging>=3.10.0
 | `ENABLE_EXECUTION_LOGGING` | Env var | `true` |
 | `INDEX_NAME` | Env var | `kb-articles-production` |
 | `NAMESPACE` | Env var | `kb_articles` |
-| `OPENAI_MODEL` | Env var | `gpt-5.4` (legacy; routing now uses `LLM_ROUTE_*`) |
-| `OPENAI_REASONING_EFFORT` | Env var | `medium` (legacy; applied by router for GPT-5) |
+| `OPENAI_MODEL` | Env var | `gpt-4o-mini` (legacy; routing now uses `LLM_ROUTE_*`) |
+| `OPENAI_REASONING_EFFORT` | Env var | `medium` (legacy; GPT-5 route effort is inferred by router) |
 | `USE_VERTEX_AI` | Env var | `true` (enables Gemini via ADC, no API key needed) |
 | `GCP_LOCATION` | Env var | `us-central1` (same region as Cloud Run) |
 | `LLM_ROUTE_DECOMPOSE` | Env var | `gemini-2.5-flash` |
 | `LLM_ROUTE_REQUIRED_DATA` | Env var | `gemini-2.5-flash` |
-| `LLM_ROUTE_GR_OUTCOME` | Env var | `gpt-5.4` (critical reasoning — do not flip without A/B) |
+| `LLM_ROUTE_GR_OUTCOME` | Env var | `gpt-5.5` (critical reasoning — do not flip without A/B) |
 | `LLM_ROUTE_GR_RESPONSE` | Env var | `gemini-2.5-flash` |
 | `LLM_ROUTE_KNOWLEDGE` | Env var | `gemini-2.5-flash` |
 
@@ -896,8 +897,8 @@ gcloud run services update kb-rag-system \
   --update-env-vars=LLM_ROUTE_DECOMPOSE=gemini-2.5-flash
 ```
 
-To roll a route back, repeat with `gpt-5.4`. Cloud Run creates a new
-revision in seconds with no image rebuild.
+To roll a route back to the previous OpenAI model, repeat with `gpt-5.4`.
+Cloud Run creates a new revision in seconds with no image rebuild.
 
 Recommended flip order (least → most sensitive):
 
@@ -905,7 +906,7 @@ Recommended flip order (least → most sensitive):
 2. `LLM_ROUTE_KNOWLEDGE`
 3. `LLM_ROUTE_REQUIRED_DATA`
 4. `LLM_ROUTE_GR_RESPONSE` (run stress test first)
-5. `LLM_ROUTE_GR_OUTCOME` — keep on `gpt-5.4` unless a dedicated A/B test
+5. `LLM_ROUTE_GR_OUTCOME` — keep on `gpt-5.5` unless a dedicated A/B test
    justifies a flip.
 
 ### Monitoring
@@ -933,8 +934,8 @@ on fallback rate >1% over 15 min.
 | Cloud Build | 120 min/day | ~10 builds/month | $0 |
 | Cloud Logging | 50 GiB/month | <1 GiB | $0 |
 | **GCP Total** | | | **$0-5/month** |
-| OpenAI (GPT-5.4) | | ~3K requests | **$750-1,200/month** |
+| OpenAI (GPT-5.5) | | ~3K requests | **$1,500-2,400/month** |
 | Pinecone | | Serverless | **$0-15/month** |
-| **Grand Total** | | | **$750-1,220/month** |
+| **Grand Total** | | | **$1,500-2,420/month** |
 
-The dominant cost is OpenAI. GCP infrastructure is practically free at this scale. See [HYBRID_LLM_ARCHITECTURE.md](./HYBRID_LLM_ARCHITECTURE.md) for how to reduce LLM costs by 50%+ with the Gemini hybrid approach.
+The dominant cost is OpenAI. GCP infrastructure is practically free at this scale. See [HYBRID_LLM_ARCHITECTURE.md](./HYBRID_LLM_ARCHITECTURE.md) for how to reduce LLM costs with the Gemini hybrid approach.

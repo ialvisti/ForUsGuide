@@ -500,6 +500,24 @@ class TestAdvisoryAlternatives:
             },
         }
 
+    def _gr16_inquiry(self):
+        return (
+            "I need my 401(k) money as fast as possible. What are my "
+            "fastest delivery options and what do they cost?"
+        )
+
+    def _gr16_data(self):
+        return {
+            "participant_data": {
+                "employment_status": "Terminated",
+                "termination_date": "2026-02-01",
+                "total_vested_balance": "$12,000",
+                "delivery_preference": "Fastest available",
+                "address_type": "P.O. Box",
+            },
+            "plan_data": {"blackout_period": False},
+        }
+
     def test_detects_active_cashout_housing_emergency_alternatives(self, mock_rag_engine):
         inquiry = (
             "The participant is considering quitting in the next 4 weeks due to a "
@@ -537,6 +555,201 @@ class TestAdvisoryAlternatives:
         assert signal["active_participant"] is False
         assert "in_service_withdrawal_options" not in signal["alternative_concepts"]
         assert "loan" not in signal["alternative_concepts"]
+
+    def test_terminated_rollover_builds_exact_procedure_profile(self, mock_rag_engine):
+        inquiry = (
+            "Michael Ditton left his employer and wants to rollover his ForUsAll "
+            "401(k) account balance out to a new manager. He is requesting "
+            "instructions for this process."
+        )
+
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry=inquiry,
+            topic="rollover",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data={
+                "participant_data": {
+                    "employment_status": "Terminated",
+                    "termination_date": "2026-03-27",
+                    "account_balance": 85788.66,
+                    "mfa_status": "Enrolled",
+                },
+                "plan_data": {"company_status": "Ongoing"},
+            },
+        )
+
+        assert profile["mode"] == "exact_procedure"
+        assert profile["employment_state"] == "terminated"
+        assert profile["primary_action"] == "termination_rollover"
+        assert profile["rollover_mode"] == "single_destination"
+        assert profile["primary_article_id"] == (
+            "lt_request_401k_termination_withdrawal_or_rollover"
+        )
+        assert "can_i_split_my_401_k_rollover_between_multiple_providers" in profile[
+            "excluded_articles"
+        ]
+        assert "missed_60_day_rollover_window" in profile["excluded_articles"]
+        assert "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance" in profile["excluded_articles"]
+
+    def test_single_new_manager_does_not_trigger_split_rollover_profile(self, mock_rag_engine):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry="I left my employer and want to roll over my 401(k) to a new provider.",
+            topic="rollover",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data={
+                "participant_data": {
+                    "employment_status": "Terminated",
+                    "termination_date": "2026-03-27",
+                    "account_balance": 25000,
+                },
+                "plan_data": {},
+            },
+        )
+
+        assert profile["rollover_mode"] == "single_destination"
+        assert profile["signals"]["split_rollover"] is False
+        assert "can_i_split_my_401_k_rollover_between_multiple_providers" in profile[
+            "excluded_articles"
+        ]
+
+    def test_direct_rollover_profile_excludes_missed_60_day_article(self, mock_rag_engine):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry="I need instructions for a direct rollover to Fidelity.",
+            topic="rollover",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data={
+                "participant_data": {
+                    "employment_status": "Terminated",
+                    "termination_date": "2026-02-01",
+                    "account_balance": 45000,
+                },
+                "plan_data": {},
+            },
+        )
+
+        assert profile["signals"]["indirect_rollover_60_day"] is False
+        assert "missed_60_day_rollover_window" in profile["excluded_articles"]
+
+    def test_terminated_distribution_delivery_builds_exact_procedure_profile(
+        self,
+        mock_rag_engine,
+    ):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry=self._gr16_inquiry(),
+            topic="distributions",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data=self._gr16_data(),
+        )
+
+        assert profile["mode"] == "exact_procedure"
+        assert profile["primary_action"] == "termination_distribution"
+        assert profile["primary_article_id"] == (
+            "lt_request_401k_termination_withdrawal_or_rollover"
+        )
+        assert profile["signals"]["delivery_or_fee_request"] is True
+
+    def test_delivery_cost_question_is_informational_options(self, mock_rag_engine):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry=self._gr16_inquiry(),
+            topic="distributions",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data=self._gr16_data(),
+        )
+
+        assert profile["inquiry_intent"] == "informational_options"
+
+    def test_informational_delivery_question_does_not_block_on_identity_fields(
+        self,
+        mock_rag_engine,
+    ):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry=self._gr16_inquiry(),
+            topic="distributions",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data=self._gr16_data(),
+        )
+        llm_response = {
+            "outcome": "blocked_missing_data",
+            "outcome_reason": (
+                "Eligibility cannot be fully confirmed because participant "
+                "name, email, company name, wire instructions, and a physical "
+                "street address were not provided."
+            ),
+            "response_to_participant": {
+                "opening": "We can outline the fastest delivery options.",
+                "key_points": [
+                    "Wire and overnight check are the fastest listed options.",
+                ],
+                "steps": [],
+                "warnings": [],
+            },
+            "questions_to_ask": [
+                {"question": "What is your full name?", "why": "Lookup"},
+                {"question": "What is your email?", "why": "Lookup"},
+                {"question": "What is your company name?", "why": "Lookup"},
+                {"question": "What are your wire instructions?", "why": "Wire"},
+                {
+                    "question": "What physical street address should be used?",
+                    "why": "Overnight checks cannot go to a P.O. Box",
+                },
+            ],
+            "data_gaps": [
+                "Participant name",
+                "Email address",
+                "Company name",
+                "Wire instructions if wire delivery is selected",
+                "Physical street address if overnight check delivery is selected",
+            ],
+            "escalation": {"needed": False, "reason": None},
+            "guardrails_applied": [],
+            "coverage_gaps": [],
+        }
+
+        normalized, policy_info = mock_rag_engine._apply_informational_outcome_policy(
+            parsed=llm_response,
+            retrieval_profile=profile,
+            collected_data=self._gr16_data(),
+        )
+
+        assert normalized["outcome"] == "can_proceed"
+        assert policy_info["normalized"] is True
+        assert policy_info["core_eligibility_supported"] is True
+        assert policy_info["missing_data_classes"]["core_eligibility_missing"] == []
+
+    def test_execution_details_missing_are_not_core_eligibility_missing(
+        self,
+        mock_rag_engine,
+    ):
+        classes = mock_rag_engine._classify_missing_data(
+            [
+                "wire routing number and account number",
+                "physical street address for overnight check",
+                "delivery method final choice",
+                "distribution type",
+                "participant full name",
+                "email address",
+                "company name",
+            ]
+        )
+
+        assert classes["core_eligibility_missing"] == []
+        assert set(classes["execution_details_missing"]) == {
+            "wire routing number and account number",
+            "physical street address for overnight check",
+            "delivery method final choice",
+            "distribution type",
+        }
+        assert set(classes["identity_lookup_missing"]) == {
+            "participant full name",
+            "email address",
+            "company name",
+        }
 
     def test_expands_queries_for_while_employed_hardship_and_loan(self, mock_rag_engine):
         inquiry = (
@@ -635,6 +848,144 @@ class TestAdvisoryAlternatives:
             "hardship_withdrawal",
             "loan",
         ]
+
+    def test_exact_procedure_context_prioritizes_primary_article_and_drops_references(
+        self,
+        mock_rag_engine,
+    ):
+        def chunk(chunk_id, article_id, topic, chunk_type, score=0.9):
+            return {
+                "id": chunk_id,
+                "score": score,
+                "metadata": {
+                    "article_id": article_id,
+                    "article_title": article_id.replace("_", " ").title(),
+                    "topic": topic,
+                    "chunk_type": chunk_type,
+                    "chunk_tier": "critical",
+                    "content": f"{chunk_id} exact procedure context.",
+                },
+            }
+
+        primary_article = "lt_request_401k_termination_withdrawal_or_rollover"
+        chunks = [
+            chunk("primary_decision", primary_article, "termination_distribution_request", "decision_guide"),
+            chunk("primary_steps", primary_article, "termination_distribution_request", "steps"),
+            chunk("primary_rules", primary_article, "termination_distribution_request", "business_rules"),
+            chunk("primary_refs", primary_article, "termination_distribution_request", "references"),
+            chunk("split_steps", "can_i_split_my_401_k_rollover_between_multiple_providers", "distribution", "steps", 0.95),
+            chunk("rmd_refs", "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact", "distribution", "references", 0.94),
+        ]
+        profile = {
+            "mode": "exact_procedure",
+            "primary_article_id": primary_article,
+            "excluded_articles": [
+                "can_i_split_my_401_k_rollover_between_multiple_providers",
+                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+            ],
+            "exclusion_reasons": {},
+            "signals": {},
+        }
+
+        _context, selected, _tokens, dominance_info = (
+            mock_rag_engine._build_context_with_diversity_and_tiers(
+                chunks=chunks,
+                budget=200,
+                max_per_article=6,
+                advisory_signal={"detected_concepts": ["termination_distribution_request"]},
+                retrieval_profile=profile,
+            )
+        )
+
+        selected_ids = {chunk["id"] for chunk in selected}
+        assert {"primary_decision", "primary_steps", "primary_rules"}.issubset(
+            selected_ids
+        )
+        assert "primary_refs" not in selected_ids
+        assert "split_steps" not in selected_ids
+        assert "rmd_refs" not in selected_ids
+        assert dominance_info["dominant_mode"] is True
+        assert dominance_info["top_article_id"] == primary_article
+
+    def test_exact_procedure_context_for_delivery_costs_excludes_tangential_articles(
+        self,
+        mock_rag_engine,
+    ):
+        def chunk(chunk_id, article_id, chunk_type, score=0.9):
+            return {
+                "id": chunk_id,
+                "score": score,
+                "metadata": {
+                    "article_id": article_id,
+                    "article_title": article_id.replace("_", " ").title(),
+                    "topic": "termination_distribution_request",
+                    "chunk_type": chunk_type,
+                    "chunk_tier": "critical",
+                    "content": f"{chunk_id} delivery/cost context.",
+                },
+            }
+
+        primary_article = "lt_request_401k_termination_withdrawal_or_rollover"
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry=self._gr16_inquiry(),
+            topic="distributions",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data=self._gr16_data(),
+        )
+        chunks = [
+            chunk("primary_decision", primary_article, "decision_guide"),
+            chunk("primary_eligibility", primary_article, "eligibility"),
+            chunk("primary_rules", primary_article, "business_rules"),
+            chunk("primary_steps", primary_article, "steps"),
+            chunk("primary_guardrails", primary_article, "guardrails"),
+            chunk("primary_fees", primary_article, "fees_details"),
+            chunk("primary_missing", primary_article, "required_data_if_missing"),
+            chunk("primary_frames", primary_article, "response_frames"),
+            chunk(
+                "split_rollover",
+                "can_i_split_my_401_k_rollover_between_multiple_providers",
+                "business_rules",
+                0.99,
+            ),
+            chunk(
+                "loan_rules",
+                "lt_401k_loan_complete_guide_submission_repayment_support",
+                "business_rules",
+                0.98,
+            ),
+            chunk(
+                "general_options",
+                "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+                "business_rules",
+                0.97,
+            ),
+        ]
+
+        _context, selected, _tokens, _dominance_info = (
+            mock_rag_engine._build_context_with_diversity_and_tiers(
+                chunks=chunks,
+                budget=400,
+                max_per_article=8,
+                advisory_signal={"detected_concepts": ["termination_distribution_request"]},
+                retrieval_profile=profile,
+            )
+        )
+
+        selected_ids = {chunk["id"] for chunk in selected}
+        assert {
+            "primary_decision",
+            "primary_eligibility",
+            "primary_rules",
+            "primary_steps",
+            "primary_guardrails",
+            "primary_fees",
+        }.issubset(selected_ids)
+        assert "primary_missing" not in selected_ids
+        assert "primary_frames" not in selected_ids
+        assert "split_rollover" not in selected_ids
+        assert "loan_rules" not in selected_ids
+        assert "general_options" not in selected_ids
 
     @pytest.mark.asyncio
     async def test_context_bundles_add_high_value_chunks_for_weak_alternative_hit(
@@ -789,3 +1140,22 @@ class TestAdvisoryAlternatives:
         assert "alternatives" in system_prompt.lower()
         assert "Do not say a rented-house sale automatically qualifies" in system_prompt
         assert "explicitly mention eviction or foreclosure" in system_prompt
+
+    def test_prompt_contract_allows_can_proceed_for_options_and_costs(self):
+        from data_pipeline.prompts import build_generate_response_prompt
+
+        system_prompt, _user_prompt = build_generate_response_prompt(
+            context="Context includes fees, delivery methods, and timelines.",
+            inquiry=self._gr16_inquiry(),
+            collected_data=self._gr16_data(),
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="distributions",
+            max_tokens=3000,
+        )
+
+        assert "Missing execution or identity details" in system_prompt
+        assert "options, instructions, costs, fees, or delivery timelines" in system_prompt
+        assert "do not force blocked_missing_data" in system_prompt
+        assert "questions_to_ask" in system_prompt
+        assert "without a participant name" in system_prompt

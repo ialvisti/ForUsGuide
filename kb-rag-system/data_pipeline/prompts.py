@@ -132,6 +132,12 @@ PRIMARY ACTION VS. ALTERNATIVES:
 - Do not say a rented-house sale automatically qualifies for hardship withdrawal. If the housing facts are unclear, ask what IRS-approved hardship reason applies and what amount is needed.
 - For loan alternatives, explain that the plan must allow loans and participant-level checks such as vested balance, maximum number of loans, and active loans must be confirmed. If the participant may separate soon, mention that an outstanding loan can have repayment and tax consequences after employment ends.
 
+INFORMATIONAL OPTIONS / COSTS / TIMELINES:
+- Missing execution or identity details do not force blocked_missing_data when the participant asks for options, instructions, costs, fees, or delivery timelines and the collected data supports the core eligibility facts.
+- Examples of non-blocking next-step details: wire routing/account information, final delivery choice, physical street address for overnight checks, distribution type, participant name, email, or company name.
+- Put those details in questions_to_ask or data_gaps as next steps. Do not let missing identity lookup fields override a supported informational answer, including when answering without a participant name.
+- Use blocked_missing_data only when a missing core eligibility fact makes eligibility or procedure selection impossible, such as employment status, termination date, vested balance, blackout status, plan type, or recordkeeper.
+
 ═══════════════════════════════════════════════════════════════════
 STEP 2 — GENERATE THE RESPONSE
 ═══════════════════════════════════════════════════════════════════
@@ -212,11 +218,11 @@ RESPONSE SCHEMA
 }
 
 FIELD GUIDELINES:
-- "opening": Always personalize with participant name and key profile data (status, dates, balance). Keep to 1-2 sentences.
+- "opening": Personalize with participant name when available; otherwise use key profile data such as status, dates, and balance without inventing a name. Keep to 1-2 sentences.
 - "key_points": Include all distinct facts the participant needs to know. Aim for 3-7 points. Each must be self-contained and non-overlapping. Cover fees, taxes, timelines, eligibility nuances, delivery options, and any other relevant details from the context.
 - "steps": Sequential actions the participant must take. Be specific and detailed — include sub-steps, exact UI labels, and what to expect at each stage. Empty array [] if the outcome is blocked and there are no participant actions.
 - "warnings": Critical cautions (taxes, fees, penalties, non-refundable charges, deadlines). Empty array [] if none apply.
-- "questions_to_ask": Only populated when outcome is "blocked_missing_data" or when specific information is needed before proceeding. Empty array [] otherwise.
+- "questions_to_ask": Populate for "blocked_missing_data" when core eligibility is blocked by missing data. For "can_proceed", you may include non-blocking next-step questions for execution details the participant must provide if they choose a specific option. Empty array [] if no question is useful.
 - "escalation.needed": true when the participant must contact Support to resolve, verify, or proceed. false when the participant can self-serve.
 - "guardrails_applied": List what you deliberately did NOT say based on the "must_not" / "what_not_to_say" rules in context.
 - "data_gaps": List only if the KB context was missing information you expected. Empty array [] if context was sufficient.
@@ -271,6 +277,7 @@ CRITICAL DISTINCTIONS between outcomes:
 - Use "blocked_missing_data" ONLY when a critical data point is missing that makes it IMPOSSIBLE to determine whether the participant is eligible at all. Examples: employment status unknown, vested balance not provided, plan type unclear.
 - Do NOT treat procedural requirements (MFA, notice, payroll timing) as blocking conditions.
 - When a deadline has passed but an exception path exists (e.g., IRS self-certification for missed rollovers), use "can_proceed" if the exception path is actionable, not "blocked_not_eligible".
+- Missing execution or identity details do not force blocked_missing_data for questions about options, instructions, costs, fees, or delivery timelines when core eligibility is supported. Ask for wire instructions, physical street address, distribution type, participant name, email, or company name as non-blocking next steps instead.
 
 "blocked_not_eligible" vs "blocked_missing_data":
 - Use "blocked_not_eligible" when the collected data contains a DEFINITIVE blocking condition — e.g., a process has already been initiated by the custodian and cannot be reversed, the participant does not meet age or employment status requirements, or a hard deadline has passed with no exception path.
@@ -339,7 +346,7 @@ OUTCOME_SCHEMAS = {
     "steps": [{"step_number": 1, "action": "What to do", "detail": "Sub-instructions or null"}],
     "warnings": ["Critical cautions — taxes, fees, penalties, deadlines. Empty [] if none."]
   },
-  "questions_to_ask": [],
+  "questions_to_ask": [{"question": "Optional non-blocking next-step question, or [] if none", "why": "Why this may be needed after the informational answer"}],
   "escalation": {"needed": false, "reason": null},
   "guardrails_applied": ["What was deliberately omitted based on guardrails in context"],
   "data_gaps": ["Info not in KB but could be relevant. Empty [] if sufficient."],
@@ -391,6 +398,7 @@ OUTCOME_CONTENT_RULES = {
         "CONTENT RULES (outcome: can_proceed):\n"
         "- Include steps the participant must follow. Be specific with sub-steps, UI labels, and expectations.\n"
         "- Include applicable fees, taxes, and delivery info as key_points.\n"
+        "- Missing execution or identity details may appear in questions_to_ask as non-blocking next steps for informational option/cost/timeline answers.\n"
         "- Aim for 3-7 key_points covering all distinct relevant facts."
     ),
     "blocked_not_eligible": (

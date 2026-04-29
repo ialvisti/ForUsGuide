@@ -12,6 +12,50 @@ must_not_contain matches produce hard fails (hallucination detected).
 import re
 
 GROUND_TRUTH: dict[str, dict[str, list[str]]] = {
+    # Standard LT Trust direct rollover should stay focused on the exact
+    # termination distribution procedure, not adjacent rollover articles.
+    "GR-01": {
+        "must_contain": [
+            r"Loans\s*&\s*Distributions",
+            r"Separation\s+of\s+Service",
+            r"(?:full\s+)?direct\s+rollover",
+            r"(?:receiving|destination).*(?:institution|provider|account|details)",
+            r"\$75\b",
+            r"\$35\b",
+        ],
+        "must_not_contain": [
+            r"\bsplit\s+rollover\b",
+            r"\bmanual\s+(?:RightSignature|process)\b",
+            r"RightSignature",
+            r"60[- ]day|missed.*rollover",
+            r"\bRMD\b|Required\s+Minimum\s+Distribution",
+            r"force[- ]?out",
+            r"\$50\b",
+            r"\$80\b",
+        ],
+    },
+    # Regression for a terminated participant asking for rollover instructions
+    # to one new manager/provider.
+    "GR-32": {
+        "must_contain": [
+            r"Loans\s*&\s*Distributions",
+            r"Separation\s+of\s+Service",
+            r"(?:full\s+)?direct\s+rollover",
+            r"(?:receiving|destination).*(?:institution|provider|account|details)",
+            r"\$75\b",
+            r"\$35\b",
+        ],
+        "must_not_contain": [
+            r"\bsplit\s+rollover\b",
+            r"\bmanual\s+(?:RightSignature|process)\b",
+            r"RightSignature",
+            r"60[- ]day|missed.*rollover",
+            r"\bRMD\b|Required\s+Minimum\s+Distribution",
+            r"force[- ]?out",
+            r"\$50\b",
+            r"\$80\b",
+        ],
+    },
     # Force-out thresholds: $80 fee-out, $1,000 safe harbor boundary, $7,000 cap
     "KQ-01": {
         "must_contain": [
@@ -42,7 +86,7 @@ GROUND_TRUTH: dict[str, dict[str, list[str]]] = {
     # LT Trust fee structure: $75 distribution fee, $35 wire, $35 overnight
     "KQ-07": {
         "must_contain": [
-            r"\$75\b.*(?:distribution|processing)\s*fee",
+            r"\$75\b.*(?:(?:distribution\s+request)|distribution|processing)\s*fee",
             r"\$35\b.*(?:wire|overnight)",
         ],
         "must_not_contain": [
@@ -121,11 +165,24 @@ GROUND_TRUTH: dict[str, dict[str, list[str]]] = {
     # GR-16: LT Trust fees — $75 distribution, $35 wire, $35 overnight (NOT $50)
     "GR-16": {
         "must_contain": [
-            r"\$75\b.*(?:distribution|processing)\s*fee",
+            r"\$75\b.*(?:(?:distribution\s+request)|distribution|processing)\s*fee",
             r"\$35\b.*(?:wire|overnight)",
+            r"\bwire\b",
+            r"\bovernight\b",
+            r"(?:P\.?\s*O\.?\s*Box|physical\s+street\s+address)",
+            r"1\s*(?:to|-|–)\s*2\s*weeks?",
+            r"2\s*(?:to|-|–)\s*3\s*weeks?",
         ],
         "must_not_contain": [
             r"\$50\b.*(?:overnight|wire)",
+            r"\bsplit\s+rollover\b",
+            r"missed\s*60[- ]day",
+            r"60[- ]day.*(?:miss|deadline|window)",
+            r"\bRMD\b|Required\s+Minimum\s+Distribution",
+            r"force[- ]?out",
+            r"loan.*(?:primary\s+source|complete\s+guide|processing\s+fee|annual\s+maintenance)",
+            r"context\s+does\s+not\s+state\s+delivery\s+fees",
+            r"context\s+does\s+not\s+state\s+which\s+delivery\s+method\s+is\s+fastest",
         ],
     },
     # GR-22: Funeral hardship — parent qualifies

@@ -158,7 +158,9 @@ def validate_generate(result: TestResult, data: dict, status: int, ms: float,
                       expect_decision: Optional[str] = None,
                       expect_outcome: Optional[str] = None,
                       min_confidence: float = 0.0,
-                      require_articles: bool = True):
+                      require_articles: bool = True,
+                      expect_source_articles: Optional[list[str]] = None,
+                      forbid_source_articles: Optional[list[str]] = None):
     result.status_code = status
     result.response_time_ms = round(ms, 1)
 
@@ -215,6 +217,20 @@ def validate_generate(result: TestResult, data: dict, status: int, ms: float,
     if require_articles and not result.source_articles:
         result.passed = False
         result.validation_notes.append("No source articles returned")
+
+    source_text = " | ".join(result.source_articles).lower()
+    for expected in expect_source_articles or []:
+        if expected.lower() not in source_text:
+            result.passed = False
+            result.validation_notes.append(
+                f"Expected source article containing '{expected}'"
+            )
+    for forbidden in forbid_source_articles or []:
+        if forbidden.lower() in source_text:
+            result.passed = False
+            result.validation_notes.append(
+                f"Forbidden tangential source article returned: '{forbidden}'"
+            )
 
     # R2: Validate expected business outcome
     if expect_outcome and result.response_outcome != expect_outcome:
@@ -513,7 +529,7 @@ KNOWLEDGE_TESTS = [
 
 
 # ============================================================================
-# TEST DEFINITIONS — Generate Response endpoint (20 tests)
+# TEST DEFINITIONS — Generate Response endpoint
 # ============================================================================
 
 GENERATE_TESTS = [
@@ -546,6 +562,44 @@ GENERATE_TESTS = [
                 },
             },
             "max_response_tokens": 3000,
+        },
+        "expect_decision": "can_proceed",
+        "expect_outcome": "can_proceed",
+        "min_confidence": 0.5,
+    },
+    # ------------------------------------------------------------------
+    # GR-32: Terminated employee — standard rollover to new manager/provider
+    # ------------------------------------------------------------------
+    {
+        "id": "GR-32",
+        "name": "Standard termination rollover — LT Trust to new manager",
+        "category": "happy_path",
+        "payload": {
+            "inquiry": (
+                "Michael Ditton left his employer, Heartland Water Technology, "
+                "Inc., and wants to rollover his ForUsAll 401(k) account balance "
+                "out of his ForUsAll 401(k) plan to a new manager. He is "
+                "requesting instructions for this process."
+            ),
+            "record_keeper": "LT Trust",
+            "plan_type": "401(k)",
+            "topic": "rollover",
+            "collected_data": {
+                "participant_data": {
+                    "employment_status": "Terminated",
+                    "termination_date": "2026-03-27",
+                    "rehire_date": None,
+                    "first_name": "Michael",
+                    "last_name": "Ditton",
+                    "account_balance": 85788.66,
+                    "mfa_status": "Enrolled",
+                },
+                "plan_data": {
+                    "company_name": "Heartland Water Technology, Inc.",
+                    "company_status": "Ongoing",
+                },
+            },
+            "max_response_tokens": 5500,
         },
         "expect_decision": "can_proceed",
         "expect_outcome": "can_proceed",
@@ -743,6 +797,14 @@ GENERATE_TESTS = [
         "expect_decision": "can_proceed",
         "expect_outcome": "can_proceed",
         "min_confidence": 0.3,
+        "expect_source_articles": [
+            "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        ],
+        "forbid_source_articles": [
+            "Loan Complete Guide",
+            "Can I Split My 401(k) Rollover",
+            "Options After Leaving Your Job",
+        ],
     },
     # ------------------------------------------------------------------
     # GR-09: Loan + hardship interaction — contingent amount blocks
@@ -1461,6 +1523,8 @@ def run_generate_tests(verbose: bool = False, test_ids: list[str] | None = None)
                 expect_decision=t.get("expect_decision"),
                 expect_outcome=t.get("expect_outcome"),
                 min_confidence=t.get("min_confidence", 0.0),
+                expect_source_articles=t.get("expect_source_articles"),
+                forbid_source_articles=t.get("forbid_source_articles"),
             )
             tag = "PASS" if r.passed else "WARN"
             print(f"{tag} ({ms:.0f}ms)")

@@ -1,136 +1,133 @@
 {
-  "timestamp": "2026-04-27T21:24:57.339437",
+  "timestamp": "2026-04-28T15:51:12.618755",
   "api_base_url": "http://localhost:8000",
   "total_tests": 1,
   "passed": 1,
   "failed": 0,
   "results": [
     {
-      "test_id": "GR-31",
-      "name": "Active participant emergency \u2014 blocked separation with alternatives",
+      "test_id": "GR-16",
+      "name": "LT Trust distribution \u2014 wire/overnight delivery options",
       "endpoint": "generate-response",
-      "category": "advisory_alternatives",
+      "category": "delivery_method",
       "passed": true,
-      "response_time_ms": 70721.1,
+      "response_time_ms": 46193.6,
       "status_code": 200,
       "decision": "can_proceed",
-      "confidence": 0.834,
+      "confidence": 0.952,
       "confidence_note": null,
       "source_articles": [
-        "Can I Take Money From My 401(k) While Employed? Your Options Explained",
-        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-        "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
-        "LT: 401(k) Loan Complete Guide \u2014 Submission, Repayment & Support",
-        "How Do I Cancel or Change a Pending Distribution Request?",
-        "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
-        "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
-        "EACA Refunds After 401(k) Auto-Enrollment: 90-Day Deadline, Eligibility, Fees, and Tax Reporting",
-        "ForUsAll 401(k) Hardship Withdrawal \u2014 Complete Guide (Rules, Fees, Steps, Timelines)",
-        "401(k) Force-Out Process: Sponsor FAQ \u2014 Eligibility, Thresholds, Notice Requirements, and Compliance"
+        "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover"
       ],
       "chunks_used": 17,
       "error": null,
-      "validation_notes": [
-        "Slow response: 70721ms exceeds 60000ms threshold"
-      ],
+      "validation_notes": [],
       "request_payload": {
-        "inquiry": "The participant is considering quitting in the next 4 weeks due to a financial emergency involving their rented house being sold, and wants to know if they can withdraw money from their ForUsAll 401(k) plan at Check Out My LLC due to separation from employment.",
+        "inquiry": "I need my 401(k) money as fast as possible. What are my fastest delivery options and what do they cost?",
         "record_keeper": "LT Trust",
         "plan_type": "401(k)",
-        "topic": "hardship_withdrawal",
+        "topic": "distributions",
         "collected_data": {
           "participant_data": {
-            "employment_status": "Active",
-            "termination_date": null,
-            "rehire_date": null,
-            "first_name": "JERRY",
-            "last_name": "FREED",
-            "birth_date": "1968-05-11",
-            "account_balance": 18176.94,
-            "latest_payroll": {
-              "Pay Date": "2026-04-24",
-              "Pre-tax": 110.31,
-              "Roth": 0,
-              "Employer Match": 91.93,
-              "Loan": 148.76,
-              "Plan comp": 1838.55,
-              "Hours": 80.81
-            },
-            "mfa_status": "Enrolled"
+            "employment_status": "Terminated",
+            "termination_date": "2026-02-01",
+            "total_vested_balance": "$12,000",
+            "delivery_preference": "Fastest available",
+            "address_type": "P.O. Box"
           },
           "plan_data": {
-            "company_name": "Check Out My LLC",
-            "company_status": "Ongoing"
+            "blackout_period": false
           }
-        },
-        "context": {
-          "ticket_id": "TKT-877252",
-          "agent_name": "JERRY FREED",
-          "agent_email": "jerry_freed@hotmail.com",
-          "email_subject": "Participant Advisory - Form Submission",
-          "first_contact": true,
-          "devrev_tag": "NOT FOUND",
-          "participant_id": "266866",
-          "plan_id": "898"
-        },
-        "max_response_tokens": 5500,
-        "total_inquiries_in_ticket": 1
+        }
       },
       "response_answer": null,
       "response_key_points": [
-        "For any future eligible termination cash withdrawal or rollover, ForUsAll procedures apply; a $75 distribution fee applies to all requests, ACH or Regular Mail Check has no additional charge, and wire or OverNight Check adds a non-refundable $35 fee.",
-        "If you take a cash distribution after becoming eligible, 20% federal withholding is mandatory, state withholding may also apply depending on state law, and the distribution is taxable income for the calendar year processed.",
-        "While still employed, in-service distributions are typically available only at age 59 1/2 or older if the plan allows; based on your birth date of 1968-05-11, that age-based route is not available to you yet.",
-        "A hardship withdrawal may be worth reviewing only if there is an immediate and serious financial need that matches an IRS-approved reason: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, or repair of damage to a primary residence.",
-        "A rented-house sale does not automatically qualify as a hardship reason; if your situation involves an actual eviction risk from your primary residence, Support can help review whether the facts fit the applicable hardship category and whether the amount requested is limited to the documented need.",
-        "A 401(k) loan may also be worth reviewing while you are still active, but the plan must allow loans and participant-level checks such as vested balance, maximum number of loans, and current active loans must be confirmed."
+        "A $75 distribution request fee applies to all distribution requests.",
+        "Wire transfer is typically completed within 1\u20132 weeks and has an additional $35 wire fee.",
+        "OverNight Check delivery is typically completed within 1\u20132 weeks and has an additional $35 fee, but it requires a physical street address because UPS cannot deliver overnight checks to P.O. boxes.",
+        "A standard check usually arrives within 2\u20133 weeks via USPS and does not have an additional delivery charge beyond the distribution request fee.",
+        "If you choose wire delivery, you must use wire-specific instructions from the receiving institution because many financial institutions use different routing details for wires versus ACH.",
+        "If a wire is returned or an ACH is rejected, the payment may be converted to a mailed check sent to your home address on file.",
+        "For a cash distribution, 20% federal mandatory withholding applies, state withholding may also apply depending on state law, and the cash distribution is taxable income for the calendar year processed."
       ],
-      "response_outcome": "blocked_not_eligible",
-      "response_outcome_reason": "JERRY is currently Active at Check Out My LLC, has no termination date on file, and is only considering quitting in the next 4 weeks; a separation-from-employment withdrawal cannot proceed until employment has actually ended and the plan/recordkeeping status reflects that separation.",
-      "response_opening": "JERRY, because you are currently listed as Active with Check Out My LLC and no termination date is on file, you cannot take a separation-from-employment withdrawal from your ForUsAll 401(k) right now. Your current account balance is $18,176.94, and LT Trust procedures are handled through ForUsAll.",
+      "response_outcome": "can_proceed",
+      "response_outcome_reason": "The inquiry is retirement-plan related, and the participant data shows Terminated status, a termination date of 2026-02-01, no plan blackout period, and a verified Total Vested Balance of $12,000, which is above the $75 threshold for the normal distribution process.",
+      "response_opening": "Based on your Terminated status, termination date of 2026-02-01, and $12,000 Total Vested Balance, you can request a termination distribution through ForUsAll. For fastest delivery, the relevant options are wire transfer or OverNight Check, but your P.O. Box affects whether an overnight check can be used.",
       "response_steps": [
         {
           "step_number": 1,
-          "action": "Wait until your employment has actually ended before trying to request a separation-from-employment withdrawal.",
-          "detail": "A future separation request depends on your employment status being updated after you leave Check Out My LLC."
+          "action": "Log in to the ForUsAll participant portal",
+          "detail": "Go to forusall.com/login. For best results, use a computer or laptop with an up-to-date Chrome or Edge browser."
         },
         {
           "step_number": 2,
-          "action": "Contact ForUsAll Support if you want hardship or loan options reviewed before you separate.",
-          "detail": "You can call 844-401-2253 Monday to Friday, 7 AM to 5 PM Pacific Time, or email help@forusall.com."
+          "action": "Open the distribution request flow",
+          "detail": "From the dashboard, select Loans & Distributions. If you have more than one ForUsAll 401(k), confirm you are accessing the correct plan."
+        },
+        {
+          "step_number": 3,
+          "action": "Select the distribution reason",
+          "detail": "Choose Separation of Service. If the portal shows Default instead due to the known website issue, select Default and continue because it is the same option."
+        },
+        {
+          "step_number": 4,
+          "action": "Review your account sources and vesting",
+          "detail": "Only vested balances are eligible for distribution. If the vesting information looks incorrect, contact ForUsAll Support before submitting."
+        },
+        {
+          "step_number": 5,
+          "action": "Enter email confirmation information",
+          "detail": "Expand Email Confirmation Information and enter at least one valid email address for updates or inquiries."
+        },
+        {
+          "step_number": 6,
+          "action": "Choose the distribution type and delivery method",
+          "detail": "Select the option that matches what you want: lump sum cash distribution, full direct rollover, or partial direct rollover with the remaining balance as cash. For fastest cash access, compare wire transfer against OverNight Check, keeping in mind that OverNight Check cannot be sent to your P.O. Box."
+        },
+        {
+          "step_number": 7,
+          "action": "Provide the required delivery details",
+          "detail": "For a cash wire, enter the required routing and account details using wire-specific instructions. For an OverNight Check, provide a physical street address. For a regular cash check, provide a mailing address."
+        },
+        {
+          "step_number": 8,
+          "action": "Review and submit the request",
+          "detail": "Confirm your distribution election, tax withholding, and delivery method before submitting. ForUsAll reviews requests within about two business days."
         }
       ],
       "response_warnings": [
-        "Your latest payroll shows a loan deduction; if you have an outstanding loan when employment ends, repayment and tax consequences may apply after separation.",
-        "Do not assume a separation withdrawal, hardship withdrawal, or loan is approved until the applicable eligibility checks and plan rules are confirmed."
+        "The additional $35 fee for wire transfer or OverNight Check is non-refundable.",
+        "Incorrect wire instructions may cause funds to be rejected and reissued by check, which can add delays."
       ],
       "response_questions": [
         {
-          "question": "If you want a hardship withdrawal reviewed, which IRS-approved hardship reason applies to your situation, and what amount is needed to address that expense?",
-          "why": "Hardship withdrawals require a qualifying hardship reason and the withdrawal amount cannot exceed the documented financial need."
+          "question": "Are you enrolled in MFA and able to log in to the ForUsAll portal?",
+          "why": "Portal submission is the preferred and fastest route; if portal access is not possible because of MFA or login issues, ForUsAll Support can provide a RightSignature electronic form as a slower secondary option."
         },
         {
-          "question": "Does the sale of the rented house create an eviction situation involving your primary residence?",
-          "why": "The relevant housing hardship category in the provided rules is preventing foreclosure or eviction, and a rental sale by itself is not enough to confirm eligibility."
+          "question": "If you want to use OverNight Check, what physical street address should be used?",
+          "why": "Overnight checks are sent by UPS and cannot be delivered to a P.O. Box."
+        },
+        {
+          "question": "If you want to use wire transfer, have you confirmed the wire-specific routing and account instructions directly with your receiving financial institution?",
+          "why": "Wire transfers require exact instructions to avoid rejection, return, or conversion to a mailed check."
         }
       ],
       "response_guardrails": [
-        "Did not state that a separation-from-employment withdrawal can proceed while the participant is still active.",
-        "Did not say that quitting in the future makes the participant currently eligible.",
-        "Did not treat the rented-house sale as automatically qualifying for a hardship withdrawal.",
-        "Did not guarantee that the plan allows loans or that the participant qualifies for a new loan.",
-        "Did not provide tax advice or promise approval of any withdrawal, rollover, or loan."
+        "Did not treat the missing participant name as blocking because the inquiry asks for options, costs, and timelines and the core eligibility data is available.",
+        "Did not state that unvested funds are eligible; only the verified Total Vested Balance was used.",
+        "Did not promise a faster completion time than the timelines provided in the knowledge base.",
+        "Did not say an OverNight Check can be delivered to a P.O. Box.",
+        "Did not guarantee that wire delivery will succeed if instructions are incorrect."
       ],
       "response_escalation": {
-        "needed": true,
-        "reason": "Support should review any possible hardship or loan alternative because the primary separation-from-employment withdrawal is blocked while JERRY remains active, and plan-specific loan availability or hardship documentation details must be confirmed."
+        "needed": false,
+        "reason": null
       },
       "response_data_gaps": [
-        "Whether the participant's employment status will be updated after any future separation date.",
-        "Whether the plan allows loans and how many active loans are permitted.",
-        "Whether the participant currently has an outstanding loan balance, beyond the payroll loan deduction shown.",
-        "Whether the rented-house situation involves an actual eviction from the participant's primary residence.",
-        "The hardship amount needed and supporting expense details."
+        "MFA enrollment and current portal login ability were not provided.",
+        "Wire-specific bank instructions were not provided.",
+        "A physical street address was not provided for potential OverNight Check delivery."
       ]
     }
   ]

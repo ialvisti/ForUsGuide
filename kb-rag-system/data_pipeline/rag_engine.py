@@ -457,6 +457,13 @@ class RAGEngine:
                 topic=topic,
                 collected_data=collected_data,
             )
+            retrieval_profile = self._build_retrieval_profile(
+                inquiry=inquiry,
+                topic=topic,
+                record_keeper=record_keeper,
+                plan_type=plan_type,
+                collected_data=collected_data,
+            )
             sub_queries = self._expand_queries_with_advisory_concepts(
                 sub_queries=sub_queries,
                 inquiry=inquiry,
@@ -478,12 +485,29 @@ class RAGEngine:
                 enriched_queries.append(" ".join(fallback_parts))
             
             # 3. Parallel RK/topic-aware cascade search
-            chunks, per_query_scores = await self._search_for_response_parallel_cascade(
-                enriched_queries=enriched_queries,
-                record_keeper=record_keeper,
-                plan_type=plan_type,
-                topic=topic,
-            )
+            if retrieval_profile.get("mode") == "exact_procedure":
+                chunks, per_query_scores = await self._search_for_exact_response_procedure(
+                    enriched_queries=enriched_queries,
+                    retrieval_profile=retrieval_profile,
+                )
+                if not chunks:
+                    logger.info(
+                        "Exact procedure routing found insufficient primary article "
+                        "coverage; falling back to parallel cascade."
+                    )
+                    chunks, per_query_scores = await self._search_for_response_parallel_cascade(
+                        enriched_queries=enriched_queries,
+                        record_keeper=record_keeper,
+                        plan_type=plan_type,
+                        topic=topic,
+                    )
+            else:
+                chunks, per_query_scores = await self._search_for_response_parallel_cascade(
+                    enriched_queries=enriched_queries,
+                    record_keeper=record_keeper,
+                    plan_type=plan_type,
+                    topic=topic,
+                )
             
             if not chunks:
                 logger.warning("No se encontraron chunks relevantes")
@@ -492,9 +516,20 @@ class RAGEngine:
                     confidence=0.0
                 )
 
+            chunks = self._filter_excluded_response_articles(
+                chunks=chunks,
+                retrieval_profile=retrieval_profile,
+            )
+            if not chunks:
+                logger.warning("All retrieved chunks were excluded as tangential")
+                return self._build_uncertain_response(
+                    "No directly applicable articles remained after exact-procedure filtering",
+                    confidence=0.0,
+                )
             chunks, bundle_info = await self._add_response_article_bundles(
                 chunks=chunks,
                 advisory_signal=advisory_signal,
+                retrieval_profile=retrieval_profile,
             )
             chunks = self._rank_response_chunks(
                 chunks=chunks,
@@ -508,6 +543,7 @@ class RAGEngine:
                 budget=context_budget,
                 max_per_article=self.GR_MAX_CHUNKS_PER_ARTICLE,
                 advisory_signal=advisory_signal,
+                retrieval_profile=retrieval_profile,
             )
             dominant_mode = dominance_info.get("dominant_mode", False)
 
@@ -707,6 +743,12 @@ class RAGEngine:
                     f"missing keys: {', '.join(sorted(missing_keys))}"
                 )
 
+            parsed, outcome_policy_info = self._apply_informational_outcome_policy(
+                parsed=parsed,
+                retrieval_profile=retrieval_profile,
+                collected_data=collected_data,
+            )
+
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
                 coverage_gaps = []
@@ -782,6 +824,11 @@ class RAGEngine:
                     "detected_concepts": advisory_signal.get("detected_concepts", []),
                     "alternative_concepts": advisory_signal.get("alternative_concepts", []),
                     "article_bundles_added": bundle_info.get("articles_added", []),
+                    "retrieval_profile": retrieval_profile,
+                    "outcome_policy": outcome_policy_info,
+                    "primary_article_id": retrieval_profile.get("primary_article_id"),
+                    "excluded_articles": retrieval_profile.get("excluded_articles", []),
+                    "exclusion_reasons": retrieval_profile.get("exclusion_reasons", {}),
                 }
             )
         
@@ -832,7 +879,7 @@ class RAGEngine:
         "loan",
     })
     GR_CONTEXT_MIN_CHUNKS_PER_CONCEPT = 1
-    GR_RERANK_ENABLED = os.getenv("GR_RERANK_ENABLED", "false").lower() in {
+    GR_RERANK_ENABLED = os.getenv("GR_RERANK_ENABLED", "true").lower() in {
         "1", "true", "yes", "on"
     }
 
@@ -846,6 +893,113 @@ class RAGEngine:
     GR_DOMINANCE_MIN_CHUNKS        = 4      # dominant article must have >=4 retrieved chunks
     GR_DOMINANCE_MAX_CHUNKS_SINGLE = 8      # cap on dominant-article chunks in single mode
     GR_DOMINANCE_SECONDARY_SLOT    = 1      # insurance chunks from runner-up article
+
+    # Exact-procedure routing keeps narrow procedural requests from being
+    # diluted by adjacent but non-applicable rollover/distribution articles.
+    EXACT_TERMINATION_ROLLOVER_ARTICLE_ID = (
+        "lt_request_401k_termination_withdrawal_or_rollover"
+    )
+    SPLIT_ROLLOVER_ARTICLE_ID = "can_i_split_my_401_k_rollover_between_multiple_providers"
+    MISSED_60_DAY_ARTICLE_ID = "missed_60_day_rollover_window"
+    RMD_ARTICLE_ID = (
+        "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact"
+    )
+    IN_SERVICE_ARTICLE_ID = (
+        "can_i_take_money_from_my_401k_while_employed_your_options_explained"
+    )
+    LOAN_ARTICLE_IDS = (
+        "lt_401k_loan_complete_guide_submission_repayment_support",
+        "lt_401_k_loan_complete_guide_submission_repayment_support",
+    )
+    GENERAL_POST_TERMINATION_OPTIONS_ARTICLE_ID = (
+        "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax"
+    )
+    FORCE_OUT_ARTICLE_IDS = (
+        "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "401k_force_out_process_sponsor_faq",
+    )
+    GR_EXACT_MIN_CHUNKS = 4
+    GR_EXACT_CONTEXT_CHUNK_TYPES = frozenset({
+        "critical_flags",
+        "decision_guide",
+        "response_frames",
+        "guardrails",
+        "eligibility",
+        "business_rules",
+        "steps",
+        "common_issues",
+        "example",
+        "faqs",
+        "fees_details",
+        "required_data_if_missing",
+        "required_data_disambiguation",
+    })
+    GR_EXACT_INFORMATIONAL_CONTEXT_CHUNK_TYPES = frozenset({
+        "critical_flags",
+        "decision_guide",
+        "guardrails",
+        "eligibility",
+        "business_rules",
+        "steps",
+        "common_issues",
+        "example",
+        "faqs",
+        "fees_details",
+    })
+    GR_EXACT_CONTEXT_TYPE_ORDER = {
+        "decision_guide": 0,
+        "eligibility": 1,
+        "steps": 2,
+        "business_rules": 3,
+        "guardrails": 4,
+        "critical_flags": 5,
+        "response_frames": 6,
+        "required_data_if_missing": 7,
+        "required_data_disambiguation": 8,
+        "common_issues": 9,
+        "fees_details": 10,
+        "example": 11,
+        "faqs": 12,
+    }
+    GR_EXACT_INFORMATIONAL_CONTEXT_TYPE_ORDER = {
+        "decision_guide": 0,
+        "eligibility": 1,
+        "business_rules": 2,
+        "fees_details": 3,
+        "steps": 4,
+        "guardrails": 5,
+        "critical_flags": 6,
+        "common_issues": 7,
+        "example": 8,
+        "faqs": 9,
+    }
+    GR_EXACT_INFORMATIONAL_CATEGORY_ORDER = {
+        "fees": 0,
+        "delivery": 1,
+        "processing_times": 2,
+        "tax_withholding": 3,
+        "wire_instructions": 4,
+        "check_rollover_instructions": 5,
+        "rollover_payment_method": 6,
+        "eligibility": 7,
+        "submission_method": 8,
+        "portal_access_best_practices": 9,
+        "data_entry_best_practices": 10,
+        "small_balance_fee_out": 11,
+        "outstanding_loans": 12,
+    }
+    GR_EXACT_INFORMATIONAL_PRIORITY_BUSINESS_CATEGORIES = frozenset({
+        "eligibility",
+        "fees",
+        "delivery",
+        "processing_times",
+        "tax_withholding",
+        "wire_instructions",
+        "check_rollover_instructions",
+        "rollover_payment_method",
+        "submission_method",
+        "portal_access_best_practices",
+    })
     
     # Knowledge Question settings
     KQ_CONTEXT_BUDGET = 4000
@@ -1139,6 +1293,712 @@ class RAGEngine:
                 unique.append(value)
         return unique
 
+    @staticmethod
+    def _normalize_plan_type(plan_type: Optional[str]) -> str:
+        return re.sub(r"[^a-z0-9]+", "", str(plan_type or "").lower())
+
+    @staticmethod
+    def _textify_metadata_value(value: Any) -> str:
+        if value is None:
+            return ""
+        if isinstance(value, dict):
+            return " ".join(
+                RAGEngine._textify_metadata_value(v) for v in value.values()
+            )
+        if isinstance(value, (list, tuple, set)):
+            return " ".join(RAGEngine._textify_metadata_value(v) for v in value)
+        return str(value)
+
+    @staticmethod
+    def _extract_numeric_amount(value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float)):
+            return float(value)
+        text = str(value)
+        match = re.search(r"-?\d[\d,]*(?:\.\d+)?", text)
+        if not match:
+            return None
+        try:
+            return float(match.group(0).replace(",", ""))
+        except ValueError:
+            return None
+
+    def _infer_inquiry_intent(self, text: str) -> str:
+        """
+        Separate informational option/cost/timeline questions from requests
+        that ask ForUsAll to execute a transaction now.
+        """
+        normalized = re.sub(r"[^a-z0-9$]+", " ", (text or "").lower()).strip()
+        transactional_phrases = [
+            "submit this",
+            "submit my request",
+            "process my request",
+            "process this request",
+            "start the distribution",
+            "send the wire",
+            "complete the request now",
+            "complete this request",
+            "initiate the distribution",
+            "initiate this request",
+            "do it now",
+        ]
+        if any(phrase in normalized for phrase in transactional_phrases):
+            return "transactional_submission"
+
+        informational_phrases = [
+            "what are my options",
+            "what are the options",
+            "delivery options",
+            "fastest delivery",
+            "what do they cost",
+            "how much",
+            "what are the fees",
+            "what fees",
+            "how long",
+            "timeline",
+            "timelines",
+            "instructions",
+            "what does it cost",
+            "cost",
+            "costs",
+            "fees",
+        ]
+        if any(phrase in normalized for phrase in informational_phrases):
+            return "informational_options"
+
+        if normalized.startswith(("what ", "how ", "which ", "can you explain")):
+            return "informational_options"
+        return "transactional_submission"
+
+    def _resolve_employment_state(
+        self,
+        participant_data: Dict[str, Any],
+        text: str,
+    ) -> str:
+        status_values = [
+            participant_data.get("employment_status"),
+            participant_data.get("participant_status"),
+            participant_data.get("eligibility_status"),
+            participant_data.get("status"),
+        ]
+        normalized = [
+            re.sub(r"[^a-z0-9]+", " ", str(value).lower()).strip()
+            for value in status_values
+            if value is not None
+        ]
+        if any(
+            status == "active" or status.startswith("active ")
+            for status in normalized
+        ):
+            return "active"
+        if any(
+            status in {"terminated", "separated", "former"}
+            or status.startswith("terminated ")
+            or status.startswith("separated ")
+            for status in normalized
+        ):
+            return "terminated"
+        if any(
+            status == "inactive" or status.startswith("inactive ")
+            for status in normalized
+        ):
+            return "inactive"
+        if participant_data.get("termination_date"):
+            return "terminated"
+        if self._contains_any(text, [
+            "left my job",
+            "left his employer",
+            "left her employer",
+            "left their employer",
+            "no longer employed",
+            "separated from employment",
+            "separation of service",
+            "terminated",
+        ]):
+            return "terminated"
+        return "unknown"
+
+    def _infer_retrieval_signals(
+        self,
+        inquiry: str,
+        topic: str,
+        collected_data: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        participant_data = (collected_data or {}).get("participant_data") or {}
+        plan_data = (collected_data or {}).get("plan_data") or {}
+        profile_text = " ".join([
+            inquiry or "",
+            topic or "",
+            self._textify_metadata_value(participant_data),
+            self._textify_metadata_value(plan_data),
+        ]).lower()
+
+        employment_state = self._resolve_employment_state(
+            participant_data=participant_data,
+            text=profile_text,
+        )
+        balance_values = [
+            participant_data.get("total_vested_balance"),
+            participant_data.get("vested_balance"),
+            participant_data.get("account_balance"),
+            participant_data.get("balance"),
+        ]
+        balances = [
+            amount for amount in (
+                self._extract_numeric_amount(value) for value in balance_values
+            )
+            if amount is not None
+        ]
+        lowest_balance = min(balances) if balances else None
+
+        rollover_intent = (
+            topic.lower().strip() in {"rollover", "rollovers"}
+            or self._contains_any(profile_text, [
+                "rollover",
+                "roll over",
+                "roll-over",
+                "move my 401",
+                "move his 401",
+                "move her 401",
+                "move their 401",
+                "new manager",
+                "new provider",
+                "receiving institution",
+                "direct rollover",
+            ])
+        )
+        distribution_intent = (
+            topic.lower().strip() in {
+                "distribution",
+                "distributions",
+                "termination",
+                "termination_distribution",
+                "termination_distribution_request",
+            }
+            or self._contains_any(profile_text, [
+                "distribution",
+                "withdrawal",
+                "cash distribution",
+                "take money",
+                "access money",
+                "access funds",
+                "need my 401",
+                "need money",
+                "money as fast as possible",
+            ])
+        )
+        delivery_or_fee_request = self._contains_any(profile_text, [
+            "delivery",
+            "deliver",
+            "fastest",
+            "as fast as possible",
+            "cost",
+            "fee",
+            "fees",
+            "wire",
+            "overnight",
+            "overnight check",
+            "regular mail",
+            "check",
+            "p.o. box",
+            "po box",
+        ])
+        loan_signal = self._contains_any(profile_text, [
+            "loan",
+            "borrow",
+            "401(k) loan",
+            "401k loan",
+        ])
+        split_rollover = rollover_intent and self._contains_any(profile_text, [
+            "split rollover",
+            "split my rollover",
+            "split his rollover",
+            "split her rollover",
+            "split their rollover",
+            "split it",
+            "split funds",
+            "split the funds",
+            "multiple providers",
+            "multiple destinations",
+            "multiple accounts",
+            "two providers",
+            "different providers",
+            "percentage",
+            "percent",
+            "dollar amount",
+            "divide the rollover",
+            "divided by",
+        ])
+        indirect_rollover_60_day = rollover_intent and self._contains_any(profile_text, [
+            "60-day",
+            "60 day",
+            "sixty day",
+            "indirect rollover",
+            "missed deadline",
+            "missed the deadline",
+            "rollover window",
+            "check made payable to me",
+            "payable to me",
+            "received a check",
+            "received the funds",
+            "funds were sent to me",
+        ])
+        force_out = self._contains_any(profile_text, [
+            "force-out",
+            "force out",
+            "involuntary distribution",
+            "safe harbor ira",
+            "forceout",
+            "force out notice",
+            "force-out notice",
+            "sponsor can initiate",
+        ]) or (lowest_balance is not None and lowest_balance <= 7000)
+        rmd = self._contains_any(profile_text, [
+            "required minimum distribution",
+            "rmd",
+            "age 73",
+            "age 75",
+            "born in 1960",
+        ])
+        contact_or_reference = self._contains_any(profile_text, [
+            "phone",
+            "email",
+            "contact",
+            "support hours",
+            "hours",
+            "link",
+            "url",
+        ])
+        termination_distribution = (
+            employment_state == "terminated"
+            or self._contains_any(profile_text, [
+                "left my job",
+                "left his employer",
+                "left her employer",
+                "left their employer",
+                "separation",
+                "separated",
+                "terminated",
+                "after employment",
+                "former employee",
+            ])
+        )
+
+        return {
+            "text": profile_text,
+            "employment_state": employment_state,
+            "lowest_balance": lowest_balance,
+            "rollover_intent": rollover_intent,
+            "distribution_intent": distribution_intent,
+            "delivery_or_fee_request": delivery_or_fee_request,
+            "loan_signal": loan_signal,
+            "termination_distribution": termination_distribution,
+            "split_rollover": split_rollover,
+            "indirect_rollover_60_day": indirect_rollover_60_day,
+            "force_out": force_out,
+            "rmd": rmd,
+            "contact_or_reference": contact_or_reference,
+            "inquiry_intent": self._infer_inquiry_intent(profile_text),
+        }
+
+    def _build_retrieval_profile(
+        self,
+        inquiry: str,
+        topic: str,
+        record_keeper: Optional[str],
+        plan_type: str,
+        collected_data: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """
+        Build a deterministic routing profile before Pinecone search.
+
+        The profile is intentionally conservative: it only enables exact
+        procedure routing when the participant asks for a single-destination
+        LT Trust rollover after employment has ended and no adjacent procedure
+        (split rollover, 60-day indirect rollover, force-out, or RMD) is
+        signalled.
+        """
+        signals = self._infer_retrieval_signals(
+            inquiry=inquiry,
+            topic=topic,
+            collected_data=collected_data,
+        )
+        record_keeper_text = (record_keeper or "").strip().lower()
+        plan_type_text = self._normalize_plan_type(plan_type)
+        is_lt_401k = record_keeper_text == "lt trust" and plan_type_text in {
+            "401k",
+            "401",
+        }
+        exact_termination_rollover = (
+            is_lt_401k
+            and signals["rollover_intent"]
+            and signals["termination_distribution"]
+            and not signals["split_rollover"]
+            and not signals["indirect_rollover_60_day"]
+            and not signals["force_out"]
+            and not signals["rmd"]
+        )
+        exact_termination_distribution = (
+            is_lt_401k
+            and signals["distribution_intent"]
+            and signals["termination_distribution"]
+            and not signals["force_out"]
+            and not signals["rmd"]
+        )
+        exact_termination_procedure = (
+            exact_termination_rollover or exact_termination_distribution
+        )
+
+        excluded_articles: List[str] = []
+        exclusion_reasons: Dict[str, str] = {}
+
+        def exclude(article_id: str, reason: str) -> None:
+            if article_id not in excluded_articles:
+                excluded_articles.append(article_id)
+            exclusion_reasons[article_id] = reason
+
+        if (
+            (signals["rollover_intent"] or exact_termination_procedure)
+            and not signals["split_rollover"]
+        ):
+            exclude(
+                self.SPLIT_ROLLOVER_ARTICLE_ID,
+                "No split-rollover signal; participant appears to request a single destination.",
+            )
+        if (
+            (signals["rollover_intent"] or exact_termination_procedure)
+            and not signals["indirect_rollover_60_day"]
+        ):
+            exclude(
+                self.MISSED_60_DAY_ARTICLE_ID,
+                "No indirect-rollover or missed-60-day deadline signal.",
+            )
+        if exact_termination_procedure and not signals["loan_signal"]:
+            for article_id in self.LOAN_ARTICLE_IDS:
+                exclude(
+                    article_id,
+                    "Exact LT Trust termination procedure selected; no loan signal.",
+                )
+        if exact_termination_procedure:
+            exclude(
+                self.GENERAL_POST_TERMINATION_OPTIONS_ARTICLE_ID,
+                "Exact LT Trust procedure selected; general post-termination options are tangential.",
+            )
+        if not signals["force_out"]:
+            for article_id in self.FORCE_OUT_ARTICLE_IDS:
+                exclude(
+                    article_id,
+                    "No force-out, sponsor-initiated distribution, notice, or low-balance signal.",
+                )
+        if not signals["rmd"]:
+            exclude(
+                self.RMD_ARTICLE_ID,
+                "No RMD, age-73/75, or required-minimum-distribution signal.",
+            )
+        if signals["employment_state"] == "terminated":
+            exclude(
+                self.IN_SERVICE_ARTICLE_ID,
+                "Participant is terminated; no while-employed access signal.",
+            )
+
+        rollover_mode = "not_applicable"
+        if signals["split_rollover"]:
+            rollover_mode = "split"
+        elif signals["indirect_rollover_60_day"]:
+            rollover_mode = "indirect_60_day"
+        elif signals["rollover_intent"]:
+            rollover_mode = "single_destination"
+
+        primary_article_id = (
+            self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID
+            if exact_termination_rollover or exact_termination_distribution
+            else None
+        )
+        primary_action = "unknown"
+        if exact_termination_rollover:
+            primary_action = "termination_rollover"
+        elif exact_termination_distribution:
+            primary_action = "termination_distribution"
+        elif signals["rollover_intent"]:
+            primary_action = "rollover"
+        elif signals["distribution_intent"]:
+            primary_action = "distribution"
+
+        exclusion_signals = [
+            name for name, value in {
+                "no_split_rollover_signal": not signals["split_rollover"],
+                "no_indirect_rollover_60_day_signal": not signals["indirect_rollover_60_day"],
+                "no_force_out_signal": not signals["force_out"],
+                "no_rmd_signal": not signals["rmd"],
+            }.items()
+            if value
+        ]
+
+        return {
+            "mode": (
+                "exact_procedure"
+                if exact_termination_procedure
+                else "broad_search"
+            ),
+            "primary_action": primary_action,
+            "inquiry_intent": signals["inquiry_intent"],
+            "employment_state": signals["employment_state"],
+            "record_keeper": record_keeper,
+            "plan_type": plan_type,
+            "rollover_mode": rollover_mode,
+            "primary_article_id": primary_article_id,
+            "signals": {
+                key: value
+                for key, value in signals.items()
+                if key not in {"text", "lowest_balance"}
+            },
+            "lowest_balance": signals["lowest_balance"],
+            "include_references": signals["contact_or_reference"],
+            "excluded_articles": excluded_articles,
+            "exclusion_reasons": exclusion_reasons,
+            "exclusion_signals": exclusion_signals,
+        }
+
+    @staticmethod
+    def _is_truthy_metadata_value(value: Any) -> bool:
+        if isinstance(value, bool):
+            return value
+        if value is None:
+            return False
+        return str(value).strip().lower() in {"1", "true", "yes", "y", "on"}
+
+    @staticmethod
+    def _dedupe_preserving_order(values: List[str]) -> List[str]:
+        seen = set()
+        deduped = []
+        for value in values:
+            clean = str(value or "").strip()
+            if not clean:
+                continue
+            key = clean.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(clean)
+        return deduped
+
+    def _classify_missing_data(self, missing_items: List[Any]) -> Dict[str, List[str]]:
+        """
+        Classify missing details by whether they block eligibility or are
+        next-step execution/lookup details.
+        """
+        classes = {
+            "core_eligibility_missing": [],
+            "execution_details_missing": [],
+            "identity_lookup_missing": [],
+            "other_nonblocking_missing": [],
+        }
+
+        for item in missing_items or []:
+            if isinstance(item, dict):
+                text = " ".join(
+                    str(item.get(key, ""))
+                    for key in ("question", "why", "field", "description")
+                ).strip()
+                label = item.get("question") or item.get("field") or text
+            else:
+                text = str(item or "").strip()
+                label = text
+            normalized = re.sub(r"[^a-z0-9$]+", " ", text.lower()).strip()
+            if not normalized:
+                continue
+
+            identity_signal = (
+                "participant name" in normalized
+                or "full name" in normalized
+                or "your name" in normalized
+                or "email address" in normalized
+                or normalized == "email"
+                or "company name" in normalized
+                or "name of your company" in normalized
+            )
+            execution_signal = any(phrase in normalized for phrase in [
+                "wire",
+                "routing",
+                "aba",
+                "bank account",
+                "account number",
+                "delivery method",
+                "delivery preference",
+                "final choice",
+                "physical street address",
+                "street address",
+                "p o box",
+                "po box",
+                "overnight check",
+                "distribution type",
+                "lump sum",
+                "cash distribution",
+                "rollover",
+                "email confirmation",
+                "portal login",
+                "portal access",
+                "mfa",
+                "participant age",
+                "age for",
+            ])
+            core_signal = any(phrase in normalized for phrase in [
+                "employment status",
+                "terminated status",
+                "termination date",
+                "vested balance",
+                "account balance",
+                "balance threshold",
+                "blackout",
+                "rehire",
+                "plan type",
+                "record keeper",
+            ])
+
+            if identity_signal:
+                classes["identity_lookup_missing"].append(str(label).strip())
+            elif execution_signal:
+                classes["execution_details_missing"].append(str(label).strip())
+            elif core_signal:
+                classes["core_eligibility_missing"].append(str(label).strip())
+            else:
+                classes["other_nonblocking_missing"].append(str(label).strip())
+
+        return {
+            key: self._dedupe_preserving_order(values)
+            for key, values in classes.items()
+        }
+
+    def _extract_missing_data_mentions(self, parsed: Dict[str, Any]) -> List[Any]:
+        mentions: List[Any] = []
+        data_gaps = parsed.get("data_gaps", [])
+        if isinstance(data_gaps, list):
+            mentions.extend(data_gaps)
+        questions = parsed.get("questions_to_ask", [])
+        if isinstance(questions, list):
+            mentions.extend(questions)
+        return mentions
+
+    def _termination_distribution_core_eligibility_status(
+        self,
+        collected_data: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        participant_data = (collected_data or {}).get("participant_data") or {}
+        plan_data = (collected_data or {}).get("plan_data") or {}
+        profile_text = " ".join([
+            self._textify_metadata_value(participant_data),
+            self._textify_metadata_value(plan_data),
+        ]).lower()
+
+        missing: List[str] = []
+        blockers: List[str] = []
+
+        employment_state = self._resolve_employment_state(
+            participant_data=participant_data,
+            text=profile_text,
+        )
+        if employment_state == "unknown":
+            missing.append("employment status")
+        elif employment_state != "terminated":
+            blockers.append(f"employment status is {employment_state}")
+
+        if not participant_data.get("termination_date"):
+            missing.append("termination date")
+
+        balance_values = [
+            participant_data.get("total_vested_balance"),
+            participant_data.get("vested_balance"),
+            participant_data.get("account_balance"),
+            participant_data.get("balance"),
+        ]
+        balance = next(
+            (
+                amount for amount in (
+                    self._extract_numeric_amount(value) for value in balance_values
+                )
+                if amount is not None
+            ),
+            None,
+        )
+        if balance is None:
+            missing.append("vested balance")
+        elif balance <= 75:
+            blockers.append("vested balance is at or below the $75 fee-out threshold")
+
+        if "blackout_period" not in plan_data and "blackout" not in plan_data:
+            missing.append("blackout status")
+        elif self._is_truthy_metadata_value(
+            plan_data.get("blackout_period", plan_data.get("blackout"))
+        ):
+            blockers.append("blackout period is active")
+
+        if participant_data.get("rehire_date"):
+            blockers.append("rehire date is present")
+
+        return {
+            "supported": not missing and not blockers,
+            "core_eligibility_missing": missing,
+            "blocking_conditions": blockers,
+            "employment_state": employment_state,
+            "vested_balance": balance,
+        }
+
+    def _apply_informational_outcome_policy(
+        self,
+        parsed: Dict[str, Any],
+        retrieval_profile: Dict[str, Any],
+        collected_data: Optional[Dict[str, Any]],
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        missing_classes = self._classify_missing_data(
+            self._extract_missing_data_mentions(parsed)
+        )
+        core_status = self._termination_distribution_core_eligibility_status(
+            collected_data
+        )
+        policy_info = {
+            "normalized": False,
+            "reason": None,
+            "inquiry_intent": (retrieval_profile or {}).get("inquiry_intent"),
+            "primary_action": (retrieval_profile or {}).get("primary_action"),
+            "core_eligibility_supported": core_status["supported"],
+            "core_eligibility_status": core_status,
+            "missing_data_classes": missing_classes,
+        }
+
+        if parsed.get("outcome") != "blocked_missing_data":
+            return parsed, policy_info
+        if (retrieval_profile or {}).get("inquiry_intent") != "informational_options":
+            return parsed, policy_info
+        if (retrieval_profile or {}).get("primary_action") not in {
+            "termination_distribution",
+            "termination_rollover",
+        }:
+            return parsed, policy_info
+        if not core_status["supported"]:
+            policy_info["reason"] = "Core eligibility is not sufficiently supported."
+            return parsed, policy_info
+        if missing_classes["core_eligibility_missing"]:
+            policy_info["reason"] = "LLM identified core eligibility gaps."
+            return parsed, policy_info
+
+        normalized = dict(parsed)
+        normalized["outcome"] = "can_proceed"
+        normalized["outcome_reason"] = (
+            "Core eligibility for an informational LT Trust termination "
+            "distribution answer is supported by the collected data. Missing "
+            "identity lookup or execution details are next steps, not blockers "
+            "to explaining delivery options, costs, and timelines."
+        )
+        guardrails = list(normalized.get("guardrails_applied") or [])
+        guardrails.append(
+            "Did not let missing identity lookup or execution details override a supported informational delivery/cost answer."
+        )
+        normalized["guardrails_applied"] = self._dedupe_preserving_order(guardrails)
+        policy_info["normalized"] = True
+        policy_info["reason"] = "Informational-options outcome normalized to can_proceed."
+        return normalized, policy_info
+
     def _detect_advisory_concepts(
         self,
         inquiry: str,
@@ -1412,6 +2272,7 @@ class RAGEngine:
         self,
         chunks: List[Dict[str, Any]],
         advisory_signal: Dict[str, Any],
+        retrieval_profile: Optional[Dict[str, Any]] = None,
     ) -> tuple:
         """
         If a relevant article appears through a weak chunk, add its high-value
@@ -1420,18 +2281,21 @@ class RAGEngine:
         if not chunks:
             return chunks, {"articles_added": [], "chunks_added": 0}
 
-        concepts = self._ordered_unique(
-            advisory_signal.get("detected_concepts", [])
-            + advisory_signal.get("alternative_concepts", [])
+        concepts = self._bundleable_response_concepts(
+            advisory_signal=advisory_signal,
+            retrieval_profile=retrieval_profile,
         )
         if not concepts:
             return chunks, {"articles_added": [], "chunks_added": 0}
 
+        excluded_articles = set((retrieval_profile or {}).get("excluded_articles", []))
         article_best_score: Dict[str, float] = defaultdict(float)
         candidate_info: Dict[str, Dict[str, Any]] = {}
         for chunk in chunks:
             aid = chunk.get("metadata", {}).get("article_id")
             if not aid:
+                continue
+            if aid in excluded_articles:
                 continue
             article_best_score[aid] = max(article_best_score[aid], chunk.get("score", 0.0))
             if chunk.get("score", 0.0) < self.GR_BUNDLE_MIN_SCORE:
@@ -1452,8 +2316,13 @@ class RAGEngine:
 
         candidate_articles: List[str] = []
         priority_concepts = self._ordered_unique(
-            advisory_signal.get("alternative_concepts", [])
-            + advisory_signal.get("detected_concepts", [])
+            [
+                concept for concept in (
+                    advisory_signal.get("alternative_concepts", [])
+                    + advisory_signal.get("detected_concepts", [])
+                )
+                if concept in concepts
+            ]
         )
 
         for concept in priority_concepts:
@@ -1634,6 +2503,191 @@ class RAGEngine:
         
         self._search_cache[key] = result
         return result
+
+    def _exact_context_chunk_types_for_profile(
+        self,
+        retrieval_profile: Optional[Dict[str, Any]],
+    ) -> frozenset:
+        if (retrieval_profile or {}).get("inquiry_intent") == "informational_options":
+            return self.GR_EXACT_INFORMATIONAL_CONTEXT_CHUNK_TYPES
+        return self.GR_EXACT_CONTEXT_CHUNK_TYPES
+
+    def _exact_context_type_order_for_profile(
+        self,
+        retrieval_profile: Optional[Dict[str, Any]],
+    ) -> Dict[str, int]:
+        if (retrieval_profile or {}).get("inquiry_intent") == "informational_options":
+            return self.GR_EXACT_INFORMATIONAL_CONTEXT_TYPE_ORDER
+        return self.GR_EXACT_CONTEXT_TYPE_ORDER
+
+    def _exact_context_sort_key(
+        self,
+        chunk: Dict[str, Any],
+        retrieval_profile: Optional[Dict[str, Any]],
+    ) -> tuple:
+        meta = chunk.get("metadata", {})
+        type_order = self._exact_context_type_order_for_profile(retrieval_profile)
+        category = str(meta.get("chunk_category", "")).lower()
+        chunk_type = meta.get("chunk_type", "")
+        type_rank = type_order.get(chunk_type, 99)
+        category_rank = 99
+        if (retrieval_profile or {}).get("inquiry_intent") == "informational_options":
+            category_rank = self.GR_EXACT_INFORMATIONAL_CATEGORY_ORDER.get(
+                category,
+                99,
+            )
+            if (
+                chunk_type == "business_rules"
+                and category not in self.GR_EXACT_INFORMATIONAL_PRIORITY_BUSINESS_CATEGORIES
+            ):
+                type_rank = 8
+        return (
+            type_rank,
+            category_rank,
+            -chunk.get("score", 0.0),
+            meta.get("chunk_index", 999),
+        )
+
+    def _exact_procedure_chunk_score(self, chunk: Dict[str, Any]) -> float:
+        meta = chunk.get("metadata", {})
+        chunk_type = meta.get("chunk_type", "")
+        type_rank = self.GR_EXACT_CONTEXT_TYPE_ORDER.get(chunk_type, 99)
+        base = max(0.55, 0.98 - (type_rank * 0.015))
+        if meta.get("chunk_tier") == "critical":
+            base += 0.02
+        elif meta.get("chunk_tier") == "high":
+            base += 0.01
+        category = str(meta.get("chunk_category", "")).lower()
+        if category in {
+            "eligibility",
+            "fees",
+            "tax_withholding",
+            "delivery",
+            "wire_instructions",
+            "check_rollover_instructions",
+            "rollover_payment_method",
+            "processing_times",
+        }:
+            base += 0.01
+        return round(min(0.99, base), 4)
+
+    def _exact_procedure_chunks_sufficient(
+        self,
+        chunks: List[Dict[str, Any]],
+    ) -> bool:
+        if len(chunks) < self.GR_EXACT_MIN_CHUNKS:
+            return False
+        types_present = {
+            chunk.get("metadata", {}).get("chunk_type")
+            for chunk in chunks
+        }
+        return bool(
+            {"eligibility", "business_rules"} & types_present
+            and "steps" in types_present
+        )
+
+    async def _search_for_exact_response_procedure(
+        self,
+        enriched_queries: List[str],
+        retrieval_profile: Dict[str, Any],
+    ) -> tuple:
+        """
+        Fetch the pre-resolved primary article directly for exact procedures.
+
+        This avoids broad semantic recall when deterministic routing already
+        identifies the applicable procedure. The caller falls back to semantic
+        search if the primary article cannot be fetched or lacks enough
+        high-value chunks.
+        """
+        article_id = retrieval_profile.get("primary_article_id")
+        per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
+        if not article_id:
+            return [], per_query_scores
+
+        article_chunks = await asyncio.to_thread(
+            self.pinecone.list_and_fetch_chunks,
+            prefix=article_id,
+            limit=100,
+        )
+        if not article_chunks:
+            logger.warning(
+                f"Exact procedure routing could not fetch article_id={article_id}"
+            )
+            return [], per_query_scores
+
+        include_references = bool(retrieval_profile.get("include_references"))
+        allowed_chunk_types = self._exact_context_chunk_types_for_profile(
+            retrieval_profile
+        )
+        scored_chunks: List[Dict[str, Any]] = []
+        for chunk in article_chunks:
+            meta = chunk.get("metadata", {})
+            chunk_type = meta.get("chunk_type")
+            if chunk_type == "references" and not include_references:
+                continue
+            if chunk_type not in allowed_chunk_types:
+                continue
+            copied = {
+                "id": chunk.get("id"),
+                "score": self._exact_procedure_chunk_score(chunk),
+                "metadata": meta,
+            }
+            scored_chunks.append(copied)
+
+        if not self._exact_procedure_chunks_sufficient(scored_chunks):
+            logger.info(
+                f"Exact procedure article_id={article_id} had insufficient "
+                f"context chunks ({len(scored_chunks)})."
+            )
+            return [], per_query_scores
+
+        scored_chunks.sort(
+            key=lambda c: self._exact_context_sort_key(c, retrieval_profile),
+        )
+        best_score = max((c.get("score", 0.0) for c in scored_chunks), default=0.0)
+        per_query_scores = {
+            eq: round(best_score, 4) for eq in enriched_queries
+        }
+        logger.info(
+            f"Exact procedure routing selected article_id={article_id} "
+            f"with {len(scored_chunks)} chunks"
+        )
+        return scored_chunks, per_query_scores
+
+    def _filter_excluded_response_articles(
+        self,
+        chunks: List[Dict[str, Any]],
+        retrieval_profile: Optional[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        excluded = set((retrieval_profile or {}).get("excluded_articles", []))
+        if not excluded:
+            return chunks
+        filtered = [
+            chunk for chunk in chunks
+            if chunk.get("metadata", {}).get("article_id") not in excluded
+        ]
+        removed = len(chunks) - len(filtered)
+        if removed:
+            logger.info(
+                f"Filtered {removed} chunks from excluded tangential articles"
+            )
+        return filtered
+
+    def _bundleable_response_concepts(
+        self,
+        advisory_signal: Dict[str, Any],
+        retrieval_profile: Optional[Dict[str, Any]] = None,
+    ) -> List[str]:
+        if (retrieval_profile or {}).get("mode") == "exact_procedure":
+            return []
+        concepts = self._ordered_unique(
+            advisory_signal.get("detected_concepts", [])
+            + advisory_signal.get("alternative_concepts", [])
+        )
+        return [
+            concept for concept in concepts
+            if concept in self.GR_CONTEXT_QUOTA_CONCEPTS
+        ]
     
     # ── Record-Keeper Cascade Strategy ──
     
@@ -2266,6 +3320,109 @@ class RAGEngine:
         
         context = "\n".join(context_parts)
         return context, selected, tokens_used
+
+    def _build_exact_procedure_context(
+        self,
+        chunks: List[Dict[str, Any]],
+        budget: int,
+        max_per_article: int,
+        retrieval_profile: Dict[str, Any],
+    ) -> tuple:
+        primary_article_id = retrieval_profile.get("primary_article_id")
+        excluded_articles = set(retrieval_profile.get("excluded_articles", []))
+        include_references = bool(retrieval_profile.get("include_references"))
+        allowed_chunk_types = self._exact_context_chunk_types_for_profile(
+            retrieval_profile
+        )
+
+        def allowed(chunk: Dict[str, Any]) -> bool:
+            meta = chunk.get("metadata", {})
+            article_id = meta.get("article_id")
+            chunk_type = meta.get("chunk_type")
+            if article_id in excluded_articles:
+                return False
+            if chunk_type == "references" and not include_references:
+                return False
+            if chunk_type not in allowed_chunk_types:
+                return False
+            return True
+
+        primary_chunks = [
+            chunk for chunk in chunks
+            if chunk.get("metadata", {}).get("article_id") == primary_article_id
+            and allowed(chunk)
+        ]
+        candidate_chunks = primary_chunks or [
+            chunk for chunk in chunks if allowed(chunk)
+        ]
+
+        candidate_chunks.sort(
+            key=lambda chunk: self._exact_context_sort_key(
+                chunk,
+                retrieval_profile,
+            )
+        )
+
+        selected: List[Dict[str, Any]] = []
+        selected_ids: set = set()
+        tokens_used = 0
+        article_counts: Dict[str, int] = defaultdict(int)
+
+        def try_add(chunk: Dict[str, Any], article_cap: int) -> bool:
+            nonlocal tokens_used
+            cid = chunk.get("id")
+            if cid in selected_ids:
+                return True
+            article_id = chunk.get("metadata", {}).get("article_id", "unknown")
+            if article_counts[article_id] >= article_cap:
+                return False
+            content = chunk.get("metadata", {}).get("content", "")
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens > budget:
+                return False
+            selected.append(chunk)
+            selected_ids.add(cid)
+            article_counts[article_id] += 1
+            tokens_used += chunk_tokens
+            return True
+
+        primary_cap = max(max_per_article, self.GR_DOMINANCE_MAX_CHUNKS_SINGLE)
+        if retrieval_profile.get("inquiry_intent") == "informational_options":
+            primary_cap = max(primary_cap, 17)
+        for chunk in candidate_chunks:
+            article_cap = primary_cap if (
+                chunk.get("metadata", {}).get("article_id") == primary_article_id
+            ) else max_per_article
+            try_add(chunk, article_cap=article_cap)
+
+        context_parts = []
+        for i, chunk in enumerate(selected, 1):
+            content = chunk['metadata'].get('content', '')
+            chunk_type = chunk['metadata'].get('chunk_type', 'unknown')
+            article_title = chunk['metadata'].get('article_title', '')
+            context_parts.append(
+                f"--- Section {i} ({chunk_type} | Source: {article_title}) ---\n{content}\n"
+            )
+
+        top_signal = sum(
+            sorted(
+                [
+                    chunk.get("score", 0.0)
+                    for chunk in selected
+                    if chunk.get("metadata", {}).get("article_id") == primary_article_id
+                ],
+                reverse=True,
+            )[:3]
+        )
+        dominance_info = {
+            "dominant_mode": True,
+            "top_article_id": primary_article_id,
+            "top_signal": round(top_signal, 3),
+            "runner_up_signal": 0.0,
+            "ratio": 0.0,
+            "concept_quotas_applied": [],
+        }
+        return "\n".join(context_parts), selected, tokens_used, dominance_info
     
     def _build_context_with_diversity_and_tiers(
         self,
@@ -2273,6 +3430,7 @@ class RAGEngine:
         budget: int,
         max_per_article: int = 6,
         advisory_signal: Optional[Dict[str, Any]] = None,
+        retrieval_profile: Optional[Dict[str, Any]] = None,
     ) -> tuple:
         """
         Build context adaptively: focus on a dominant article when one
@@ -2302,6 +3460,14 @@ class RAGEngine:
             }
 
         advisory_signal = advisory_signal or {}
+        retrieval_profile = retrieval_profile or {}
+        if retrieval_profile.get("mode") == "exact_procedure":
+            return self._build_exact_procedure_context(
+                chunks=chunks,
+                budget=budget,
+                max_per_article=max_per_article,
+                retrieval_profile=retrieval_profile,
+            )
 
         # ── Compute per-article signal (sum of top-3 chunk scores) ──
         article_scores: Dict[str, List[float]] = defaultdict(list)

@@ -479,6 +479,86 @@ class TestGenerateResponsePhaseFlow:
         assert result.response["outcome"] == "blocked_not_eligible"
         assert result.decision == "can_proceed"
 
+    @pytest.mark.asyncio
+    async def test_filter_excluded_articles_relaxes_when_all_excluded(self, mock_rag_engine):
+        """If every retrieved chunk belongs to an excluded article, the engine must
+        relax the exclusion list rather than returning out_of_scope with confidence 0.
+        This converts a precision optimization into a graceful degradation."""
+        from data_pipeline.llm_router import LLMResponse
+
+        excluded_id = "missed_60_day_rollover_window"
+        chunk = {
+            "id": "chunk_1",
+            "score": 0.78,
+            "metadata": {
+                "article_id": excluded_id,
+                "article_title": "Missed 60-day Indirect Rollover Deadline",
+                "topic": "rollover",
+                "chunk_type": "business_rules",
+                "chunk_tier": "high",
+                "content": "60-day rollover rule applies to indirect rollovers.",
+            },
+        }
+
+        mock_rag_engine._decompose_question = AsyncMock(
+            return_value=["rollover guidance"]
+        )
+        mock_rag_engine._search_for_response_parallel_cascade = AsyncMock(
+            return_value=([chunk], {"rollover guidance": 0.78})
+        )
+        mock_rag_engine._add_response_article_bundles = AsyncMock(
+            return_value=([chunk], {"articles_added": []})
+        )
+        mock_rag_engine._build_context_with_diversity_and_tiers = Mock(
+            return_value=(
+                "60-day rollover rule applies to indirect rollovers.",
+                [chunk],
+                32,
+                {"dominant_mode": False, "top_signal": 0.78, "runner_up_signal": 0.0, "ratio": 0.0},
+            )
+        )
+
+        async def fake_call_llm(*, task_type, **kwargs):
+            return LLMResponse(
+                content=_json.dumps({
+                    "outcome": "can_proceed",
+                    "outcome_reason": "ok",
+                    "response_to_participant": {
+                        "opening": "ok", "key_points": [], "steps": [], "warnings": [],
+                    },
+                    "questions_to_ask": [],
+                    "escalation": {"needed": False, "reason": None},
+                    "guardrails_applied": [],
+                    "data_gaps": [],
+                    "coverage_gaps": [],
+                }),
+                usage={"prompt_tokens": 1, "completion_tokens": 1, "total_tokens": 2},
+                provider_used="openai",
+                model_used="gpt-5.4",
+            )
+
+        mock_rag_engine._call_llm = AsyncMock(side_effect=fake_call_llm)
+
+        result = await mock_rag_engine.generate_response(
+            inquiry="I need rollover guidance",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="rollover",
+            collected_data={
+                "participant_data": {
+                    "employment_status": "Terminated",
+                    "termination_date": "2026-02-01",
+                    "account_balance": 25000,
+                },
+                "plan_data": {},
+            },
+            max_response_tokens=2000,
+        )
+
+        # The engine must NOT short-circuit with the legacy exact-procedure-filtering error.
+        assert "exact-procedure filtering" not in (result.response.get("outcome_reason") or "")
+        assert result.response["outcome"] != "blocked_missing_data"
+
 
 class TestAdvisoryAlternatives:
     """Regression coverage for active participants asking for 401(k) funds."""
@@ -632,6 +712,101 @@ class TestAdvisoryAlternatives:
 
         assert profile["signals"]["indirect_rollover_60_day"] is False
         assert "missed_60_day_rollover_window" in profile["excluded_articles"]
+
+    def test_left_his_company_triggers_exact_procedure_termination_rollover(
+        self,
+        mock_rag_engine,
+    ):
+        """TKT-879503 regression: 'left his company' must trigger termination_distribution
+        signal even when participant_data.employment_status is still 'Active' upstream."""
+        inquiry = (
+            "The participant, Thomas Wu, has recently left his company that uses "
+            "ForUsAll and wants to transfer his ForUsAll 401(k) assets out of his "
+            "ForUsAll 401(k) plan to another IRA plan. He is seeking guidance on "
+            "the rollover process to consolidate his retirement accounts."
+        )
+
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry=inquiry,
+            topic="rollover",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data={
+                "participant_data": {
+                    "employment_status": "Active",
+                    "termination_date": None,
+                    "account_balance": 32536.47,
+                    "mfa_status": "Enrolled",
+                },
+                "plan_data": {"company_status": "Ongoing"},
+            },
+        )
+
+        assert profile["signals"]["termination_distribution"] is True
+        assert profile["mode"] == "exact_procedure"
+        assert profile["primary_action"] == "termination_rollover"
+        assert profile["primary_article_id"] == (
+            "lt_request_401k_termination_withdrawal_or_rollover"
+        )
+
+    @pytest.mark.parametrize(
+        "phrase",
+        [
+            "left his company",
+            "left her company",
+            "left their company",
+            "left the company",
+            "left my company",
+            "no longer employed",
+            "former employer",
+            "recently left",
+        ],
+    )
+    def test_company_phrase_variants_trigger_termination_signal(
+        self,
+        mock_rag_engine,
+        phrase,
+    ):
+        signals = mock_rag_engine._infer_retrieval_signals(
+            inquiry=f"The participant {phrase} and wants to roll over their 401(k).",
+            topic="rollover",
+            collected_data={
+                "participant_data": {
+                    "employment_status": "Active",
+                    "termination_date": None,
+                },
+                "plan_data": {},
+            },
+        )
+        assert signals["termination_distribution"] is True, (
+            f"Expected '{phrase}' to trigger termination_distribution"
+        )
+
+    def test_rollover_topic_filter_includes_termination_articles(
+        self,
+        mock_rag_engine,
+    ):
+        """The rollover topic must map to all rollover-relevant article topics in the KB,
+        not only 'rollover' (which only matches the 60-day deadline article)."""
+        resolved = mock_rag_engine._resolve_topic_filter("rollover")
+        assert resolved is not None
+        assert "rollover" in resolved
+        assert "termination_distribution_request" in resolved
+        assert "distribution" in resolved
+
+    def test_advisory_separation_picks_up_company_phrase(self, mock_rag_engine):
+        signal = mock_rag_engine._detect_advisory_concepts(
+            inquiry=(
+                "Participant left his company and wants to access funds from "
+                "their 401(k)."
+            ),
+            topic="rollover",
+            collected_data={
+                "participant_data": {"employment_status": "Active"},
+                "plan_data": {},
+            },
+        )
+        assert signal["separation_signal"] is True
 
     def test_terminated_distribution_delivery_builds_exact_procedure_profile(
         self,

@@ -516,16 +516,19 @@ class RAGEngine:
                     confidence=0.0
                 )
 
+            chunks_pre_filter = chunks
             chunks = self._filter_excluded_response_articles(
                 chunks=chunks,
                 retrieval_profile=retrieval_profile,
             )
-            if not chunks:
-                logger.warning("All retrieved chunks were excluded as tangential")
-                return self._build_uncertain_response(
-                    "No directly applicable articles remained after exact-procedure filtering",
-                    confidence=0.0,
+            if not chunks and chunks_pre_filter:
+                logger.warning(
+                    f"All {len(chunks_pre_filter)} retrieved chunks were excluded "
+                    f"(mode={retrieval_profile.get('mode')}, "
+                    f"excluded={len(retrieval_profile.get('excluded_articles', []))}); "
+                    f"relaxing exclusions to avoid false-negative response"
                 )
+                chunks = chunks_pre_filter
             chunks, bundle_info = await self._add_response_article_bundles(
                 chunks=chunks,
                 advisory_signal=advisory_signal,
@@ -1211,8 +1214,8 @@ class RAGEngine:
     TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
         "distribution": ["distribution"],
         "distributions": ["distribution"],
-        "rollover": ["rollover"],
-        "rollovers": ["rollover"],
+        "rollover": ["rollover", "termination_distribution_request", "distribution"],
+        "rollovers": ["rollover", "termination_distribution_request", "distribution"],
         "loan": ["loan"],
         "loans": ["loan"],
         "hardship": ["hardship_withdrawal"],
@@ -1411,7 +1414,15 @@ class RAGEngine:
             "left his employer",
             "left her employer",
             "left their employer",
+            "left his company",
+            "left her company",
+            "left their company",
+            "left the company",
+            "left my company",
             "no longer employed",
+            "former employer",
+            "prior employer",
+            "recently left",
             "separated from employment",
             "separation of service",
             "terminated",
@@ -1577,6 +1588,15 @@ class RAGEngine:
                 "left his employer",
                 "left her employer",
                 "left their employer",
+                "left his company",
+                "left her company",
+                "left their company",
+                "left the company",
+                "left my company",
+                "no longer employed",
+                "former employer",
+                "prior employer",
+                "recently left",
                 "separation",
                 "separated",
                 "terminated",
@@ -2081,6 +2101,19 @@ class RAGEngine:
             "leave my job",
             "leaving my job",
             "left my job",
+            "left his employer",
+            "left her employer",
+            "left their employer",
+            "left his company",
+            "left her company",
+            "left their company",
+            "left the company",
+            "left my company",
+            "no longer employed",
+            "former employer",
+            "prior employer",
+            "former employee",
+            "recently left",
             "termination",
             "terminated",
             "after employment",

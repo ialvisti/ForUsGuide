@@ -311,7 +311,10 @@ class LLMRouter:
             "max_output_tokens": max_tokens,
         }
 
-        if config.thinking_budget is not None and config.thinking_budget > 0:
+        # NOTE: thinking_budget=0 must be sent explicitly to *disable* thinking
+        # on Gemini 2.5 Flash. If we omit thinking_config entirely the API
+        # falls back to dynamic thinking and burns tokens reasoning.
+        if config.thinking_budget is not None:
             gen_config_kwargs["thinking_config"] = genai_types.ThinkingConfig(
                 thinking_budget=config.thinking_budget
             )

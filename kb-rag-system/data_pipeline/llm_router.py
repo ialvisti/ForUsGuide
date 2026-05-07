@@ -431,16 +431,22 @@ def build_routes_from_settings(settings: Any) -> Dict[str, TaskRoute]:
         "classify_inquiry": settings.LLM_ROUTE_CLASSIFY,
     }
 
+    def _apply_override(cfg: ModelConfig, override: Dict[str, Any]) -> ModelConfig:
+        if cfg.provider == LLMProvider.OPENAI and "reasoning_effort" in override:
+            return replace(cfg, reasoning_effort=override["reasoning_effort"])
+        if cfg.provider == LLMProvider.GEMINI and "thinking_budget" in override:
+            return replace(cfg, thinking_budget=override["thinking_budget"])
+        return cfg
+
     routes: Dict[str, TaskRoute] = {}
     for task, model_name in route_map.items():
         primary = _model_config_from_name(model_name)
+        fallback = _DEFAULT_FALLBACK_BY_PROVIDER.get(primary.provider)
         override = _TASK_EFFORT_OVERRIDES.get(task)
         if override:
-            if primary.provider == LLMProvider.OPENAI and "reasoning_effort" in override:
-                primary = replace(primary, reasoning_effort=override["reasoning_effort"])
-            elif primary.provider == LLMProvider.GEMINI and "thinking_budget" in override:
-                primary = replace(primary, thinking_budget=override["thinking_budget"])
-        fallback = _DEFAULT_FALLBACK_BY_PROVIDER.get(primary.provider)
+            primary = _apply_override(primary, override)
+            if fallback is not None:
+                fallback = _apply_override(fallback, override)
         routes[task] = TaskRoute(primary=primary, fallback=fallback)
 
     return routes

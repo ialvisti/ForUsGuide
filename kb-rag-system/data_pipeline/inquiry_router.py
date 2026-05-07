@@ -237,7 +237,7 @@ def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
 class InquiryRouterEngine:
     """Hybrid (deterministic + LLM) classifier for inbound inquiries."""
 
-    LLM_MAX_TOKENS = 200
+    LLM_MAX_TOKENS = 400
 
     def __init__(self, llm_router: LLMRouter):
         self._llm = llm_router

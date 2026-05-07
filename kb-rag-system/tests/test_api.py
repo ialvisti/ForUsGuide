@@ -25,6 +25,9 @@ def mock_env(test_api_key, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-openai-key")
     monkeypatch.setenv("INDEX_NAME", "test-index")
     monkeypatch.setenv("NAMESPACE", "test-namespace")
+    # /api/v1/route-inquiry now gates on ROUTER_MODE; default 'disabled' would
+    # 503 the whole endpoint suite. Keep tests honoring routes by default.
+    monkeypatch.setenv("ROUTER_MODE", "full")
 
 
 @pytest.fixture
@@ -370,6 +373,7 @@ class TestRouteInquiryEndpoint:
         reasoning: str = "test",
         fast_path_hit: bool = True,
         signals: Optional[dict] = None,
+        user_message: Optional[str] = None,
     ):
         """Build the dataclass-like result returned by InquiryRouterEngine.classify."""
         from data_pipeline.inquiry_router import ClassificationResult
@@ -381,6 +385,7 @@ class TestRouteInquiryEndpoint:
             signals=signals or {"is_short_interrogative": True},
             fast_path_hit=fast_path_hit,
             metadata={"latency_ms": 1.2, "model": None, "provider": None},
+            user_message=user_message,
         )
 
     def test_route_inquiry_punctual_question(self, client, test_api_key):
@@ -407,10 +412,18 @@ class TestRouteInquiryEndpoint:
         assert data["route"] == "knowledge_question"
         assert data["confidence"] > 0.7
         assert data["suggested_endpoint"] == "/api/v1/knowledge-question"
-        assert data["delegated_result"] is None
+        assert data["suggested_payload"] == {
+            "question": (
+                "Hi there I was wondering how many business days til I "
+                "can see it get approved. Thank you"
+            )
+        }
+        assert data["user_message"] is None
 
-    def test_route_inquiry_hardship_with_signals(self, client, test_api_key):
-        """Hardship + eligibility intent → generate_response."""
+    def test_route_inquiry_hardship_routes_to_generate_response(
+        self, client, test_api_key
+    ):
+        """Hardship + eligibility intent → generate_response with template payload."""
         client.app.state.inquiry_router.classify = AsyncMock(
             return_value=self._make_classification(
                 route="generate_response",
@@ -425,9 +438,7 @@ class TestRouteInquiryEndpoint:
         response = client.post(
             "/api/v1/route-inquiry",
             json={
-                "inquiry": "Can I qualify for a hardship withdrawal for medical bills?",
-                "plan_type": "401(k)",
-                "topic": "hardship",
+                "inquiry": "Can I qualify for a hardship withdrawal for medical bills?"
             },
             headers={"X-API-Key": test_api_key},
         )
@@ -436,14 +447,18 @@ class TestRouteInquiryEndpoint:
         data = response.json()
         assert data["route"] == "generate_response"
         assert data["suggested_endpoint"] == "/api/v1/generate-response"
+        assert data["user_message"] is None
 
-    def test_route_inquiry_ambiguous(self, client, test_api_key):
-        """Ambiguous → needs_more_info, suggests required-data flow."""
+    def test_route_inquiry_ambiguous_includes_user_message(
+        self, client, test_api_key
+    ):
+        """Ambiguous → needs_more_info, suggests required-data flow + populated user_message."""
         client.app.state.inquiry_router.classify = AsyncMock(
             return_value=self._make_classification(
                 route="needs_more_info",
                 confidence=0.40,
                 fast_path_hit=False,
+                user_message="Could you tell me a bit more about what you need?",
             )
         )
 
@@ -457,69 +472,31 @@ class TestRouteInquiryEndpoint:
         data = response.json()
         assert data["route"] == "needs_more_info"
         assert data["suggested_endpoint"] == "/api/v1/required-data"
-
-    def test_route_inquiry_delegate_true(self, client, test_api_key):
-        """delegate=True → invokes downstream and inlines its result."""
-        client.app.state.inquiry_router.classify = AsyncMock(
-            return_value=self._make_classification(
-                route="knowledge_question", confidence=0.92
-            )
+        assert (
+            data["user_message"]
+            == "Could you tell me a bit more about what you need?"
         )
 
-        kq_result = {
-            "answer": "Approval typically takes 3-5 business days.",
-            "key_points": ["3-5 business days"],
-            "source_articles": [],
-            "used_chunks": [],
-            "confidence_note": "well_covered",
-            "metadata": {"chunks_used": 4},
-        }
-
-        client.app.state.rag_engine.ask_knowledge_question = AsyncMock(
-            return_value=kq_result
-        )
-
-        response = client.post(
-            "/api/v1/route-inquiry",
-            json={
-                "inquiry": "How many business days until approval?",
-                "delegate": True,
-            },
-            headers={"X-API-Key": test_api_key},
-        )
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["route"] == "knowledge_question"
-        assert data["delegated_result"] is not None
-        assert data["delegated_result"]["answer"] == kq_result["answer"]
-        client.app.state.rag_engine.ask_knowledge_question.assert_awaited_once()
-
-    def test_route_inquiry_delegate_skipped_for_needs_more_info(
+    def test_route_inquiry_user_message_null_on_other_routes(
         self, client, test_api_key
     ):
-        """delegate=True with route=needs_more_info → delegate_skipped marker."""
+        """user_message must be null when the route is not needs_more_info."""
         client.app.state.inquiry_router.classify = AsyncMock(
             return_value=self._make_classification(
-                route="needs_more_info",
-                confidence=0.50,
-                fast_path_hit=False,
+                route="knowledge_question",
+                confidence=0.95,
+                user_message=None,
             )
         )
 
         response = client.post(
             "/api/v1/route-inquiry",
-            json={
-                "inquiry": "I'm not sure what I need to do here",
-                "delegate": True,
-            },
+            json={"inquiry": "What is the 60-day rollover rule?"},
             headers={"X-API-Key": test_api_key},
         )
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["delegated_result"] is not None
-        assert data["delegated_result"]["error"] == "delegate_skipped"
+        assert response.json()["user_message"] is None
 
     def test_route_inquiry_auth_required(self, client):
         """Missing X-API-Key → 401."""
@@ -538,8 +515,22 @@ class TestRouteInquiryEndpoint:
         )
         assert response.status_code == 422
 
-    def test_route_inquiry_suggested_payload_shape(self, client, test_api_key):
-        """generate_response payload must carry the eligibility inputs."""
+    def test_route_inquiry_rejects_legacy_fields(self, client, test_api_key):
+        """Legacy fields (record_keeper/topic/etc.) must be rejected with 422."""
+        response = client.post(
+            "/api/v1/route-inquiry",
+            json={
+                "inquiry": "How do I rollover a 401k from a previous employer?",
+                "topic": "rollover",  # legacy
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+        assert response.status_code == 422
+
+    def test_route_inquiry_suggested_payload_generate_response_template(
+        self, client, test_api_key
+    ):
+        """generate_response payload must be a template with placeholder None/{}."""
         client.app.state.inquiry_router.classify = AsyncMock(
             return_value=self._make_classification(
                 route="generate_response", confidence=0.9
@@ -549,20 +540,112 @@ class TestRouteInquiryEndpoint:
         response = client.post(
             "/api/v1/route-inquiry",
             json={
-                "inquiry": "Can I take a hardship withdrawal for medical bills?",
-                "record_keeper": "LT Trust",
-                "plan_type": "401(k)",
-                "topic": "hardship",
-                "collected_data": {"participant_data": {"balance": "$10,000"}},
+                "inquiry": "Am I eligible to take a hardship for medical bills?"
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+
+        assert response.status_code == 200
+        payload = response.json()["suggested_payload"]
+        assert payload["inquiry"] == "Am I eligible to take a hardship for medical bills?"
+        assert payload["record_keeper"] is None
+        assert payload["plan_type"] is None
+        assert payload["topic"] is None
+        assert payload["collected_data"] == {}
+
+    def test_route_inquiry_router_mode_disabled_returns_503(
+        self, client, test_api_key
+    ):
+        """router_mode=disabled override → 503."""
+        # The classifier should never be called when disabled.
+        client.app.state.inquiry_router.classify = AsyncMock(
+            side_effect=AssertionError("classifier should not run when disabled")
+        )
+
+        response = client.post(
+            "/api/v1/route-inquiry",
+            json={
+                "inquiry": "How long does approval take?",
+                "router_mode": "disabled",
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+        assert response.status_code == 503
+
+    def test_route_inquiry_router_mode_shadow_coerces_to_needs_more_info(
+        self, client, test_api_key
+    ):
+        """router_mode=shadow → coerces a confident generate_response into needs_more_info."""
+        client.app.state.inquiry_router.classify = AsyncMock(
+            return_value=self._make_classification(
+                route="generate_response",
+                confidence=0.92,
+            )
+        )
+
+        response = client.post(
+            "/api/v1/route-inquiry",
+            json={
+                "inquiry": "Can I qualify for a hardship withdrawal for medical bills?",
+                "router_mode": "shadow",
             },
             headers={"X-API-Key": test_api_key},
         )
 
         assert response.status_code == 200
         data = response.json()
-        payload = data["suggested_payload"]
-        for key in ("inquiry", "record_keeper", "plan_type", "topic", "collected_data"):
-            assert key in payload
-        assert payload["record_keeper"] == "LT Trust"
-        assert payload["plan_type"] == "401(k)"
-        assert payload["topic"] == "hardship"
+        assert data["route"] == "needs_more_info"
+        # The original route is preserved in metadata for observability.
+        assert data["metadata"]["original_route"] == "generate_response"
+        assert "shadow" in data["metadata"]["router_mode_override"]
+        # And user_message is populated even though the LLM didn't supply one
+        # (the override fired AFTER classification).
+        assert data["user_message"] is not None and data["user_message"].strip() != ""
+
+    def test_route_inquiry_router_mode_knowledge_only_coerces_generate_response(
+        self, client, test_api_key
+    ):
+        """router_mode=knowledge_only → generate_response → needs_more_info."""
+        client.app.state.inquiry_router.classify = AsyncMock(
+            return_value=self._make_classification(
+                route="generate_response", confidence=0.9
+            )
+        )
+
+        response = client.post(
+            "/api/v1/route-inquiry",
+            json={
+                "inquiry": "Am I eligible for a hardship withdrawal?",
+                "router_mode": "knowledge_only",
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["route"] == "needs_more_info"
+        assert data["metadata"]["original_route"] == "generate_response"
+
+    def test_route_inquiry_router_mode_knowledge_only_passes_knowledge_through(
+        self, client, test_api_key
+    ):
+        """router_mode=knowledge_only → knowledge_question is NOT coerced."""
+        client.app.state.inquiry_router.classify = AsyncMock(
+            return_value=self._make_classification(
+                route="knowledge_question", confidence=0.9
+            )
+        )
+
+        response = client.post(
+            "/api/v1/route-inquiry",
+            json={
+                "inquiry": "What is the 60-day rollover rule?",
+                "router_mode": "knowledge_only",
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["route"] == "knowledge_question"
+        assert "router_mode_override" not in data["metadata"]

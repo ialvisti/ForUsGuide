@@ -372,9 +372,10 @@
                     "example_values": [
                         "Plan enrollment type: Auto-enrollment"
                     ],
-                    "why_needed": "Eligibility for an EACA refund requires auto-enrollment contributions.",
+                    "why_needed": "Required to confirm individual eligibility for an EACA refund. Does not block general explanation of EACA refund rules and the 90-day deadline.",
                     "source_note": null,
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Plan is set up as an EACA plan",
@@ -382,9 +383,10 @@
                     "example_values": [
                         "EACA Plan"
                     ],
-                    "why_needed": "Not every auto-enrollment plan is an EACA; EACA status is required for eligibility.",
+                    "why_needed": "Required to confirm individual eligibility (not every auto-enrollment plan is an EACA). Does not block general explanation of EACA refund rules.",
                     "source_note": null,
-                    "source_type": "plan_profile"
+                    "source_type": "plan_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Date of first automatic 401(k) deferral or contribution deposit",
@@ -392,9 +394,10 @@
                     "example_values": [
                         "First contribution 2026-01-15"
                     ],
-                    "why_needed": "Determines the 90 calendar day deadline for receipt of the written request.",
+                    "why_needed": "Required to compute the participant's 90-day deadline. Does not block general explanation that the deadline is 90 days from the first auto-enrollment contribution.",
                     "source_note": null,
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Participant request to opt out and request an EACA refund",
@@ -402,9 +405,10 @@
                     "example_values": [
                         "Participant requested to opt out and requests an EACA refund"
                     ],
-                    "why_needed": "A written request to opt out and request the refund is required to initiate the process.",
+                    "why_needed": "Required to actually start the refund process. Does not block general explanation of how to request a refund.",
                     "source_note": null,
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Completed and signed EACA refund form submission",
@@ -412,9 +416,10 @@
                     "example_values": [
                         "Signed electronic EACA refund form via RightSignature"
                     ],
-                    "why_needed": "The written request must be received within the 90-day window and is submitted through the RightSignature form process.",
+                    "why_needed": "Required to actually submit the request within the 90-day window. Does not block general explanation of the RightSignature form process.",
                     "source_note": null,
-                    "source_type": "agent_input"
+                    "source_type": "agent_input",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Address on file for check delivery",
@@ -422,9 +427,10 @@
                     "example_values": [
                         "1234 Main St Capital City, State 12345"
                     ],
-                    "why_needed": "Refunds are generally issued as a check mailed via regular USPS to the address on file.",
+                    "why_needed": "Required only to actually deliver the refund check. Does not block general explanation of how the check is delivered.",
                     "source_note": null,
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "execution_only"
                 }
             ],
             "nice_to_have": [
@@ -524,7 +530,8 @@
                 "Employer matching contributions are forfeited when an EACA refund is processed.",
                 "Refunds are generally mailed as a check via regular USPS to the address on file.",
                 "A Form 1099-R is issued for the year the refund is issued, and the refunded amount is typically treated as taxable ordinary income for that year.",
-                "Once the EACA refund is processed, the participant is removed from the 401(k) plan but may be able to re-enroll if the employer allows."
+                "Once the EACA refund is processed, the participant is removed from the 401(k) plan but may be able to re-enroll if the employer allows.",
+                "Provide general guidance about EACA refunds (90-day deadline, eligibility requirements, $50 processing fee, employer match forfeiture, mail delivery, 1099-R taxability, re-enrollment) without requiring confirmation of the participant's auto-enrollment, plan-EACA status, first contribution date, refund form submission, or address; only block when the participant is asking to actually start or submit a specific refund and the eligibility data is unconfirmed."
             ],
             "not_allowed_conclusions": [
                 "Do not guarantee the participant is eligible without confirming the plan is an EACA plan and verifying the first automatic contribution date and receipt timing of the written request.",

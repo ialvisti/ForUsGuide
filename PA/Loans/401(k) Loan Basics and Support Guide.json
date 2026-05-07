@@ -900,9 +900,10 @@
             "data_point": "Participant's name",
             "meaning": "The name of the participant.",
             "example_values": ["John Doe", "Jane Doe", "Oscar Santiago Garcia"],
-            "why_needed": "Required to confirm that the correct participant profile is being reviewed in the system before applying loan guidance.",
+            "why_needed": "Used to confirm we are reviewing the correct participant profile before applying participant-specific loan guidance. Does not block general loan guidance.",
             "source_note": "Supported by internal workflow prerequisites shared for this article.",
-            "source_type": "participant_profile"
+            "source_type": "participant_profile",
+            "blocking_intent": "eligibility_confirmation"
           },
           {
             "data_point": "Record Keeper",
@@ -914,9 +915,10 @@
               "RK: Empower",
               "RK: ADP"
             ],
-            "why_needed": "This article and instructions are intended as global information. If the Record Keeper is RK: LT Trust or RK: Vanguard, use the matching route. If the Record Keeper is any other value, provide only general loan guidance from this article and redirect to support for record-keeper-specific assistance.",
+            "why_needed": "Used to choose the LT Trust or Vanguard route or fall back to general guidance plus support routing. Does not block providing general loan guidance.",
             "source_note": "Supported by article section: Prerequisites",
-            "source_type": "participant_profile"
+            "source_type": "participant_profile",
+            "blocking_intent": "eligibility_confirmation"
           },
           {
             "data_point": "Participant Status",
@@ -928,17 +930,19 @@
               "Deceased",
               "Unknown"
             ],
-            "why_needed": "Required to confirm if the participant is still working for their employer in order to apply for a loan.",
+            "why_needed": "Used to confirm if the participant is still working for their employer before confirming individual loan eligibility. Does not block general loan guidance.",
             "source_note": "The profile's Eligibility Status should be mapped into this canonical Participant Status field for workflow use.",
-            "source_type": "participant_profile"
+            "source_type": "participant_profile",
+            "blocking_intent": "eligibility_confirmation"
           },
           {
             "data_point": "MFA status",
             "meaning": "The status of the participant's MFA enrollment.",
             "example_values": ["enrolled", "not enrolled"],
-            "why_needed": "Used only to determine whether the LT Trust online account route may be available. MFA status does not control Vanguard routing and does not control support routing for non-LT Trust and non-Vanguard record keepers.",
+            "why_needed": "Used only to determine whether the LT Trust online account route may be available. Does NOT block Vanguard routing, support routing, or general loan guidance.",
             "source_note": "Supported by article section: Prerequisites",
-            "source_type": "participant_profile"
+            "source_type": "participant_profile",
+            "blocking_intent": "execution_only"
           },
           {
             "data_point": "Total Vested Balance",
@@ -949,17 +953,19 @@
               "$2,000.00",
               "$2,000.01"
             ],
-            "why_needed": "Required to determine whether the participant has enough vested balance available for loan eligibility review and general loan-limit review.",
+            "why_needed": "Required to confirm the participant's individual loan eligibility and exact loan-limit. Does not block general explanation of how the 50%-of-vested-balance and $50,000 cap rules work.",
             "source_note": "Supported by article language stating the participant must have enough vested balance available and that plans may set their own minimums.",
-            "source_type": "participant_profile"
+            "source_type": "participant_profile",
+            "blocking_intent": "eligibility_confirmation"
           },
           {
             "data_point": "Maximum Number of Loans",
             "meaning": "Whether the participant's plan allows loans at all and the maximum number of loans that may be active at one time.",
             "example_values": ["2", "1", "0"],
-            "why_needed": "Determines whether the plan supports loans and sets the plan-level cap for concurrent active loans.",
+            "why_needed": "Used to confirm whether the specific plan supports loans and sets the plan-level cap. Does not block general explanation of how loan limits work.",
             "source_note": "Supported by article section: Prerequisites",
-            "source_type": "participant_profile"
+            "source_type": "participant_profile",
+            "blocking_intent": "eligibility_confirmation"
           },
           {
             "data_point": "Active Loans",
@@ -970,9 +976,22 @@
               "Outstanding Balance $00.00",
               "Outstanding Balance $00.01"
             ],
-            "why_needed": "Eligibility determination. Used with Maximum Number of Loans to determine whether the participant may qualify to take a new loan.",
+            "why_needed": "Used with Maximum Number of Loans to determine whether the participant may qualify to take a new loan. Does not block general loan guidance.",
             "source_note": "Read from the participant profile Loans section. Any Outstanding Balance greater than $0.00 should be treated as active or unpaid; $0.00 should be treated as not active or unpaid.",
-            "source_type": "participant_profile"
+            "source_type": "participant_profile",
+            "blocking_intent": "eligibility_confirmation"
+          },
+          {
+            "data_point": "Requested loan purpose",
+            "meaning": "The purpose selected or intended for the loan request, including whether the participant is requesting a primary residence loan.",
+            "example_values": [
+              "General purpose loan",
+              "Primary residence purchase"
+            ],
+            "why_needed": "Needed to actually submit a loan request and to determine whether the standard repayment term or the primary residence repayment term applies. Does not block general explanation of loan purposes and repayment terms.",
+            "source_note": "Supported by article sections about loan purpose and primary residence loans.",
+            "source_type": "message_text",
+            "blocking_intent": "execution_only"
           }
         ],
         "nice_to_have": [
@@ -990,17 +1009,6 @@
             "example_values": ["Signed purchase agreement", "Loan estimate"],
             "why_needed": "Helpful to support the longer repayment term for a primary residence loan.",
             "source_note": "Supported by article section stating that supporting documentation is required for a primary residence loan.",
-            "source_type": "message_text"
-          },
-          {
-            "data_point": "Requested loan purpose",
-            "meaning": "The purpose selected or intended for the loan request, including whether the participant is requesting a primary residence loan.",
-            "example_values": [
-              "General purpose loan",
-              "Primary residence purchase"
-            ],
-            "why_needed": "Helpful to determine whether the standard repayment term or the possible primary residence repayment term applies, and whether supporting documentation is needed.",
-            "source_note": "Supported by article sections about loan purpose and primary residence loans.",
             "source_type": "message_text"
           },
           {
@@ -1172,6 +1180,11 @@
             "missing_data_point": "Active Loans",
             "ask_participant": null,
             "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Review Outstanding Balance values to determine whether any loans are still active and unpaid."
+          },
+          {
+            "missing_data_point": "Requested loan purpose",
+            "ask_participant": "What loan purpose are you requesting, and is this for the purchase of a primary residence?",
+            "agent_note": "Only required to actually submit a loan request. Without it, still explain general loan purposes and repayment-term differences."
           }
         ],
         "disambiguation_notes": [
@@ -1292,16 +1305,10 @@
             "ask_participant": null
           },
           {
-            "condition": "The requested loan purpose is not known, so the applicable repayment term and any primary-residence documentation requirements cannot be determined.",
+            "condition": "The participant explicitly asks to submit/start a loan request and the loan purpose is not yet stated.",
             "missing_data_point": "Requested loan purpose",
             "resulting_outcome": "blocked_missing_data",
             "ask_participant": "What loan purpose are you requesting, and is this for the purchase of a primary residence?"
-          },
-          {
-            "condition": "The participant's highest outstanding loan balance during the previous 12 months is required to confirm the exact maximum loan amount, but that data cannot be verified from the available sources.",
-            "missing_data_point": "Highest outstanding loan balance during the previous 12 months",
-            "resulting_outcome": "blocked_missing_data",
-            "ask_participant": null
           }
         ],
         "allowed_conclusions": [
@@ -1333,7 +1340,8 @@
           "If the participant asks about loan-related fees and the Record Keeper cannot be determined, the bot may conclude that fee disclosure cannot be completed and that the participant should be redirected to support.",
           "If the participant's Record Keeper is neither RK: Vanguard nor RK: LT Trust, the bot may conclude that support must confirm any loan-related fees before they are disclosed.",
           "If the participant's Record Keeper is confirmed as RK: LT Trust, the bot may disclose only the LT Trust fee rules that are confirmed in scope for that request.",
-          "If the participant asks about fees, the bot may conclude that fee disclosure depends on the confirmed Record Keeper and should not be generalized across all plans."
+          "If the participant asks about fees, the bot may conclude that fee disclosure depends on the confirmed Record Keeper and should not be generalized across all plans.",
+          "Provide general guidance about 401(k) loans (general eligibility, limits formula, repayment terms, primary residence option, missing funds handling, payoff rules, provider transitions, employment separation, taxation) without requiring the participant's name, Record Keeper, Participant Status, MFA status, vested balance, plan loan limits, active loans, or prior 12-month loan history; only block when the participant is asking to actually submit a loan request and a true blocker is unconfirmed, and only personalize fee disclosure when the Record Keeper is confirmed."
         ],
         "not_allowed_conclusions": [
           "Do not guarantee the plan allows loans.",

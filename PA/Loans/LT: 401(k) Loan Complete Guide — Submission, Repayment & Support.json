@@ -738,9 +738,10 @@
                         "Jane Doe",
                         "Oscar Santiago Garcia "
                     ],
-                    "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+                    "why_needed": "Used to confirm we found a matching user in our system before confirming individual eligibility. Does not block general LT Trust loan guidance.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Record Keeper",
@@ -748,9 +749,10 @@
                     "example_values": [
                         "RK: LT Trust."
                     ],
-                    "why_needed": "This article and instructions are intended for LT Trust plans. If RK is not LT Trust, and the participant is inquiring for a Loan, redirect to support.",
+                    "why_needed": "Confirms this article applies. If RK is not LT Trust, redirect to support; otherwise general LT Trust loan guidance can be shared.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Participant Status",
@@ -762,9 +764,10 @@
                         "Deceased",
                         "Unknown"
                     ],
-                    "why_needed": "Required to confirm if the participant is still working for their employer in order to apply for a loan.",
+                    "why_needed": "Required to confirm individual loan eligibility (Active is required). Does not block explaining loan rules in general.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "MFA status",
@@ -773,22 +776,24 @@
                         "enrolled",
                         "not enrolled"
                     ],
-                    "why_needed": "To verify whether the participant can use the ForUsAll online account that requires online access. If MFA is not enrolled, share the RightSignature form link only after confirming the participant qualifies.",
+                    "why_needed": "Determines whether the participant can use the ForUsAll online account path; if not enrolled, the RightSignature alternate path is still available after qualification. Does not block general guidance.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "execution_only"
                 },
                 {
-                    "data_point": "Account Balance",
-                    "meaning": "The participant's Account Balance (this is the Vested Balance). The participant must have at least $2,000 or more to be eligible for a loan.",
+                    "data_point": "Total Vested Balance",
+                    "meaning": "The participant's vested account balance. The participant must have at least $2,000 to be eligible for a loan.",
                     "example_values": [
                         "$1,000.00",
                         "$1,999.00",
                         "$2,000.00",
                         "$2,000.01"
                     ],
-                    "why_needed": "Determines if the Participant has enough balance to request a new loan. Eligibility determination.",
+                    "why_needed": "Required to confirm individual loan eligibility. Does not block explaining the $2,000 minimum vested balance rule and 50%-of-vested-balance cap in general.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Maximum Number of Loans",
@@ -798,9 +803,10 @@
                         "1",
                         "0"
                     ],
-                    "why_needed": "Determines whether the plan supports loans and sets the plan-level cap for concurrent active loans.",
+                    "why_needed": "Determines whether the specific plan supports loans and sets the plan-level cap. Does not block general explanation of how plan loan limits work.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Active Loans",
@@ -811,12 +817,11 @@
                         "Outstanding Balance $00.00",
                         "Outstanding Balance $00.01"
                     ],
-                    "why_needed": "Eligibility determination. Used with Maximum Number of Loans to determine whether the participant may qualify to take a new loan.",
+                    "why_needed": "Used with Maximum Number of Loans to determine whether the participant may take a new loan. Does not block general loan guidance.",
                     "source_note": "Read from the participant profile Loans section. Focus on Outstanding Balance to determine whether any listed loans are still active.",
-                    "source_type": "participant_profile"
-                }
-            ],
-            "nice_to_have": [
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
+                },
                 {
                     "data_point": "Loan amount needed",
                     "meaning": "The amount the participant wants to borrow.",
@@ -826,9 +831,10 @@
                         "$50,000",
                         "The maximum I have available"
                     ],
-                    "why_needed": "Submission estimate and limit review",
+                    "why_needed": "Required to actually estimate or submit a loan request. Does not block explaining loan limits and how to find the maximum available amount.",
                     "source_note": "Supported by article section: Estimate Loan",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Requested repayment term",
@@ -843,9 +849,10 @@
                         "120 payments",
                         "360 payments"
                     ],
-                    "why_needed": "Submission step and repayment setup",
+                    "why_needed": "Required to actually configure a loan submission. Does not block explaining standard 5-year vs primary residence 15-year terms in general.",
                     "source_note": "Supported by article section: Choose Loan Type",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Selected delivery method",
@@ -855,9 +862,10 @@
                         "Wire transfer",
                         "Check"
                     ],
-                    "why_needed": "Determine fees, timing, and instructions",
+                    "why_needed": "Required to actually configure delivery and disclose specific fees. Does not block explaining the available delivery methods (ACH, wire, check) and the $35 wire fee in general.",
                     "source_note": "Supported by article section: Select Delivery Method",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Plan ID",
@@ -865,22 +873,24 @@
                     "example_values": [
                         "LT Trust (MA000218)"
                     ],
-                    "why_needed": "Correct application of early payoff funds.",
-                    "source_note": "Supported by article section: Early Loan Payoff. The plan ID can be found in the participant profile. It is the alpha numerical code starting by MA under RK:LT Trust.",
-                    "source_type": "participant_profile"
+                    "why_needed": "Required only to actually send an early payoff. Does not block explaining how early payoff works in general.",
+                    "source_note": "Supported by article section: Early Loan Payoff. The plan ID can be found in the participant profile.",
+                    "source_type": "participant_profile",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Loan number",
-                    "meaning": "The specific loan number that the article says should be confirmed before sending an early payoff and included with payoff instructions.",
+                    "meaning": "The specific loan number to identify which loan the early payoff or repayment increase applies to.",
                     "example_values": [
                         "1",
                         "2",
                         "3",
                         "4"
                     ],
-                    "why_needed": "Correct application of early payoff funds",
-                    "source_note": "Supported by article section: Early Loan Payoff. This loan number is not visible in the participant profile. The agent can check in the participant's profile Outstanding Loan. The participant may check the loan remaining balance in My Portfolio and share the loan balance they want to pay off. The Participant must reach support, share the loan balance to pay off, this way, support will be able to confirm the exact loan number.",
-                    "source_type": "message_text"
+                    "why_needed": "Required only to actually apply early payoff funds or a repayment increase to the correct loan. Does not block explaining payoff or repayment-increase rules in general.",
+                    "source_note": "Supported by article section: Early Loan Payoff. The participant may need to contact support to confirm the exact loan number.",
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Payroll Frequency",
@@ -891,37 +901,41 @@
                         "Semi-monthly",
                         "Monthly"
                     ],
-                    "why_needed": "Helps confirm repayment schedule setup is accurate before submitting the loan online.",
-                    "source_note": "Supported by article section: Estimate Loan. Confirm in the Participant Profile if this matches with what the participant confirms they see during the loan request process. Check the Payroll section, then Payroll Frequency. If this matches what the participant says they see in the loan submission steps, then they can proceed. If it does not match, let the participant know they need to stop the process and contact support immediately for correction.",
-                    "source_type": "message_text"
+                    "why_needed": "Required only to confirm the repayment schedule setup matches before submitting. Does not block explaining how repayment scheduling works in general.",
+                    "source_note": "Supported by article section: Estimate Loan.",
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
+                {
+                    "data_point": "Whether repayment increase applies to one loan or both loans",
+                    "meaning": "For repayment increase requests, the article says the participant must specify which loan or loans the request applies to.",
+                    "example_values": [
+                        "Loan number 1",
+                        "Loan number 2",
+                        "Both loans"
+                    ],
+                    "why_needed": "Required only to process the actual repayment-increase request. Does not block explaining how repayment-increase rules work in general.",
+                    "source_note": "Supported by article section: Repayment Increase",
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
+                }
+            ],
+            "nice_to_have": [
                 {
                     "data_point": "Amortization schedule",
                     "meaning": "The repayment schedule shown during submission and available from support if more detail is needed after loan submission.",
                     "example_values": [],
-                    "why_needed": "Helps explain first payment date and repayment details",
-                    "source_note": "Supported by article section: Estimate Loan. Confirm and let the participant know they can download it during the loan request online before they submit it. If the participant could not download it during the process, or if the participant is requesting a copy of the amortization schedule, and the agent cannot find the document, redirect immediately to support.",
+                    "why_needed": "Helps explain first payment date and repayment details. Does not block any guidance; if not available, redirect to support for a copy.",
+                    "source_note": "Supported by article section: Estimate Loan.",
                     "source_type": "agent_input"
                 },
                 {
                     "data_point": "Payment history",
                     "meaning": "Historical loan payment details that support can provide if the participant needs more details.",
                     "example_values": [],
-                    "why_needed": "Clarifies repayment questions",
-                    "source_note": "Supported by article section: Loan Dashboard Overview. If the agent cannot find this, redirect immediately to support.",
+                    "why_needed": "Clarifies repayment questions. Does not block any guidance; if the agent cannot find this, redirect to support.",
+                    "source_note": "Supported by article section: Loan Dashboard Overview.",
                     "source_type": "agent_input"
-                },
-                {
-                    "data_point": "Whether repayment increase applies to one loan or both loans",
-                    "meaning": "For repayment increase requests, the article says the participant must specify which loan or loans the request applies to. Participant must contact support to request a loan repayment increase through their payroll.",
-                    "example_values": [
-                        "Loan number 1",
-                        "Loan number 2",
-                        "Both loans"
-                    ],
-                    "why_needed": "Needed to process or explain repayment increase guidance",
-                    "source_note": "Supported by article section: Repayment Increase",
-                    "source_type": "message_text"
                 },
                 {
                     "data_point": "Full name for early payoff instructions",
@@ -931,7 +945,7 @@
                         "Jane Doe",
                         "Oscar Santiago Garcia "
                     ],
-                    "why_needed": "Helps ensure early payoff funds are handled correctly",
+                    "why_needed": "Helps ensure early payoff funds are handled correctly. Already covered by the must_have Participant's name; does not block guidance.",
                     "source_note": "Supported by article section: Early Loan Payoff",
                     "source_type": "participant_profile"
                 }
@@ -960,7 +974,7 @@
                 {
                     "missing_data_point": "Total Vested Balance",
                     "ask_participant": null,
-                    "agent_note": "Must have enough balance in the account to qualify based on the eligibility criteria, retrieve from admin/portal systems or chat survey; do not ask participant"
+                    "agent_note": "Must have at least $2,000 vested balance to qualify, retrieve from admin/portal systems or chat survey; do not ask participant"
                 },
                 {
                     "missing_data_point": "Maximum Number of Loans",
@@ -971,6 +985,41 @@
                     "missing_data_point": "Active Loans",
                     "ask_participant": null,
                     "agent_note": "Must confirm if no loans are on file or if there are active loans to determine eligibility for a new loan, retrieve from admin/portal systems or chat survey; do not ask participant. Review the Loans section, use No loan history found or Outstanding Balance values to determine whether any listed loans are currently active."
+                },
+                {
+                    "missing_data_point": "Loan amount needed",
+                    "ask_participant": "What loan amount would you like to request?",
+                    "agent_note": "Only required to estimate or submit a request. Without it, still explain general loan limits and how to find the maximum available."
+                },
+                {
+                    "missing_data_point": "Requested repayment term",
+                    "ask_participant": "What repayment term would you like to select for the loan?",
+                    "agent_note": "Only required to configure the submission. Without it, still explain standard 5-year vs primary residence 15-year terms."
+                },
+                {
+                    "missing_data_point": "Selected delivery method",
+                    "ask_participant": "Which delivery method would you like to use: ACH, wire transfer, or check?",
+                    "agent_note": "Only required to configure delivery and confirm specific fees. Without it, still explain ACH/wire/check options and the $35 wire fee in general."
+                },
+                {
+                    "missing_data_point": "Plan ID",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems; do not ask participant. Only required to actually send an early payoff."
+                },
+                {
+                    "missing_data_point": "Loan number",
+                    "ask_participant": "Which loan are you trying to pay off or modify? You can share the remaining balance with Support and they will confirm the loan number.",
+                    "agent_note": "Only required to apply payoff or repayment-increase to the correct loan."
+                },
+                {
+                    "missing_data_point": "Payroll Frequency",
+                    "ask_participant": "What payroll frequency do you see in the loan calculator?",
+                    "agent_note": "Only required to confirm submission setup matches; without it, still explain repayment scheduling in general."
+                },
+                {
+                    "missing_data_point": "Whether repayment increase applies to one loan or both loans",
+                    "ask_participant": "Should the repayment increase apply to one loan or both loans?",
+                    "agent_note": "Only required to actually submit the repayment-increase request through support."
                 }
             ],
             "disambiguation_notes": [
@@ -1129,7 +1178,8 @@
                 "The participant may be told that amortization schedule and payment history details can be requested from support if needed.",
                 "The participant may be told that support should confirm the Plan ID and Loan number before an early payoff is sent so the payment is applied correctly.",
                 "The participant may be advised to speak with a qualified tax advisor for tax questions or rollover-related questions.",
-                "If a defaulted loan appears in the system, the participant should be directed to support before any new-loan guidance is given."
+                "If a defaulted loan appears in the system, the participant should be directed to support before any new-loan guidance is given.",
+                "Provide general guidance about LT Trust 401(k) loans (eligibility rules, $2,000 vested minimum, 50%-of-vested cap up to $50,000, repayment terms, delivery methods and fees, online vs RightSignature paths, early payoff process, repayment increase, employment-end consequences) without requiring the participant's name, status, MFA enrollment, vested balance, plan loan limits, active loans, loan amount, repayment term, delivery method, plan ID, loan number, or payroll frequency; only block when the participant is asking to actually estimate, submit, or modify a specific request and a true blocker is unconfirmed."
             ],
             "not_allowed_conclusions": [
                 "Do not guarantee the plan allows loans without confirming Maximum Number of Loans in the participant profile.",
@@ -1219,12 +1269,12 @@
                     "Do not rely on only one data point such as vested balance or loan history by itself when multiple eligibility checks are required."
                 ],
                 "questions_to_ask": [
-                    "What loan amount would you like to request?",
-                    "What repayment term would you like to select for the loan?",
-                    "Which delivery method would you like to use to receive the loan amount: ACH, wire transfer, or check?",
+                    "What loan amount would you like to request? Be advised you can confirm the maximum loan amount available in your ForUsAll dashboard in Loans & Distributions, then the Borrow up to will show you the maximum amount available.",
+                    "What repayment term would you like to select for the loan? You should be able to get the repayment term or total payments during the online request in the # of payments section.",
+                    "Which delivery method would you like to use: ACH, wire transfer, or check?",
+                    "Which loan remaining balance are you trying to pay off? You can share this amount with Support and they will confirm what loan number belongs to that loan remaining balance.",
                     "What payroll frequency do you see in the loan calculator?",
-                    "For a repayment increase request, should the increase apply to one loan or both loans? If so, to which Outstanding Loan amount?",
-                    "Which loan outstanding balance are you trying to pay off?"
+                    "Should the repayment increase apply to one loan or both loans? What is the loan repayment amount you'd like to increase?"
                 ],
                 "what_not_to_say": [
                     "Do not say the participant is eligible before all required details are confirmed.",

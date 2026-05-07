@@ -469,7 +469,8 @@
                     ],
                     "why_needed": "Needed to explain the correct rules, tax impact, and next steps for that option when giving tailored guidance. It is not required to provide general education about the options in the article.",
                     "source_note": "Supported by article section: Your 401(k) Options After Leaving a Job",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Distribution option for each account source",
@@ -486,7 +487,8 @@
                     ],
                     "why_needed": "Needed because the article says Roth and pre-tax funds are automatically separated and can each have their own distribution option when giving tailored guidance. It is not required for general education.",
                     "source_note": "Supported by article section: Can I Roll Over Roth 401(k) Funds Separately From Pre-Tax Funds?",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Payment method for each account source",
@@ -500,7 +502,8 @@
                     ],
                     "why_needed": "Needed because the article says a payment method can be selected individually for each source when giving tailored guidance. It is not required for general education.",
                     "source_note": "Supported by article section: Can I Roll Over Roth 401(k) Funds Separately From Pre-Tax Funds?",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 }
             ],
             "nice_to_have": [
@@ -723,7 +726,7 @@
                 ],
                 "questions_to_ask": [
                     "Which option would you like to take with your 401(k): leave the funds in the plan, take a cash distribution, or complete a rollover?",
-                    "If you have both Roth and pre-tax funds, what option would you like for each source?",
+                    "If you have both Roth and pre-tax funds, what distribution option would you like for each source?",
                     "For each source, would you like the payment or transfer completed by check or by wire, if applicable?"
                 ],
                 "what_not_to_say": [

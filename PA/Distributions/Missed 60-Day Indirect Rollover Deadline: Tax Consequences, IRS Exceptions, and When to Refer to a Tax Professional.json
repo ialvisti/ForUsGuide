@@ -455,9 +455,10 @@
                         "Check made payable to you",
                         "Funds sent directly from one provider to another"
                     ],
-                    "why_needed": "Used to determine if the 60-day rollover rule applies.",
+                    "why_needed": "Required to determine whether the 60-day rule applies at all to the participant's situation. Without it, any conclusion about whether the deadline was missed would be unsafe (the rule does NOT apply to direct rollovers).",
                     "source_note": null,
-                    "source_type": "agent_input"
+                    "source_type": "agent_input",
+                    "blocking_intent": "always"
                 },
                 {
                     "data_point": "Date the participant received the funds",
@@ -466,9 +467,10 @@
                         "2026-02-04",
                         "2026-03-15"
                     ],
-                    "why_needed": "Needed to evaluate whether the rollover was completed within 60 days of receiving the funds.",
+                    "why_needed": "Required to evaluate whether the rollover was completed within 60 days. Without it, any timing conclusion would be unsafe.",
                     "source_note": "This information comes from what the participant provides.",
-                    "source_type": "agent_input"
+                    "source_type": "agent_input",
+                    "blocking_intent": "always"
                 },
                 {
                     "data_point": "Whether the rollover was completed within 60 days of receiving the funds",
@@ -477,9 +479,10 @@
                         "Completed within 60 days",
                         "Not completed within 60 days"
                     ],
-                    "why_needed": "Needed to determine whether the missed-deadline consequences apply.",
+                    "why_needed": "Required to determine whether missed-deadline consequences apply. Without it, any conclusion about tax/penalty exposure would be unsafe.",
                     "source_note": null,
-                    "source_type": "agent_input"
+                    "source_type": "agent_input",
+                    "blocking_intent": "always"
                 }
             ],
             "nice_to_have": [
@@ -593,7 +596,8 @@
                 "If the rollover is not completed within 60 days, the amount is reported on IRS Form 1099-R as a distribution.",
                 "Exceptions may be available through an automatic waiver, self-certification for certain circumstances, or a Private Letter Ruling (PLR) in rare situations.",
                 "A qualified tax professional can help confirm eligibility for an exception, complete documentation, determine whether a PLR is necessary, and report the transaction correctly on the tax return.",
-                "ForUsAll can clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice."
+                "ForUsAll can clarify plan activity, verify check processing dates, or resend provider documentation, but cannot provide tax advice.",
+                "Provide general guidance about the 60-day indirect rollover rule, taxability of missed deadlines, the three IRS exception paths (automatic waiver, self-certification, PLR), and the recommendation to consult a qualified tax professional, even when the participant has not yet provided the date funds were received or whether they completed the rollover on time; only when the participant asks a personalized question (\"Did I miss it? Do I qualify for an exception?\") must the agent confirm those facts before reaching individual conclusions."
             ],
             "not_allowed_conclusions": [
                 "Do not guarantee that missing the 60-day window will qualify for an exception or waiver.",

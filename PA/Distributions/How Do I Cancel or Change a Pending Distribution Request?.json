@@ -399,9 +399,10 @@
                         "Jane Doe",
                         "Oscar Santiago Garcia "
                     ],
-                    "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+                    "why_needed": "Required to confirm we found a matching user in our system before handing the cancel/change to support. Does not block general explanation of how cancel/change works.",
                     "source_note": "Required for request identification; referenced in steps and common_issues.",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Type of request",
@@ -412,9 +413,10 @@
                         "in-service distribution",
                         "termination distribution"
                     ],
-                    "why_needed": "Needed to understand what request the participant is trying to change or cancel and to support accurate review.",
+                    "why_needed": "Required to actually locate and process the cancel/change for the specific request. Does not block general explanation of cancel/change rules across distribution types.",
                     "source_note": "Referenced in steps, common_issues, and business_rules as a required detail for locating the request.",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Submission method",
@@ -424,9 +426,10 @@
                         "Electronic form sent to your email through RightSignature",
                         "ForUsAll submitted it on your behalf after receiving a call from you"
                     ],
-                    "why_needed": "Helps locate the correct request method to hand off to support for confirmation and review.",
+                    "why_needed": "Required to actually locate the request and route to support. Does not block general explanation of cancel/change rules.",
                     "source_note": "Referenced in steps and common_issues as a required detail for locating the request.",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Approximate date submitted",
@@ -437,9 +440,10 @@
                         "If the participant is unsure, an approximate timeframe such as 'about a week ago' can also be helpful.",
                         "I submitted it on March 22, 2025."
                     ],
-                    "why_needed": "Helps locate the correct request and supports assessing timing and current status.",
+                    "why_needed": "Required to actually locate and assess the request. Does not block general explanation of timing-based cancel/change rules.",
                     "source_note": "Referenced in steps and common_issues; timing is critical per business_rules urgency category.",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Reason for change or cancellation",
@@ -452,9 +456,10 @@
                         "I want to change the type of distribution.",
                         "Other reasons the participant may provide for wanting to change or cancel the request."
                     ],
-                    "why_needed": "Used to understand the participant's intent and context for the requested change or cancellation.",
+                    "why_needed": "Required for support to actually act on the cancel/change. Does not block general explanation.",
                     "source_note": "Referenced in steps and common_issues as a required detail for processing the request.",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 }
             ],
             "nice_to_have": [
@@ -471,7 +476,7 @@
             ],
             "if_missing": [
                 {
-                    "missing_data_point": "Participant full name",
+                    "missing_data_point": "Participant's name",
                     "ask_participant": "What is your full name?",
                     "agent_note": "Do not proceed to conclusions about what can be changed or canceled without enough information to identify the request."
                 },
@@ -479,6 +484,11 @@
                     "missing_data_point": "Type of request",
                     "ask_participant": "What type of request is it (for example, hardship, loan, in-service, or termination distribution)?",
                     "agent_note": "Do not assume the request type; ask directly if it is not provided."
+                },
+                {
+                    "missing_data_point": "Submission method",
+                    "ask_participant": "How did you submit the request: through the participant portal, an electronic form via RightSignature, or did ForUsAll submit it on your behalf after a call?",
+                    "agent_note": "Only required to actually locate and route the request to support."
                 },
                 {
                     "missing_data_point": "Approximate date submitted",
@@ -519,8 +529,8 @@
             ],
             "missing_data_conditions": [
                 {
-                    "condition": "Participant full name is not provided.",
-                    "missing_data_point": "Participant full name",
+                    "condition": "Participant's name is not provided.",
+                    "missing_data_point": "Participant's name",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": "What is your full name?"
                 },
@@ -529,6 +539,12 @@
                     "missing_data_point": "Type of request",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": "What type of request is it (for example, hardship, loan, in-service, or termination distribution)?"
+                },
+                {
+                    "condition": "Submission method is not provided.",
+                    "missing_data_point": "Submission method",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "How did you submit the request: through the participant portal, an electronic form via RightSignature, or did ForUsAll submit it on your behalf after a call?"
                 },
                 {
                     "condition": "Approximate date submitted is not provided.",
@@ -548,7 +564,8 @@
                 "Support must review the request status to determine whether cancellation or edits may be possible.",
                 "If the request has been initiated or processed, cancellation may not be possible and options to stop or reissue may be available depending on delivery method and status after support review.",
                 "Available options depend on the current status of the request and, in some cases, the delivery method.",
-                "ForUsAll will review the request status and provide next steps or alternate solutions if cancellation is not possible."
+                "ForUsAll will review the request status and provide next steps or alternate solutions if cancellation is not possible.",
+                "Provide general guidance about how cancel/change works (urgency, support-driven status review, dependence on delivery method and processing stage) without requiring the participant's name, request type, submission method, submission date, or reason; only block when the participant is asking to actually cancel or change a specific request and that information is unconfirmed."
             ],
             "not_allowed_conclusions": [
                 "Do not guarantee that the request will be canceled or changed.",
@@ -617,6 +634,7 @@
                 "questions_to_ask": [
                     "What is your full name?",
                     "What type of request is it (for example, hardship, loan, in-service, or termination distribution)?",
+                    "How did you submit the request: through the participant portal, an electronic form via RightSignature, or did ForUsAll submit it on your behalf after a call?",
                     "About when did you submit the request?",
                     "What is the reason you want to change or cancel the request?"
                 ],

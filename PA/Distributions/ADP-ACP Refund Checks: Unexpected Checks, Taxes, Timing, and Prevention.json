@@ -754,7 +754,7 @@
                         "Jane Doe",
                         "Oscar Santiago Garcia"
                     ],
-                    "why_needed": "Required but not mandatory to confirm that we found a user related to the participant in our system.",
+                    "why_needed": "Useful for internal context to match the participant in the system. Does NOT block general explanation of ADP/ACP refund mechanics.",
                     "source_note": "Supported by this article section",
                     "source_type": "participant_profile"
                 },
@@ -768,7 +768,7 @@
                         "Deceased",
                         "Unknown"
                     ],
-                    "why_needed": "Required but not mandatory to confirm that the participant has already left their employer in order to request a distribution.",
+                    "why_needed": "Useful for internal context. Does NOT block general explanation of ADP/ACP refunds.",
                     "source_note": "Supported by this article section",
                     "source_type": "participant_profile"
                 },
@@ -779,7 +779,7 @@
                         "Arbor Lodging Management (nvn)",
                         "Bristol Myers (nvn)"
                     ],
-                    "why_needed": "Required but not mandatory to confirm that the participant has already left their employer.",
+                    "why_needed": "Useful for internal context. Does NOT block general explanation of ADP/ACP refunds.",
                     "source_note": "Supported by this article section",
                     "source_type": "participant_profile"
                 },
@@ -791,7 +791,7 @@
                         "Roth",
                         "A value stated in this article"
                     ],
-                    "why_needed": "Determines whether the entire refund is taxable (pre-tax) or only the earnings portion is taxable (Roth).",
+                    "why_needed": "Refines a personalized tax explanation. Does NOT block general guidance: the agent can always explain that pre-tax refunds are fully taxable while Roth refunds are taxable only on the earnings portion, and recommend the participant consult their 1099-R or a tax advisor.",
                     "source_note": "Supported by article section: Tax implications for pre-tax vs Roth refunds",
                     "source_type": "unknown"
                 },
@@ -813,7 +813,7 @@
                         "A value stated on the participant's Form 1099-R",
                         "A value stated in this article"
                     ],
-                    "why_needed": "Used for accurate tax reporting and to understand earnings vs contributions and withholding.",
+                    "why_needed": "Refines personalized tax-amount answers. Does NOT block general guidance: the agent can always explain that the 1099-R will be issued in the refund year, that pre-tax vs Roth differ in taxability, and that the participant should consult a tax advisor for personalized amounts.",
                     "source_note": "Supported by article section: Will I receive a tax form?",
                     "source_type": "message_text"
                 },
@@ -905,20 +905,7 @@
             ],
             "eligibility_requirements": [],
             "blocking_conditions": [],
-            "missing_data_conditions": [
-                {
-                    "condition": "Participant requests a personalized tax explanation but the refund contribution source (pre-tax vs Roth) is not provided.",
-                    "missing_data_point": "Refund contribution source",
-                    "resulting_outcome": "blocked_missing_data",
-                    "ask_participant": "To confirm this please reach out to support"
-                },
-                {
-                    "condition": "Participant requests help determining what was taxed or withheld but does not have the Form 1099-R amounts available.",
-                    "missing_data_point": "Form 1099-R details",
-                    "resulting_outcome": "blocked_missing_data",
-                    "ask_participant": "Do you have your Form 1099-R for the refund year (and if so, what amounts and withholding are shown)?"
-                }
-            ],
+            "missing_data_conditions": [],
             "allowed_conclusions": [
                 "The refund check is most likely a corrective distribution due to failed ADP/ACP nondiscrimination testing.",
                 "The refund amount can include excess contributions and earnings or losses on the excess amounts.",
@@ -927,7 +914,8 @@
                 "Roth refunds are taxable only on the earnings portion, and earnings are shown separately on the 1099-R.",
                 "There is no 10% early withdrawal penalty for ADP/ACP refunds.",
                 "For calendar-year plans, the corrective distribution deadline is March 15 of the year after the tested plan year.",
-                "If the participant needs confirmation or has irregularities, they should contact support using the approved email and phone channels."
+                "If the participant needs confirmation or has irregularities, they should contact support using the approved email and phone channels.",
+                "Provide general guidance about ADP/ACP refunds (testing reason, taxability rules, timing, penalties, prevention) without requiring participant-specific data such as the refund contribution source or 1099-R amounts; for personalized tax amounts recommend consulting the 1099-R or a tax advisor."
             ],
             "not_allowed_conclusions": [
                 "Do not claim the participant can re-contribute the refunded amount back into the 401(k) for that year.",
@@ -972,10 +960,7 @@
                 "warnings": [
                     "I cannot confirm what portion is taxable or what was withheld without the refund source (pre-tax vs Roth) and/or the 1099-R details."
                 ],
-                "questions_to_ask": [
-                    "Was the refund from pre-tax contributions or Roth contributions (or does your 1099-R indicate which)?",
-                    "Do you have your Form 1099-R for the refund year (and if so, what amounts and withholding are shown)?"
-                ],
+                "questions_to_ask": [],
                 "what_not_to_say": [
                     "Do not guess taxable amounts or withholding amounts.",
                     "Do not provide personalized tax advice; recommend consulting a tax advisor."

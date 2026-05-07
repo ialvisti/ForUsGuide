@@ -14,7 +14,6 @@ Endpoints:
 import logging
 import time
 from contextlib import asynccontextmanager
-from dataclasses import asdict, is_dataclass
 from typing import Any, Dict, Optional, Tuple
 from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -609,72 +608,44 @@ async def knowledge_question_endpoint(
 # ============================================================================
 
 def _build_suggested_call(
-    request: RouteInquiryRequest,
+    inquiry: str,
     route: str,
 ) -> Tuple[str, Dict[str, Any]]:
-    """Build the downstream endpoint path + ready-to-send payload for ``route``."""
+    """Build the downstream endpoint path + ready-to-send payload for ``route``.
+
+    The slim ``RouteInquiryRequest`` only carries the inquiry, so for the
+    ``generate_response`` route we return a TEMPLATE with ``record_keeper``,
+    ``plan_type``, ``topic``, and ``collected_data`` as placeholder ``None`` /
+    ``{}``. The caller is expected to fill those in before invoking the
+    downstream ``/api/v1/generate-response`` endpoint (whose own request model
+    declares them as required).
+    """
     if route == "knowledge_question":
-        return "/api/v1/knowledge-question", {"question": request.inquiry}
+        return "/api/v1/knowledge-question", {"question": inquiry}
     if route == "generate_response":
         return "/api/v1/generate-response", {
-            "inquiry": request.inquiry,
-            "record_keeper": request.record_keeper,
-            "plan_type": request.plan_type,
-            "topic": request.topic,
-            "collected_data": request.collected_data or {},
+            "inquiry": inquiry,
+            "record_keeper": None,
+            "plan_type": None,
+            "topic": None,
+            "collected_data": {},
         }
-    # needs_more_info -> caller should run the existing required-data flow first
-    return "/api/v1/required-data", {
-        "inquiry": request.inquiry,
-        "record_keeper": request.record_keeper,
-        "plan_type": request.plan_type,
-        "topic": request.topic,
-    }
+    # needs_more_info → caller should run the existing required-data flow first
+    return "/api/v1/required-data", {"inquiry": inquiry}
 
 
-def _result_to_dict(result: Any) -> Dict[str, Any]:
-    """Coerce a dataclass result (or plain dict) into a JSON-friendly dict."""
-    if is_dataclass(result):
-        return asdict(result)
-    if isinstance(result, dict):
-        return result
-    return getattr(result, "__dict__", {"value": str(result)})
+def _apply_router_mode(route: str, mode: str) -> Tuple[str, Optional[str]]:
+    """Apply per-request/global rollout gating to the classifier output.
 
-
-async def _delegate(
-    route: str,
-    payload: Dict[str, Any],
-    rag_engine: RAGEngine,
-) -> Dict[str, Any]:
-    """Invoke the chosen downstream endpoint in-process and return its result."""
-    if route == "knowledge_question":
-        result = await rag_engine.ask_knowledge_question(question=payload["question"])
-        return _result_to_dict(result)
-
-    if route == "generate_response":
-        # generate_response requires plan_type + topic; if either is missing,
-        # short-circuit cleanly so the caller can fall back to the legacy flow.
-        if not payload.get("topic") or not payload.get("plan_type"):
-            return {
-                "error": "delegate_skipped",
-                "reason": "missing topic or plan_type",
-            }
-        result = await rag_engine.generate_response(
-            inquiry=payload["inquiry"],
-            record_keeper=payload.get("record_keeper"),
-            plan_type=payload["plan_type"],
-            topic=payload["topic"],
-            collected_data=payload.get("collected_data") or {},
-            max_response_tokens=payload.get("max_response_tokens", 5000),
-            total_inquiries_in_ticket=payload.get("total_inquiries_in_ticket", 1),
-        )
-        return _result_to_dict(result)
-
-    # needs_more_info: do not auto-delegate; let n8n run the legacy flow.
-    return {
-        "error": "delegate_skipped",
-        "reason": "needs_more_info requires required-data first",
-    }
+    Returns ``(effective_route, override_reason)``. ``override_reason`` is non-
+    None only when the mode coerced the original route — useful for metadata
+    observability. Caller is responsible for raising 503 on ``disabled``.
+    """
+    if mode == "shadow" and route != "needs_more_info":
+        return "needs_more_info", f"router_mode=shadow coerced route from {route!r}"
+    if mode == "knowledge_only" and route == "generate_response":
+        return "needs_more_info", "router_mode=knowledge_only coerced generate_response"
+    return route, None
 
 
 @app.post(
@@ -687,14 +658,16 @@ async def route_inquiry_endpoint(
     request: RouteInquiryRequest,
     http_request: Request,
     router_engine: InquiryRouterEngine = Depends(get_inquiry_router),
-    rag_engine: RAGEngine = Depends(get_rag_engine),
     exec_logger: Optional[ExecutionLogger] = Depends(get_execution_logger),
 ):
     """
     Endpoint 4: Classify an inquiry to choose the right downstream endpoint.
 
-    Default returns the routing decision only. With ``delegate=true``, also
-    invokes the chosen endpoint in-process and returns the result inline.
+    Accepts only ``inquiry`` and an optional ``router_mode`` override. Returns
+    the routing decision plus a ``suggested_endpoint``/``suggested_payload``
+    template the caller invokes next. When ``route == 'needs_more_info'``,
+    ``user_message`` is populated with a participant-ready prompt asking for
+    the missing detail.
 
     **Routes:**
     - ``knowledge_question`` → punctual KB lookup (`/api/v1/knowledge-question`)
@@ -704,52 +677,66 @@ async def route_inquiry_endpoint(
     **Autenticación:** Requiere header ``X-API-Key``.
     """
     start = time.monotonic()
+    effective_mode = request.router_mode or settings.ROUTER_MODE
+
+    if effective_mode == "disabled":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Inquiry router is disabled.",
+        )
+
     try:
         logger.info(
             f"Route inquiry request | "
-            f"Topic: {request.topic} | "
-            f"RK: {request.record_keeper} | "
-            f"Delegate: {request.delegate}"
+            f"router_mode={effective_mode} | "
+            f"len={len(request.inquiry)}"
         )
 
-        result = await router_engine.classify(
-            inquiry=request.inquiry,
-            record_keeper=request.record_keeper,
-            plan_type=request.plan_type,
-            topic=request.topic,
-            collected_data=request.collected_data,
+        result = await router_engine.classify(inquiry=request.inquiry)
+
+        effective_route, override_reason = _apply_router_mode(
+            result.route, effective_mode
         )
 
         suggested_endpoint, suggested_payload = _build_suggested_call(
-            request, result.route
+            request.inquiry, effective_route
         )
 
-        delegated_result: Optional[Dict[str, Any]] = None
-        if request.delegate:
-            delegated_result = await _delegate(
-                route=result.route,
-                payload=suggested_payload,
-                rag_engine=rag_engine,
+        # If the override forced the route to needs_more_info, the LLM never
+        # produced a user_message for that bucket — fall back to the engine's
+        # default so the response contract holds.
+        if effective_route == "needs_more_info" and not result.user_message:
+            user_message = (
+                "Could you share a bit more detail about what you'd like help with?"
             )
+        elif effective_route != "needs_more_info":
+            user_message = None
+        else:
+            user_message = result.user_message
+
+        metadata: Dict[str, Any] = {
+            **result.metadata,
+            "fast_path_hit": result.fast_path_hit,
+            "router_mode": effective_mode,
+        }
+        if override_reason is not None:
+            metadata["router_mode_override"] = override_reason
+            metadata["original_route"] = result.route
 
         response = RouteInquiryResponse(
-            route=result.route,
+            route=effective_route,
             confidence=result.confidence,
             reasoning=result.reasoning,
             signals=result.signals,
             suggested_endpoint=suggested_endpoint,
             suggested_payload=suggested_payload,
-            delegated_result=delegated_result,
-            metadata={
-                **result.metadata,
-                "fast_path_hit": result.fast_path_hit,
-                "router_mode": settings.ROUTER_MODE,
-            },
+            user_message=user_message,
+            metadata=metadata,
         )
 
         logger.info(
             f"Route inquiry completed | "
-            f"Route: {result.route} | "
+            f"Route: {effective_route} | "
             f"Confidence: {result.confidence:.2f} | "
             f"Fast path: {result.fast_path_hit}"
         )

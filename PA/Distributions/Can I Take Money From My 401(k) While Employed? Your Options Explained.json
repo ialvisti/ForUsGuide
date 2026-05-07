@@ -623,9 +623,10 @@
                         "Deceased",
                         "Unknown"
                     ],
-                    "why_needed": "Required to confirm the participant is Active before proceeding with any distribution or loan request described in this article.",
+                    "why_needed": "Required to confirm the participant is Active before confirming individual eligibility for a distribution or loan request. Does not block general explanation of the in-service options described in the article.",
                     "source_note": "Internal check only. Confirm in the participant profile Census section under Eligibility Status. Do not ask the participant to provide this; if it cannot be confirmed internally, direct the participant to contact support to review eligibility.",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Requested option type",
@@ -636,9 +637,10 @@
                         "Rollover source withdrawal",
                         "401(k) loan"
                     ],
-                    "why_needed": "Determines which eligibility rules, tax considerations, and process steps apply.",
+                    "why_needed": "Determines which eligibility rules, tax considerations, and process steps apply when the participant wants to act. Does NOT block listing and explaining all four options at a general level.",
                     "source_note": null,
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Maximum Number of Loans",
@@ -649,9 +651,10 @@
                         "2",
                         "3"
                     ],
-                    "why_needed": "Determines whether the plan allows loans and whether the participant can take an additional loan under the plan limit.",
+                    "why_needed": "Determines whether the plan allows loans and whether the participant can take an additional loan under the plan limit. Used only to confirm participant-specific loan eligibility; does not block general explanation of how 401(k) loans work.",
                     "source_note": "Internal check only. Confirm in the participant profile. If it cannot be confirmed in the participant profile, direct the participant to contact support to double check.",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 }
             ],
             "nice_to_have": [
@@ -662,7 +665,7 @@
                         "Plan allows",
                         "Plan does not allow"
                     ],
-                    "why_needed": "The article states these options depend on employer plan rules and may not be available in every plan.",
+                    "why_needed": "The article states these options depend on employer plan rules and may not be available in every plan. When unknown, treat as ambiguous_plan_rules and recommend support confirmation; never block general guidance about the option.",
                     "source_note": null,
                     "source_type": "participant_profile"
                 },
@@ -817,7 +820,7 @@
                 {
                     "missing_data_point": "Employer plan allows the requested option",
                     "ask_participant": null,
-                    "agent_note": "Check the participant profile. If it cannot be confirmed in the participant profile, direct the participant to contact support to double check."
+                    "agent_note": "Check the participant profile. If it cannot be confirmed, treat as ambiguous_plan_rules: explain that availability depends on plan rules and recommend contacting support, but do NOT block general guidance about the option."
                 }
             ],
             "disambiguation_notes": [
@@ -852,16 +855,10 @@
             ],
             "missing_data_conditions": [
                 {
-                    "condition": "The participant has not stated which option they want to use while employed.",
+                    "condition": "The participant has stated they want to act on a specific option but the option type is not yet identified.",
                     "missing_data_point": "Requested option type",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": "Which option are you trying to use while employed: an in-service distribution, a hardship withdrawal, a rollover source withdrawal, or a 401(k) loan?"
-                },
-                {
-                    "condition": "It is not confirmed whether the employer plan allows the requested option.",
-                    "missing_data_point": "Employer plan allows the requested option",
-                    "resulting_outcome": "blocked_missing_data",
-                    "ask_participant": null
                 }
             ],
             "allowed_conclusions": [
@@ -882,7 +879,8 @@
                 "If Maximum Number of Loans is 0, the plan does not allow loans.",
                 "If Maximum Number of Loans is 1, a loan may be possible only if there is no active loan on file and the internal balance check shows an Account Balance above $2,000.",
                 "If Maximum Number of Loans is 2 or 3, a loan may be possible only if the participant has fewer active loans than the plan limit and the internal balance check shows an Account Balance above $2,000.",
-                "If the participant has active loans, eligibility for a hardship withdrawal or in-service distribution depends on leaving a required contingent amount tied to outstanding loan balances, and support must confirm."
+                "If the participant has active loans, eligibility for a hardship withdrawal or in-service distribution depends on leaving a required contingent amount tied to outstanding loan balances, and support must confirm.",
+                "Provide general guidance about the four in-service options (in-service distribution, hardship withdrawal, rollover source withdrawal, 401(k) loan), their typical rules, tax considerations, and process, even when the participant's plan allowance, eligibility status, or chosen option is not yet confirmed; only block when the participant is asking to actually start a specific request and a true blocker is unconfirmed."
             ],
             "not_allowed_conclusions": [
                 "Do not guarantee the plan allows in-service distributions, hardship withdrawals, rollover source withdrawals, or 401(k) loans.",
@@ -947,9 +945,7 @@
                     "I cannot share internal account balance or loan detail information."
                 ],
                 "questions_to_ask": [
-                    "Which option are you trying to use while employed: a 401(k) loan, a hardship withdrawal, an in-service distribution, or a rollover source withdrawal?",
-                    "If this is a hardship withdrawal, which qualifying reason applies: medical expenses, purchase of a primary residence, tuition and education expenses, preventing foreclosure or eviction, funeral expenses, or repair of damage to the primary residence?",
-                    "If this is a rollover source withdrawal, do you remember bringing money into your current employer plan from another retirement account (YES, NO, or NOT SURE)?"
+                    "Which option are you trying to use while employed: an in-service distribution, a hardship withdrawal, a rollover source withdrawal, or a 401(k) loan?"
                 ],
                 "what_not_to_say": [
                     "Do not confirm an option is available without confirming plan rules and required internal eligibility checks.",

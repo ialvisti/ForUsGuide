@@ -373,33 +373,37 @@
                         "general purpose",
                         "primary residence"
                     ],
-                    "why_needed": "Needed to complete the loan setup in the portal and determine whether additional paperwork may be required.",
+                    "why_needed": "Required to actually complete the Vanguard portal loan setup and determine paperwork. Does not block general explanation of how Vanguard loan submission works.",
                     "source_note": "Supported by article section: Identify Loan Type",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Requested loan amount",
                     "meaning": "The amount the participant wants to borrow.",
                     "example_values": [],
-                    "why_needed": "Needed to evaluate whether the request fits the stated loan minimum, maximum, and Amount available shown in the portal.",
+                    "why_needed": "Required to actually evaluate the request against limits in the portal. Does not block general explanation of loan minimum/maximum and the Amount available concept.",
                     "source_note": "Supported by article section: Loan Amount",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Payroll frequency",
                     "meaning": "The employer's actual payroll schedule that must be entered correctly during submission.",
                     "example_values": [],
-                    "why_needed": "Needed because the participant must verify payroll frequency exactly, and an incorrect value will cause rejection.",
+                    "why_needed": "Required to actually submit the loan; an incorrect value will cause rejection. Does not block general explanation of why payroll frequency must match.",
                     "source_note": "Supported by article section: Customize Your Terms",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Desired loan start date",
                     "meaning": "The loan start date the participant chooses during submission.",
                     "example_values": [],
-                    "why_needed": "Needed to complete the loan setup process in the portal.",
+                    "why_needed": "Required to actually complete the portal loan setup. Does not block general explanation of the Customize Your Terms step.",
                     "source_note": "Supported by article section: Customize Your Terms",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 }
             ],
             "nice_to_have": [
@@ -518,7 +522,8 @@
                 "Funding by physical check after approval takes 2-3 weeks.",
                 "Repayment is through after-tax payroll deductions over 1 to 5 years.",
                 "Early full repayment is allowed without a prepayment penalty, and support can provide instructions.",
-                "An unpaid defaulted loan or an unpaid outstanding balance after termination may be treated as a taxable distribution."
+                "An unpaid defaulted loan or an unpaid outstanding balance after termination may be treated as a taxable distribution.",
+                "Provide general guidance about the Vanguard loan submission process (steps, $150 fee, 1-2 business day review, 2-3 week funding, payroll repayment, primary residence paperwork) without requiring the participant's loan purpose, requested amount, payroll frequency, or start date; only block when the participant is asking to actually fill in or submit a specific request and these details are not yet provided."
             ],
             "not_allowed_conclusions": [
                 "Do not guarantee the participant can borrow the exact maximum shown without noting that market fluctuations may affect the amount.",

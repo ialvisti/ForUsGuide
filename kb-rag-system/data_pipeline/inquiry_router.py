@@ -43,6 +43,13 @@ CONFIDENCE_FALLBACK_THRESHOLD = 0.55
 
 VALID_ROUTES = frozenset({"knowledge_question", "generate_response", "needs_more_info"})
 
+# Fallback message used when the classifier coerces a route to needs_more_info
+# (low confidence, malformed JSON, missing user_message) and we need *something*
+# the caller can send to the participant verbatim.
+_DEFAULT_USER_MESSAGE = (
+    "Could you share a bit more detail about what you'd like help with?"
+)
+
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -57,6 +64,7 @@ class ClassificationResult:
     signals: Dict[str, Any]
     fast_path_hit: bool
     metadata: Dict[str, Any] = field(default_factory=dict)
+    user_message: Optional[str] = None
 
 
 @dataclass
@@ -98,6 +106,15 @@ _ELIGIBILITY_VERB_RE = re.compile(
     re.IGNORECASE,
 )
 
+# Procedural HOW phrases ("how can I", "how do I", "how to", "how would I")
+# look like eligibility intent because they contain "can i" / "do i", but they
+# are really asking for KB-procedural steps. Detect these so the fast-path
+# defers to the LLM instead of routing to generate_response.
+_PROCEDURAL_HOW_RE = re.compile(
+    r"\bhow\s+(?:can|do|would|should)\s+i\b|\bhow\s+to\b",
+    re.IGNORECASE,
+)
+
 
 def _is_short_interrogative(inquiry: str) -> bool:
     text = (inquiry or "").strip()
@@ -116,16 +133,12 @@ def _has_eligibility_verb(inquiry: str) -> bool:
     return bool(_ELIGIBILITY_VERB_RE.search(inquiry or ""))
 
 
-def compute_deterministic_features(
-    inquiry: str,
-    topic: Optional[str],
-    collected_data: Optional[Dict[str, Any]],
-) -> Dict[str, Any]:
+def compute_deterministic_features(inquiry: str) -> Dict[str, Any]:
     """Combine the engine's advisory signals with classifier-only predicates."""
     base = detect_advisory_concepts(
         inquiry=inquiry,
-        topic=topic,
-        collected_data=collected_data,
+        topic=None,
+        collected_data=None,
     )
     extras = {
         "word_count": len((inquiry or "").split()),
@@ -165,10 +178,16 @@ def apply_fast_path_rules(
         )
 
     # Strong eligibility intent paired with a hardship/loan/separation signal.
-    if signals.get("has_eligibility_verb") and (
-        signals.get("hardship_signal")
-        or signals.get("loan_signal")
-        or signals.get("separation_signal")
+    # Skip when the inquiry is a procedural HOW question — "how can I rollover…"
+    # contains "can I" but is asking for KB-procedural steps, not eligibility.
+    if (
+        signals.get("has_eligibility_verb")
+        and not _PROCEDURAL_HOW_RE.search(inquiry or "")
+        and (
+            signals.get("hardship_signal")
+            or signals.get("loan_signal")
+            or signals.get("separation_signal")
+        )
     ):
         return FastPathDecision(
             route="generate_response",
@@ -193,6 +212,7 @@ def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
             "route": "needs_more_info",
             "confidence": 0.0,
             "reasoning": "Classifier output unparseable",
+            "user_message": None,
         }
 
     try:
@@ -207,6 +227,7 @@ def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
             "route": "needs_more_info",
             "confidence": 0.0,
             "reasoning": "Classifier output unparseable",
+            "user_message": None,
         }
 
     if not isinstance(parsed, dict):
@@ -215,6 +236,7 @@ def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
             "route": "needs_more_info",
             "confidence": 0.0,
             "reasoning": "Classifier output unparseable",
+            "user_message": None,
         }
 
     route = parsed.get("route")
@@ -229,6 +251,22 @@ def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
     return parsed
 
 
+def _resolve_user_message(route: str, raw: Any) -> Optional[str]:
+    """Normalize the classifier's ``user_message`` to the contract.
+
+    - Always ``None`` for non-``needs_more_info`` routes (defensive).
+    - Non-empty string for ``needs_more_info``; falls back to the default if
+      the LLM omitted it or returned blank/whitespace.
+    """
+    if route != "needs_more_info":
+        return None
+    if isinstance(raw, str):
+        text = raw.strip()
+        if text:
+            return text
+    return _DEFAULT_USER_MESSAGE
+
+
 # ---------------------------------------------------------------------------
 # Engine
 # ---------------------------------------------------------------------------
@@ -237,23 +275,18 @@ def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
 class InquiryRouterEngine:
     """Hybrid (deterministic + LLM) classifier for inbound inquiries."""
 
-    LLM_MAX_TOKENS = 500
+    LLM_MAX_TOKENS = 800
 
     def __init__(self, llm_router: LLMRouter):
         self._llm = llm_router
 
-    async def classify(
-        self,
-        inquiry: str,
-        record_keeper: Optional[str] = None,
-        plan_type: Optional[str] = None,
-        topic: Optional[str] = None,
-        collected_data: Optional[Dict[str, Any]] = None,
-    ) -> ClassificationResult:
-        signals = compute_deterministic_features(inquiry, topic, collected_data)
+    async def classify(self, inquiry: str) -> ClassificationResult:
+        signals = compute_deterministic_features(inquiry)
 
         fast = apply_fast_path_rules(inquiry, signals)
         if fast is not None:
+            # Fast paths only return knowledge_question / generate_response,
+            # never needs_more_info, so user_message stays None.
             return ClassificationResult(
                 route=fast.route,
                 confidence=fast.confidence,
@@ -265,14 +298,11 @@ class InquiryRouterEngine:
                     "provider": None,
                     "latency_ms": fast.latency_ms,
                 },
+                user_message=None,
             )
 
         system_prompt, user_prompt = build_classify_inquiry_prompt(
             inquiry=inquiry,
-            record_keeper=record_keeper,
-            plan_type=plan_type,
-            topic=topic,
-            participant_data_available=bool(collected_data),
             signals=signals,
         )
 
@@ -300,6 +330,8 @@ class InquiryRouterEngine:
             )
             route = "needs_more_info"
 
+        user_message = _resolve_user_message(route, parsed.get("user_message"))
+
         return ClassificationResult(
             route=route,
             confidence=confidence,
@@ -312,4 +344,5 @@ class InquiryRouterEngine:
                 "usage": llm_result.usage,
                 "latency_ms": llm_latency_ms,
             },
+            user_message=user_message,
         )

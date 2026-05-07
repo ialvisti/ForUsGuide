@@ -376,9 +376,10 @@
                         "1959-12-31",
                         "1960-07-01"
                     ],
-                    "why_needed": "Determines whether the participant has reached the applicable RMD age and which age threshold applies (73 or 75 based on birth year), informing first RMD timing guidance.",
+                    "why_needed": "Required to determine whether THIS participant must take an RMD this year and which age threshold applies. Does not block general explanation of RMD age rules (73 / 75) and timing.",
                     "source_note": "Supported by article section: Age Requirement",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Participant employment status with the sponsoring employer",
@@ -389,9 +390,10 @@
                         "Deceased",
                         "Ineligible"
                     ],
-                    "why_needed": "Employment status is part of determining whether RMDs from a current employer plan may be deferred if the plan permits.",
+                    "why_needed": "Used to confirm whether THIS participant qualifies for the still-working exception. Does not block general explanation of the still-working exception.",
                     "source_note": "Supported by article section: Still-Working Exception",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Whether the participant owns 5% or more of the sponsoring business (including family-attributed ownership)",
@@ -399,9 +401,10 @@
                     "example_values": [
                         "Participant owns less than 5% of the business"
                     ],
-                    "why_needed": "If the participant owns 5% or more, the still-working exception does not apply.",
+                    "why_needed": "Required only when confirming whether THIS participant qualifies for the still-working exception. Does not block general explanation of the 5% ownership rule.",
                     "source_note": "Supported by article section: Ownership Exception",
-                    "source_type": "agent_input"
+                    "source_type": "agent_input",
+                    "blocking_intent": "eligibility_confirmation"
                 }
             ],
             "nice_to_have": [
@@ -494,7 +497,8 @@
                 "A still-working participant may be able to delay RMDs from a current employer plan only if the plan permits and the participant is not a 5% (or more) owner.",
                 "Roth conversions within a 401(k) reduce the pre-tax balance and can eliminate future RMDs on the converted portion; starting in 2024, Roth funds are exempt from RMDs during the account owner's lifetime.",
                 "RMD amounts for a given year cannot be converted to Roth; the RMD must be taken separately and first.",
-                "Converted funds must be held for at least 5 years to qualify for tax-free Roth withdrawals."
+                "Converted funds must be held for at least 5 years to qualify for tax-free Roth withdrawals.",
+                "Provide general guidance about RMD rules (age thresholds 73/75, deadlines, penalties, still-working exception, Roth treatment, conversion impact) without requiring confirmation of the participant's birth date, employment status, or 5% ownership; only block when the participant is asking whether they personally must take an RMD this year and the eligibility data is unconfirmed."
             ],
             "not_allowed_conclusions": [
                 "Do not guarantee that a participant can defer RMDs while still working without confirming the plan permits the still-working exception.",
@@ -543,7 +547,7 @@
                 "questions_to_ask": [
                     "What is your age?",
                     "Are you still actively employed by the employer sponsoring this plan?",
-                    "Do you own 5% or more of the business sponsoring the plan (including any family-attributed ownership such as shares held by a spouse, child, or parent)?"
+                    "Are you a 5% (or more) owner of the sponsoring business (including family-attributed ownership)?"
                 ],
                 "what_not_to_say": [
                     "Do not confirm that the still-working exception applies without confirming that the plan permits it."

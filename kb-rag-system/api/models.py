@@ -6,8 +6,8 @@ Define la estructura de datos para los endpoints:
 - /api/v1/generate-response
 """
 
-from typing import List, Dict, Any, Optional
-from pydantic import BaseModel, Field, field_validator
+from typing import List, Dict, Any, Optional, Literal
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import Enum
 
 
@@ -545,31 +545,22 @@ class RouteDecision(str, Enum):
 class RouteInquiryRequest(BaseModel):
     """Request para el endpoint /route-inquiry."""
 
+    model_config = ConfigDict(extra="forbid")
+
     inquiry: str = Field(
         ...,
         min_length=10,
         max_length=1000,
         description="La consulta del participante",
     )
-    record_keeper: Optional[str] = Field(
+    router_mode: Optional[Literal["disabled", "shadow", "knowledge_only", "full"]] = Field(
         default=None,
-        description="Record keeper (ej: 'LT Trust', 'Vanguard')",
-    )
-    plan_type: Optional[str] = Field(
-        default=None,
-        description="Tipo de plan (401(k), 403(b), 457)",
-    )
-    topic: Optional[str] = Field(
-        default=None,
-        description="Topic hint (loan, hardship, rollover, etc.)",
-    )
-    collected_data: Optional[Dict[str, Any]] = Field(
-        default=None,
-        description="Datos del participante ya recolectados (si los hay)",
-    )
-    delegate: bool = Field(
-        default=False,
-        description="Si true, también invoca el endpoint downstream elegido",
+        description=(
+            "Override per-request del rollout flag global. "
+            "disabled→503; shadow→clasifica pero coerce a needs_more_info; "
+            "knowledge_only→coerce generate_response a needs_more_info; "
+            "full→todas las rutas honradas. Si es None usa settings.ROUTER_MODE."
+        ),
     )
 
     @field_validator('inquiry')
@@ -578,21 +569,6 @@ class RouteInquiryRequest(BaseModel):
         if not v.strip():
             raise ValueError("Inquiry cannot be empty")
         return v.strip()
-
-    @field_validator('record_keeper')
-    @classmethod
-    def validate_record_keeper(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return None
-        v = v.strip()
-        return v if v else None
-
-    @field_validator('topic')
-    @classmethod
-    def validate_topic(cls, v: Optional[str]) -> Optional[str]:
-        if v is None:
-            return None
-        return v.lower().strip() or None
 
 
 class RouteInquiryResponse(BaseModel):
@@ -611,10 +587,17 @@ class RouteInquiryResponse(BaseModel):
     )
     suggested_payload: Dict[str, Any] = Field(
         ...,
-        description="Body listo-para-enviar del endpoint downstream",
+        description=(
+            "Template del body para invocar el endpoint downstream. "
+            "Para route='generate_response' los campos record_keeper/plan_type/topic/"
+            "collected_data vienen como placeholders null y deben ser rellenados por el caller."
+        ),
     )
-    delegated_result: Optional[Dict[str, Any]] = Field(
+    user_message: Optional[str] = Field(
         default=None,
-        description="Resultado del downstream cuando delegate=True",
+        description=(
+            "Mensaje listo-para-enviar al participante en su mismo idioma. "
+            "Solo populado cuando route == 'needs_more_info'; en otras rutas es None."
+        ),
     )
     metadata: Dict[str, Any] = Field(..., description="Metadata del procesamiento")

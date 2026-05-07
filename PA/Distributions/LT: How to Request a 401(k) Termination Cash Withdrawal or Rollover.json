@@ -791,9 +791,10 @@
             "2026-01-09",
             null
           ],
-          "why_needed": "To verify eligibility for distribution, without a termination date, the participant cannot proceed with the request.",
+          "why_needed": "To verify individual eligibility for distribution. Required to actually proceed with the request; does not block general explanation of the LT Trust termination distribution process.",
           "source_note": "Supported by article section: Prerequisites",
-          "source_type": "participant_profile"
+          "source_type": "participant_profile",
+          "blocking_intent": "eligibility_confirmation"
         },
         {
           "data_point": "Rehire date",
@@ -803,9 +804,10 @@
             "2026-01-09",
             null
           ],
-          "why_needed": "To verify eligibility for distribution, to be eligible, rehire date must be before to the termination date.",
+          "why_needed": "To verify individual eligibility (rehire date must be before the termination date). Does not block general guidance.",
           "source_note": "Supported by article section: Prerequisites",
-          "source_type": "participant_profile"
+          "source_type": "participant_profile",
+          "blocking_intent": "eligibility_confirmation"
         },
         {
           "data_point": "MFA status",
@@ -814,12 +816,13 @@
             "enrolled",
             "not enrolled"
           ],
-          "why_needed": "To verify access to the participant portal, without a MFA enrollment, the participant cannot proceed with the request since they cannot log in to the portal.",
+          "why_needed": "Required only to use the online portal path. If MFA is not enrolled, the participant can still proceed via the RightSignature electronic form path. Does not block general guidance.",
           "source_note": "Supported by article section: Prerequisites",
-          "source_type": "participant_profile"
+          "source_type": "participant_profile",
+          "blocking_intent": "execution_only"
         },
         {
-          "data_point": "Account Balance",
+          "data_point": "Account Total Vested Balance",
           "meaning": "The total amount of money in the participant's 401(k) account that they own outright and can withdraw or roll over upon termination of employment.",
           "example_values": [
             10000.0,
@@ -832,9 +835,10 @@
             74.99,
             null
           ],
-          "why_needed": "To verify eligibility for distribution, the account Total Vested Balance must be greater than 75.00 for a normal distribution. If the account Total Vested Balance is less than or equal to 75.00, the fee-out process applies and no funds may be distributed to the participant.",
+          "why_needed": "To verify individual eligibility. The Total Vested Balance must be greater than 75.00 for a normal distribution; less than or equal to 75.00 triggers the fee-out process. Does not block general explanation of these thresholds.",
           "source_note": "Supported by article section: Prerequisites",
-          "source_type": "participant_profile"
+          "source_type": "participant_profile",
+          "blocking_intent": "eligibility_confirmation"
         },
         {
           "data_point": "Last Payroll date",
@@ -844,9 +848,10 @@
             "2026-01-09",
             null
           ],
-          "why_needed": "Used to confirm there are no pending contributions; the participant should wait at least 7 business days after their final paycheck before submitting the request. Submitting early could result in missing funds and trigger the need for a second distribution request (and a second withdrawal fee).",
+          "why_needed": "Used only to confirm there are no pending contributions before actually submitting; the participant should wait at least 7 business days after their final paycheck. Does not block general explanation of timing risk.",
           "source_note": "Supported by article section: Prerequisites, Step 5, Step 6, and Common Issues",
-          "source_type": "agent_input"
+          "source_type": "agent_input",
+          "blocking_intent": "execution_only"
         },
         {
           "data_point": "Participant's name",
@@ -856,9 +861,10 @@
             "Jane Doe",
             "Oscar Santiago Garcia "
           ],
-          "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+          "why_needed": "Required to confirm we found a matching user in our system before confirming individual eligibility.",
           "source_note": "Supported by article section: Prerequisites",
-          "source_type": "participant_profile"
+          "source_type": "participant_profile",
+          "blocking_intent": "eligibility_confirmation"
         },
         {
           "data_point": "Participant Status",
@@ -870,12 +876,11 @@
             "Deceased",
             "Unknown"
           ],
-          "why_needed": "Required to confirm that the participant has already left their employer in order to request a distribution.",
+          "why_needed": "Required to confirm the participant has left their employer for individual eligibility. Does not block general guidance.",
           "source_note": "Supported by article section: Prerequisites",
-          "source_type": "participant_profile"
-        }
-      ],
-      "nice_to_have": [
+          "source_type": "participant_profile",
+          "blocking_intent": "eligibility_confirmation"
+        },
         {
           "data_point": "Type of distribution requested",
           "meaning": "The type of distribution requested by the participant.",
@@ -885,9 +890,10 @@
             "Partial Rollover + Partial Cash",
             null
           ],
-          "why_needed": "Determines the type of distribution requested by the participant.",
+          "why_needed": "Required to walk the participant through the correct portal/RightSignature steps for their chosen option. Does not block general explanation of cash, rollover, and split options.",
           "source_note": "Supported by article section: Prerequisites and Step 5",
-          "source_type": "message_text"
+          "source_type": "message_text",
+          "blocking_intent": "execution_only"
         },
         {
           "data_point": "Verification of the receiving financial institution's information",
@@ -897,9 +903,10 @@
             "Vanguard",
             "Charles Schwab"
           ],
-          "why_needed": "This determines the correct receiving institution information for the rollover and helps ensure wire or check details are accurate.",
+          "why_needed": "Required only to actually configure a rollover. Does not block general explanation of how rollovers work.",
           "source_note": "Supported by article section: Step 6 and wire_instructions",
-          "source_type": "message_text"
+          "source_type": "message_text",
+          "blocking_intent": "execution_only"
         },
         {
           "data_point": "Rollover destination type",
@@ -910,11 +917,13 @@
             "Roth IRA",
             "Roth Qualified Plan"
           ],
-          "why_needed": "Determines the destination selection and enforces the rule that traditional and Roth funds must roll into matching account types.",
+          "why_needed": "Required only to actually submit a rollover. Does not block general explanation of the matching-account-type rule.",
           "source_note": "Supported by article section: rollover_payment_method and check_rollover_instructions",
-          "source_type": "message_text"
+          "source_type": "message_text",
+          "blocking_intent": "execution_only"
         }
       ],
+      "nice_to_have": [],
       "if_missing": [
         {
           "missing_data_point": "Termination date",
@@ -950,6 +959,21 @@
           "missing_data_point": "Participant Status",
           "ask_participant": "Are you currently marked as Terminated in your employer's records for the plan?",
           "agent_note": "If the participant status and termination date are not consistent or are not up to date, advise contacting ForUsAll Support to confirm the information."
+        },
+        {
+          "missing_data_point": "Type of distribution requested",
+          "ask_participant": "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?",
+          "agent_note": "Only required to actually walk the participant through submission steps. Without it, still explain the available options at a general level."
+        },
+        {
+          "missing_data_point": "Verification of the receiving financial institution's information",
+          "ask_participant": "If you are rolling over funds, what is the receiving institution and, if applicable, your IRA or account number?",
+          "agent_note": "Only required to actually configure a rollover submission."
+        },
+        {
+          "missing_data_point": "Rollover destination type",
+          "ask_participant": "What kind of account are you rolling into: an IRA, a Qualified Plan, a Roth IRA, or a Roth Qualified Plan?",
+          "agent_note": "Only required to actually submit a rollover. Without it, still explain that traditional and Roth funds must roll into matching account types."
         }
       ],
       "disambiguation_notes": [
@@ -1018,6 +1042,24 @@
           "missing_data_point": "Termination date",
           "resulting_outcome": "blocked_missing_data",
           "ask_participant": "What was your last day of employment?"
+        },
+        {
+          "condition": "The participant explicitly wants to actually submit a request and has not stated which type of distribution they want (cash, rollover, or split).",
+          "missing_data_point": "Type of distribution requested",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?"
+        },
+        {
+          "condition": "The participant explicitly wants to submit a rollover and has not provided the receiving institution's information.",
+          "missing_data_point": "Verification of the receiving financial institution's information",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "If you are rolling over funds, what is the receiving institution and, if applicable, your IRA or account number?"
+        },
+        {
+          "condition": "The participant explicitly wants to submit a rollover and has not specified the destination type (IRA, Qualified Plan, Roth IRA, Roth Qualified Plan).",
+          "missing_data_point": "Rollover destination type",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "What kind of account are you rolling into: an IRA, a Qualified Plan, a Roth IRA, or a Roth Qualified Plan?"
         }
       ],
       "allowed_conclusions": [
@@ -1027,7 +1069,8 @@
         "If a rehire date is present and it's after the termination date, the participant is not eligible for a distribution.",
         "If the participant is eligible for a distribution, they can request a rollover or a cash distribution or a partial rollover or partial cash withdrawal.",
         "The participant can complete the rollover online by following the steps in this article.",
-        "A $75 processing fee applies to all distribution requests. To confirm the correct distribution process, verify termination status Terminated, termination date on file, and current Total Vested Balance amount before confirming which process applies."
+        "A $75 processing fee applies to all distribution requests. To confirm the correct distribution process, verify termination status Terminated, termination date on file, and current Total Vested Balance amount before confirming which process applies.",
+        "Provide general guidance about the LT Trust termination distribution process (eligibility prerequisites, fee-out vs normal, online portal vs RightSignature paths, lump sum / rollover / partial options, processing timelines and fees) without requiring confirmation of the participant's name, status, termination/rehire date, MFA enrollment, vested balance, last payroll date, or chosen distribution type; only block when the participant is asking to actually submit a specific request and a true blocker is unconfirmed."
       ],
       "not_allowed_conclusions": [
         "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant. If information is not provided by the participant or if not available in our system, we cannot confirm eligibility and contact support will be needed.",
@@ -1089,11 +1132,11 @@
           "Wire instructions must be exact and the wire fee is non-refundable."
         ],
         "questions_to_ask": [
+          "Please provide your full name, the email address associated with your account, and the name of your company.",
+          "What was your last day of employment?",
           "Do you want a lump sum cash distribution, a full rollover, or a partial rollover plus partial cash?",
-          "What is at least one email address you want to use for confirmation updates?",
-          "What is your current mailing address for check delivery and contact?",
           "If you are rolling over funds, what is the receiving institution and, if applicable, your IRA or account number?",
-          "If you want delivery by wire, what are the receiving bank name, routing or ABA number, account number, and the exact account name required by the bank?"
+          "What kind of account are you rolling into: an IRA, a Qualified Plan, a Roth IRA, or a Roth Qualified Plan?"
         ],
         "what_not_to_say": [
           "Do not confirm the request can be completed without the missing delivery details.",

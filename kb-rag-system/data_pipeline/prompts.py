@@ -754,40 +754,62 @@ SYSTEM_PROMPT_CLASSIFY_INQUIRY = """You are an inquiry router for a 401(k) parti
 Decide which downstream pipeline should handle the inquiry.
 
 ROUTES:
-- "knowledge_question": factual/educational questions answerable from the knowledge base alone
-  (timeframes, fees, limits, rule definitions). NO participant-specific eligibility needed.
+- "knowledge_question": factual/educational/procedural questions answerable from the knowledge
+  base alone (timeframes, fees, limits, rule definitions, "how do I..." procedural steps). NO
+  participant-specific eligibility evaluation needed.
 - "generate_response": participant-specific eligibility/outcome questions that need collected
-  participant data (hardship qualification, vested-balance, can-I-take-a-loan).
-- "needs_more_info": route is ambiguous; topic, recordkeeper, or eligibility intent is unclear.
-  This is the safe fallback.
+  participant data (hardship qualification, vested-balance, can-I-take-a-loan, am-I-eligible).
+- "needs_more_info": the topic itself is unclear (not which sub-flavor of a known topic).
+  Use only when you cannot identify what the participant is asking about. This is the safe
+  fallback. Do NOT pick this just because a sub-distinction (direct vs indirect, IRA vs plan)
+  is unspecified — those refinements live downstream.
+
+GLOSSARY:
+- "incoming rollover": the participant wants to move money INTO the ForUsAll-administered plan
+  from an outside account (a previous employer's 401(k), an IRA, etc.). The participant is
+  typically a current active participant of the FUA plan. Procedural HOW questions about this
+  belong to "knowledge_question".
+- "outgoing rollover": the participant wants to move their FUA balance OUT (to an IRA or to a
+  new employer's plan), usually after separation. WHETHER-questions ("am I eligible", "can I")
+  about this belong to "generate_response"; HOW-procedural questions belong to "knowledge_question".
 
 You will receive deterministic signals computed before this call. Treat them as strong hints:
 - hardship_signal=true AND active_participant=true -> generate_response
-- separation_signal=true AND wants_funds=true -> generate_response
+- separation_signal=true AND wants_funds=true AND has_eligibility_verb=true -> generate_response
 - short interrogative ("how many", "how long", "what is") with no participant signals -> knowledge_question
+- procedural HOW question (e.g. "how can I", "how do I") about a known KB topic -> knowledge_question
+  (KB articles cover the procedure even when the participant happens to be separated)
 
 EXAMPLES:
 - "how many business days til I can see it get approved" -> knowledge_question
 - "what's the fee for a rollover from LT Trust?" -> knowledge_question
 - "what is the 60-day rollover rule?" -> knowledge_question
 - "what are the contribution limits for 2025?" -> knowledge_question
-- "can my plan offer Roth contributions?" -> needs_more_info
 - "what's the difference between a direct and indirect rollover?" -> knowledge_question
+- "I want to rollover a 401k from a previous employer, how can I do that?" -> knowledge_question
+- "How do I initiate an incoming rollover into my ForUsAll plan?" -> knowledge_question
 - "I'm still working but need $15k for medical bills, can I take a hardship?" -> generate_response
-- "I left my employer 3 months ago and want to roll over my balance" -> generate_response
+- "Am I eligible to roll over my balance into my new employer's plan?" -> generate_response
+- "I left my employer 3 months ago, can I take a distribution from my 401(k)?" -> generate_response
 - "I'm 58 with a hardship withdrawal request for tuition and I have an outstanding loan" -> generate_response
-- "I was terminated last month, can I take a distribution from my 401(k)?" -> generate_response
+- "I have a question about my plan, thanks" -> needs_more_info
+- "can my plan offer Roth contributions?" -> needs_more_info
 
-Output valid JSON:
+Output valid JSON with EXACTLY these keys:
 {"route": "knowledge_question|generate_response|needs_more_info",
  "confidence": 0.0-1.0,
- "reasoning": "one sentence"}"""
+ "reasoning": "one sentence",
+ "user_message": "..." or null}
+
+The "user_message" field MUST be:
+- A non-empty string ONLY when route == "needs_more_info". In every other route it MUST be null.
+- Written in the SAME LANGUAGE as the inquiry (English in -> English out; Spanish in -> Spanish out).
+- First-person, friendly, plain participant-facing wording, no internal jargon (no "topic",
+  "record keeper", "eligibility").
+- At most 2 sentences, ending with a concrete question naming the specific missing detail.
+- Do not include the participant's name or sign-offs."""
 
 USER_PROMPT_CLASSIFY_INQUIRY_TEMPLATE = """INQUIRY: {inquiry}
-RECORDKEEPER: {record_keeper}
-PLAN_TYPE: {plan_type}
-TOPIC: {topic}
-PARTICIPANT_DATA_AVAILABLE: {participant_data_available}
 DETERMINISTIC_SIGNALS: {signals_json}
 
 Return ONLY the JSON object."""
@@ -795,10 +817,6 @@ Return ONLY the JSON object."""
 
 def build_classify_inquiry_prompt(
     inquiry: str,
-    record_keeper: Optional[str],
-    plan_type: Optional[str],
-    topic: Optional[str],
-    participant_data_available: bool,
     signals: Dict[str, Any],
 ) -> Tuple[str, str]:
     """
@@ -809,10 +827,6 @@ def build_classify_inquiry_prompt(
     """
     user_prompt = USER_PROMPT_CLASSIFY_INQUIRY_TEMPLATE.format(
         inquiry=inquiry,
-        record_keeper=record_keeper or "unknown",
-        plan_type=plan_type or "unknown",
-        topic=topic or "unknown",
-        participant_data_available=participant_data_available,
         signals_json=json.dumps(signals, sort_keys=True),
     )
     return SYSTEM_PROMPT_CLASSIFY_INQUIRY, user_prompt

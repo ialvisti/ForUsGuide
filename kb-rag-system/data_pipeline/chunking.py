@@ -175,14 +175,22 @@ class KBChunker:
         must_have = required_data.get("must_have", [])
         if must_have:
             content = self._format_required_data_must_have(must_have)
-            chunks.append(self._create_chunk(
+            blocking_intents = [
+                f"{field.get('data_point')}|{field.get('blocking_intent', 'always')}"
+                for field in must_have
+                if field.get('data_point')
+            ]
+            chunk = self._create_chunk(
                 content=content,
                 base_metadata=base_metadata,
                 chunk_type="required_data_must_have",
                 chunk_category="portal_data_extraction",
                 tier="critical",
                 topics=["data_requirements", "must_have", "portal_data"]
-            ))
+            )
+            if blocking_intents:
+                chunk["metadata"]["must_have_blocking_intents"] = blocking_intents
+            chunks.append(chunk)
         
         # Chunk: Nice to Have fields (MEDIUM - used by /generate-response endpoint)
         # These are optional data points derived from the conversation message text.
@@ -271,6 +279,8 @@ class KBChunker:
             lines.append(f"**Description:** {field.get('meaning')}")
             lines.append(f"**Why needed:** {field.get('why_needed')}")
             lines.append(f"**Source:** {field.get('source_type', 'participant_data')}")
+            blocking_intent = field.get('blocking_intent', 'always')
+            lines.append(f"**Blocking intent:** {blocking_intent}")
             if field.get('example_values'):
                 examples = field['example_values']
                 if isinstance(examples, list):

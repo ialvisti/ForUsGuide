@@ -261,6 +261,11 @@ def detect_advisory_concepts(
         "need money",
         "money from",
         "distribution",
+        "rollover",
+        "roll over",
+        "rolling over",
+        "rolled over",
+        "transfer",
     ])
     separation_signal = _contains_any(text, [
         "separation",
@@ -281,7 +286,13 @@ def detect_advisory_concepts(
         "no longer employed",
         "former employer",
         "prior employer",
+        "previous employer",
+        "old employer",
         "former employee",
+        "previous company",
+        "old company",
+        "previous job",
+        "old job",
         "recently left",
         "termination",
         "terminated",
@@ -993,6 +1004,7 @@ class RAGEngine:
                 parsed=parsed,
                 retrieval_profile=retrieval_profile,
                 collected_data=collected_data,
+                selected_chunks=selected_chunks,
             )
 
             coverage_gaps = parsed.get("coverage_gaps", [])
@@ -2153,18 +2165,192 @@ class RAGEngine:
             "vested_balance": balance,
         }
 
+    # Allowed values for the `blocking_intent` field on each must_have item.
+    # See PA/article_guide_for_LLM.md (section 3.3.12) for full semantics.
+    _VALID_BLOCKING_INTENTS = frozenset({
+        "always",
+        "execution_only",
+        "personalization_only",
+        "eligibility_confirmation",
+    })
+    # blocking_intent values that, when missing, should NOT block an
+    # informational answer. `eligibility_confirmation` is intentionally kept
+    # OUT of this set because it does block personalized eligibility claims;
+    # it only stops blocking when no eligibility claim is being made (the
+    # `core_eligibility_supported` core_status path takes care of that case
+    # for terminations).
+    _RESCUABLE_BLOCKING_INTENTS = frozenset({
+        "execution_only",
+        "personalization_only",
+    })
+
+    def _extract_must_have_blocking_intents(
+        self,
+        selected_chunks: Optional[List[Dict[str, Any]]],
+    ) -> Dict[str, str]:
+        """Return a mapping of must_have data_point -> blocking_intent.
+
+        Reads the canonical `must_have_blocking_intents` metadata field
+        (a list of "data_point|blocking_intent" strings) added by the
+        chunker. Falls back to the legacy default of `always` for any
+        item whose blocking_intent is missing or not recognized.
+        """
+        intents: Dict[str, str] = {}
+        for chunk in selected_chunks or []:
+            metadata = chunk.get("metadata") or {}
+            if metadata.get("chunk_type") != "required_data_must_have":
+                continue
+            entries = metadata.get("must_have_blocking_intents") or []
+            if not isinstance(entries, list):
+                continue
+            for entry in entries:
+                if not isinstance(entry, str) or "|" not in entry:
+                    continue
+                data_point, _, intent = entry.partition("|")
+                data_point = data_point.strip()
+                intent = intent.strip().lower()
+                if not data_point:
+                    continue
+                if intent not in self._VALID_BLOCKING_INTENTS:
+                    intent = "always"
+                # Don't overwrite a stricter intent already recorded for the
+                # same data_point (e.g. if two articles surface the same
+                # field with different intents, prefer the strictest).
+                existing = intents.get(data_point)
+                if existing == "always":
+                    continue
+                if existing and intent in self._RESCUABLE_BLOCKING_INTENTS and existing not in self._RESCUABLE_BLOCKING_INTENTS:
+                    continue
+                intents[data_point] = intent
+        return intents
+
+    # Common low-information tokens that should not, on their own, count
+    # as evidence that two data-point labels refer to the same field.
+    _MATCH_STOPWORDS = frozenset({
+        "a", "an", "and", "the", "of", "for", "is", "are", "was", "were",
+        "to", "in", "on", "by", "or", "your", "you", "i", "me", "my",
+        "this", "that", "what", "when", "where", "which", "how", "do",
+        "does", "did", "with", "from", "into", "as", "if", "be", "been",
+        "have", "has", "had", "any", "some",
+        # KB-specific noise tokens that recur across many data_points
+        "participant", "participants", "data", "value", "values",
+        "field", "fields", "information", "info",
+    })
+
+    @staticmethod
+    def _normalize_text_for_match(value: Any) -> str:
+        text = str(value or "").lower()
+        return re.sub(r"[^a-z0-9]+", " ", text).strip()
+
+    @classmethod
+    def _meaningful_tokens(cls, normalized: str) -> set:
+        return {
+            tok for tok in normalized.split()
+            if len(tok) >= 3 and tok not in cls._MATCH_STOPWORDS
+        }
+
+    def _resolve_missing_intent(
+        self,
+        missing_label: str,
+        intents_by_data_point: Dict[str, str],
+    ) -> str:
+        """Map a missing-data label (free text from the LLM or schema) to a
+        blocking_intent value by best-effort matching against the names of
+        must_have items surfaced from chunks. Defaults to `always` when no
+        confident match is found, preserving the prior blocking behaviour.
+
+        Matching strategy (most specific first):
+
+        1. Substring / containment after lowercasing and stripping punctuation.
+        2. Jaccard similarity over meaningful (non-stopword, len>=3) tokens
+           must be >= 0.34 AND share at least one meaningful token.
+        3. Fallback: if a single rare data-point token (len>=4 and not a
+           stopword) appears in the missing label and the data_point has
+           only 1-2 meaningful tokens, accept the match.
+        """
+        if not missing_label:
+            return "always"
+        target = self._normalize_text_for_match(missing_label)
+        if not target:
+            return "always"
+        target_tokens = self._meaningful_tokens(target)
+        best_intent = None
+        best_score = 0.0
+        for data_point, intent in intents_by_data_point.items():
+            normalized_dp = self._normalize_text_for_match(data_point)
+            if not normalized_dp:
+                continue
+            # 1. Containment (strong signal).
+            if (
+                normalized_dp == target
+                or normalized_dp in target
+                or target in normalized_dp
+            ):
+                return intent
+            dp_tokens = self._meaningful_tokens(normalized_dp)
+            if not dp_tokens or not target_tokens:
+                continue
+            shared = dp_tokens & target_tokens
+            if not shared:
+                continue
+            # 2. Jaccard over meaningful tokens.
+            union = dp_tokens | target_tokens
+            jaccard = len(shared) / len(union)
+            if jaccard >= 0.34 and jaccard > best_score:
+                best_score = jaccard
+                best_intent = intent
+                continue
+            # 3. Single rare-token fallback for short data_points.
+            if len(dp_tokens) <= 2 and any(len(t) >= 4 for t in shared):
+                # Treat as a softer match; only adopt if nothing stronger found.
+                if best_intent is None:
+                    best_intent = intent
+        return best_intent or "always"
+
     def _apply_informational_outcome_policy(
         self,
         parsed: Dict[str, Any],
         retrieval_profile: Dict[str, Any],
         collected_data: Optional[Dict[str, Any]],
+        selected_chunks: Optional[List[Dict[str, Any]]] = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        missing_classes = self._classify_missing_data(
-            self._extract_missing_data_mentions(parsed)
-        )
+        """Optionally rescue a `blocked_missing_data` outcome to `can_proceed`
+        when the inquiry is informational AND every missing must_have item is
+        execution_only / personalization_only (per `blocking_intent`).
+
+        Two parallel rescue paths are supported:
+
+        1. `blocking_intent` path (generic): inspect must_have chunks for
+           the new `blocking_intent` field and rescue when no missing item
+           has `blocking_intent in {always, eligibility_confirmation}`.
+        2. Legacy LT-termination path: kept for backwards compatibility
+           on retrieval profiles where `blocking_intent` data is not yet
+           available (e.g. articles not yet re-ingested into Pinecone).
+        """
+        missing_mentions = self._extract_missing_data_mentions(parsed)
+        missing_classes = self._classify_missing_data(missing_mentions)
         core_status = self._termination_distribution_core_eligibility_status(
             collected_data
         )
+        intents_by_data_point = self._extract_must_have_blocking_intents(selected_chunks)
+        missing_intents: List[Dict[str, str]] = []
+        for mention in missing_mentions:
+            label = ""
+            if isinstance(mention, dict):
+                label = (
+                    mention.get("question")
+                    or mention.get("field")
+                    or mention.get("description")
+                    or ""
+                )
+            else:
+                label = str(mention or "")
+            label = label.strip()
+            if not label:
+                continue
+            intent = self._resolve_missing_intent(label, intents_by_data_point)
+            missing_intents.append({"label": label, "blocking_intent": intent})
+
         policy_info = {
             "normalized": False,
             "reason": None,
@@ -2173,12 +2359,66 @@ class RAGEngine:
             "core_eligibility_supported": core_status["supported"],
             "core_eligibility_status": core_status,
             "missing_data_classes": missing_classes,
+            "must_have_blocking_intents": intents_by_data_point,
+            "missing_data_blocking_intents": missing_intents,
+            "blocking_intent_overrides": [],
+            "rescue_path": None,
         }
 
         if parsed.get("outcome") != "blocked_missing_data":
             return parsed, policy_info
         if (retrieval_profile or {}).get("inquiry_intent") != "informational_options":
             return parsed, policy_info
+
+        # ---------------- Rescue path 1: blocking_intent generic ----------------
+        if intents_by_data_point and missing_intents:
+            hard_blockers = [
+                m for m in missing_intents
+                if m["blocking_intent"] not in self._RESCUABLE_BLOCKING_INTENTS
+            ]
+            if not hard_blockers:
+                # Every missing must_have is execution_only or personalization_only.
+                # Safe to rescue the answer to general/educational guidance.
+                normalized = dict(parsed)
+                normalized["outcome"] = "can_proceed"
+                topic = (retrieval_profile or {}).get("primary_action") or "this topic"
+                normalized["outcome_reason"] = (
+                    f"All missing must_have items for {topic} are tagged "
+                    "blocking_intent=execution_only or personalization_only. "
+                    "Per the schema, the agent can provide general, educational "
+                    "guidance about the article without these data points; only "
+                    "an execution request would require them."
+                )
+                guardrails = list(normalized.get("guardrails_applied") or [])
+                guardrails.append(
+                    "Did not let missing execution_only / personalization_only "
+                    "must_have items override an informational answer."
+                )
+                normalized["guardrails_applied"] = self._dedupe_preserving_order(guardrails)
+                policy_info["normalized"] = True
+                policy_info["reason"] = (
+                    "Informational-options outcome normalized to can_proceed via "
+                    "blocking_intent inspection."
+                )
+                policy_info["rescue_path"] = "blocking_intent"
+                policy_info["blocking_intent_overrides"] = [
+                    m["label"] for m in missing_intents
+                ]
+                return normalized, policy_info
+            # Hard blocker present (always or eligibility_confirmation): keep block.
+            policy_info["reason"] = (
+                "At least one missing must_have item has blocking_intent="
+                + hard_blockers[0]["blocking_intent"]
+                + " (label: " + hard_blockers[0]["label"] + ")."
+            )
+            # Fall through to legacy path so we don't accidentally rescue
+            # eligibility_confirmation cases via the LT-termination heuristic
+            # when blocking_intent metadata is authoritative.
+            return parsed, policy_info
+
+        # ---------------- Rescue path 2: legacy LT-termination ----------------
+        # Preserved for articles whose chunks do not yet expose
+        # `must_have_blocking_intents` metadata.
         if (retrieval_profile or {}).get("primary_action") not in {
             "termination_distribution",
             "termination_rollover",
@@ -2206,6 +2446,7 @@ class RAGEngine:
         normalized["guardrails_applied"] = self._dedupe_preserving_order(guardrails)
         policy_info["normalized"] = True
         policy_info["reason"] = "Informational-options outcome normalized to can_proceed."
+        policy_info["rescue_path"] = "legacy_lt_termination"
         return normalized, policy_info
 
     def _detect_advisory_concepts(

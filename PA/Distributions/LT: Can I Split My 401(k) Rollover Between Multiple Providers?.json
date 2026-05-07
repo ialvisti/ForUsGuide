@@ -713,9 +713,10 @@
                         "2026-01-09",
                         null
                     ],
-                    "why_needed": "To verify eligibility for distribution. Without a termination date, the participant cannot proceed with the request.",
+                    "why_needed": "To verify eligibility for distribution. Used only to confirm the specific participant qualifies; the agent can still explain how a split rollover works in general without it.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Rehire date",
@@ -725,9 +726,10 @@
                         "2026-01-09",
                         null
                     ],
-                    "why_needed": "To verify eligibility for distribution. If a rehire date is present, it must be before the termination date.",
+                    "why_needed": "To verify eligibility for distribution. If a rehire date is present, it must be before the termination date. Used only for participant-specific eligibility; does not block general guidance.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "MFA status",
@@ -736,9 +738,10 @@
                         "enrolled",
                         "not enrolled"
                     ],
-                    "why_needed": "To verify whether the participant can use a workflow that requires online access.",
+                    "why_needed": "Determines whether the online workflow path is available; if not enrolled, the manual RightSignature path is still available. Does not block general guidance; only routes execution.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Account balance",
@@ -749,9 +752,10 @@
                         95.23,
                         null
                     ],
-                    "why_needed": "To verify eligibility for distribution. The account balance must be greater than 75.00.",
+                    "why_needed": "To verify eligibility for distribution. The account balance must be greater than 75.00. Used only for participant-specific eligibility confirmation.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Last Payroll date",
@@ -761,9 +765,10 @@
                         "2026-01-09",
                         null
                     ],
-                    "why_needed": "Needed to verify payroll activity for the termination distribution process when applicable.",
+                    "why_needed": "Needed to verify payroll activity for the termination distribution process when applicable to the specific request.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Participant's name",
@@ -773,9 +778,10 @@
                         "Jane Doe",
                         "Oscar Santiago Garcia "
                     ],
-                    "why_needed": "Required to confirm that we found a user related to the participant in our system.",
+                    "why_needed": "Required to confirm we found a matching user in our system before confirming individual eligibility.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Participant Status",
@@ -787,12 +793,11 @@
                         "Deceased",
                         "Unknown"
                     ],
-                    "why_needed": "Required to confirm that the participant has already left their employer in order to request a distribution.",
+                    "why_needed": "Required to confirm the participant has already left their employer for individual eligibility; does not block general guidance.",
                     "source_note": "Supported by article section: Prerequisites",
-                    "source_type": "participant_profile"
-                }
-            ],
-            "nice_to_have": [
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
+                },
                 {
                     "data_point": "Split instructions",
                     "meaning": "The participant's exact instructions for how the rollover should be divided.",
@@ -804,9 +809,10 @@
                         "I want my Roth balance to be rolled to a Roth IRA and my pre-tax balance to be rolled to a different IRA",
                         "I want $2,500 sent to an Empower IRA by wire and the remaining balance sent to a new employer plan by check"
                     ],
-                    "why_needed": "Needed to process the request correctly and route the rollover as instructed.",
+                    "why_needed": "Needed to actually execute the split rollover. Does not block explaining how a split rollover works in general.",
                     "source_note": "Supported by article section: Let us know exactly how you'd like your rollover to be divided",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Allocation method",
@@ -815,9 +821,10 @@
                         "percentage",
                         "dollar amount"
                     ],
-                    "why_needed": "Needed because the article allows split instructions to be given by percentage or by dollar amount.",
+                    "why_needed": "Needed to execute the split correctly. Does not block explaining that both percentage-based and amount-based splits are allowed.",
                     "source_note": "Supported by article section: you can split each source by percentage or by dollar amount",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Destination for each portion",
@@ -843,9 +850,10 @@
                         "TD Ameritrade",
                         "Merrill Edge"
                     ],
-                    "why_needed": "Needed to route each portion of the rollover to the correct destination.",
+                    "why_needed": "Needed to route each portion to the correct destination on execution. Does not block explaining that multiple destinations are allowed.",
                     "source_note": "Supported by article examples showing multiple destination accounts and providers",
-                    "source_type": "message_text"
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
                 },
                 {
                     "data_point": "Delivery method for each portion",
@@ -855,10 +863,13 @@
                         "OverNight Check",
                         "wire transfer"
                     ],
-                    "why_needed": "Needed because the article examples include delivery methods for each portion.",
+                    "why_needed": "Needed to execute the split. Does not block explaining the available delivery methods (check, overnight check, wire) in general.",
                     "source_note": "Supported by article examples showing check and wire transfer",
-                    "source_type": "message_text"
-                },
+                    "source_type": "message_text",
+                    "blocking_intent": "execution_only"
+                }
+            ],
+            "nice_to_have": [
                 {
                     "data_point": "Preferred support contact method",
                     "meaning": "Whether the participant is contacting support by email or phone.",
@@ -866,7 +877,7 @@
                         "email",
                         "phone"
                     ],
-                    "why_needed": "Helps align communication with one of the contact methods stated in the article.",
+                    "why_needed": "Helps align communication with one of the contact methods stated in the article. Does not block any guidance.",
                     "source_note": "Supported by article section: Contact our support team via email or phone",
                     "source_type": "message_text"
                 }
@@ -906,6 +917,26 @@
                     "missing_data_point": "Participant Status",
                     "ask_participant": "Have you already left your employer?",
                     "agent_note": "If the participant has not left their employer, they cannot proceed with the request."
+                },
+                {
+                    "missing_data_point": "Split instructions",
+                    "ask_participant": "How would you like your rollover to be divided?",
+                    "agent_note": "Only required to execute the split. Without it, still explain how split rollovers work in general."
+                },
+                {
+                    "missing_data_point": "Allocation method",
+                    "ask_participant": "Should the rollover be divided by percentage or by dollar amount?",
+                    "agent_note": "Only required to execute the split. Without it, still explain that both percentage-based and amount-based splits are allowed."
+                },
+                {
+                    "missing_data_point": "Destination for each portion",
+                    "ask_participant": "Which retirement account or provider should receive each portion of the rollover?",
+                    "agent_note": "Only required to execute the split. Without it, still explain that multiple destinations are allowed."
+                },
+                {
+                    "missing_data_point": "Delivery method for each portion",
+                    "ask_participant": "How would you like each portion delivered, such as by regular check, OverNight Check, or wire transfer?",
+                    "agent_note": "Only required to execute the split. Without it, still explain the available delivery methods in general."
                 }
             ],
             "disambiguation_notes": [
@@ -985,7 +1016,8 @@
                 "The participant must use the correct path for the scenario: the online workflow for separate Roth and pre-tax destinations when eligible, or the manual process for one-source split rollovers.",
                 "The rollover may be split by percentage or by dollar amount if instructions are clearly provided.",
                 "After the Must Have items are verified for the manual process, the Separation of Service: Rollover Request Form can be shared to finalize the request.",
-                "The request requires manual review and processing because routing funds to multiple destinations is complex."
+                "The request requires manual review and processing because routing funds to multiple destinations is complex.",
+                "Provide general guidance about how split rollovers work (multiple destinations allowed, percentage or dollar amount, online vs manual process, RightSignature form for manual) without requiring the participant's specific termination date, balance, MFA status, or split instructions; only request these when the participant asks to actually execute or wants confirmation of personal eligibility."
             ],
             "not_allowed_conclusions": [
                 "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant.",
@@ -1042,6 +1074,8 @@
                     "Do not proceed based on assumptions when any split detail is missing."
                 ],
                 "questions_to_ask": [
+                    "We haven't found an account under your information, please provide your full name, email address associated with your account and the name of the company.",
+                    "When was your last day of employment?",
                     "How would you like your rollover to be divided?",
                     "Should the rollover be divided by percentage or by dollar amount?",
                     "Which retirement account or provider should receive each portion of the rollover?",

@@ -99,8 +99,8 @@ root
    │     ├─ phone
    │     └─ support_hours
    ├─ required_data
-   │  ├─ must_have[]
-   │  ├─ nice_to_have[]
+   │  ├─ must_have[]   (each: data_point, meaning, example_values, why_needed, source_note, source_type, blocking_intent)
+   │  ├─ nice_to_have[] (each: data_point, meaning, example_values, why_needed, source_note, source_type)
    │  ├─ if_missing[]
    │  └─ disambiguation_notes[]
    ├─ decision_guide
@@ -150,7 +150,7 @@ root
 | details.definitions | object[] | Sí | Definiciones reusables (term/definition) |
 | details.guardrails | object | Sí | Must_not y must_do_if_unsure |
 | details.references | object | Sí | Portal, links, artículos internos, contacto |
-| details.required_data | object | Sí | Must_have/nice_to_have/if_missing/disambiguation_notes |
+| details.required_data | object | Sí | Must_have (con blocking_intent) / nice_to_have / if_missing / disambiguation_notes |
 | details.decision_guide | object | Sí | Guía determinística de outcomes y conclusiones |
 | details.response_frames | object | Sí | Componentes de respuesta por outcome |
 
@@ -683,26 +683,53 @@ root
   - `why_needed` (string)
   - `source_note` (string|null)
   - `source_type` (enum string): `"participant_profile" | "plan_profile" | "message_text" | "agent_input" | "unknown"`
+  - `blocking_intent` (enum string, **solo en `must_have`**): `"always" | "execution_only" | "personalization_only" | "eligibility_confirmation"`
 - Reglas "source_type" (NORMATIVAS):
   - participant_profile: atributo/estado del participante recuperable internamente y requerido por el artículo.
   - plan_profile: atributo/estado del plan recuperable internamente y requerido por el artículo.
   - message_text: intención/datos declarados por participante en su mensaje.
   - agent_input: dato que el agente debe preguntar para continuar.
   - unknown: requerido pero no se puede inferir origen sin inventar.
+- Reglas "blocking_intent" (NORMATIVAS, solo en `must_have`):
+  - `always`: la falta del dato bloquea CUALQUIER respuesta (incluida educación general). Reservado para datos legalmente/regulatoriamente indispensables (ej. fecha del rollover indirecto para evaluar la regla de 60 días).
+  - `execution_only`: la falta del dato bloquea SOLO cuando el participante pide ejecutar/iniciar la acción (ej. "procesa mi préstamo"). Permite responder preguntas informacionales/educativas sin él (ej. "¿cómo funciona un préstamo?"). Típico para monto solicitado, método de entrega, instrucciones de split.
+  - `personalization_only`: la falta del dato NUNCA bloquea; solo refina la personalización de la respuesta (ej. fecha de nacimiento para calcular RMD vs explicar reglas RMD generales).
+  - `eligibility_confirmation`: la falta del dato bloquea conclusiones de elegibilidad personalizada para EL participante específico, pero permite explicar las reglas en abstracto (ej. employment status para confirmar force-out individual; sin él se puede explicar el proceso pero no decir "tú calificas").
+  - **Default conservador para artículos legados sin el campo**: tratar como `always` (preserva comportamiento previo).
+  - El engine usa este campo para decidir si rescatar `blocked_missing_data` → `can_proceed` cuando el inquiry es informacional. Ver `_apply_informational_outcome_policy` en `kb-rag-system/data_pipeline/rag_engine.py`.
 - Anti-field creep:
   - No agregar data_points "porque serían útiles"; solo si el artículo lo requiere.
 - example_values:
   - Si el artículo trae ejemplos, usarlos.
   - Si no, solo placeholders de formato que NO agreguen hechos (ej. `"A value stated in this article"`), o `[]`.
 
-Ejemplos correctos (item):
+Ejemplos correctos (item must_have):
   - {
       "data_point":"Requested amount",
       "meaning":"The amount the participant is requesting, as required by the article.",
       "example_values":["A value stated in this article"],
       "why_needed":"Used to determine what request to process and whether additional steps apply.",
       "source_note":null,
-      "source_type":"message_text"
+      "source_type":"message_text",
+      "blocking_intent":"execution_only"
+    }
+  - {
+      "data_point":"Date the rollover funds were received",
+      "meaning":"Date the participant received the indirect rollover distribution.",
+      "example_values":["2025-01-15"],
+      "why_needed":"Required to determine whether the 60-day rule was met.",
+      "source_note":null,
+      "source_type":"agent_input",
+      "blocking_intent":"always"
+    }
+  - {
+      "data_point":"Employment status",
+      "meaning":"Whether the participant is currently employed by the sponsoring employer.",
+      "example_values":["Active","Terminated"],
+      "why_needed":"Used to confirm force-out eligibility for this participant.",
+      "source_note":null,
+      "source_type":"participant_profile",
+      "blocking_intent":"eligibility_confirmation"
     }
 
 Ejemplos incorrectos (item):
@@ -714,7 +741,18 @@ Ejemplos incorrectos (item):
       "source_note":null,
       "source_type":"participant_profile"
     }
-  Motivo: field creep; si el artículo no menciona termination date, no se puede incluir.
+  Motivo: (1) field creep si el artículo no lo menciona; (2) falta el campo `blocking_intent` requerido en `must_have`.
+
+  - {
+      "data_point":"Loan amount needed",
+      "meaning":"...",
+      "example_values":["..."],
+      "why_needed":"...",
+      "source_note":null,
+      "source_type":"message_text",
+      "blocking_intent":"always"
+    }
+  Motivo: el monto del préstamo es necesario para EJECUTAR la solicitud, no para EXPLICAR cómo funcionan los préstamos; el `blocking_intent` correcto es `execution_only`.
 
 ##### 3.3.12.1 `details.required_data.if_missing`
 - Tipo: `object[]` con:
@@ -1340,6 +1378,9 @@ Checklist técnico:
 - No ticket actions en ningún lugar.
 - required_data:
   - Items must_have/nice_to_have con source_type válido
+  - **Cada item de must_have debe incluir `blocking_intent` con uno de: `always`, `execution_only`, `personalization_only`, `eligibility_confirmation`** (artículos legados sin el campo se tratan como `always` por compatibilidad)
+  - `nice_to_have` NO debe tener `blocking_intent`; si un dato necesita bloquear, debe estar en `must_have`
+  - Cada `missing_data_point` listado en `decision_guide.missing_data_conditions` debe corresponder a un `data_point` en `must_have` (si está en `nice_to_have`, es contradicción)
   - No paths técnicos
   - No data_points inventados
 - if_missing:

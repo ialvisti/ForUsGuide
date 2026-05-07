@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     LLM_ROUTE_GR_OUTCOME: str = "gpt-5.5"
     LLM_ROUTE_GR_RESPONSE: str = "gpt-5.5"
     LLM_ROUTE_KNOWLEDGE: str = "gpt-5.5"
-    LLM_ROUTE_CLASSIFY: str = "gpt-5.5-mini"
+    LLM_ROUTE_CLASSIFY: str = "gemini-2.5-flash"
 
     # Inquiry router rollout flag. Stage 4 reads this to decide whether the
     # /route-inquiry endpoint is exposed and how it behaves:

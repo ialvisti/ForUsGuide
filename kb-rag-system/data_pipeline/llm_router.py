@@ -411,16 +411,11 @@ _TASK_EFFORT_OVERRIDES: Dict[str, Dict[str, Any]] = {
     # (medium reasoning) because dropping it below medium causes the
     # model to skip decomposition on multi-concept inquiries.
     "decompose": {"thinking_budget": 0},
-    # Inquiry classifier is a tight 3-class decision with deterministic
-    # signals carrying most of the weight. Run cheap on both providers.
-    # Gemini 2.5 Pro silently ignores thinking_budget=0 and burns ~300+
-    # tokens reasoning anyway, leaving nothing for the JSON output. Force
-    # the Gemini fallback to Flash, which honors thinking_budget=0.
-    "classify_inquiry": {
-        "reasoning_effort": "minimal",
-        "thinking_budget": 0,
-        "gemini_fallback_model": "gemini-2.5-flash",
-    },
+    # Inquiry classifier needs real reasoning to disambiguate nuanced cases
+    # (e.g. incoming vs outgoing rollover, procedural HOW vs eligibility
+    # WHETHER). On Gemini Flash give it a moderate thinking budget; the
+    # OpenAI fallback (gpt-5.5) keeps its provider-default medium reasoning.
+    "classify_inquiry": {"thinking_budget": 4096},
 }
 
 

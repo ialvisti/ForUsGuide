@@ -30,7 +30,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional
 
 from data_pipeline.llm_router import LLMRouter
 from data_pipeline.prompts import build_classify_inquiry_prompt
@@ -40,6 +40,11 @@ logger = logging.getLogger(__name__)
 
 
 CONFIDENCE_FALLBACK_THRESHOLD = 0.55
+
+# Mirror RAGEngine.KQ_SOURCE_MIN_SCORE: if the top retrieved chunk for a
+# knowledge_question inquiry scores below this, the KB has no real coverage
+# of the topic and we downgrade the route to needs_more_info.
+KB_COVERAGE_MIN_SCORE = 0.20
 
 VALID_ROUTES = frozenset({"knowledge_question", "generate_response", "needs_more_info"})
 
@@ -277,8 +282,13 @@ class InquiryRouterEngine:
 
     LLM_MAX_TOKENS = 800
 
-    def __init__(self, llm_router: LLMRouter):
+    def __init__(
+        self,
+        llm_router: LLMRouter,
+        coverage_checker: Optional[Callable[[str], Awaitable[float]]] = None,
+    ):
         self._llm = llm_router
+        self._coverage_checker = coverage_checker
 
     async def classify(self, inquiry: str) -> ClassificationResult:
         signals = compute_deterministic_features(inquiry)
@@ -297,6 +307,7 @@ class InquiryRouterEngine:
                     "model": None,
                     "provider": None,
                     "latency_ms": fast.latency_ms,
+                    "kb_coverage_top_score": None,
                 },
                 user_message=None,
             )
@@ -330,6 +341,17 @@ class InquiryRouterEngine:
             )
             route = "needs_more_info"
 
+        kb_coverage_top_score: Optional[float] = None
+        if route == "knowledge_question" and self._coverage_checker is not None:
+            kb_coverage_top_score = await self._coverage_checker(inquiry)
+            if kb_coverage_top_score < KB_COVERAGE_MIN_SCORE:
+                reasoning = (
+                    f"No KB coverage verified (top similarity "
+                    f"{kb_coverage_top_score:.2f} < {KB_COVERAGE_MIN_SCORE}); "
+                    f"downgrading. Original: {reasoning}"
+                )
+                route = "needs_more_info"
+
         user_message = _resolve_user_message(route, parsed.get("user_message"))
 
         return ClassificationResult(
@@ -343,6 +365,7 @@ class InquiryRouterEngine:
                 "provider": llm_result.provider_used,
                 "usage": llm_result.usage,
                 "latency_ms": llm_latency_ms,
+                "kb_coverage_top_score": kb_coverage_top_score,
             },
             user_message=user_message,
         )

@@ -343,11 +343,12 @@ class TestRealInquiries:
     async def test_vestwell_rollover_signals_now_carry_intent(
         self, engine, mock_llm_router
     ):
-        # Regression for the misclassified Vestwell rollover. The fast-path
-        # cannot fire (no eligibility verb), but the deterministic signals must
-        # now carry rollover intent into the LLM via wants_funds + separation.
-        # We mock the LLM to return knowledge_question (the procedural HOW
-        # answer) so we can also validate the user_message=None contract.
+        # The fast-path cannot fire (no eligibility verb), but the
+        # deterministic signals must carry rollover intent into the LLM via
+        # wants_funds + separation. With no coverage_checker wired (the
+        # legacy contract preserved by the default fixture), whatever the
+        # LLM returns is passed through unchanged. The KB-coverage downgrade
+        # for incoming rollovers is exercised in TestCoverageCheck.
         mock_llm_router.call.return_value = _llm_response(
             '{"route": "knowledge_question", "confidence": 0.85, '
             '"reasoning": "procedural HOW question about incoming rollover", '
@@ -360,13 +361,163 @@ class TestRealInquiries:
         )
         result = await engine.classify(inquiry=inquiry)
 
-        # Signals: the heuristic fix is what unlocks the LLM's ability to
-        # disambiguate. Both flags must now be True even without the request
-        # carrying a topic hint.
         assert result.signals["wants_funds"] is True
         assert result.signals["separation_signal"] is True
 
-        # And the LLM (with the new prompt) routes it correctly.
         assert result.route == "knowledge_question"
         assert result.fast_path_hit is False
         assert result.user_message is None
+
+
+# ---------------------------------------------------------------------------
+# 6) Coverage-check post-step
+# ---------------------------------------------------------------------------
+
+class TestCoverageCheck:
+    """The coverage_checker downgrades knowledge_question verdicts to
+    needs_more_info when the KB has no relevant chunks for the inquiry.
+    """
+
+    @staticmethod
+    def _make_checker(score: float) -> AsyncMock:
+        checker = AsyncMock()
+        checker.return_value = score
+        return checker
+
+    @pytest.mark.asyncio
+    async def test_incoming_rollover_with_no_coverage_downgrades(
+        self, mock_llm_router
+    ):
+        # The exact bug-report inquiry: LLM confidently says knowledge_question
+        # but the KB has no incoming-rollover article, so coverage_checker
+        # returns a low score and the route is downgraded.
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.98, '
+            '"reasoning": "covered by the knowledge base", '
+            '"user_message": null}'
+        )
+        checker = self._make_checker(0.05)
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        inquiry = (
+            "Hi there, I want to rollover a 401k from a previous employer... "
+            "how can I do that? The old employer has my 401k in a vestwell account."
+        )
+        result = await engine.classify(inquiry=inquiry)
+
+        checker.assert_awaited_once_with(inquiry)
+        assert result.route == "needs_more_info"
+        assert result.user_message is not None
+        assert "No KB coverage verified" in result.reasoning
+        assert result.metadata["kb_coverage_top_score"] == 0.05
+
+    @pytest.mark.asyncio
+    async def test_knowledge_question_with_coverage_passes_through(
+        self, mock_llm_router
+    ):
+        # Procedural HOW with a separation signal — fast-path defers to LLM
+        # (the procedural-HOW exception skips the eligibility-verb branch).
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.9, '
+            '"reasoning": "outgoing rollover HOW question", '
+            '"user_message": null}'
+        )
+        checker = self._make_checker(0.45)
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        result = await engine.classify(
+            inquiry=(
+                "I left my employer last month — how do I roll my 401(k) "
+                "balance over to an IRA?"
+            )
+        )
+
+        assert result.fast_path_hit is False
+        assert result.route == "knowledge_question"
+        assert result.user_message is None
+        assert result.metadata["kb_coverage_top_score"] == 0.45
+
+    @pytest.mark.asyncio
+    async def test_generate_response_skips_coverage_check(self, mock_llm_router):
+        # Coverage check is gated on route == "knowledge_question" — the
+        # checker must not even be awaited for other routes.
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "generate_response", "confidence": 0.9, '
+            '"reasoning": "hardship eligibility", "user_message": null}'
+        )
+        checker = self._make_checker(0.05)
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        result = await engine.classify(
+            inquiry=(
+                "I'm still working but need $15k for medical bills, "
+                "can I take a hardship?"
+            )
+        )
+
+        checker.assert_not_awaited()
+        assert result.route == "generate_response"
+        assert result.metadata["kb_coverage_top_score"] is None
+
+    @pytest.mark.asyncio
+    async def test_score_at_threshold_passes_through(self, mock_llm_router):
+        # Strict `<` comparison — exactly KB_COVERAGE_MIN_SCORE must NOT downgrade.
+        from data_pipeline.inquiry_router import KB_COVERAGE_MIN_SCORE
+
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.9, '
+            '"reasoning": "borderline coverage", "user_message": null}'
+        )
+        checker = self._make_checker(KB_COVERAGE_MIN_SCORE)
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        result = await engine.classify(inquiry="What is the 60-day rollover rule?")
+
+        assert result.route == "knowledge_question"
+
+    @pytest.mark.asyncio
+    async def test_engine_without_checker_preserves_legacy_behavior(
+        self, mock_llm_router
+    ):
+        # The default constructor (no coverage_checker) must be a strict
+        # passthrough of the LLM verdict. This pins the backwards-compat
+        # contract for the existing `engine` fixture.
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.98, '
+            '"reasoning": "covered by KB", "user_message": null}'
+        )
+        engine = InquiryRouterEngine(llm_router=mock_llm_router)
+
+        result = await engine.classify(inquiry="some inquiry text here")
+
+        assert result.route == "knowledge_question"
+        assert result.metadata["kb_coverage_top_score"] is None
+
+    @pytest.mark.asyncio
+    async def test_low_confidence_short_circuits_before_checker(
+        self, mock_llm_router
+    ):
+        # If the confidence fallback already coerces to needs_more_info,
+        # we save the Pinecone round-trip — checker must never be awaited.
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.4, '
+            '"reasoning": "unsure", "user_message": null}'
+        )
+        checker = self._make_checker(0.99)
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        result = await engine.classify(inquiry="some ambiguous inquiry")
+
+        checker.assert_not_awaited()
+        assert result.route == "needs_more_info"
+        assert result.metadata["kb_coverage_top_score"] is None

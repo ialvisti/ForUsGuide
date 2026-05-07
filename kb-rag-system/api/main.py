@@ -80,6 +80,20 @@ if settings.ENVIRONMENT == "production":
 logger = logging.getLogger(__name__)
 
 
+def _make_coverage_checker(rag_engine: RAGEngine):
+    """Build a lightweight async callable that returns the top Pinecone
+    similarity score for an inquiry, used by the inquiry router to verify
+    KB coverage before honoring a knowledge_question verdict. Reuses the
+    RAGEngine TTL search cache, so repeat queries are free.
+    """
+    async def _coverage(inquiry: str) -> float:
+        chunks = await rag_engine._cached_query(
+            query_text=inquiry, top_k=5, filter_dict=None
+        )
+        return max((c.get("score", 0.0) for c in chunks), default=0.0)
+    return _coverage
+
+
 # ============================================================================
 # Lifespan Context Manager
 # ============================================================================
@@ -129,9 +143,13 @@ async def lifespan(app: FastAPI):
         )
         logger.info("✅ RAG Engine initialized")
 
-        # Inicializar Inquiry Router → app.state (shares LLM Router only;
-        # the classifier never touches Pinecone).
-        app.state.inquiry_router = InquiryRouterEngine(llm_router=llm_router)
+        # Inicializar Inquiry Router → app.state (shares LLM Router + a
+        # lightweight coverage_checker that verifies KB coverage for the
+        # knowledge_question route, reusing the RAGEngine TTL cache).
+        app.state.inquiry_router = InquiryRouterEngine(
+            llm_router=llm_router,
+            coverage_checker=_make_coverage_checker(app.state.rag_engine),
+        )
         logger.info("✅ Inquiry Router initialized")
         
         # Get stats

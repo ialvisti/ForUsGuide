@@ -765,10 +765,6 @@ ROUTES:
   is unspecified — those refinements live downstream.
 
 GLOSSARY:
-- "incoming rollover": the participant wants to move money INTO the ForUsAll-administered plan
-  from an outside account (a previous employer's 401(k), an IRA, etc.). The participant is
-  typically a current active participant of the FUA plan. Procedural HOW questions about this
-  belong to "knowledge_question".
 - "outgoing rollover": the participant wants to move their FUA balance OUT (to an IRA or to a
   new employer's plan), usually after separation. WHETHER-questions ("am I eligible", "can I")
   about this belong to "generate_response"; HOW-procedural questions belong to "knowledge_question".
@@ -786,8 +782,6 @@ EXAMPLES:
 - "what is the 60-day rollover rule?" -> knowledge_question
 - "what are the contribution limits for 2025?" -> knowledge_question
 - "what's the difference between a direct and indirect rollover?" -> knowledge_question
-- "I want to rollover a 401k from a previous employer, how can I do that?" -> knowledge_question
-- "How do I initiate an incoming rollover into my ForUsAll plan?" -> knowledge_question
 - "I'm still working but need $15k for medical bills, can I take a hardship?" -> generate_response
 - "Am I eligible to roll over my balance into my new employer's plan?" -> generate_response
 - "I left my employer 3 months ago, can I take a distribution from my 401(k)?" -> generate_response

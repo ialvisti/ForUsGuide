@@ -329,6 +329,7 @@ class TestRoutingTable:
             LLM_ROUTE_GR_RESPONSE="gemini-2.5-flash",
             LLM_ROUTE_KNOWLEDGE="gemini-2.5-flash",
             LLM_ROUTE_CLASSIFY="gpt-5.5-mini",
+            LLM_ROUTE_VERIFY_COVERAGE="gemini-2.5-flash",
         )
         routes = build_routes_from_settings(settings)
 
@@ -347,6 +348,7 @@ class TestRoutingTable:
             LLM_ROUTE_GR_RESPONSE="gemini-2.5-flash",
             LLM_ROUTE_KNOWLEDGE="gemini-2.5-flash",
             LLM_ROUTE_CLASSIFY="gpt-5.5-mini",
+            LLM_ROUTE_VERIFY_COVERAGE="gemini-2.5-flash",
         )
         routes = build_routes_from_settings(settings)
 
@@ -364,6 +366,7 @@ class TestRoutingTable:
             LLM_ROUTE_GR_RESPONSE="gpt-5.5",
             LLM_ROUTE_KNOWLEDGE="gpt-5.5",
             LLM_ROUTE_CLASSIFY="gpt-5.5-mini",
+            LLM_ROUTE_VERIFY_COVERAGE="gpt-5.5",
         )
         routes = build_routes_from_settings(settings)
         for route in routes.values():

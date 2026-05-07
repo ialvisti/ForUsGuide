@@ -416,6 +416,10 @@ _TASK_EFFORT_OVERRIDES: Dict[str, Dict[str, Any]] = {
     # WHETHER). On Gemini Flash give it a moderate thinking budget; the
     # OpenAI fallback (gpt-5.5) keeps its provider-default medium reasoning.
     "classify_inquiry": {"thinking_budget": 4096},
+    # Coverage verifier reads short article excerpts and outputs a yes/no JSON.
+    # Zero thinking budget keeps it fast — the prompt provides all the
+    # discriminating signal it needs.
+    "verify_coverage": {"thinking_budget": 0},
 }
 
 
@@ -434,6 +438,7 @@ def build_routes_from_settings(settings: Any) -> Dict[str, TaskRoute]:
         "gr_response": settings.LLM_ROUTE_GR_RESPONSE,
         "knowledge_question": settings.LLM_ROUTE_KNOWLEDGE,
         "classify_inquiry": settings.LLM_ROUTE_CLASSIFY,
+        "verify_coverage": settings.LLM_ROUTE_VERIFY_COVERAGE,
     }
 
     def _apply_override(cfg: ModelConfig, override: Dict[str, Any]) -> ModelConfig:

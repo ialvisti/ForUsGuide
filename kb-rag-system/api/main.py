@@ -36,7 +36,8 @@ from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.pinecone_uploader import PineconeUploader
 from data_pipeline.execution_logger import ExecutionLogger
 from data_pipeline.llm_router import LLMRouter, build_routes_from_settings
-from data_pipeline.inquiry_router import InquiryRouterEngine
+from data_pipeline.inquiry_router import CoverageVerdict, InquiryRouterEngine
+from data_pipeline.prompts import build_verify_coverage_prompt
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -80,17 +81,74 @@ if settings.ENVIRONMENT == "production":
 logger = logging.getLogger(__name__)
 
 
-def _make_coverage_checker(rag_engine: RAGEngine):
-    """Build a lightweight async callable that returns the top Pinecone
-    similarity score for an inquiry, used by the inquiry router to verify
-    KB coverage before honoring a knowledge_question verdict. Reuses the
-    RAGEngine TTL search cache, so repeat queries are free.
+def _make_coverage_checker(rag_engine: RAGEngine, llm_router: LLMRouter):
+    """Build an async callable that verifies whether the KB actually has
+    coverage for a knowledge_question inquiry.
+
+    Two-step: (1) Pinecone retrieval reusing the RAGEngine TTL cache,
+    (2) a small LLM call (`verify_coverage` task) that reads the top-3
+    article excerpts and returns yes/no. The LLM is the authority on
+    relevance because cosine similarity alone confuses semantically-near
+    but procedurally-different topics (e.g. incoming vs outgoing rollover).
+
+    Fail-open: parse failures or LLM errors return is_covered=True so a
+    transient verifier outage cannot block legitimate KB hits.
     """
-    async def _coverage(inquiry: str) -> float:
+    import json as _json
+
+    async def _coverage(inquiry: str) -> CoverageVerdict:
         chunks = await rag_engine._cached_query(
             query_text=inquiry, top_k=5, filter_dict=None
         )
-        return max((c.get("score", 0.0) for c in chunks), default=0.0)
+        top_score = max((c.get("score", 0.0) for c in chunks), default=0.0)
+
+        if not chunks:
+            return CoverageVerdict(
+                is_covered=False,
+                top_score=0.0,
+                reasoning="No chunks retrieved from the knowledge base.",
+            )
+
+        system_prompt, user_prompt = build_verify_coverage_prompt(
+            inquiry=inquiry, chunks=chunks
+        )
+        try:
+            llm_result = await llm_router.call(
+                task_type="verify_coverage",
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=200,
+            )
+            parsed = _json.loads(llm_result.content or "{}")
+            is_covered = bool(parsed.get("covered", True))
+            reasoning = (parsed.get("reasoning") or "").strip() or (
+                "covered" if is_covered else "not covered"
+            )
+        except (_json.JSONDecodeError, TypeError, ValueError, KeyError) as exc:
+            logger.warning(
+                "Coverage verifier output unparseable (%s); failing open.",
+                type(exc).__name__,
+            )
+            return CoverageVerdict(
+                is_covered=True,
+                top_score=top_score,
+                reasoning="Verifier output unparseable; failing open.",
+            )
+        except Exception as exc:
+            logger.warning(
+                "Coverage verifier call failed (%s); failing open.",
+                type(exc).__name__,
+            )
+            return CoverageVerdict(
+                is_covered=True,
+                top_score=top_score,
+                reasoning=f"Verifier call failed ({type(exc).__name__}); failing open.",
+            )
+
+        return CoverageVerdict(
+            is_covered=is_covered, top_score=top_score, reasoning=reasoning
+        )
+
     return _coverage
 
 
@@ -143,12 +201,15 @@ async def lifespan(app: FastAPI):
         )
         logger.info("✅ RAG Engine initialized")
 
-        # Inicializar Inquiry Router → app.state (shares LLM Router + a
-        # lightweight coverage_checker that verifies KB coverage for the
-        # knowledge_question route, reusing the RAGEngine TTL cache).
+        # Inicializar Inquiry Router → app.state (shares LLM Router + an
+        # LLM-based coverage_checker that retrieves top KB chunks via
+        # Pinecone and asks a small LLM whether they actually answer the
+        # inquiry, gating the knowledge_question route).
         app.state.inquiry_router = InquiryRouterEngine(
             llm_router=llm_router,
-            coverage_checker=_make_coverage_checker(app.state.rag_engine),
+            coverage_checker=_make_coverage_checker(
+                app.state.rag_engine, llm_router
+            ),
         )
         logger.info("✅ Inquiry Router initialized")
         

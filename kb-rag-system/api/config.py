@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     LLM_ROUTE_GR_RESPONSE: str = "gpt-5.5"
     LLM_ROUTE_KNOWLEDGE: str = "gpt-5.5"
     LLM_ROUTE_CLASSIFY: str = "gemini-2.5-flash"
+    LLM_ROUTE_VERIFY_COVERAGE: str = "gemini-2.5-flash"
 
     # Inquiry router rollout flag. Stage 4 reads this to decide whether the
     # /route-inquiry endpoint is exposed and how it behaves:
@@ -122,6 +123,7 @@ def validate_settings():
         "LLM_ROUTE_GR_RESPONSE": settings.LLM_ROUTE_GR_RESPONSE,
         "LLM_ROUTE_KNOWLEDGE": settings.LLM_ROUTE_KNOWLEDGE,
         "LLM_ROUTE_CLASSIFY": settings.LLM_ROUTE_CLASSIFY,
+        "LLM_ROUTE_VERIFY_COVERAGE": settings.LLM_ROUTE_VERIFY_COVERAGE,
     }
     for var_name, model_name in route_models.items():
         model_lower = (model_name or "").strip().lower()

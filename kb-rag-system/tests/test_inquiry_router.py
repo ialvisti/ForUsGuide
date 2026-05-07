@@ -21,6 +21,7 @@ import pytest
 
 from data_pipeline.inquiry_router import (
     CONFIDENCE_FALLBACK_THRESHOLD,
+    CoverageVerdict,
     InquiryRouterEngine,
     _has_eligibility_verb,
     _has_first_person_status,
@@ -374,14 +375,21 @@ class TestRealInquiries:
 # ---------------------------------------------------------------------------
 
 class TestCoverageCheck:
-    """The coverage_checker downgrades knowledge_question verdicts to
-    needs_more_info when the KB has no relevant chunks for the inquiry.
+    """The LLM-based coverage_checker downgrades knowledge_question verdicts
+    to needs_more_info when the verifier says the retrieved KB chunks do not
+    actually answer the inquiry.
     """
 
     @staticmethod
-    def _make_checker(score: float) -> AsyncMock:
+    def _make_checker(
+        is_covered: bool, top_score: float = 0.5, reasoning: str = ""
+    ) -> AsyncMock:
         checker = AsyncMock()
-        checker.return_value = score
+        checker.return_value = CoverageVerdict(
+            is_covered=is_covered,
+            top_score=top_score,
+            reasoning=reasoning or ("covered" if is_covered else "not covered"),
+        )
         return checker
 
     @pytest.mark.asyncio
@@ -389,14 +397,18 @@ class TestCoverageCheck:
         self, mock_llm_router
     ):
         # The exact bug-report inquiry: LLM confidently says knowledge_question
-        # but the KB has no incoming-rollover article, so coverage_checker
-        # returns a low score and the route is downgraded.
+        # but the verifier (with retrieved outgoing-rollover chunks) decides
+        # the KB does not actually answer the incoming-rollover question.
         mock_llm_router.call.return_value = _llm_response(
             '{"route": "knowledge_question", "confidence": 0.98, '
             '"reasoning": "covered by the knowledge base", '
             '"user_message": null}'
         )
-        checker = self._make_checker(0.05)
+        checker = self._make_checker(
+            is_covered=False,
+            top_score=0.60,
+            reasoning="Retrieved articles cover outgoing rollover, not incoming.",
+        )
         engine = InquiryRouterEngine(
             llm_router=mock_llm_router, coverage_checker=checker
         )
@@ -410,8 +422,12 @@ class TestCoverageCheck:
         checker.assert_awaited_once_with(inquiry)
         assert result.route == "needs_more_info"
         assert result.user_message is not None
-        assert "No KB coverage verified" in result.reasoning
-        assert result.metadata["kb_coverage_top_score"] == 0.05
+        assert "KB coverage check rejected" in result.reasoning
+        assert result.metadata["kb_coverage_top_score"] == 0.60
+        assert (
+            result.metadata["kb_coverage_reasoning"]
+            == "Retrieved articles cover outgoing rollover, not incoming."
+        )
 
     @pytest.mark.asyncio
     async def test_knowledge_question_with_coverage_passes_through(
@@ -424,7 +440,9 @@ class TestCoverageCheck:
             '"reasoning": "outgoing rollover HOW question", '
             '"user_message": null}'
         )
-        checker = self._make_checker(0.45)
+        checker = self._make_checker(
+            is_covered=True, top_score=0.55, reasoning="LT termination article applies."
+        )
         engine = InquiryRouterEngine(
             llm_router=mock_llm_router, coverage_checker=checker
         )
@@ -439,7 +457,7 @@ class TestCoverageCheck:
         assert result.fast_path_hit is False
         assert result.route == "knowledge_question"
         assert result.user_message is None
-        assert result.metadata["kb_coverage_top_score"] == 0.45
+        assert result.metadata["kb_coverage_top_score"] == 0.55
 
     @pytest.mark.asyncio
     async def test_generate_response_skips_coverage_check(self, mock_llm_router):
@@ -449,7 +467,7 @@ class TestCoverageCheck:
             '{"route": "generate_response", "confidence": 0.9, '
             '"reasoning": "hardship eligibility", "user_message": null}'
         )
-        checker = self._make_checker(0.05)
+        checker = self._make_checker(is_covered=False)
         engine = InquiryRouterEngine(
             llm_router=mock_llm_router, coverage_checker=checker
         )
@@ -464,24 +482,6 @@ class TestCoverageCheck:
         checker.assert_not_awaited()
         assert result.route == "generate_response"
         assert result.metadata["kb_coverage_top_score"] is None
-
-    @pytest.mark.asyncio
-    async def test_score_at_threshold_passes_through(self, mock_llm_router):
-        # Strict `<` comparison — exactly KB_COVERAGE_MIN_SCORE must NOT downgrade.
-        from data_pipeline.inquiry_router import KB_COVERAGE_MIN_SCORE
-
-        mock_llm_router.call.return_value = _llm_response(
-            '{"route": "knowledge_question", "confidence": 0.9, '
-            '"reasoning": "borderline coverage", "user_message": null}'
-        )
-        checker = self._make_checker(KB_COVERAGE_MIN_SCORE)
-        engine = InquiryRouterEngine(
-            llm_router=mock_llm_router, coverage_checker=checker
-        )
-
-        result = await engine.classify(inquiry="What is the 60-day rollover rule?")
-
-        assert result.route == "knowledge_question"
 
     @pytest.mark.asyncio
     async def test_engine_without_checker_preserves_legacy_behavior(
@@ -506,12 +506,12 @@ class TestCoverageCheck:
         self, mock_llm_router
     ):
         # If the confidence fallback already coerces to needs_more_info,
-        # we save the Pinecone round-trip — checker must never be awaited.
+        # we save the Pinecone+verifier round-trip — checker must never be awaited.
         mock_llm_router.call.return_value = _llm_response(
             '{"route": "knowledge_question", "confidence": 0.4, '
             '"reasoning": "unsure", "user_message": null}'
         )
-        checker = self._make_checker(0.99)
+        checker = self._make_checker(is_covered=True)
         engine = InquiryRouterEngine(
             llm_router=mock_llm_router, coverage_checker=checker
         )

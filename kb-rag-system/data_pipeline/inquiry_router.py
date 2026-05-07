@@ -41,11 +41,6 @@ logger = logging.getLogger(__name__)
 
 CONFIDENCE_FALLBACK_THRESHOLD = 0.55
 
-# Mirror RAGEngine.KQ_SOURCE_MIN_SCORE: if the top retrieved chunk for a
-# knowledge_question inquiry scores below this, the KB has no real coverage
-# of the topic and we downgrade the route to needs_more_info.
-KB_COVERAGE_MIN_SCORE = 0.20
-
 VALID_ROUTES = frozenset({"knowledge_question", "generate_response", "needs_more_info"})
 
 # Fallback message used when the classifier coerces a route to needs_more_info
@@ -78,6 +73,18 @@ class FastPathDecision:
     confidence: float
     reasoning: str
     latency_ms: float
+
+
+@dataclass
+class CoverageVerdict:
+    """Result of the LLM-based coverage check that gates knowledge_question
+    verdicts. ``is_covered=False`` causes the engine to downgrade the route to
+    ``needs_more_info``. ``top_score`` is informational (Pinecone top similarity)
+    and surfaces in metadata for observability.
+    """
+    is_covered: bool
+    top_score: float
+    reasoning: str
 
 
 # ---------------------------------------------------------------------------
@@ -285,7 +292,9 @@ class InquiryRouterEngine:
     def __init__(
         self,
         llm_router: LLMRouter,
-        coverage_checker: Optional[Callable[[str], Awaitable[float]]] = None,
+        coverage_checker: Optional[
+            Callable[[str], Awaitable["CoverageVerdict"]]
+        ] = None,
     ):
         self._llm = llm_router
         self._coverage_checker = coverage_checker
@@ -308,6 +317,7 @@ class InquiryRouterEngine:
                     "provider": None,
                     "latency_ms": fast.latency_ms,
                     "kb_coverage_top_score": None,
+                    "kb_coverage_reasoning": None,
                 },
                 user_message=None,
             )
@@ -342,13 +352,15 @@ class InquiryRouterEngine:
             route = "needs_more_info"
 
         kb_coverage_top_score: Optional[float] = None
+        kb_coverage_reasoning: Optional[str] = None
         if route == "knowledge_question" and self._coverage_checker is not None:
-            kb_coverage_top_score = await self._coverage_checker(inquiry)
-            if kb_coverage_top_score < KB_COVERAGE_MIN_SCORE:
+            verdict = await self._coverage_checker(inquiry)
+            kb_coverage_top_score = verdict.top_score
+            kb_coverage_reasoning = verdict.reasoning
+            if not verdict.is_covered:
                 reasoning = (
-                    f"No KB coverage verified (top similarity "
-                    f"{kb_coverage_top_score:.2f} < {KB_COVERAGE_MIN_SCORE}); "
-                    f"downgrading. Original: {reasoning}"
+                    f"KB coverage check rejected: {verdict.reasoning}. "
+                    f"Original: {reasoning}"
                 )
                 route = "needs_more_info"
 
@@ -366,6 +378,7 @@ class InquiryRouterEngine:
                 "usage": llm_result.usage,
                 "latency_ms": llm_latency_ms,
                 "kb_coverage_top_score": kb_coverage_top_score,
+                "kb_coverage_reasoning": kb_coverage_reasoning,
             },
             user_message=user_message,
         )

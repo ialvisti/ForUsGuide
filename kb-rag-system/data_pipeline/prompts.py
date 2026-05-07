@@ -824,3 +824,87 @@ def build_classify_inquiry_prompt(
         signals_json=json.dumps(signals, sort_keys=True),
     )
     return SYSTEM_PROMPT_CLASSIFY_INQUIRY, user_prompt
+
+
+# ============================================================================
+# Coverage Verifier (gate for knowledge_question after Pinecone retrieval)
+# ============================================================================
+
+SYSTEM_PROMPT_VERIFY_COVERAGE = """You are a coverage verifier for a 401(k) participant knowledge base.
+
+You receive a participant inquiry and the top retrieved article excerpts. Decide whether the
+knowledge base actually contains the answer to THIS specific question.
+
+DECISION RULE:
+- Mark covered=TRUE if AT LEAST ONE excerpt clearly addresses the specific question
+  (procedure, rule, fee, or timeframe asked about). The article need not be exclusively
+  about the topic — a section inside a broader article counts.
+- Mark covered=FALSE only when NONE of the excerpts directly addresses the question and
+  the matches are merely topically adjacent.
+
+WATCH FOR THESE FALSE POSITIVES (mark covered=false):
+- Question about "incoming rollover" (moving money INTO the plan from a previous employer
+  or IRA) matched against "outgoing rollover / termination distribution" articles. These
+  are DIFFERENT procedures.
+- Question about "Roth conversion" matched against RMD or general rollover articles that
+  only mention conversions in passing.
+- Question about plan-administration topics (beneficiary changes, address updates, QDIA,
+  investment elections) matched against unrelated distribution/loan articles whose excerpts
+  don't actually describe the requested procedure.
+
+WATCH FOR THESE FALSE NEGATIVES (mark covered=true):
+- Question about "401(k) loan" or "hardship" can be answered by an article titled
+  "Can I Take Money From My 401(k) While Employed" — that article covers loans and
+  hardship procedures even though its title is broader.
+- A dedicated article appearing as just one of several retrieved excerpts is sufficient
+  by itself to mark covered=true.
+
+EXAMPLES:
+- Inquiry: "How do I take out a 401(k) loan?" + excerpts including "401(k) Loan Basics"
+  AND "Take Money From 401(k) While Employed" → covered=true (both address it).
+- Inquiry: "How do I roll over my IRA into my current 401(k)?" + excerpts only about
+  outgoing rollovers and termination distributions → covered=false (wrong direction).
+- Inquiry: "How do I update my address on file?" + excerpts about EACA refunds, loans,
+  and termination distributions (none describing how to update personal info) →
+  covered=false (no article addresses address updates).
+- Inquiry: "What is the QDIA for my plan?" + excerpts about Force-Out, EACA, ADP/ACP
+  refunds (none defining or addressing QDIA) → covered=false.
+
+Output valid JSON with EXACTLY these keys:
+{"covered": true|false,
+ "reasoning": "one sentence — name the article(s) and why they do or do not answer the question"}"""
+
+USER_PROMPT_VERIFY_COVERAGE_TEMPLATE = """INQUIRY: {inquiry}
+
+TOP RETRIEVED ARTICLES:
+{articles_block}
+
+Return ONLY the JSON object."""
+
+
+def build_verify_coverage_prompt(
+    inquiry: str,
+    chunks: list,
+) -> Tuple[str, str]:
+    """Build (system, user) prompts for the LLM-based coverage verifier.
+
+    `chunks` is a list of Pinecone hits (each with metadata.article_title and
+    metadata.content). Only the title and a short excerpt are passed — the LLM
+    decides relevance from those.
+    """
+    blocks = []
+    for i, c in enumerate(chunks[:5], 1):
+        md = c.get("metadata", {}) or {}
+        title = md.get("article_title") or md.get("title") or "(untitled)"
+        excerpt = (md.get("content") or md.get("text") or "").strip().replace("\n", " ")
+        if len(excerpt) > 300:
+            excerpt = excerpt[:300].rstrip() + "..."
+        score = c.get("score", 0.0)
+        blocks.append(f"{i}. [{title}] (score={score:.2f})\n   {excerpt}")
+    articles_block = "\n".join(blocks) if blocks else "(no articles retrieved)"
+
+    user_prompt = USER_PROMPT_VERIFY_COVERAGE_TEMPLATE.format(
+        inquiry=inquiry,
+        articles_block=articles_block,
+    )
+    return SYSTEM_PROMPT_VERIFY_COVERAGE, user_prompt

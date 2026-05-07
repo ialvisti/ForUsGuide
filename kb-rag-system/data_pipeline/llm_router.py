@@ -410,7 +410,14 @@ _TASK_EFFORT_OVERRIDES: Dict[str, Dict[str, Any]] = {
     "decompose": {"thinking_budget": 0},
     # Inquiry classifier is a tight 3-class decision with deterministic
     # signals carrying most of the weight. Run cheap on both providers.
-    "classify_inquiry": {"reasoning_effort": "minimal", "thinking_budget": 0},
+    # Gemini 2.5 Pro silently ignores thinking_budget=0 and burns ~300+
+    # tokens reasoning anyway, leaving nothing for the JSON output. Force
+    # the Gemini fallback to Flash, which honors thinking_budget=0.
+    "classify_inquiry": {
+        "reasoning_effort": "minimal",
+        "thinking_budget": 0,
+        "gemini_fallback_model": "gemini-2.5-flash",
+    },
 }
 
 
@@ -432,11 +439,15 @@ def build_routes_from_settings(settings: Any) -> Dict[str, TaskRoute]:
     }
 
     def _apply_override(cfg: ModelConfig, override: Dict[str, Any]) -> ModelConfig:
+        updates: Dict[str, Any] = {}
         if cfg.provider == LLMProvider.OPENAI and "reasoning_effort" in override:
-            return replace(cfg, reasoning_effort=override["reasoning_effort"])
-        if cfg.provider == LLMProvider.GEMINI and "thinking_budget" in override:
-            return replace(cfg, thinking_budget=override["thinking_budget"])
-        return cfg
+            updates["reasoning_effort"] = override["reasoning_effort"]
+        if cfg.provider == LLMProvider.GEMINI:
+            if "thinking_budget" in override:
+                updates["thinking_budget"] = override["thinking_budget"]
+            if "gemini_fallback_model" in override:
+                updates["model"] = override["gemini_fallback_model"]
+        return replace(cfg, **updates) if updates else cfg
 
     routes: Dict[str, TaskRoute] = {}
     for task, model_name in route_map.items():

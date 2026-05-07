@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KB Inquiry Router</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --primary: #4f46e5;
+            --primary-hover: #4338ca;
+            --primary-light: #eef2ff;
+            --secondary: #64748b;
+            --success: #10b981;
+            --success-light: #d1fae5;
+            --error: #ef4444;
+            --error-light: #fee2e2;
+            --warning: #f59e0b;
+            --warning-light: #fef3c7;
+            --info: #0ea5e9;
+            --info-light: #e0f2fe;
+            --bg-primary: #ffffff;
+            --bg-secondary: #f8fafc;
+            --bg-code: #1e293b;
+            --text-primary: #0f172a;
+            --text-secondary: #64748b;
+            --text-muted: #94a3b8;
+            --text-code: #e2e8f0;
+            --border: #e2e8f0;
+            --border-focus: #4f46e5;
+            --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+            --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+            --shadow-lg: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-secondary);
+            min-height: 100vh;
+            color: var(--text-primary);
+            line-height: 1.6;
+        }
+
+        .header {
+            background: var(--bg-primary);
+            border-bottom: 1px solid var(--border);
+            padding: 1.5rem 2rem;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .header-nav {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+        }
+
+        .nav-btn {
+            text-decoration: none;
+            color: var(--primary);
+            font-weight: 500;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            background: var(--primary-light);
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-family: inherit;
+            font-size: inherit;
+        }
+
+        .nav-btn:hover {
+            background: var(--primary);
+            color: white;
+        }
+
+        .status-badge {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 1rem;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            font-weight: 500;
+        }
+
+        .status-badge.healthy { background: var(--success-light); color: #065f46; }
+        .status-badge.unhealthy { background: var(--error-light); color: #991b1b; }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+
+        .hero {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .hero h2 {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+        }
+
+        .hero p {
+            color: var(--text-secondary);
+            font-size: 1rem;
+            max-width: 700px;
+            margin: 0 auto;
+        }
+
+        .form-section {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 2rem;
+        }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .form-group { display: flex; flex-direction: column; }
+
+        .form-group label {
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.375rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 0.75rem 0.875rem;
+            border: 1.5px solid var(--border);
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-family: inherit;
+            background: var(--bg-primary);
+            transition: all 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            outline: none;
+            border-color: var(--border-focus);
+            box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.1);
+        }
+
+        .form-group textarea {
+            resize: vertical;
+            min-height: 100px;
+            line-height: 1.6;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.8125rem;
+        }
+
+        .inquiry-textarea {
+            font-family: inherit !important;
+            font-size: 0.9375rem !important;
+            min-height: 90px !important;
+        }
+
+        .form-row-actions {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 1rem;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .delegate-toggle {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .delegate-toggle input[type="checkbox"] {
+            width: 1.125rem;
+            height: 1.125rem;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+
+        .submit-btn {
+            padding: 0.75rem 1.75rem;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.9375rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .submit-btn:hover:not(:disabled) {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+        }
+
+        .submit-btn:disabled { opacity: 0.6; cursor: not-allowed; transform: none; box-shadow: none; }
+
+        .spinner {
+            width: 16px; height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 0.6s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+
+        .examples-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .example-chip {
+            padding: 0.375rem 0.875rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .example-chip:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        /* Result Section */
+        .result-section {
+            display: none;
+            animation: fadeIn 0.4s ease-out;
+        }
+
+        .result-section.show { display: block; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
+        }
+
+        .result-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            padding: 2rem;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+        }
+
+        .result-card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.25rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border);
+            gap: 1rem;
+        }
+
+        .result-card-header h3 {
+            font-size: 1.125rem;
+            font-weight: 600;
+        }
+
+        /* Route hero */
+        .route-hero-card {
+            background: var(--bg-primary);
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+            margin-bottom: 1.5rem;
+            border-left: 6px solid var(--primary);
+            padding: 2rem;
+        }
+
+        .route-hero-card.route-knowledge_question { border-left-color: var(--info); }
+        .route-hero-card.route-generate_response { border-left-color: var(--success); }
+        .route-hero-card.route-needs_more_info { border-left-color: var(--warning); }
+
+        .route-label {
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-muted);
+            margin-bottom: 0.5rem;
+        }
+
+        .route-name {
+            font-size: 1.75rem;
+            font-weight: 700;
+            margin-bottom: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+        }
+
+        .route-pill {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .route-pill.route-knowledge_question { background: var(--info-light); color: #075985; }
+        .route-pill.route-generate_response { background: var(--success-light); color: #065f46; }
+        .route-pill.route-needs_more_info { background: var(--warning-light); color: #92400e; }
+
+        .confidence-bar-wrapper {
+            margin-top: 1rem;
+        }
+
+        .confidence-label {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-bottom: 0.375rem;
+        }
+
+        .confidence-bar {
+            width: 100%;
+            height: 8px;
+            background: var(--bg-secondary);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .confidence-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary) 0%, var(--primary-hover) 100%);
+            transition: width 0.5s ease-out;
+        }
+
+        .reasoning-text {
+            font-size: 0.9375rem;
+            color: var(--text-primary);
+            margin-top: 1rem;
+            padding: 0.875rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border-left: 3px solid var(--primary);
+            line-height: 1.6;
+        }
+
+        /* Signals */
+        .signals-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 0.75rem;
+        }
+
+        .signal-card {
+            padding: 0.875rem 1rem;
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+        }
+
+        .signal-key {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-muted);
+            margin-bottom: 0.25rem;
+        }
+
+        .signal-value {
+            font-size: 0.9375rem;
+            color: var(--text-primary);
+            font-family: 'Monaco', 'Courier New', monospace;
+            word-break: break-word;
+        }
+
+        .signal-value.boolean-true { color: #065f46; font-weight: 600; }
+        .signal-value.boolean-false { color: #991b1b; font-weight: 600; }
+        .signal-value.null-value { color: var(--text-muted); font-style: italic; }
+
+        /* Suggested call */
+        .suggested-endpoint {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.5rem 0.875rem;
+            background: var(--primary-light);
+            color: var(--primary);
+            border-radius: 6px;
+            font-family: 'Monaco', 'Courier New', monospace;
+            font-size: 0.875rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+
+        .payload-block {
+            background: var(--bg-code);
+            border-radius: 8px;
+            padding: 1.25rem;
+            position: relative;
+        }
+
+        .payload-block pre {
+            margin: 0;
+            color: var(--text-code);
+            font-size: 0.8125rem;
+            line-height: 1.6;
+            font-family: 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .copy-btn {
+            position: absolute;
+            top: 0.625rem;
+            right: 0.625rem;
+            padding: 0.375rem 0.75rem;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: var(--text-code);
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .copy-btn:hover { background: rgba(255, 255, 255, 0.2); }
+
+        /* Raw JSON toggle */
+        .raw-toggle { display: flex; justify-content: flex-end; margin-bottom: 1rem; }
+
+        .raw-toggle button {
+            padding: 0.375rem 0.875rem;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .raw-toggle button:hover {
+            background: var(--primary-light);
+            border-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .raw-json {
+            display: none;
+            background: var(--bg-code);
+            border-radius: 8px;
+            padding: 1.25rem;
+            margin-top: 1rem;
+            max-height: 500px;
+            overflow-y: auto;
+            position: relative;
+        }
+
+        .raw-json.show { display: block; }
+
+        .raw-json pre {
+            margin: 0;
+            color: var(--text-code);
+            font-size: 0.8125rem;
+            line-height: 1.6;
+            font-family: 'Monaco', 'Courier New', monospace;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .delegated-banner {
+            display: inline-block;
+            padding: 0.25rem 0.75rem;
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--success-light);
+            color: #065f46;
+            margin-left: 0.75rem;
+        }
+
+        .error-card {
+            background: var(--error-light);
+            border: 1px solid var(--error);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .error-card h3 { color: #991b1b; margin-bottom: 0.5rem; }
+        .error-card p { color: #991b1b; font-size: 0.9375rem; }
+
+        .meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem 1.25rem;
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border);
+        }
+
+        .meta-item strong { color: var(--text-primary); }
+
+        @media (max-width: 768px) {
+            .form-grid { grid-template-columns: 1fr; }
+            .header { padding: 1rem; }
+            .header-content { flex-direction: column; gap: 1rem; }
+            .container { padding: 1rem; }
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        <div class="header-content">
+            <h1>KB Inquiry Router</h1>
+            <div class="header-nav">
+                <button class="nav-btn" onclick="window.location.href='/ui'">API Tester</button>
+                <button class="nav-btn" onclick="window.location.href='/ui/knowledge'">Knowledge Q&amp;A</button>
+                <button class="nav-btn" onclick="window.location.href='/ui/chunks'">View Chunks</button>
+                <div id="statusBadge" class="status-badge unhealthy">
+                    <div class="status-dot"></div>
+                    <span>Checking...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="hero">
+            <h2>Classify an Inquiry</h2>
+            <p>Decide whether an inquiry should hit <code>knowledge-question</code>, <code>generate-response</code>, or fall back to <code>required-data</code>. Optionally delegate to the chosen downstream endpoint inline.</p>
+        </div>
+
+        <div class="form-section">
+            <form id="routeForm">
+                <div class="form-grid" style="grid-template-columns: 1fr;">
+                    <div class="form-group">
+                        <label for="apiKey">API Key</label>
+                        <input type="password" id="apiKey" placeholder="X-API-Key (required)" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <label for="inquiryInput">Inquiry *</label>
+                        <textarea
+                            id="inquiryInput"
+                            class="inquiry-textarea"
+                            placeholder="e.g. What are the steps for a hardship withdrawal?"
+                            rows="3"
+                            required
+                            minlength="10"
+                            maxlength="1000"
+                        ></textarea>
+                    </div>
+                </div>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="recordKeeper">Record Keeper</label>
+                        <input type="text" id="recordKeeper" placeholder="e.g. LT Trust, Vanguard">
+                    </div>
+                    <div class="form-group">
+                        <label for="planType">Plan Type</label>
+                        <select id="planType">
+                            <option value="">— Optional —</option>
+                            <option value="401(k)">401(k)</option>
+                            <option value="403(b)">403(b)</option>
+                            <option value="457">457</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="topic">Topic</label>
+                        <input type="text" id="topic" placeholder="e.g. loan, hardship, rollover">
+                    </div>
+                    <div class="form-group">
+                        <label for="collectedData">Collected Data (JSON)</label>
+                        <textarea id="collectedData" placeholder='{"vested_balance": 5000}'></textarea>
+                    </div>
+                </div>
+
+                <div class="form-row-actions">
+                    <label class="delegate-toggle">
+                        <input type="checkbox" id="delegateToggle">
+                        <span>Delegate — invoke downstream endpoint inline</span>
+                    </label>
+                    <button type="submit" class="submit-btn" id="submitBtn">
+                        <span>Route Inquiry</span>
+                    </button>
+                </div>
+            </form>
+
+            <div class="examples-row">
+                <span class="example-chip" data-q="What are the tax implications of a Roth 401(k) distribution?">General KB question</span>
+                <span class="example-chip" data-q="Am I eligible for a hardship withdrawal? My vested balance is $25,000 and I need it for medical expenses." data-topic="hardship" data-plan="401(k)">Hardship eligibility</span>
+                <span class="example-chip" data-q="I left my job last month and want to roll over my balance to a new IRA." data-topic="rollover" data-plan="401(k)">Rollover scenario</span>
+                <span class="example-chip" data-q="My account shows a different balance than expected and I don't know why.">Ambiguous (likely needs more info)</span>
+            </div>
+        </div>
+
+        <div id="resultSection" class="result-section">
+            <!-- Populated dynamically -->
+        </div>
+    </div>
+
+    <script>
+        const API_URL = window.location.origin;
+        const API_KEY_STORAGE = 'kb_api_key';
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const stored = localStorage.getItem(API_KEY_STORAGE);
+            if (stored) document.getElementById('apiKey').value = stored;
+            checkHealth();
+            setupEventListeners();
+        });
+
+        function setupEventListeners() {
+            document.getElementById('routeForm').addEventListener('submit', handleSubmit);
+
+            document.getElementById('apiKey').addEventListener('change', (e) => {
+                localStorage.setItem(API_KEY_STORAGE, e.target.value);
+            });
+
+            document.querySelectorAll('.example-chip').forEach(chip => {
+                chip.addEventListener('click', () => {
+                    document.getElementById('inquiryInput').value = chip.dataset.q;
+                    if (chip.dataset.topic) document.getElementById('topic').value = chip.dataset.topic;
+                    if (chip.dataset.plan) document.getElementById('planType').value = chip.dataset.plan;
+                    document.getElementById('inquiryInput').focus();
+                });
+            });
+        }
+
+        async function checkHealth() {
+            const badge = document.getElementById('statusBadge');
+            try {
+                const res = await fetch(`${API_URL}/health`);
+                const data = await res.json();
+                if (data.status === 'healthy') {
+                    badge.className = 'status-badge healthy';
+                    badge.innerHTML = '<div class="status-dot"></div><span>Healthy</span>';
+                } else {
+                    badge.className = 'status-badge unhealthy';
+                    badge.innerHTML = '<div class="status-dot"></div><span>Degraded</span>';
+                }
+            } catch (e) {
+                badge.className = 'status-badge unhealthy';
+                badge.innerHTML = '<div class="status-dot"></div><span>Offline</span>';
+            }
+        }
+
+        async function handleSubmit(e) {
+            e.preventDefault();
+
+            const apiKey = document.getElementById('apiKey').value.trim();
+            const inquiry = document.getElementById('inquiryInput').value.trim();
+            const recordKeeper = document.getElementById('recordKeeper').value.trim();
+            const planType = document.getElementById('planType').value;
+            const topic = document.getElementById('topic').value.trim();
+            const collectedRaw = document.getElementById('collectedData').value.trim();
+            const delegate = document.getElementById('delegateToggle').checked;
+
+            if (!apiKey) {
+                renderError({ message: 'API Key is required for this endpoint.' });
+                return;
+            }
+            if (!inquiry || inquiry.length < 10) {
+                renderError({ message: 'Inquiry must be at least 10 characters.' });
+                return;
+            }
+
+            let collectedData = null;
+            if (collectedRaw) {
+                try {
+                    collectedData = JSON.parse(collectedRaw);
+                } catch (err) {
+                    renderError({ message: `Collected Data is not valid JSON: ${err.message}` });
+                    return;
+                }
+            }
+
+            const payload = { inquiry, delegate };
+            if (recordKeeper) payload.record_keeper = recordKeeper;
+            if (planType) payload.plan_type = planType;
+            if (topic) payload.topic = topic;
+            if (collectedData) payload.collected_data = collectedData;
+
+            const btn = document.getElementById('submitBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div><span>Routing...</span>';
+
+            try {
+                const response = await fetch(`${API_URL}/api/v1/route-inquiry`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-API-Key': apiKey
+                    },
+                    body: JSON.stringify(payload)
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    renderResult(data);
+                } else {
+                    renderError(data);
+                }
+            } catch (err) {
+                renderError({ message: `Network error: ${err.message}` });
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<span>Route Inquiry</span>';
+            }
+        }
+
+        function renderResult(data) {
+            const section = document.getElementById('resultSection');
+            const route = data.route || 'unknown';
+            const confidence = typeof data.confidence === 'number' ? data.confidence : 0;
+            const confidencePct = Math.round(confidence * 100);
+            const reasoning = data.reasoning || '—';
+            const signals = data.signals || {};
+            const suggestedEndpoint = data.suggested_endpoint || '';
+            const suggestedPayload = data.suggested_payload || {};
+            const delegated = data.delegated_result;
+            const meta = data.metadata || {};
+
+            const routeLabels = {
+                knowledge_question: 'Knowledge Question',
+                generate_response: 'Generate Response',
+                needs_more_info: 'Needs More Info'
+            };
+            const routeLabel = routeLabels[route] || route;
+
+            const signalsHtml = Object.keys(signals).length > 0
+                ? `<div class="signals-grid">${Object.entries(signals).map(([k, v]) => {
+                    const display = formatSignalValue(v);
+                    const cls = signalValueClass(v);
+                    return `
+                        <div class="signal-card">
+                            <div class="signal-key">${escapeHtml(k)}</div>
+                            <div class="signal-value ${cls}">${display}</div>
+                        </div>
+                    `;
+                }).join('')}</div>`
+                : '<p style="color: var(--text-muted); font-style: italic;">No signals returned.</p>';
+
+            const delegatedHtml = delegated
+                ? `
+                    <div class="result-card">
+                        <div class="result-card-header">
+                            <h3>Delegated Result</h3>
+                            <span class="delegated-banner">delegate=true</span>
+                        </div>
+                        <div class="payload-block">
+                            <button class="copy-btn" onclick="copyJson('delegatedJson')">Copy</button>
+                            <pre id="delegatedJson">${escapeHtml(JSON.stringify(delegated, null, 2))}</pre>
+                        </div>
+                    </div>
+                `
+                : '';
+
+            const metaParts = [];
+            if (meta.router_mode) metaParts.push(`<span class="meta-item"><strong>Router mode:</strong> ${escapeHtml(meta.router_mode)}</span>`);
+            if (meta.fast_path_hit !== undefined) metaParts.push(`<span class="meta-item"><strong>Fast path:</strong> ${meta.fast_path_hit ? 'yes' : 'no'}</span>`);
+            if (meta.model) metaParts.push(`<span class="meta-item"><strong>Model:</strong> ${escapeHtml(meta.model)}</span>`);
+            if (meta.latency_ms != null) metaParts.push(`<span class="meta-item"><strong>Latency:</strong> ${meta.latency_ms} ms</span>`);
+            const metaHtml = metaParts.length > 0
+                ? `<div class="meta-row">${metaParts.join('')}</div>`
+                : '';
+
+            section.innerHTML = `
+                <div class="route-hero-card route-${route}">
+                    <div class="route-label">Routing Decision</div>
+                    <div class="route-name">
+                        <span>${escapeHtml(routeLabel)}</span>
+                        <span class="route-pill route-${route}">${escapeHtml(route)}</span>
+                    </div>
+                    <div class="reasoning-text">${escapeHtml(reasoning)}</div>
+                    <div class="confidence-bar-wrapper">
+                        <div class="confidence-label">
+                            <span>Confidence</span>
+                            <span><strong>${confidencePct}%</strong> (${confidence.toFixed(3)})</span>
+                        </div>
+                        <div class="confidence-bar">
+                            <div class="confidence-fill" style="width: ${confidencePct}%"></div>
+                        </div>
+                    </div>
+                    ${metaHtml}
+                </div>
+
+                <div class="result-card">
+                    <div class="result-card-header">
+                        <h3>Signals</h3>
+                        <span style="font-size: 0.8125rem; color: var(--text-muted);">${Object.keys(signals).length} feature${Object.keys(signals).length === 1 ? '' : 's'}</span>
+                    </div>
+                    ${signalsHtml}
+                </div>
+
+                <div class="result-card">
+                    <div class="result-card-header">
+                        <h3>Suggested Downstream Call</h3>
+                    </div>
+                    <div class="suggested-endpoint">POST ${escapeHtml(suggestedEndpoint)}</div>
+                    <div class="payload-block">
+                        <button class="copy-btn" onclick="copyJson('payloadJson')">Copy</button>
+                        <pre id="payloadJson">${escapeHtml(JSON.stringify(suggestedPayload, null, 2))}</pre>
+                    </div>
+                </div>
+
+                ${delegatedHtml}
+
+                <div class="raw-toggle">
+                    <button onclick="toggleRawJson()">Show Raw JSON</button>
+                </div>
+                <div id="rawJson" class="raw-json">
+                    <button class="copy-btn" onclick="copyJson('rawJsonPre')">Copy</button>
+                    <pre id="rawJsonPre">${escapeHtml(JSON.stringify(data, null, 2))}</pre>
+                </div>
+            `;
+
+            section.classList.add('show');
+            section.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+
+        function renderError(data) {
+            const section = document.getElementById('resultSection');
+            section.innerHTML = `
+                <div class="error-card">
+                    <h3>Error</h3>
+                    <p>${escapeHtml(data.message || data.detail || JSON.stringify(data))}</p>
+                </div>
+            `;
+            section.classList.add('show');
+        }
+
+        function toggleRawJson() {
+            document.getElementById('rawJson').classList.toggle('show');
+        }
+
+        function copyJson(elementId) {
+            const text = document.getElementById(elementId).textContent;
+            navigator.clipboard.writeText(text).then(() => {
+                const btn = event.target;
+                const orig = btn.textContent;
+                btn.textContent = 'Copied!';
+                setTimeout(() => { btn.textContent = orig; }, 1500);
+            });
+        }
+
+        function formatSignalValue(v) {
+            if (v === null || v === undefined) return 'null';
+            if (typeof v === 'boolean') return v ? 'true' : 'false';
+            if (typeof v === 'number') return String(v);
+            if (typeof v === 'string') return escapeHtml(v) || '<em style="color:var(--text-muted)">empty</em>';
+            return escapeHtml(JSON.stringify(v));
+        }
+
+        function signalValueClass(v) {
+            if (v === null || v === undefined) return 'null-value';
+            if (v === true) return 'boolean-true';
+            if (v === false) return 'boolean-false';
+            return '';
+        }
+
+        function escapeHtml(str) {
+            if (str === null || str === undefined) return '';
+            const div = document.createElement('div');
+            div.textContent = String(str);
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

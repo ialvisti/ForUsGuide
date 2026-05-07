@@ -46,6 +46,15 @@ class Settings(BaseSettings):
     LLM_ROUTE_GR_OUTCOME: str = "gpt-5.5"
     LLM_ROUTE_GR_RESPONSE: str = "gpt-5.5"
     LLM_ROUTE_KNOWLEDGE: str = "gpt-5.5"
+    LLM_ROUTE_CLASSIFY: str = "gpt-5.5-mini"
+
+    # Inquiry router rollout flag. Stage 4 reads this to decide whether the
+    # /route-inquiry endpoint is exposed and how it behaves:
+    #   disabled        → endpoint returns 503
+    #   shadow          → classify but always return needs_more_info to caller
+    #   knowledge_only  → only knowledge_question routes are honored
+    #   full            → all routes honored
+    ROUTER_MODE: str = "disabled"
 
     # Pinecone
     PINECONE_API_KEY: str = ""
@@ -112,6 +121,7 @@ def validate_settings():
         "LLM_ROUTE_GR_OUTCOME": settings.LLM_ROUTE_GR_OUTCOME,
         "LLM_ROUTE_GR_RESPONSE": settings.LLM_ROUTE_GR_RESPONSE,
         "LLM_ROUTE_KNOWLEDGE": settings.LLM_ROUTE_KNOWLEDGE,
+        "LLM_ROUTE_CLASSIFY": settings.LLM_ROUTE_CLASSIFY,
     }
     for var_name, model_name in route_models.items():
         model_lower = (model_name or "").strip().lower()

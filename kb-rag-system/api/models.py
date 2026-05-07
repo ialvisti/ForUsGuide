@@ -374,12 +374,16 @@ class GenerateResponseResult(BaseModel):
 
 class HealthResponse(BaseModel):
     """Response del health check."""
-    
+
     status: str = Field(..., description="Estado del servicio")
     version: str = Field(..., description="Versión de la API")
     pinecone_connected: bool = Field(..., description="Si Pinecone está conectado")
     openai_configured: bool = Field(..., description="Si OpenAI está configurado")
     total_vectors: int = Field(..., description="Total de vectores en Pinecone")
+    router_mode: str = Field(
+        default="disabled",
+        description="Inquiry router rollout flag: disabled | shadow | knowledge_only | full",
+    )
 
 
 class ErrorResponse(BaseModel):
@@ -520,8 +524,97 @@ class KnowledgeQuestionResponse(BaseModel):
         ...,
         description="Nivel de cobertura: well_covered, partially_covered, limited_coverage"
     )
-    
+
     metadata: Dict[str, Any] = Field(
         ...,
         description="Metadata del procesamiento (chunks_used, tokens, modelo)"
     )
+
+
+# ============================================================================
+# Inquiry Router (Stage 2 — inert; wired up in Stage 4)
+# ============================================================================
+
+class RouteDecision(str, Enum):
+    """Possible routing decisions for an inbound inquiry."""
+    KNOWLEDGE_QUESTION = "knowledge_question"
+    GENERATE_RESPONSE = "generate_response"
+    NEEDS_MORE_INFO = "needs_more_info"
+
+
+class RouteInquiryRequest(BaseModel):
+    """Request para el endpoint /route-inquiry."""
+
+    inquiry: str = Field(
+        ...,
+        min_length=10,
+        max_length=1000,
+        description="La consulta del participante",
+    )
+    record_keeper: Optional[str] = Field(
+        default=None,
+        description="Record keeper (ej: 'LT Trust', 'Vanguard')",
+    )
+    plan_type: Optional[str] = Field(
+        default=None,
+        description="Tipo de plan (401(k), 403(b), 457)",
+    )
+    topic: Optional[str] = Field(
+        default=None,
+        description="Topic hint (loan, hardship, rollover, etc.)",
+    )
+    collected_data: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Datos del participante ya recolectados (si los hay)",
+    )
+    delegate: bool = Field(
+        default=False,
+        description="Si true, también invoca el endpoint downstream elegido",
+    )
+
+    @field_validator('inquiry')
+    @classmethod
+    def validate_inquiry(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("Inquiry cannot be empty")
+        return v.strip()
+
+    @field_validator('record_keeper')
+    @classmethod
+    def validate_record_keeper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v if v else None
+
+    @field_validator('topic')
+    @classmethod
+    def validate_topic(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        return v.lower().strip() or None
+
+
+class RouteInquiryResponse(BaseModel):
+    """Response del endpoint /route-inquiry."""
+
+    route: RouteDecision = Field(..., description="Decisión de routing")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence del classifier")
+    reasoning: str = Field(..., description="Una oración explicando la decisión")
+    signals: Dict[str, Any] = Field(
+        ...,
+        description="Features deterministas que motivaron la decisión",
+    )
+    suggested_endpoint: str = Field(
+        ...,
+        description="Endpoint downstream sugerido (e.g. '/api/v1/knowledge-question')",
+    )
+    suggested_payload: Dict[str, Any] = Field(
+        ...,
+        description="Body listo-para-enviar del endpoint downstream",
+    )
+    delegated_result: Optional[Dict[str, Any]] = Field(
+        default=None,
+        description="Resultado del downstream cuando delegate=True",
+    )
+    metadata: Dict[str, Any] = Field(..., description="Metadata del procesamiento")

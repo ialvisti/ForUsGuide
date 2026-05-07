@@ -150,6 +150,33 @@ def call_knowledge_question(question: str) -> tuple[dict, int, float]:
     return resp.json(), resp.status_code, elapsed_ms
 
 
+def call_route_inquiry(
+    inquiry: str,
+    record_keeper: Optional[str] = None,
+    plan_type: Optional[str] = None,
+    topic: Optional[str] = None,
+    collected_data: Optional[dict] = None,
+) -> dict:
+    """Call /api/v1/route-inquiry and return the parsed response body."""
+    body: dict = {"inquiry": inquiry}
+    for k, v in {
+        "record_keeper": record_keeper,
+        "plan_type": plan_type,
+        "topic": topic,
+        "collected_data": collected_data,
+    }.items():
+        if v is not None:
+            body[k] = v
+    resp = httpx.post(
+        f"{API_BASE_URL}/api/v1/route-inquiry",
+        headers=_req_headers(HEADERS_AUTH),
+        json=body,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()
+
+
 # ============================================================================
 # Shared validation helpers
 # ============================================================================
@@ -1599,6 +1626,274 @@ def save_results(all_results: list[TestResult], output_dir: Path):
 
 
 # ============================================================================
+# Inquiry Router accuracy suite
+# ============================================================================
+#
+# The labeled set is the union of the existing KNOWLEDGE_TESTS (expected route
+# = knowledge_question) and GENERATE_TESTS (expected route = generate_response).
+# We exclude KQ tests categorized as "out_of_scope" because the router treats
+# off-topic inputs as ambiguous, not as KB lookups, and including them would
+# distort the accuracy numbers.
+
+ROUTER_LABELED_INQUIRIES: list[tuple[str, str, str]] = (
+    [
+        (case["id"], case["question"], "knowledge_question")
+        for case in KNOWLEDGE_TESTS
+        if case.get("category") != "out_of_scope"
+    ]
+    + [
+        (case["id"], case["payload"]["inquiry"], "generate_response")
+        for case in GENERATE_TESTS
+    ]
+)
+
+
+# Promotion targets from stage-5 plan.
+ROUTER_OVERALL_ACCURACY_TARGET = 0.90
+ROUTER_GR_TO_KQ_MISROUTE_CEILING = 0.05  # the dangerous direction
+ROUTER_FAST_PATH_P50_TARGET_MS = 500
+ROUTER_LLM_PATH_P95_TARGET_MS = 1500
+
+
+def _percentile(values: list[float], pct: float) -> float:
+    if not values:
+        return 0.0
+    s = sorted(values)
+    k = max(0, min(len(s) - 1, int(round(pct / 100.0 * (len(s) - 1)))))
+    return s[k]
+
+
+def run_router_accuracy_suite(verbose: bool = False) -> dict:
+    """Hit /api/v1/route-inquiry for every labeled case; return summary + rows."""
+    confusion: dict[tuple[str, str], int] = {}
+    rows: list[dict] = []
+
+    print(f"\n{'─' * 90}")
+    print(f"  INQUIRY ROUTER ACCURACY SUITE ({len(ROUTER_LABELED_INQUIRIES)} cases)")
+    print(f"{'─' * 90}")
+
+    for test_id, inquiry, expected in ROUTER_LABELED_INQUIRIES:
+        print(f"  [{test_id}] expected={expected}...", end=" ", flush=True)
+        try:
+            t0 = time.time()
+            result = call_route_inquiry(inquiry=inquiry)
+            wall_ms = (time.time() - t0) * 1000
+
+            actual = result.get("route", "needs_more_info")
+            confusion[(expected, actual)] = confusion.get((expected, actual), 0) + 1
+
+            metadata = result.get("metadata") or {}
+            fast_path = bool(metadata.get("fast_path_hit"))
+            internal_ms = metadata.get("latency_ms") or metadata.get(
+                "usage", {}
+            ).get("latency_ms")
+            row = {
+                "test_id": test_id,
+                "inquiry": inquiry[:120],
+                "expected": expected,
+                "actual": actual,
+                "match": expected == actual,
+                "confidence": result.get("confidence"),
+                "fast_path": fast_path,
+                "latency_ms": round(internal_ms, 1) if internal_ms else None,
+                "wall_ms": round(wall_ms, 1),
+                "reasoning": result.get("reasoning"),
+            }
+            rows.append(row)
+
+            tag = "PASS" if row["match"] else "MISROUTE"
+            print(f"{tag} actual={actual} ({wall_ms:.0f}ms, fast_path={fast_path})")
+            if verbose and not row["match"]:
+                print(f"        reasoning: {row['reasoning']}")
+        except Exception as exc:
+            confusion[(expected, "error")] = confusion.get((expected, "error"), 0) + 1
+            rows.append(
+                {
+                    "test_id": test_id,
+                    "inquiry": inquiry[:120],
+                    "expected": expected,
+                    "actual": "error",
+                    "match": False,
+                    "error": str(exc),
+                }
+            )
+            print(f"FAIL ({type(exc).__name__})")
+
+    total = len(rows)
+    correct = sum(1 for r in rows if r.get("match"))
+    accuracy = correct / total if total else 0.0
+    gr_total = sum(1 for r in rows if r["expected"] == "generate_response")
+    gr_to_kq = sum(
+        1 for r in rows
+        if r["expected"] == "generate_response" and r["actual"] == "knowledge_question"
+    )
+    gr_misroute_rate = gr_to_kq / gr_total if gr_total else 0.0
+
+    fast_latencies = [
+        r["latency_ms"] for r in rows
+        if r.get("fast_path") and r.get("latency_ms") is not None
+    ]
+    llm_latencies = [
+        r["latency_ms"] for r in rows
+        if r.get("fast_path") is False and r.get("latency_ms") is not None
+    ]
+
+    summary = {
+        "total": total,
+        "correct": correct,
+        "accuracy": round(accuracy, 4),
+        "accuracy_target": ROUTER_OVERALL_ACCURACY_TARGET,
+        "accuracy_meets_target": accuracy >= ROUTER_OVERALL_ACCURACY_TARGET,
+        "gr_to_kq_misroute_count": gr_to_kq,
+        "gr_to_kq_misroute_rate": round(gr_misroute_rate, 4),
+        "gr_misroute_ceiling": ROUTER_GR_TO_KQ_MISROUTE_CEILING,
+        "gr_misroute_under_ceiling": gr_misroute_rate <= ROUTER_GR_TO_KQ_MISROUTE_CEILING,
+        "fast_path_p50_ms": round(_percentile(fast_latencies, 50), 1),
+        "fast_path_p50_target_ms": ROUTER_FAST_PATH_P50_TARGET_MS,
+        "llm_path_p95_ms": round(_percentile(llm_latencies, 95), 1),
+        "llm_path_p95_target_ms": ROUTER_LLM_PATH_P95_TARGET_MS,
+        "confusion": {f"{k[0]}->{k[1]}": v for k, v in sorted(confusion.items())},
+    }
+
+    print_router_summary(summary)
+    return {"summary": summary, "rows": rows}
+
+
+def print_router_summary(summary: dict) -> None:
+    print("\n" + "=" * 90)
+    print("  INQUIRY ROUTER ACCURACY REPORT")
+    print("=" * 90)
+    print(f"  Total cases:         {summary['total']}")
+    print(
+        f"  Accuracy:            {summary['accuracy']:.1%} "
+        f"(target ≥ {summary['accuracy_target']:.0%}) "
+        f"{'✓' if summary['accuracy_meets_target'] else '✗'}"
+    )
+    print(
+        f"  GR→KQ misroute rate: {summary['gr_to_kq_misroute_rate']:.1%} "
+        f"(ceiling ≤ {summary['gr_misroute_ceiling']:.0%}) "
+        f"{'✓' if summary['gr_misroute_under_ceiling'] else '✗ DO NOT PROMOTE'}"
+    )
+    print(
+        f"  Fast-path p50:       {summary['fast_path_p50_ms']} ms "
+        f"(target < {summary['fast_path_p50_target_ms']} ms)"
+    )
+    print(
+        f"  LLM-path p95:        {summary['llm_path_p95_ms']} ms "
+        f"(target < {summary['llm_path_p95_target_ms']} ms)"
+    )
+    print("\n  Confusion matrix (expected -> actual : count):")
+    for k, v in summary["confusion"].items():
+        print(f"    {k:<48} {v}")
+    print("=" * 90)
+
+
+def save_router_results(payload: dict, output_dir: Path) -> Path:
+    out = output_dir / "router_accuracy_results.json"
+    with open(out, "w") as f:
+        json.dump(
+            {
+                "timestamp": datetime.now().isoformat(),
+                "api_base_url": API_BASE_URL,
+                **payload,
+            },
+            f,
+            indent=2,
+        )
+    print(f"\n  Router accuracy saved to: {out}")
+    return out
+
+
+def append_router_section_to_html(payload: dict, html_path: Path) -> None:
+    """Append a confusion-matrix section to the existing stress test HTML report.
+
+    The HTML file is hand-styled; rather than parsing it we drop a small,
+    self-contained <section> block before </body>. If that anchor is missing,
+    the section is appended to the end of the file.
+    """
+    if not html_path.exists():
+        return
+    summary = payload["summary"]
+    rows = payload["rows"]
+
+    confusion_rows = "".join(
+        f"<tr><td>{k}</td><td style='text-align:right'>{v}</td></tr>"
+        for k, v in summary["confusion"].items()
+    )
+    misroutes_rows = "".join(
+        (
+            f"<tr><td>{r['test_id']}</td>"
+            f"<td>{(r.get('inquiry') or '')[:80]}</td>"
+            f"<td>{r['expected']}</td>"
+            f"<td>{r['actual']}</td>"
+            f"<td>{r.get('reasoning') or ''}</td></tr>"
+        )
+        for r in rows
+        if not r.get("match")
+    ) or "<tr><td colspan='5' style='text-align:center'>No misroutes 🎉</td></tr>"
+
+    block = f"""
+<section id="router-accuracy" style="margin:40px auto;max-width:1100px;
+    background:#131825;color:#e2e8f0;padding:24px;border-radius:12px;
+    font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    border:1px solid #252d44;">
+  <h2 style="margin-bottom:16px;color:#a855f7">Inquiry Router Accuracy</h2>
+  <p style="color:#8892a8;margin-bottom:16px">
+    Generated {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} against {API_BASE_URL}
+  </p>
+  <ul style="line-height:1.7">
+    <li><strong>Accuracy:</strong> {summary['accuracy']:.1%}
+        (target ≥ {summary['accuracy_target']:.0%})
+        {'✅' if summary['accuracy_meets_target'] else '❌'}</li>
+    <li><strong>GR→KQ misroute rate:</strong>
+        {summary['gr_to_kq_misroute_rate']:.1%}
+        (ceiling ≤ {summary['gr_misroute_ceiling']:.0%})
+        {'✅' if summary['gr_misroute_under_ceiling'] else '❌ DO NOT PROMOTE'}</li>
+    <li><strong>Fast-path p50:</strong> {summary['fast_path_p50_ms']} ms
+        (target &lt; {summary['fast_path_p50_target_ms']} ms)</li>
+    <li><strong>LLM-path p95:</strong> {summary['llm_path_p95_ms']} ms
+        (target &lt; {summary['llm_path_p95_target_ms']} ms)</li>
+  </ul>
+  <h3 style="margin-top:20px">Confusion matrix</h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:8px">
+    <thead><tr style="border-bottom:1px solid #252d44">
+      <th style="text-align:left;padding:6px">expected → actual</th>
+      <th style="text-align:right;padding:6px">count</th>
+    </tr></thead>
+    <tbody>{confusion_rows}</tbody>
+  </table>
+  <h3 style="margin-top:20px">Misroutes</h3>
+  <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:13px">
+    <thead><tr style="border-bottom:1px solid #252d44">
+      <th style="text-align:left;padding:6px">id</th>
+      <th style="text-align:left;padding:6px">inquiry</th>
+      <th style="text-align:left;padding:6px">expected</th>
+      <th style="text-align:left;padding:6px">actual</th>
+      <th style="text-align:left;padding:6px">reasoning</th>
+    </tr></thead>
+    <tbody>{misroutes_rows}</tbody>
+  </table>
+</section>
+"""
+
+    text = html_path.read_text()
+    # Drop any previous router-accuracy section so re-runs don't accumulate.
+    import re as _re
+    text = _re.sub(
+        r"<section id=\"router-accuracy\".*?</section>",
+        "",
+        text,
+        flags=_re.DOTALL,
+    )
+    if "</body>" in text:
+        text = text.replace("</body>", block + "\n</body>", 1)
+    else:
+        text = text + block
+    html_path.write_text(text)
+    print(f"  Router section written to: {html_path}")
+
+
+# ============================================================================
 # Main
 # ============================================================================
 
@@ -1606,9 +1901,12 @@ def main():
     parser = argparse.ArgumentParser(description="KB RAG Stress Test Suite")
     parser.add_argument(
         "--endpoint",
-        choices=["knowledge", "generate", "both"],
+        choices=["knowledge", "generate", "router", "both", "all"],
         default="both",
-        help="Which endpoint(s) to test",
+        help=(
+            "Which endpoint(s) to test. 'router' runs only the inquiry-router "
+            "accuracy suite; 'all' runs knowledge + generate + router."
+        ),
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Show validation notes")
     parser.add_argument("--url", default=API_BASE_URL, help="API base URL")
@@ -1656,14 +1954,14 @@ def main():
     kq_results: list[TestResult] = []
     gr_results: list[TestResult] = []
 
-    if args.endpoint in ("knowledge", "both"):
+    if args.endpoint in ("knowledge", "both", "all"):
         count = len([t for t in KNOWLEDGE_TESTS if not test_ids or t["id"] in test_ids])
         print(f"\n{'─' * 90}")
         print(f"  KNOWLEDGE QUESTION TESTS ({count} tests)")
         print(f"{'─' * 90}")
         kq_results = run_knowledge_tests(verbose=args.verbose, test_ids=test_ids)
 
-    if args.endpoint in ("generate", "both"):
+    if args.endpoint in ("generate", "both", "all"):
         count = len([t for t in GENERATE_TESTS if not test_ids or t["id"] in test_ids])
         print(f"\n{'─' * 90}")
         print(f"  GENERATE RESPONSE TESTS ({count} tests)")
@@ -1673,8 +1971,20 @@ def main():
     all_results = print_report(kq_results, gr_results)
     save_results(all_results, Path(__file__).resolve().parent)
 
+    router_failed = False
+    if args.endpoint in ("router", "all"):
+        router_payload = run_router_accuracy_suite(verbose=args.verbose)
+        out_dir = Path(__file__).resolve().parent
+        save_router_results(router_payload, out_dir)
+        append_router_section_to_html(router_payload, out_dir / "stress_test_report.html")
+        s = router_payload["summary"]
+        router_failed = (
+            not s["accuracy_meets_target"]
+            or not s["gr_misroute_under_ceiling"]
+        )
+
     failed_count = sum(1 for r in all_results if not r.passed)
-    sys.exit(1 if failed_count > 0 else 0)
+    sys.exit(1 if (failed_count > 0 or router_failed) else 0)
 
 
 if __name__ == "__main__":

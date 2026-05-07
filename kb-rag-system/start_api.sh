@@ -48,4 +48,4 @@ echo -e "  Port: ${GREEN}$(grep API_PORT .env | cut -d '=' -f2)${NC}\n"
 # Iniciar servidor
 echo -e "${GREEN}🚀 Starting API server...${NC}\n"
 
-cd api && python main.py
+python -m uvicorn api.main:app --host "${API_HOST:-0.0.0.0}" --port "${API_PORT:-8000}"

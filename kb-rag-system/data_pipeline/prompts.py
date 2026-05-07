@@ -5,6 +5,9 @@ Este módulo contiene los system prompts y templates para los endpoints
 de required_data y generate_response.
 """
 
+import json
+from typing import Any, Dict, Optional, Tuple
+
 # ============================================================================
 # ENDPOINT 1: Required Data
 # ============================================================================
@@ -741,3 +744,75 @@ def build_decompose_question_prompt(question: str) -> tuple:
     """
     user_prompt = USER_PROMPT_DECOMPOSE_TEMPLATE.format(question=question)
     return SYSTEM_PROMPT_DECOMPOSE_QUESTION, user_prompt
+
+
+# ============================================================================
+# Inquiry Router (Stage 2 — used by InquiryRouterEngine in Stage 3)
+# ============================================================================
+
+SYSTEM_PROMPT_CLASSIFY_INQUIRY = """You are an inquiry router for a 401(k) participant advisory system.
+Decide which downstream pipeline should handle the inquiry.
+
+ROUTES:
+- "knowledge_question": factual/educational questions answerable from the knowledge base alone
+  (timeframes, fees, limits, rule definitions). NO participant-specific eligibility needed.
+- "generate_response": participant-specific eligibility/outcome questions that need collected
+  participant data (hardship qualification, vested-balance, can-I-take-a-loan).
+- "needs_more_info": route is ambiguous; topic, recordkeeper, or eligibility intent is unclear.
+  This is the safe fallback.
+
+You will receive deterministic signals computed before this call. Treat them as strong hints:
+- hardship_signal=true AND active_participant=true -> generate_response
+- separation_signal=true AND wants_funds=true -> generate_response
+- short interrogative ("how many", "how long", "what is") with no participant signals -> knowledge_question
+
+EXAMPLES:
+- "how many business days til I can see it get approved" -> knowledge_question
+- "what's the fee for a rollover from LT Trust?" -> knowledge_question
+- "what is the 60-day rollover rule?" -> knowledge_question
+- "what are the contribution limits for 2025?" -> knowledge_question
+- "can my plan offer Roth contributions?" -> needs_more_info
+- "what's the difference between a direct and indirect rollover?" -> knowledge_question
+- "I'm still working but need $15k for medical bills, can I take a hardship?" -> generate_response
+- "I left my employer 3 months ago and want to roll over my balance" -> generate_response
+- "I'm 58 with a hardship withdrawal request for tuition and I have an outstanding loan" -> generate_response
+- "I was terminated last month, can I take a distribution from my 401(k)?" -> generate_response
+
+Output valid JSON:
+{"route": "knowledge_question|generate_response|needs_more_info",
+ "confidence": 0.0-1.0,
+ "reasoning": "one sentence"}"""
+
+USER_PROMPT_CLASSIFY_INQUIRY_TEMPLATE = """INQUIRY: {inquiry}
+RECORDKEEPER: {record_keeper}
+PLAN_TYPE: {plan_type}
+TOPIC: {topic}
+PARTICIPANT_DATA_AVAILABLE: {participant_data_available}
+DETERMINISTIC_SIGNALS: {signals_json}
+
+Return ONLY the JSON object."""
+
+
+def build_classify_inquiry_prompt(
+    inquiry: str,
+    record_keeper: Optional[str],
+    plan_type: Optional[str],
+    topic: Optional[str],
+    participant_data_available: bool,
+    signals: Dict[str, Any],
+) -> Tuple[str, str]:
+    """
+    Construye los prompts para clasificar una inquiry hacia un endpoint downstream.
+
+    Returns:
+        (system_prompt, user_prompt)
+    """
+    user_prompt = USER_PROMPT_CLASSIFY_INQUIRY_TEMPLATE.format(
+        inquiry=inquiry,
+        record_keeper=record_keeper or "unknown",
+        plan_type=plan_type or "unknown",
+        topic=topic or "unknown",
+        participant_data_available=participant_data_available,
+        signals_json=json.dumps(signals, sort_keys=True),
+    )
+    return SYSTEM_PROMPT_CLASSIFY_INQUIRY, user_prompt

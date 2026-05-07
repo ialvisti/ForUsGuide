@@ -408,6 +408,9 @@ _TASK_EFFORT_OVERRIDES: Dict[str, Dict[str, Any]] = {
     # (medium reasoning) because dropping it below medium causes the
     # model to skip decomposition on multi-concept inquiries.
     "decompose": {"thinking_budget": 0},
+    # Inquiry classifier is a tight 3-class decision with deterministic
+    # signals carrying most of the weight. Run cheap on both providers.
+    "classify_inquiry": {"reasoning_effort": "minimal", "thinking_budget": 0},
 }
 
 
@@ -425,6 +428,7 @@ def build_routes_from_settings(settings: Any) -> Dict[str, TaskRoute]:
         "gr_outcome": settings.LLM_ROUTE_GR_OUTCOME,
         "gr_response": settings.LLM_ROUTE_GR_RESPONSE,
         "knowledge_question": settings.LLM_ROUTE_KNOWLEDGE,
+        "classify_inquiry": settings.LLM_ROUTE_CLASSIFY,
     }
 
     routes: Dict[str, TaskRoute] = {}

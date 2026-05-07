@@ -104,6 +104,249 @@ class KnowledgeQuestionResult:
 
 
 # ============================================================================
+# Topic normalization & deterministic detection helpers
+# ============================================================================
+#
+# These helpers are shared with `inquiry_router` (and any future module that
+# needs the same deterministic signals) so they live at module level rather
+# than as RAGEngine methods. RAGEngine keeps thin wrapper methods that
+# delegate here so internal callers and existing tests are unaffected.
+
+# Callers send topics in their own vocabulary (often plural, colloquial,
+# or hyphenated) while Pinecone chunks are tagged with a fixed set of
+# canonical values. This table translates caller-side topics to the
+# exact metadata values used at chunking time. An empty list means
+# "no meaningful mapping — skip the topic filter entirely". Unmapped
+# topics fall through to ``[topic_lower]`` so new vocabulary keeps
+# working if it happens to match.
+TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
+    "distribution": ["distribution"],
+    "distributions": ["distribution"],
+    "rollover": ["rollover", "termination_distribution_request", "distribution"],
+    "rollovers": ["rollover", "termination_distribution_request", "distribution"],
+    "loan": ["loan"],
+    "loans": ["loan"],
+    "hardship": ["hardship_withdrawal"],
+    "hardships": ["hardship_withdrawal"],
+    "hardship_withdrawal": ["hardship_withdrawal"],
+    "termination": ["termination_distribution_request"],
+    "termination_distribution": ["termination_distribution_request"],
+    "termination_distribution_request": ["termination_distribution_request"],
+    "excess_contribution": ["excess_contribution_refund"],
+    "excess_contributions": ["excess_contribution_refund"],
+    "excess_contribution_refund": ["excess_contribution_refund"],
+    "in_service": ["in_service_withdrawal_options"],
+    "in-service": ["in_service_withdrawal_options"],
+    "in_service_withdrawal": ["in_service_withdrawal_options"],
+    "in_service_withdrawal_options": ["in_service_withdrawal_options"],
+    # RMDs are a distribution sub-type in the KB
+    "rmd": ["distribution"],
+    "rmds": ["distribution"],
+    # No indexed topic exists for these — skip the topic filter
+    "investments": [],
+    "investment": [],
+    "contributions": [],
+    "contribution": [],
+}
+
+
+def _contains_any(text: str, needles: List[str]) -> bool:
+    return any(needle in text for needle in needles)
+
+
+def _contains_bounded_phrase(text: str, phrase: str) -> bool:
+    pattern = rf"(?<![a-z0-9]){re.escape(phrase.lower())}(?![a-z0-9])"
+    return re.search(pattern, text) is not None
+
+
+def _ordered_unique(values: List[str]) -> List[str]:
+    seen = set()
+    unique = []
+    for value in values:
+        if not value:
+            continue
+        if value not in seen:
+            seen.add(value)
+            unique.append(value)
+    return unique
+
+
+def resolve_topic_filter(topic: Optional[str]) -> Optional[List[str]]:
+    """Translate a caller topic into Pinecone ``topic`` metadata values.
+
+    Returns ``None`` when no topic filter should be applied (either
+    because the caller did not provide a topic or because the mapping
+    is explicitly empty).
+    """
+    if not topic:
+        return None
+    key = topic.lower().strip()
+    mapped = TOPIC_NORMALIZATION_MAP.get(key)
+    if mapped is not None:
+        return mapped or None
+    return [key]
+
+
+def detect_advisory_concepts(
+    inquiry: str,
+    topic: Optional[str],
+    collected_data: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Deterministically detect cross-topic advisory paths before retrieval.
+
+    Pure-function port of ``RAGEngine._detect_advisory_concepts``. Importable
+    by ``inquiry_router`` and any other module that needs the same
+    deterministic signals without instantiating a full ``RAGEngine``.
+
+    Returned dict keys: ``active_participant``, ``wants_funds``,
+    ``separation_signal``, ``hardship_signal``, ``loan_signal``,
+    ``detected_concepts``, ``alternative_concepts``.
+    """
+    inquiry_text = (inquiry or "").lower()
+    topic_text = (topic or "").lower().strip()
+    text = f"{inquiry_text} {topic_text}"
+
+    participant_data = (collected_data or {}).get("participant_data") or {}
+    status_values = [
+        participant_data.get("employment_status"),
+        participant_data.get("participant_status"),
+        participant_data.get("eligibility_status"),
+        participant_data.get("status"),
+    ]
+    normalized_statuses = [
+        re.sub(r"[^a-z0-9]+", " ", str(v).lower()).strip()
+        for v in status_values
+        if v is not None
+    ]
+
+    active_from_status = any(
+        status == "active" or status.startswith("active ")
+        for status in normalized_statuses
+    )
+    inactive_from_status = any(
+        status == "inactive"
+        or status.startswith("inactive ")
+        or status in {"terminated", "separated", "former"}
+        or status.startswith("terminated ")
+        or status.startswith("separated ")
+        for status in normalized_statuses
+    )
+
+    active_text_signal = (
+        _contains_any(text, [
+            "still working",
+            "while employed",
+            "currently employed",
+            "considering quitting",
+            "quit in",
+            "quitting in",
+            "next 4 weeks",
+            "next four weeks",
+        ])
+        or _contains_bounded_phrase(text, "active participant")
+    )
+    active_participant = (
+        active_from_status
+        or (not inactive_from_status and active_text_signal)
+    )
+    wants_funds = _contains_any(text, [
+        "cash out",
+        "cashout",
+        "withdraw",
+        "withdrawal",
+        "take money",
+        "take some money",
+        "access money",
+        "access funds",
+        "need money",
+        "money from",
+        "distribution",
+    ])
+    separation_signal = _contains_any(text, [
+        "separation",
+        "separated",
+        "quit",
+        "quitting",
+        "leave my job",
+        "leaving my job",
+        "left my job",
+        "left his employer",
+        "left her employer",
+        "left their employer",
+        "left his company",
+        "left her company",
+        "left their company",
+        "left the company",
+        "left my company",
+        "no longer employed",
+        "former employer",
+        "prior employer",
+        "former employee",
+        "recently left",
+        "termination",
+        "terminated",
+        "after employment",
+    ])
+    hardship_signal = _contains_any(text, [
+        "hardship",
+        "financial emergency",
+        "emergency",
+        "eviction",
+        "foreclosure",
+        "rent",
+        "rented",
+        "house",
+        "home",
+        "primary residence",
+        "medical",
+        "funeral",
+        "tuition",
+    ])
+    loan_signal = _contains_any(text, ["loan", "borrow", "401(k) loan", "401k loan"])
+    while_employed_funds_access = active_participant and wants_funds
+
+    resolved_topic = resolve_topic_filter(topic) or ([topic_text] if topic_text else [])
+    detected = list(resolved_topic)
+
+    if separation_signal and wants_funds:
+        detected.append("termination_distribution_request")
+    if hardship_signal:
+        detected.append("hardship_withdrawal")
+    if loan_signal:
+        detected.append("loan")
+    if while_employed_funds_access:
+        detected.append("in_service_withdrawal_options")
+
+    alternatives: List[str] = []
+    if while_employed_funds_access:
+        alternatives.extend([
+            "in_service_withdrawal_options",
+            "hardship_withdrawal",
+            "loan",
+        ])
+    elif hardship_signal:
+        alternatives.append("hardship_withdrawal")
+    if loan_signal:
+        alternatives.append("loan")
+
+    detected = _ordered_unique(detected)
+    alternatives = [
+        concept for concept in _ordered_unique(alternatives)
+        if concept not in {"termination_distribution_request"}
+    ]
+
+    return {
+        "active_participant": active_participant,
+        "wants_funds": wants_funds,
+        "separation_signal": separation_signal,
+        "hardship_signal": hardship_signal,
+        "loan_signal": loan_signal,
+        "detected_concepts": detected,
+        "alternative_concepts": alternatives,
+    }
+
+
+# ============================================================================
 # RAG Engine
 # ============================================================================
 
@@ -1204,57 +1447,12 @@ class RAGEngine:
     RK_CASCADE_MIN_CHUNKS = 1
     RK_CASCADE_MIN_SCORE = 0.15
 
-    # Callers send topics in their own vocabulary (often plural, colloquial,
-    # or hyphenated) while Pinecone chunks are tagged with a fixed set of
-    # canonical values. This table translates caller-side topics to the
-    # exact metadata values used at chunking time. An empty list means
-    # "no meaningful mapping — skip the topic filter entirely". Unmapped
-    # topics fall through to ``[topic_lower]`` so new vocabulary keeps
-    # working if it happens to match.
-    TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
-        "distribution": ["distribution"],
-        "distributions": ["distribution"],
-        "rollover": ["rollover", "termination_distribution_request", "distribution"],
-        "rollovers": ["rollover", "termination_distribution_request", "distribution"],
-        "loan": ["loan"],
-        "loans": ["loan"],
-        "hardship": ["hardship_withdrawal"],
-        "hardships": ["hardship_withdrawal"],
-        "hardship_withdrawal": ["hardship_withdrawal"],
-        "termination": ["termination_distribution_request"],
-        "termination_distribution": ["termination_distribution_request"],
-        "termination_distribution_request": ["termination_distribution_request"],
-        "excess_contribution": ["excess_contribution_refund"],
-        "excess_contributions": ["excess_contribution_refund"],
-        "excess_contribution_refund": ["excess_contribution_refund"],
-        "in_service": ["in_service_withdrawal_options"],
-        "in-service": ["in_service_withdrawal_options"],
-        "in_service_withdrawal": ["in_service_withdrawal_options"],
-        "in_service_withdrawal_options": ["in_service_withdrawal_options"],
-        # RMDs are a distribution sub-type in the KB
-        "rmd": ["distribution"],
-        "rmds": ["distribution"],
-        # No indexed topic exists for these — skip the topic filter
-        "investments": [],
-        "investment": [],
-        "contributions": [],
-        "contribution": [],
-    }
+    # ``TOPIC_NORMALIZATION_MAP`` and ``resolve_topic_filter`` live at module
+    # level (see top of this file) so other modules can reuse them without
+    # instantiating the engine.
 
     def _resolve_topic_filter(self, topic: Optional[str]) -> Optional[List[str]]:
-        """Translate a caller topic into Pinecone ``topic`` metadata values.
-
-        Returns ``None`` when no topic filter should be applied (either
-        because the caller did not provide a topic or because the mapping
-        is explicitly empty).
-        """
-        if not topic:
-            return None
-        key = topic.lower().strip()
-        mapped = self.TOPIC_NORMALIZATION_MAP.get(key)
-        if mapped is not None:
-            return mapped or None
-        return [key]
+        return resolve_topic_filter(topic)
 
     def _get_topic_variations(self, topic: str) -> List[str]:
         """
@@ -1277,24 +1475,15 @@ class RAGEngine:
 
     @staticmethod
     def _contains_any(text: str, needles: List[str]) -> bool:
-        return any(needle in text for needle in needles)
+        return _contains_any(text, needles)
 
     @staticmethod
     def _contains_bounded_phrase(text: str, phrase: str) -> bool:
-        pattern = rf"(?<![a-z0-9]){re.escape(phrase.lower())}(?![a-z0-9])"
-        return re.search(pattern, text) is not None
+        return _contains_bounded_phrase(text, phrase)
 
     @staticmethod
     def _ordered_unique(values: List[str]) -> List[str]:
-        seen = set()
-        unique = []
-        for value in values:
-            if not value:
-                continue
-            if value not in seen:
-                seen.add(value)
-                unique.append(value)
-        return unique
+        return _ordered_unique(values)
 
     @staticmethod
     def _normalize_plan_type(plan_type: Optional[str]) -> str:
@@ -2025,156 +2214,7 @@ class RAGEngine:
         topic: str,
         collected_data: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """
-        Deterministically detect cross-topic advisory paths before retrieval.
-
-        This is intentionally conservative: it does not decide eligibility. It
-        only expands retrieval when the participant appears to be active and is
-        asking how to access 401(k) funds, especially around hardship/housing
-        or a possible future separation.
-        """
-        inquiry_text = (inquiry or "").lower()
-        topic_text = (topic or "").lower().strip()
-        text = f"{inquiry_text} {topic_text}"
-
-        participant_data = (collected_data or {}).get("participant_data") or {}
-        status_values = [
-            participant_data.get("employment_status"),
-            participant_data.get("participant_status"),
-            participant_data.get("eligibility_status"),
-            participant_data.get("status"),
-        ]
-        normalized_statuses = [
-            re.sub(r"[^a-z0-9]+", " ", str(v).lower()).strip()
-            for v in status_values
-            if v is not None
-        ]
-
-        active_from_status = any(
-            status == "active" or status.startswith("active ")
-            for status in normalized_statuses
-        )
-        inactive_from_status = any(
-            status == "inactive"
-            or status.startswith("inactive ")
-            or status in {"terminated", "separated", "former"}
-            or status.startswith("terminated ")
-            or status.startswith("separated ")
-            for status in normalized_statuses
-        )
-
-        active_text_signal = (
-            self._contains_any(text, [
-                "still working",
-                "while employed",
-                "currently employed",
-                "considering quitting",
-                "quit in",
-                "quitting in",
-                "next 4 weeks",
-                "next four weeks",
-            ])
-            or self._contains_bounded_phrase(text, "active participant")
-        )
-        active_participant = (
-            active_from_status
-            or (not inactive_from_status and active_text_signal)
-        )
-        wants_funds = self._contains_any(text, [
-            "cash out",
-            "cashout",
-            "withdraw",
-            "withdrawal",
-            "take money",
-            "take some money",
-            "access money",
-            "access funds",
-            "need money",
-            "money from",
-            "distribution",
-        ])
-        separation_signal = self._contains_any(text, [
-            "separation",
-            "separated",
-            "quit",
-            "quitting",
-            "leave my job",
-            "leaving my job",
-            "left my job",
-            "left his employer",
-            "left her employer",
-            "left their employer",
-            "left his company",
-            "left her company",
-            "left their company",
-            "left the company",
-            "left my company",
-            "no longer employed",
-            "former employer",
-            "prior employer",
-            "former employee",
-            "recently left",
-            "termination",
-            "terminated",
-            "after employment",
-        ])
-        hardship_signal = self._contains_any(text, [
-            "hardship",
-            "financial emergency",
-            "emergency",
-            "eviction",
-            "foreclosure",
-            "rent",
-            "rented",
-            "house",
-            "home",
-            "primary residence",
-            "medical",
-            "funeral",
-            "tuition",
-        ])
-        loan_signal = self._contains_any(text, ["loan", "borrow", "401(k) loan", "401k loan"])
-        while_employed_funds_access = active_participant and wants_funds
-
-        resolved_topic = self._resolve_topic_filter(topic) or ([topic_text] if topic_text else [])
-        detected = list(resolved_topic)
-
-        if separation_signal and wants_funds:
-            detected.append("termination_distribution_request")
-        if hardship_signal:
-            detected.append("hardship_withdrawal")
-        if loan_signal:
-            detected.append("loan")
-        if while_employed_funds_access:
-            detected.append("in_service_withdrawal_options")
-
-        alternatives: List[str] = []
-        if while_employed_funds_access:
-            alternatives.extend([
-                "in_service_withdrawal_options",
-                "hardship_withdrawal",
-                "loan",
-            ])
-        elif hardship_signal:
-            alternatives.append("hardship_withdrawal")
-        if loan_signal:
-            alternatives.append("loan")
-
-        detected = self._ordered_unique(detected)
-        alternatives = [
-            concept for concept in self._ordered_unique(alternatives)
-            if concept not in {"termination_distribution_request"}
-        ]
-
-        return {
-            "active_participant": active_participant,
-            "wants_funds": wants_funds,
-            "separation_signal": separation_signal,
-            "hardship_signal": hardship_signal,
-            "loan_signal": loan_signal,
-            "detected_concepts": detected,
-            "alternative_concepts": alternatives,
-        }
+        return detect_advisory_concepts(inquiry, topic, collected_data)
 
     def _expand_queries_with_advisory_concepts(
         self,

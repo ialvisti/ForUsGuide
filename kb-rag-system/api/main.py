@@ -7,13 +7,15 @@ Endpoints:
 - POST /api/v1/required-data - Determina qué datos se necesitan
 - POST /api/v1/generate-response - Genera respuesta contextualizada
 - POST /api/v1/knowledge-question - Responde preguntas generales de KB (sin datos requeridos)
+- POST /api/v1/route-inquiry - Clasifica una inquiry hacia el endpoint downstream
 - GET /health - Health check
 """
 
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import Optional
+from dataclasses import asdict, is_dataclass
+from typing import Any, Dict, Optional, Tuple
 from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -35,6 +37,7 @@ from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.pinecone_uploader import PineconeUploader
 from data_pipeline.execution_logger import ExecutionLogger
 from data_pipeline.llm_router import LLMRouter, build_routes_from_settings
+from data_pipeline.inquiry_router import InquiryRouterEngine
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -49,6 +52,8 @@ from .models import (
     IndexStatsResponse,
     KnowledgeQuestionRequest,
     KnowledgeQuestionResponse,
+    RouteInquiryRequest,
+    RouteInquiryResponse,
     SourceArticle,
     UsedChunk
 )
@@ -124,6 +129,11 @@ async def lifespan(app: FastAPI):
             pinecone_uploader=app.state.pinecone_uploader,
         )
         logger.info("✅ RAG Engine initialized")
+
+        # Inicializar Inquiry Router → app.state (shares LLM Router only;
+        # the classifier never touches Pinecone).
+        app.state.inquiry_router = InquiryRouterEngine(llm_router=llm_router)
+        logger.info("✅ Inquiry Router initialized")
         
         # Get stats
         stats = app.state.pinecone_uploader.get_index_stats()
@@ -221,6 +231,17 @@ def get_execution_logger(request: Request) -> Optional[ExecutionLogger]:
     return getattr(request.app.state, "execution_logger", None)
 
 
+def get_inquiry_router(request: Request) -> InquiryRouterEngine:
+    """Dependency para obtener Inquiry Router engine from app.state."""
+    engine = getattr(request.app.state, "inquiry_router", None)
+    if engine is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Inquiry Router not initialized"
+        )
+    return engine
+
+
 # ============================================================================
 # Routes
 # ============================================================================
@@ -276,6 +297,19 @@ async def knowledge_ui():
         )
 
 
+@app.get("/ui/router")
+async def router_ui():
+    """Serve the inquiry router interface."""
+    router_file = Path(__file__).parent.parent / "ui" / "router.html"
+    if router_file.exists():
+        return FileResponse(router_file)
+    else:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Router UI not found"
+        )
+
+
 @app.get("/health", response_model=HealthResponse)
 async def health_check(
     pinecone: PineconeUploader = Depends(get_pinecone)
@@ -303,7 +337,8 @@ async def health_check(
         version=settings.API_VERSION,
         pinecone_connected=pinecone_connected,
         openai_configured=openai_configured,
-        total_vectors=total_vectors
+        total_vectors=total_vectors,
+        router_mode=settings.ROUTER_MODE,
     )
 
 
@@ -566,6 +601,186 @@ async def knowledge_question_endpoint(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while processing the knowledge question."
+        )
+
+
+# ============================================================================
+# Route Inquiry (Endpoint 4)
+# ============================================================================
+
+def _build_suggested_call(
+    request: RouteInquiryRequest,
+    route: str,
+) -> Tuple[str, Dict[str, Any]]:
+    """Build the downstream endpoint path + ready-to-send payload for ``route``."""
+    if route == "knowledge_question":
+        return "/api/v1/knowledge-question", {"question": request.inquiry}
+    if route == "generate_response":
+        return "/api/v1/generate-response", {
+            "inquiry": request.inquiry,
+            "record_keeper": request.record_keeper,
+            "plan_type": request.plan_type,
+            "topic": request.topic,
+            "collected_data": request.collected_data or {},
+        }
+    # needs_more_info -> caller should run the existing required-data flow first
+    return "/api/v1/required-data", {
+        "inquiry": request.inquiry,
+        "record_keeper": request.record_keeper,
+        "plan_type": request.plan_type,
+        "topic": request.topic,
+    }
+
+
+def _result_to_dict(result: Any) -> Dict[str, Any]:
+    """Coerce a dataclass result (or plain dict) into a JSON-friendly dict."""
+    if is_dataclass(result):
+        return asdict(result)
+    if isinstance(result, dict):
+        return result
+    return getattr(result, "__dict__", {"value": str(result)})
+
+
+async def _delegate(
+    route: str,
+    payload: Dict[str, Any],
+    rag_engine: RAGEngine,
+) -> Dict[str, Any]:
+    """Invoke the chosen downstream endpoint in-process and return its result."""
+    if route == "knowledge_question":
+        result = await rag_engine.ask_knowledge_question(question=payload["question"])
+        return _result_to_dict(result)
+
+    if route == "generate_response":
+        # generate_response requires plan_type + topic; if either is missing,
+        # short-circuit cleanly so the caller can fall back to the legacy flow.
+        if not payload.get("topic") or not payload.get("plan_type"):
+            return {
+                "error": "delegate_skipped",
+                "reason": "missing topic or plan_type",
+            }
+        result = await rag_engine.generate_response(
+            inquiry=payload["inquiry"],
+            record_keeper=payload.get("record_keeper"),
+            plan_type=payload["plan_type"],
+            topic=payload["topic"],
+            collected_data=payload.get("collected_data") or {},
+            max_response_tokens=payload.get("max_response_tokens", 5000),
+            total_inquiries_in_ticket=payload.get("total_inquiries_in_ticket", 1),
+        )
+        return _result_to_dict(result)
+
+    # needs_more_info: do not auto-delegate; let n8n run the legacy flow.
+    return {
+        "error": "delegate_skipped",
+        "reason": "needs_more_info requires required-data first",
+    }
+
+
+@app.post(
+    "/api/v1/route-inquiry",
+    response_model=RouteInquiryResponse,
+    dependencies=[Depends(verify_api_key)],
+    tags=["RAG Endpoints"],
+)
+async def route_inquiry_endpoint(
+    request: RouteInquiryRequest,
+    http_request: Request,
+    router_engine: InquiryRouterEngine = Depends(get_inquiry_router),
+    rag_engine: RAGEngine = Depends(get_rag_engine),
+    exec_logger: Optional[ExecutionLogger] = Depends(get_execution_logger),
+):
+    """
+    Endpoint 4: Classify an inquiry to choose the right downstream endpoint.
+
+    Default returns the routing decision only. With ``delegate=true``, also
+    invokes the chosen endpoint in-process and returns the result inline.
+
+    **Routes:**
+    - ``knowledge_question`` → punctual KB lookup (`/api/v1/knowledge-question`)
+    - ``generate_response`` → eligibility/outcome (`/api/v1/generate-response`)
+    - ``needs_more_info`` → ambiguous; fall back to today's `required-data` flow
+
+    **Autenticación:** Requiere header ``X-API-Key``.
+    """
+    start = time.monotonic()
+    try:
+        logger.info(
+            f"Route inquiry request | "
+            f"Topic: {request.topic} | "
+            f"RK: {request.record_keeper} | "
+            f"Delegate: {request.delegate}"
+        )
+
+        result = await router_engine.classify(
+            inquiry=request.inquiry,
+            record_keeper=request.record_keeper,
+            plan_type=request.plan_type,
+            topic=request.topic,
+            collected_data=request.collected_data,
+        )
+
+        suggested_endpoint, suggested_payload = _build_suggested_call(
+            request, result.route
+        )
+
+        delegated_result: Optional[Dict[str, Any]] = None
+        if request.delegate:
+            delegated_result = await _delegate(
+                route=result.route,
+                payload=suggested_payload,
+                rag_engine=rag_engine,
+            )
+
+        response = RouteInquiryResponse(
+            route=result.route,
+            confidence=result.confidence,
+            reasoning=result.reasoning,
+            signals=result.signals,
+            suggested_endpoint=suggested_endpoint,
+            suggested_payload=suggested_payload,
+            delegated_result=delegated_result,
+            metadata={
+                **result.metadata,
+                "fast_path_hit": result.fast_path_hit,
+                "router_mode": settings.ROUTER_MODE,
+            },
+        )
+
+        logger.info(
+            f"Route inquiry completed | "
+            f"Route: {result.route} | "
+            f"Confidence: {result.confidence:.2f} | "
+            f"Fast path: {result.fast_path_hit}"
+        )
+
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="route_inquiry",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data=response.model_dump(),
+            )
+
+        return response
+
+    except Exception as e:
+        if exec_logger:
+            duration_ms = (time.monotonic() - start) * 1000
+            await exec_logger.log_execution(
+                request_id=getattr(http_request.state, "request_id", "unknown"),
+                endpoint="route_inquiry",
+                duration_ms=duration_ms,
+                request_data=request.model_dump(),
+                response_data={},
+                error=str(e),
+            )
+        logger.exception("Error in route_inquiry endpoint")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while routing the inquiry.",
         )
 
 

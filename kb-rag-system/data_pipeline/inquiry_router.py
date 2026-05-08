@@ -21,6 +21,8 @@ The classifier is hybrid:
 4. Coerce low-confidence LLM verdicts (< ``CONFIDENCE_FALLBACK_THRESHOLD``)
    to ``needs_more_info`` so we never silently send an unsure call to the
    wrong pipeline.
+5. Gate every final ``knowledge_question`` verdict through KB coverage,
+   including fast-path decisions.
 """
 
 from __future__ import annotations
@@ -380,6 +382,31 @@ class InquiryRouterEngine:
         self._llm = llm_router
         self._coverage_checker = coverage_checker
 
+    async def _apply_knowledge_coverage(
+        self,
+        *,
+        route: str,
+        reasoning: str,
+        inquiry_norm: str,
+    ) -> Tuple[str, str, Optional[float], Optional[str]]:
+        kb_coverage_top_score: Optional[float] = None
+        kb_coverage_reasoning: Optional[str] = None
+
+        if route != "knowledge_question" or self._coverage_checker is None:
+            return route, reasoning, kb_coverage_top_score, kb_coverage_reasoning
+
+        verdict = await self._coverage_checker(inquiry_norm)
+        kb_coverage_top_score = verdict.top_score
+        kb_coverage_reasoning = verdict.reasoning
+        if not verdict.is_covered:
+            reasoning = (
+                f"KB coverage check rejected: {verdict.reasoning}. "
+                f"Original: {reasoning}"
+            )
+            route = "needs_more_info"
+
+        return route, reasoning, kb_coverage_top_score, kb_coverage_reasoning
+
     async def classify(self, inquiry: str) -> ClassificationResult:
         # Strip email scaffolding / inline emails / signatures once, up front;
         # every downstream consumer (deterministic signals, fast-path, LLM
@@ -389,22 +416,29 @@ class InquiryRouterEngine:
 
         fast = apply_fast_path_rules(inquiry_norm, signals)
         if fast is not None:
+            route, reasoning, kb_coverage_top_score, kb_coverage_reasoning = (
+                await self._apply_knowledge_coverage(
+                    route=fast.route,
+                    reasoning=fast.reasoning,
+                    inquiry_norm=inquiry_norm,
+                )
+            )
             # Fast paths only return knowledge_question / generate_response,
-            # never needs_more_info, so user_message stays None.
+            # but knowledge_question must still prove KB coverage.
             return ClassificationResult(
-                route=fast.route,
+                route=route,
                 confidence=fast.confidence,
-                reasoning=fast.reasoning,
+                reasoning=reasoning,
                 signals=signals,
                 fast_path_hit=True,
                 metadata={
                     "model": None,
                     "provider": None,
                     "latency_ms": fast.latency_ms,
-                    "kb_coverage_top_score": None,
-                    "kb_coverage_reasoning": None,
+                    "kb_coverage_top_score": kb_coverage_top_score,
+                    "kb_coverage_reasoning": kb_coverage_reasoning,
                 },
-                user_message=None,
+                user_message=_resolve_user_message(route, None),
             )
 
         system_prompt, user_prompt = build_classify_inquiry_prompt(
@@ -462,18 +496,13 @@ class InquiryRouterEngine:
             )
             route = "needs_more_info"
 
-        kb_coverage_top_score: Optional[float] = None
-        kb_coverage_reasoning: Optional[str] = None
-        if route == "knowledge_question" and self._coverage_checker is not None:
-            verdict = await self._coverage_checker(inquiry_norm)
-            kb_coverage_top_score = verdict.top_score
-            kb_coverage_reasoning = verdict.reasoning
-            if not verdict.is_covered:
-                reasoning = (
-                    f"KB coverage check rejected: {verdict.reasoning}. "
-                    f"Original: {reasoning}"
-                )
-                route = "needs_more_info"
+        route, reasoning, kb_coverage_top_score, kb_coverage_reasoning = (
+            await self._apply_knowledge_coverage(
+                route=route,
+                reasoning=reasoning,
+                inquiry_norm=inquiry_norm,
+            )
+        )
 
         user_message = _resolve_user_message(route, parsed.get("user_message"))
 

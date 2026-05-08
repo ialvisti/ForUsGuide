@@ -81,6 +81,74 @@ if settings.ENVIRONMENT == "production":
 logger = logging.getLogger(__name__)
 
 
+def _hit_count(value: Any) -> int:
+    """Best-effort hit count for diagnostics without assuming concrete type."""
+    try:
+        return len(value)
+    except TypeError:
+        return 1 if value else 0
+
+
+def _log_pinecone_startup_diagnostics(
+    pinecone_uploader: PineconeUploader,
+    stats: Dict[str, Any],
+) -> None:
+    """Emit safe Pinecone diagnostics and a one-hit search smoke test."""
+    try:
+        import pinecone as _pinecone
+
+        sdk_version = getattr(_pinecone, "__version__", "unknown")
+    except Exception:
+        sdk_version = "unknown"
+
+    index_name = getattr(pinecone_uploader, "index_name", settings.INDEX_NAME)
+    namespace = getattr(pinecone_uploader, "namespace", settings.NAMESPACE)
+    total_vectors = stats.get("total_vectors", "unknown")
+
+    logger.info(
+        "Pinecone diagnostics | sdk_version=%s | index=%s | namespace=%s | "
+        "total_vectors=%s",
+        sdk_version,
+        index_name,
+        namespace,
+        total_vectors,
+    )
+
+    try:
+        smoke_chunks = pinecone_uploader.query_chunks(
+            query_text="knowledge base article content",
+            top_k=1,
+            filter_dict=None,
+        )
+    except Exception as exc:
+        logger.warning(
+            "Pinecone smoke search failed | index=%s | namespace=%s | "
+            "error_type=%s",
+            index_name,
+            namespace,
+            type(exc).__name__,
+        )
+        return
+
+    hits = _hit_count(smoke_chunks)
+    if hits < 1:
+        logger.warning(
+            "Pinecone smoke search returned 0 hits | index=%s | namespace=%s | "
+            "total_vectors=%s",
+            index_name,
+            namespace,
+            total_vectors,
+        )
+        return
+
+    logger.info(
+        "Pinecone smoke search ok | index=%s | namespace=%s | hits=%s",
+        index_name,
+        namespace,
+        hits,
+    )
+
+
 def _make_coverage_checker(rag_engine: RAGEngine, llm_router: LLMRouter):
     """Build an async callable that verifies whether the KB actually has
     coverage for a knowledge_question inquiry.
@@ -91,8 +159,10 @@ def _make_coverage_checker(rag_engine: RAGEngine, llm_router: LLMRouter):
     relevance because cosine similarity alone confuses semantically-near
     but procedurally-different topics (e.g. incoming vs outgoing rollover).
 
-    Fail-open: parse failures or LLM errors return is_covered=True so a
-    transient verifier outage cannot block legitimate KB hits.
+    Fail-closed on Pinecone retrieval failures or zero retrieved chunks:
+    route-inquiry must not choose knowledge_question without positive KB
+    evidence. Verifier parse/call failures still fail open because retrieval
+    already proved relevant KB context exists.
     """
     import json as _json
 
@@ -102,39 +172,26 @@ def _make_coverage_checker(rag_engine: RAGEngine, llm_router: LLMRouter):
                 query_text=inquiry, top_k=5, filter_dict=None
             )
         except Exception as exc:
-            # Pinecone outages must not block legitimate KB hits. Fail open
-            # so the participant gets routed to /knowledge-question (which
-            # has its own degraded-mode handling) instead of receiving a
-            # spurious "please clarify" response.
             logger.warning(
-                "Coverage retrieval failed (%s); failing open.",
+                "Coverage retrieval failed (%s); failing closed.",
                 type(exc).__name__,
             )
             return CoverageVerdict(
-                is_covered=True,
+                is_covered=False,
                 top_score=0.0,
-                reasoning=f"Retrieval failed ({type(exc).__name__}); failing open.",
+                reasoning=f"Retrieval failed ({type(exc).__name__}); failing closed.",
             )
 
         top_score = max((c.get("score", 0.0) for c in chunks), default=0.0)
 
         if not chunks:
-            # `query_chunks` (pinecone_uploader.py) currently swallows all
-            # exceptions and returns []. We can't distinguish "Pinecone
-            # transient error" from "literal zero matches" — but with 725+
-            # vectors covering the 401k topic space, a clean rollover/loan/
-            # hardship inquiry returning ZERO matches is almost always the
-            # former. Fail open here too; legit KB gaps surface as
-            # tangential-but-not-answer matches that the LLM verifier
-            # already rejects below.
             logger.warning(
-                "Coverage retrieval returned 0 chunks for inquiry (likely "
-                "a transient Pinecone error); failing open."
+                "Coverage retrieval returned 0 chunks; failing closed."
             )
             return CoverageVerdict(
-                is_covered=True,
+                is_covered=False,
                 top_score=0.0,
-                reasoning="No chunks retrieved; failing open.",
+                reasoning="No chunks retrieved; failing closed.",
             )
 
         system_prompt, user_prompt = build_verify_coverage_prompt(
@@ -244,6 +301,7 @@ async def lifespan(app: FastAPI):
         # Get stats
         stats = app.state.pinecone_uploader.get_index_stats()
         logger.info(f"📊 Total vectors in index: {stats.get('total_vectors', 0)}")
+        _log_pinecone_startup_diagnostics(app.state.pinecone_uploader, stats)
         
         # Inicializar Execution Logger → app.state (Firestore, optional)
         if settings.ENABLE_EXECUTION_LOGGING:

@@ -11,11 +11,46 @@ por lo que el formato de upsert es diferente al tradicional.
 import os
 import time
 import logging
+import inspect
 from typing import List, Dict, Any, Optional
 from pinecone import Pinecone
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+
+class PineconeRetrievalError(RuntimeError):
+    """Raised when a Pinecone retrieval call fails.
+
+    The message intentionally includes operational context but not the query
+    text or API key, because production inquiries can contain participant data.
+    """
+
+    def __init__(
+        self,
+        *,
+        index_name: str,
+        namespace: str,
+        top_k: int,
+        filter_dict: Optional[Dict[str, Any]],
+        rerank: Optional[Dict[str, Any]],
+        cause: Exception,
+    ):
+        self.index_name = index_name
+        self.namespace = namespace
+        self.top_k = top_k
+        self.filter_dict = filter_dict
+        self.rerank = rerank
+        self.cause_type = type(cause).__name__
+
+        filter_state = "present" if filter_dict else "absent"
+        rerank_state = "enabled" if rerank else "disabled"
+        super().__init__(
+            "Pinecone retrieval failed "
+            f"(index={index_name!r}, namespace={namespace!r}, top_k={top_k}, "
+            f"filter={filter_state}, rerank={rerank_state}, "
+            f"cause={self.cause_type})"
+        )
 
 
 class PineconeUploader:
@@ -37,7 +72,7 @@ class PineconeUploader:
     ):
         """
         Inicializa el uploader.
-        
+
         Args:
             api_key: API key de Pinecone (lee de .env si no se provee)
             index_name: Nombre del índice (lee de .env si no se provee)
@@ -52,13 +87,13 @@ class PineconeUploader:
         self.batch_size = batch_size
         self.max_retries = max_retries
         self.retry_delay = retry_delay
-        
+
         if not self.api_key:
             raise ValueError("PINECONE_API_KEY no está configurada")
-        
+
         # Inicializar cliente Pinecone
         self.pc = Pinecone(api_key=self.api_key)
-        
+
         # Conectar al índice
         try:
             self.index = self.pc.Index(self.index_name)
@@ -80,7 +115,7 @@ class PineconeUploader:
     ) -> Dict[str, int]:
         """
         Sube una lista de chunks a Pinecone.
-        
+
         Args:
             chunks: Lista de chunks con formato:
                 {
@@ -89,24 +124,24 @@ class PineconeUploader:
                     "metadata": dict
                 }
             show_progress: Mostrar barra de progreso
-        
+
         Returns:
             Dict con estadísticas: {"success": int, "failed": int}
         """
         if not chunks:
             logger.warning("No hay chunks para subir")
             return {"success": 0, "failed": 0}
-        
+
         logger.info(f"📤 Subiendo {len(chunks)} chunks a Pinecone...")
         logger.info(f"   Batch size: {self.batch_size}")
         logger.info(f"   Namespace: {self.namespace}")
-        
+
         # Dividir en batches
         batches = [
             chunks[i:i + self.batch_size]
             for i in range(0, len(chunks), self.batch_size)
         ]
-        
+
         success_count = 0
         failed_count = 0
         
@@ -246,64 +281,132 @@ class PineconeUploader:
         Returns:
             Lista de chunks encontrados
         """
+        search_kwargs = self._build_search_kwargs(
+            query_text=query_text,
+            top_k=top_k,
+            filter_dict=filter_dict,
+            rerank=rerank,
+        )
+
         try:
-            # Query usando embeddings integrados con el método search()
+            results = self.index.search(**search_kwargs)
+        except Exception as exc:
+            logger.exception(
+                "Pinecone query failed | index=%s | namespace=%s | top_k=%s",
+                self.index_name,
+                self.namespace,
+                top_k,
+            )
+            raise PineconeRetrievalError(
+                index_name=self.index_name,
+                namespace=self.namespace,
+                top_k=top_k,
+                filter_dict=filter_dict,
+                rerank=rerank,
+                cause=exc,
+            ) from exc
+
+        # Para embeddings integrados, la estructura es diferente:
+        # results['result']['hits'] contiene los matches
+        chunks = []
+
+        if not results:
+            logger.warning("No se encontraron resultados")
+            return []
+
+        # Convertir results a dict si es necesario
+        if hasattr(results, 'to_dict'):
+            results_dict = results.to_dict()
+        else:
+            results_dict = results
+
+        # Obtener hits de la estructura correcta
+        hits = results_dict.get('result', {}).get('hits', [])
+
+        if not hits:
+            logger.warning("No se encontraron hits en los resultados")
+            return []
+
+        for hit in hits:
+            # SDKs expose hit id/score under slightly different names.
+            chunk = {
+                "id": self._hit_value(hit, "_id", "id", "id_"),
+                "score": self._hit_value(hit, "_score", "score", "score_", default=0.0),
+                "metadata": self._hit_value(hit, "fields", default={})
+            }
+            chunks.append(chunk)
+
+        logger.info(f"Query encontró {len(chunks)} chunks")
+        return chunks
+
+    def _build_search_kwargs(
+        self,
+        query_text: str,
+        top_k: int,
+        filter_dict: Optional[Dict[str, Any]],
+        rerank: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Build search kwargs for Pinecone SDK 8 and 9.
+
+        SDK 8 expects ``query={inputs, top_k, filter}``; SDK 9 promotes those
+        fields to top-level keyword args.
+        """
+        try:
+            parameters = inspect.signature(self.index.search).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+
+        if "query" in parameters:
             query_params = {
                 "top_k": top_k,
                 "inputs": {
-                    "text": query_text  # Pinecone embedirá esto
+                    "text": query_text
                 }
             }
-            
-            # Agregar filtro si existe
             if filter_dict:
                 query_params["filter"] = filter_dict
-            
+
             search_kwargs = {
                 "namespace": self.namespace,
                 "query": query_params,
             }
-            if rerank:
-                search_kwargs["rerank"] = rerank
+        else:
+            search_kwargs = {
+                "namespace": self.namespace,
+                "top_k": top_k,
+                "inputs": {
+                    "text": query_text
+                },
+                "fields": ["*"],
+            }
+            if filter_dict:
+                search_kwargs["filter"] = filter_dict
 
-            results = self.index.search(**search_kwargs)
-            
-            # Para embeddings integrados, la estructura es diferente:
-            # results['result']['hits'] contiene los matches
-            chunks = []
-            
-            if not results:
-                logger.warning("No se encontraron resultados")
-                return []
-            
-            # Convertir results a dict si es necesario
-            if hasattr(results, 'to_dict'):
-                results_dict = results.to_dict()
-            else:
-                results_dict = results
-            
-            # Obtener hits de la estructura correcta
-            hits = results_dict.get('result', {}).get('hits', [])
-            
-            if not hits:
-                logger.warning("No se encontraron hits en los resultados")
-                return []
-            
-            for hit in hits:
-                # Cada hit tiene _id, _score, y fields (metadata)
-                chunk = {
-                    "id": hit.get('_id'),
-                    "score": hit.get('_score', 0.0),
-                    "metadata": hit.get('fields', {})
-                }
-                chunks.append(chunk)
-            
-            logger.info(f"Query encontró {len(chunks)} chunks")
-            return chunks
-            
-        except Exception as e:
-            logger.exception("Error en query")
-            return []
+        if rerank:
+            search_kwargs["rerank"] = rerank
+
+        return search_kwargs
+
+    @staticmethod
+    def _hit_value(hit: Any, *keys: str, default: Any = None) -> Any:
+        if isinstance(hit, dict):
+            for key in keys:
+                if key in hit:
+                    return hit[key]
+            return default
+
+        for key in keys:
+            if hasattr(hit, key):
+                return getattr(hit, key)
+
+        getter = getattr(hit, "get", None)
+        if callable(getter):
+            for key in keys:
+                value = getter(key, default)
+                if value is not default:
+                    return value
+
+        return default
     
     def get_article_chunks(
         self,

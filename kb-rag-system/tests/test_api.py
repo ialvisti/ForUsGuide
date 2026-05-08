@@ -651,16 +651,14 @@ class TestRouteInquiryEndpoint:
         assert "router_mode_override" not in data["metadata"]
 
 
-class TestCoverageCheckerFailOpen:
-    """The coverage checker must fail open (is_covered=True) when the
-    Pinecone retrieval throws an exception OR returns 0 chunks. Either
-    case is almost always a transient infra blip with the 725-vector
-    production index, and downgrading to needs_more_info would surface
-    a spurious "please clarify" UX to the participant.
+class TestCoverageCheckerFailClosed:
+    """The coverage checker must fail closed when Pinecone retrieval throws
+    or returns 0 chunks. route-inquiry should not route to knowledge_question
+    without positive KB evidence.
     """
 
     @pytest.mark.asyncio
-    async def test_pinecone_exception_fails_open(self):
+    async def test_pinecone_exception_fails_closed(self):
         from api.main import _make_coverage_checker
 
         rag_engine = Mock()
@@ -674,19 +672,17 @@ class TestCoverageCheckerFailOpen:
         checker = _make_coverage_checker(rag_engine, llm_router)
         verdict = await checker("How do I rollover my 401k?")
 
-        assert verdict.is_covered is True
+        assert verdict.is_covered is False
         assert verdict.top_score == 0.0
         assert "RuntimeError" in verdict.reasoning
+        assert "failing closed" in verdict.reasoning.lower()
         llm_router.call.assert_not_awaited()
 
     @pytest.mark.asyncio
-    async def test_zero_chunks_fails_open(self):
+    async def test_zero_chunks_fails_closed(self):
         from api.main import _make_coverage_checker
 
         rag_engine = Mock()
-        # query_chunks swallows Pinecone exceptions and returns []; the
-        # coverage checker can't distinguish that from a literal zero-match
-        # retrieval, so both must fail open.
         rag_engine._cached_query = AsyncMock(return_value=[])
         llm_router = Mock()
         llm_router.call = AsyncMock()
@@ -694,10 +690,41 @@ class TestCoverageCheckerFailOpen:
         checker = _make_coverage_checker(rag_engine, llm_router)
         verdict = await checker("How do I rollover my 401k?")
 
-        assert verdict.is_covered is True
+        assert verdict.is_covered is False
         assert verdict.top_score == 0.0
-        assert "failing open" in verdict.reasoning.lower()
+        assert "failing closed" in verdict.reasoning.lower()
         llm_router.call.assert_not_awaited()
+
+    def test_route_inquiry_zero_chunks_does_not_return_knowledge_question(
+        self, client, test_api_key, monkeypatch
+    ):
+        from api.main import _make_coverage_checker
+        from api.config import settings
+        from data_pipeline.inquiry_router import InquiryRouterEngine
+
+        monkeypatch.setattr(settings, "API_KEY", test_api_key)
+        rag_engine = Mock()
+        rag_engine._cached_query = AsyncMock(return_value=[])
+        llm_router = Mock()
+        llm_router.call = AsyncMock()
+        client.app.state.inquiry_router = InquiryRouterEngine(
+            llm_router=llm_router,
+            coverage_checker=_make_coverage_checker(rag_engine, llm_router),
+        )
+
+        response = client.post(
+            "/api/v1/route-inquiry",
+            json={"inquiry": "How long does approval take?"},
+            headers={"X-API-Key": test_api_key},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["route"] == "needs_more_info"
+        assert data["suggested_endpoint"] == "/api/v1/required-data"
+        assert data["metadata"]["fast_path_hit"] is True
+        assert data["metadata"]["kb_coverage_top_score"] == 0.0
+        assert "failing closed" in data["metadata"]["kb_coverage_reasoning"].lower()
 
     @pytest.mark.asyncio
     async def test_chunks_present_runs_llm_verifier(self):

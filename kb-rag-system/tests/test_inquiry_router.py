@@ -464,6 +464,50 @@ class TestCoverageCheck:
         assert result.metadata["kb_coverage_top_score"] == 0.55
 
     @pytest.mark.asyncio
+    async def test_fast_path_knowledge_question_runs_coverage_checker(
+        self, mock_llm_router
+    ):
+        checker = self._make_checker(
+            is_covered=True, top_score=0.72, reasoning="Approval timing article applies."
+        )
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        result = await engine.classify(inquiry="How long does approval take?")
+
+        checker.assert_awaited_once_with("How long does approval take?")
+        mock_llm_router.call.assert_not_awaited()
+        assert result.fast_path_hit is True
+        assert result.route == "knowledge_question"
+        assert result.metadata["kb_coverage_top_score"] == 0.72
+        assert result.metadata["kb_coverage_reasoning"] == "Approval timing article applies."
+
+    @pytest.mark.asyncio
+    async def test_fast_path_knowledge_question_without_coverage_downgrades(
+        self, mock_llm_router
+    ):
+        checker = self._make_checker(
+            is_covered=False,
+            top_score=0.0,
+            reasoning="No chunks retrieved; failing closed.",
+        )
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        result = await engine.classify(inquiry="How long does approval take?")
+
+        checker.assert_awaited_once_with("How long does approval take?")
+        mock_llm_router.call.assert_not_awaited()
+        assert result.fast_path_hit is True
+        assert result.route == "needs_more_info"
+        assert result.user_message is not None
+        assert "KB coverage check rejected" in result.reasoning
+        assert result.metadata["kb_coverage_top_score"] == 0.0
+        assert result.metadata["kb_coverage_reasoning"] == "No chunks retrieved; failing closed."
+
+    @pytest.mark.asyncio
     async def test_generate_response_skips_coverage_check(self, mock_llm_router):
         # Coverage check is gated on route == "knowledge_question" — the
         # checker must not even be awaited for other routes.

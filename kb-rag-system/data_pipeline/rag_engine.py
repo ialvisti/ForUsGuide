@@ -1093,8 +1093,9 @@ class RAGEngine:
         except Exception as e:
             logger.exception("Error en generate_response")
             return self._build_uncertain_response(
-                "An internal error occurred while generating the response",
-                confidence=0.0
+                f"{type(e).__name__}: {e}",
+                confidence=0.0,
+                error_type=type(e).__name__,
             )
     
     # ========================================================================
@@ -3283,6 +3284,7 @@ class RAGEngine:
                     "model": "bge-reranker-v2-m3",
                     "top_n": top_k,
                     "rank_fields": ["content"],
+                    "parameters": {"truncate": "END"},
                 }
                 query_top_k = top_k * 2
             tasks.append(
@@ -4653,8 +4655,24 @@ class RAGEngine:
             "coverage_gaps": []
         }
 
-    def _build_uncertain_response(self, reason: str, confidence: float) -> GenerateResponseResult:
+    def _build_uncertain_response(
+        self,
+        reason: str,
+        confidence: float,
+        error_type: Optional[str] = None,
+    ) -> GenerateResponseResult:
         """Construye respuesta de fallback con el schema outcome-driven."""
+        metadata: Dict[str, Any] = {
+            "error": reason,
+            "chunks_used": 0,
+            "sub_queries": [],
+            "per_query_scores": {},
+            "unique_articles": 0,
+            "relevant_articles": 0,
+            "coverage_gaps": [],
+        }
+        if error_type is not None:
+            metadata["error_type"] = error_type
         return GenerateResponseResult(
             decision="out_of_scope",
             confidence=confidence,
@@ -4679,15 +4697,7 @@ class RAGEngine:
             source_articles=[],
             used_chunks=[],
             coverage_gaps=[],
-            metadata={
-                "error": reason,
-                "chunks_used": 0,
-                "sub_queries": [],
-                "per_query_scores": {},
-                "unique_articles": 0,
-                "relevant_articles": 0,
-                "coverage_gaps": []
-            }
+            metadata=metadata,
         )
 
 

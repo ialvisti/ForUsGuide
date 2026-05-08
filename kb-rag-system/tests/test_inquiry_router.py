@@ -26,6 +26,7 @@ from data_pipeline.inquiry_router import (
     _has_eligibility_verb,
     _has_first_person_status,
     _is_short_interrogative,
+    _normalize_inquiry,
     _resolve_user_message,
     _safe_parse_classifier_json,
     apply_fast_path_rules,
@@ -232,15 +233,18 @@ class TestClassifyLLMPath:
         assert result.user_message is not None  # fallback default
 
     def test_safe_parse_unit_empty_content(self):
-        parsed = _safe_parse_classifier_json("")
+        parsed, parse_ok = _safe_parse_classifier_json("")
+        assert parse_ok is False
         assert parsed["route"] == "needs_more_info"
         assert parsed["confidence"] == 0.0
         assert parsed["user_message"] is None
 
     def test_safe_parse_unit_invalid_route(self):
-        parsed = _safe_parse_classifier_json(
+        parsed, parse_ok = _safe_parse_classifier_json(
             '{"route": "delete_everything", "confidence": 0.99, "reasoning": "x"}'
         )
+        # Parse succeeded (valid JSON object) but route is coerced.
+        assert parse_ok is True
         assert parsed["route"] == "needs_more_info"
 
 
@@ -521,3 +525,285 @@ class TestCoverageCheck:
         checker.assert_not_awaited()
         assert result.route == "needs_more_info"
         assert result.metadata["kb_coverage_top_score"] is None
+
+
+# ---------------------------------------------------------------------------
+# 7) Input normalizer
+# ---------------------------------------------------------------------------
+
+class TestInputNormalizer:
+    """Pure-function tests for _normalize_inquiry. Real production inputs
+    arrive wrapped in email scaffolding; the normalizer strips the noise so
+    the classifier and the embedding query see a clean intent.
+    """
+
+    def test_strips_request_summary_wrapper(self):
+        out = _normalize_inquiry(
+            "Request: I would like to roll over my 401k. "
+            "Summary: Customer wants rollover help."
+        )
+        # Both labels removed; content preserved.
+        assert "Request:" not in out
+        assert "Summary:" not in out
+        assert "roll over my 401k" in out
+        assert "Customer wants rollover help" in out
+
+    def test_strips_subject_body_wrapper_case_insensitive(self):
+        out = _normalize_inquiry(
+            "Subject: Rollover. Body: Hi I want to rollover my 401k."
+        )
+        assert "Subject:" not in out
+        assert "Body:" not in out
+        assert "I want to rollover my 401k" in out
+
+    def test_strips_from_message_uppercase(self):
+        out = _normalize_inquiry("FROM: customer. MESSAGE: I want to rollover my 401k.")
+        assert "FROM:" not in out
+        assert "MESSAGE:" not in out
+        assert "I want to rollover my 401k" in out
+
+    def test_replaces_inline_emails(self):
+        out = _normalize_inquiry(
+            "My old account is at oldemail@example.com, "
+            "my new is at newemail+work@anza.xyz - I want to rollover."
+        )
+        assert "oldemail@example.com" not in out
+        assert "newemail+work@anza.xyz" not in out
+        # The literal token survives so "old vs new" semantics persist.
+        assert out.count("EMAIL") == 2
+
+    def test_strips_trailing_dash_signature(self):
+        out = _normalize_inquiry(
+            "Hi support team, I want to rollover my 401k. Thanks. -- John Smith"
+        )
+        assert "-- John" not in out
+        # Body content is preserved up to (but not including) the sign-off.
+        assert "rollover my 401k" in out
+
+    def test_strips_trailing_pleasantry(self):
+        out = _normalize_inquiry(
+            "I want to rollover my 401k from prior employer. Thanks!"
+        )
+        assert out.lower().rstrip(" .!,").endswith("prior employer")
+
+    def test_clean_input_idempotent(self):
+        clean = "How do I rollover my 401k from a previous employer?"
+        assert _normalize_inquiry(clean) == clean
+
+    def test_empty_input_returns_empty(self):
+        assert _normalize_inquiry("") == ""
+        assert _normalize_inquiry(None) == ""
+
+    def test_only_metadata_labels_returns_raw(self):
+        # If stripping would yield nothing useful, fall back to the raw input
+        # so we never feed the LLM an empty string.
+        raw = "Subject: Body:"
+        out = _normalize_inquiry(raw)
+        assert out  # non-empty
+
+    def test_collapses_whitespace(self):
+        out = _normalize_inquiry("Hi\n\n  I  want  to\trollover.")
+        assert "  " not in out
+        assert "\n" not in out
+        assert "\t" not in out
+
+
+# ---------------------------------------------------------------------------
+# 8) Engine integration: normalization propagates to LLM and coverage checker
+# ---------------------------------------------------------------------------
+
+class TestNormalizationIntegration:
+    """The engine must normalize once at entry and pass the cleaned form to
+    every downstream consumer (LLM prompt, coverage checker / Pinecone query).
+    """
+
+    @pytest.mark.asyncio
+    async def test_wrappered_inquiry_normalized_before_llm(self, mock_llm_router):
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.9, '
+            '"reasoning": "rollover how-to", "user_message": null}'
+        )
+        engine = InquiryRouterEngine(llm_router=mock_llm_router)
+
+        await engine.classify(
+            inquiry=(
+                "Request: I would like to roll over my 401k. "
+                "Summary: Customer wants rollover help."
+            )
+        )
+
+        kwargs = mock_llm_router.call.call_args.kwargs
+        # The user prompt template embeds the (normalized) inquiry verbatim
+        # under "INQUIRY:" — assert the wrappers don't survive into it.
+        assert "Request:" not in kwargs["user_prompt"]
+        assert "Summary:" not in kwargs["user_prompt"]
+
+    @pytest.mark.asyncio
+    async def test_email_signature_stripped_before_llm(self, mock_llm_router):
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.9, '
+            '"reasoning": "rollover how-to", "user_message": null}'
+        )
+        engine = InquiryRouterEngine(llm_router=mock_llm_router)
+
+        await engine.classify(
+            inquiry=(
+                "Hi support team, I am writing to ask about rolling over my "
+                "401k balance from my prior employer plan to my new employer "
+                "plan. Can you help? Thanks. -- John"
+            )
+        )
+
+        kwargs = mock_llm_router.call.call_args.kwargs
+        assert "-- John" not in kwargs["user_prompt"]
+
+    @pytest.mark.asyncio
+    async def test_coverage_checker_receives_normalized_inquiry(self, mock_llm_router):
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.9, '
+            '"reasoning": "rollover how-to", "user_message": null}'
+        )
+        checker = AsyncMock()
+        checker.return_value = CoverageVerdict(
+            is_covered=True, top_score=0.6, reasoning="covered"
+        )
+        engine = InquiryRouterEngine(
+            llm_router=mock_llm_router, coverage_checker=checker
+        )
+
+        await engine.classify(
+            inquiry="Request: How do I rollover. Summary: User wants rollover help."
+        )
+
+        # The Pinecone-side query (coverage_checker arg 0) sees the cleaned form.
+        forwarded = checker.call_args[0][0]
+        assert "Request:" not in forwarded
+        assert "Summary:" not in forwarded
+
+
+# ---------------------------------------------------------------------------
+# 9) Parse failure → fallback retry
+# ---------------------------------------------------------------------------
+
+class TestClassifyParseFallback:
+    """Gemini Flash with thinking + JSON mode occasionally returns truncated
+    output that fails json.loads. The engine retries once against the
+    configured fallback model before giving up.
+    """
+
+    @pytest.mark.asyncio
+    async def test_parse_failure_triggers_fallback_retry(self, mock_llm_router):
+        # First call: garbage. Second call (forced fallback): valid JSON.
+        mock_llm_router.call.side_effect = [
+            _llm_response("not json {{{"),
+            _llm_response(
+                '{"route": "knowledge_question", "confidence": 0.9, '
+                '"reasoning": "rollover how-to from fallback", '
+                '"user_message": null}'
+            ),
+        ]
+        engine = InquiryRouterEngine(llm_router=mock_llm_router)
+
+        result = await engine.classify(
+            inquiry="I want to rollover my 401k from old job to new"
+        )
+
+        assert mock_llm_router.call.call_count == 2
+        # Second call must have force_fallback=True.
+        assert mock_llm_router.call.call_args_list[1].kwargs.get("force_fallback") is True
+        # Result reflects the fallback verdict.
+        assert result.route == "knowledge_question"
+        assert result.confidence == 0.9
+
+    @pytest.mark.asyncio
+    async def test_both_parses_fail_returns_needs_more_info(self, mock_llm_router):
+        mock_llm_router.call.side_effect = [
+            _llm_response("garbage 1"),
+            _llm_response("garbage 2"),
+        ]
+        engine = InquiryRouterEngine(llm_router=mock_llm_router)
+
+        result = await engine.classify(inquiry="some inquiry that breaks parsing")
+
+        assert mock_llm_router.call.call_count == 2
+        assert result.route == "needs_more_info"
+        assert result.confidence == 0.0
+        # Existing user_message contract preserved.
+        assert result.user_message is not None
+
+    @pytest.mark.asyncio
+    async def test_parse_failure_with_no_fallback_does_not_crash(self, mock_llm_router):
+        # First call returns garbage; the fallback retry raises ValueError
+        # because no fallback is configured for this task.
+        mock_llm_router.call.side_effect = [
+            _llm_response("not json"),
+            ValueError("force_fallback=True but no fallback configured"),
+        ]
+        engine = InquiryRouterEngine(llm_router=mock_llm_router)
+
+        result = await engine.classify(inquiry="some inquiry")
+
+        # Engine swallows the ValueError and keeps the needs_more_info default.
+        assert mock_llm_router.call.call_count == 2
+        assert result.route == "needs_more_info"
+        assert result.confidence == 0.0
+
+    @pytest.mark.asyncio
+    async def test_successful_parse_skips_fallback(self, mock_llm_router):
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "knowledge_question", "confidence": 0.9, '
+            '"reasoning": "ok", "user_message": null}'
+        )
+        engine = InquiryRouterEngine(llm_router=mock_llm_router)
+
+        # Procedural HOW + separation defers fast-path to the LLM, so we
+        # actually exercise the fallback-skip code path.
+        await engine.classify(
+            inquiry=(
+                "I left my employer last month — how do I roll my 401(k) "
+                "balance over to an IRA?"
+            )
+        )
+
+        # Only one call when the primary parses successfully.
+        assert mock_llm_router.call.call_count == 1
+
+
+# ---------------------------------------------------------------------------
+# 10) Lenient parser: markdown fences and JSON-in-chatter
+# ---------------------------------------------------------------------------
+
+class TestLenientParser:
+    """The classifier sometimes wraps its JSON in markdown fences or emits
+    chatter around it. The parser strips fences and falls back to extracting
+    the first {...} substring before giving up.
+    """
+
+    def test_strips_json_markdown_fence(self):
+        content = '```json\n{"route": "knowledge_question", "confidence": 0.9}\n```'
+        parsed, parse_ok = _safe_parse_classifier_json(content)
+        assert parse_ok is True
+        assert parsed["route"] == "knowledge_question"
+
+    def test_strips_bare_markdown_fence(self):
+        content = '```\n{"route": "generate_response", "confidence": 0.8}\n```'
+        parsed, parse_ok = _safe_parse_classifier_json(content)
+        assert parse_ok is True
+        assert parsed["route"] == "generate_response"
+
+    def test_extracts_json_from_chatter(self):
+        content = (
+            'Here is my analysis: {"route": "knowledge_question", '
+            '"confidence": 0.9, "reasoning": "ok"} done.'
+        )
+        parsed, parse_ok = _safe_parse_classifier_json(content)
+        assert parse_ok is True
+        assert parsed["route"] == "knowledge_question"
+
+    def test_truncated_json_still_unparseable(self):
+        # The actual observed Gemini failure mode (mid-string truncation) is
+        # NOT salvageable — confirm we still flag it as parse_ok=False.
+        content = '{"route": "knowledge_question", "confidence": 0.9, "reaso'
+        parsed, parse_ok = _safe_parse_classifier_json(content)
+        assert parse_ok is False
+        assert parsed["route"] == "needs_more_info"

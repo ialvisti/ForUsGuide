@@ -30,7 +30,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Optional
+from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
 
 from data_pipeline.llm_router import LLMRouter
 from data_pipeline.prompts import build_classify_inquiry_prompt
@@ -128,6 +128,60 @@ _PROCEDURAL_HOW_RE = re.compile(
 )
 
 
+# ---------------------------------------------------------------------------
+# Input normalization
+# ---------------------------------------------------------------------------
+#
+# Real inbound inquiries arrive wrapped in email scaffolding ("Subject: …",
+# "Request: …", "Summary: …"), with PII inline (emails, phones), and trailing
+# signatures ("Thanks, -- John"). With Gemini Flash + JSON mode + a non-zero
+# thinking budget, this scaffolding causes the model to truncate its JSON
+# response (observed completion_tokens=18-22 for wrappered inputs vs 60-90
+# for clean ones), and pollutes the embedding query passed to Pinecone for
+# the coverage check. Normalizing once at engine entry fixes both.
+
+# Metadata-style label prefixes we strip whenever they appear as a whole
+# word followed by a colon. Real production inputs from email/CRM exporters
+# concatenate these labels onto a single line ("Request: ... Summary: ..."),
+# so a start-of-line anchor wouldn't catch them. The label is removed and
+# the content after the colon is preserved.
+_METADATA_LABEL_RE = re.compile(
+    r"(?i)\b(?:subject|body|from|to|message|request|summary)\s*:\s*"
+)
+
+# RFC-loose email matcher. Replace with the literal token EMAIL so that
+# "old email vs new email" distinctions remain visible to the classifier
+# without the address noise dominating the embedding.
+_EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
+
+# Trailing signatures: a sign-off line ("Thanks", "Best", "Regards", …) or
+# an email-style "-- " separator, plus everything that follows to end of
+# input. Anchored to the END so we don't chop legitimate body sentences.
+_TRAILING_SIGNATURE_RE = re.compile(
+    r"(?is)"
+    r"(?:[\.!,\s])\s*"
+    r"(?:--\s.*"                                       # -- signature block
+    r"|(?:thanks|thank\s+you|best|regards|sincerely|cheers)"
+    r"(?:[,!.\s].*)?"                                  # trailing pleasantry
+    r")\Z"
+)
+
+
+def _normalize_inquiry(raw: Optional[str]) -> str:
+    """Strip email scaffolding, inline emails, and trailing signatures.
+
+    Defensive: returns the raw input unchanged if normalization would yield
+    an empty string (so we never feed the LLM nothing).
+    """
+    if not raw:
+        return raw or ""
+    text = _METADATA_LABEL_RE.sub("", raw)
+    text = _EMAIL_RE.sub("EMAIL", text)
+    text = _TRAILING_SIGNATURE_RE.sub("", text)
+    text = re.sub(r"\s+", " ", text).strip()
+    return text or raw
+
+
 def _is_short_interrogative(inquiry: str) -> bool:
     text = (inquiry or "").strip()
     if not text:
@@ -216,40 +270,67 @@ def apply_fast_path_rules(
 # ---------------------------------------------------------------------------
 
 
-def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
-    """Defensive JSON parse. Never raises; returns ``needs_more_info`` on failure."""
+_MARKDOWN_FENCE_RE = re.compile(
+    r"\A\s*```(?:json)?\s*(.*?)\s*```\s*\Z",
+    re.IGNORECASE | re.DOTALL,
+)
+_FIRST_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
+
+
+def _unparseable_default() -> Dict[str, Any]:
+    return {
+        "route": "needs_more_info",
+        "confidence": 0.0,
+        "reasoning": "Classifier output unparseable",
+        "user_message": None,
+    }
+
+
+def _safe_parse_classifier_json(
+    content: Optional[str],
+) -> Tuple[Dict[str, Any], bool]:
+    """Defensive JSON parse. Never raises.
+
+    Returns ``(parsed, parse_ok)``. ``parse_ok`` is False when the content
+    could not be parsed into a JSON object (the engine uses this to trigger
+    a fallback retry). On parse failure the parsed dict is the
+    ``needs_more_info`` default so callers can short-circuit to the existing
+    fail-closed contract without further branching.
+    """
     if not content or not content.strip():
         logger.warning("Classifier returned empty content; defaulting to needs_more_info.")
-        return {
-            "route": "needs_more_info",
-            "confidence": 0.0,
-            "reasoning": "Classifier output unparseable",
-            "user_message": None,
-        }
+        return _unparseable_default(), False
 
+    text = content.strip()
+    fence_match = _MARKDOWN_FENCE_RE.match(text)
+    if fence_match:
+        text = fence_match.group(1).strip()
+
+    parsed: Any = None
     try:
-        parsed = json.loads(content)
-    except (json.JSONDecodeError, TypeError) as exc:
+        parsed = json.loads(text)
+    except (json.JSONDecodeError, TypeError):
+        # Last-ditch: extract the first {...} object from chatter and retry.
+        # Doesn't help with truncated-mid-string output, but covers Gemini's
+        # occasional "preamble + JSON" mode.
+        obj_match = _FIRST_JSON_OBJECT_RE.search(text)
+        if obj_match:
+            try:
+                parsed = json.loads(obj_match.group(0))
+            except (json.JSONDecodeError, TypeError):
+                parsed = None
+
+    if parsed is None:
         logger.warning(
-            "Classifier output unparseable (%s): %r",
-            type(exc).__name__,
+            "Classifier output unparseable (len=%d): %r",
+            len(content),
             content[:500],
         )
-        return {
-            "route": "needs_more_info",
-            "confidence": 0.0,
-            "reasoning": "Classifier output unparseable",
-            "user_message": None,
-        }
+        return _unparseable_default(), False
 
     if not isinstance(parsed, dict):
         logger.warning("Classifier output was not a JSON object: %r", content[:500])
-        return {
-            "route": "needs_more_info",
-            "confidence": 0.0,
-            "reasoning": "Classifier output unparseable",
-            "user_message": None,
-        }
+        return _unparseable_default(), False
 
     route = parsed.get("route")
     if route not in VALID_ROUTES:
@@ -260,7 +341,7 @@ def _safe_parse_classifier_json(content: Optional[str]) -> Dict[str, Any]:
             f"Invalid route {route!r}; coerced to needs_more_info."
         )
 
-    return parsed
+    return parsed, True
 
 
 def _resolve_user_message(route: str, raw: Any) -> Optional[str]:
@@ -300,9 +381,13 @@ class InquiryRouterEngine:
         self._coverage_checker = coverage_checker
 
     async def classify(self, inquiry: str) -> ClassificationResult:
-        signals = compute_deterministic_features(inquiry)
+        # Strip email scaffolding / inline emails / signatures once, up front;
+        # every downstream consumer (deterministic signals, fast-path, LLM
+        # prompt, coverage checker / Pinecone query) sees the cleaned form.
+        inquiry_norm = _normalize_inquiry(inquiry)
+        signals = compute_deterministic_features(inquiry_norm)
 
-        fast = apply_fast_path_rules(inquiry, signals)
+        fast = apply_fast_path_rules(inquiry_norm, signals)
         if fast is not None:
             # Fast paths only return knowledge_question / generate_response,
             # never needs_more_info, so user_message stays None.
@@ -323,7 +408,7 @@ class InquiryRouterEngine:
             )
 
         system_prompt, user_prompt = build_classify_inquiry_prompt(
-            inquiry=inquiry,
+            inquiry=inquiry_norm,
             signals=signals,
         )
 
@@ -334,9 +419,35 @@ class InquiryRouterEngine:
             user_prompt=user_prompt,
             max_tokens=self.LLM_MAX_TOKENS,
         )
+
+        parsed, parse_ok = _safe_parse_classifier_json(llm_result.content)
+
+        # Gemini Flash with thinking + JSON mode occasionally truncates output
+        # mid-string for inputs the normalizer didn't fully clean. Retry once
+        # against the configured fallback model — costs a single extra call
+        # only on the rare failure path.
+        if not parse_ok:
+            try:
+                llm_result = await self._llm.call(
+                    task_type="classify_inquiry",
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    max_tokens=self.LLM_MAX_TOKENS,
+                    force_fallback=True,
+                )
+                parsed, parse_ok = _safe_parse_classifier_json(llm_result.content)
+            except ValueError:
+                # No fallback configured for classify_inquiry; keep the
+                # already-coerced needs_more_info default.
+                pass
+            except Exception as exc:
+                logger.warning(
+                    "Classifier fallback retry failed (%s); keeping needs_more_info.",
+                    type(exc).__name__,
+                )
+
         llm_latency_ms = (time.monotonic() - llm_start) * 1000
 
-        parsed = _safe_parse_classifier_json(llm_result.content)
         route = parsed.get("route", "needs_more_info")
         try:
             confidence = float(parsed.get("confidence", 0.0))
@@ -354,7 +465,7 @@ class InquiryRouterEngine:
         kb_coverage_top_score: Optional[float] = None
         kb_coverage_reasoning: Optional[str] = None
         if route == "knowledge_question" and self._coverage_checker is not None:
-            verdict = await self._coverage_checker(inquiry)
+            verdict = await self._coverage_checker(inquiry_norm)
             kb_coverage_top_score = verdict.top_score
             kb_coverage_reasoning = verdict.reasoning
             if not verdict.is_covered:

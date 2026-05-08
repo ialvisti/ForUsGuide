@@ -55,7 +55,9 @@ class Settings(BaseSettings):
     #   shadow          → classify but always return needs_more_info to caller
     #   knowledge_only  → only knowledge_question routes are honored
     #   full            → all routes honored
-    ROUTER_MODE: str = "disabled"
+    # Default is "full" because the endpoint is generally available; operators
+    # can downgrade per-environment via the ROUTER_MODE env var.
+    ROUTER_MODE: str = "full"
 
     # Pinecone
     PINECONE_API_KEY: str = ""

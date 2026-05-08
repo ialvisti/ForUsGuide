@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s -X POST \"http://0.0.0.0:8000/api/v1/route-inquiry\" -H \"X-API-Key: 1\" -H \"Content-Type: application/json\" -d '{\"inquiry\":\"Request: Hi there, I want to rollover a 401k from a previous employer... how can I do that? The old employer has my 401k in a vestwell account. Thanks!. Summary: The customer wants to know how to rollover a 401k from a previous employer, which is held in a Vestwell account.\"}')"
+    ]
+  }
+}

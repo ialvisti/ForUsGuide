@@ -649,3 +649,81 @@ class TestRouteInquiryEndpoint:
         data = response.json()
         assert data["route"] == "knowledge_question"
         assert "router_mode_override" not in data["metadata"]
+
+
+class TestCoverageCheckerFailOpen:
+    """The coverage checker must fail open (is_covered=True) when the
+    Pinecone retrieval throws an exception OR returns 0 chunks. Either
+    case is almost always a transient infra blip with the 725-vector
+    production index, and downgrading to needs_more_info would surface
+    a spurious "please clarify" UX to the participant.
+    """
+
+    @pytest.mark.asyncio
+    async def test_pinecone_exception_fails_open(self):
+        from api.main import _make_coverage_checker
+
+        rag_engine = Mock()
+        rag_engine._cached_query = AsyncMock(
+            side_effect=RuntimeError("pinecone outage")
+        )
+        llm_router = Mock()
+        # The LLM verifier must NOT be called when retrieval fails.
+        llm_router.call = AsyncMock()
+
+        checker = _make_coverage_checker(rag_engine, llm_router)
+        verdict = await checker("How do I rollover my 401k?")
+
+        assert verdict.is_covered is True
+        assert verdict.top_score == 0.0
+        assert "RuntimeError" in verdict.reasoning
+        llm_router.call.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_zero_chunks_fails_open(self):
+        from api.main import _make_coverage_checker
+
+        rag_engine = Mock()
+        # query_chunks swallows Pinecone exceptions and returns []; the
+        # coverage checker can't distinguish that from a literal zero-match
+        # retrieval, so both must fail open.
+        rag_engine._cached_query = AsyncMock(return_value=[])
+        llm_router = Mock()
+        llm_router.call = AsyncMock()
+
+        checker = _make_coverage_checker(rag_engine, llm_router)
+        verdict = await checker("How do I rollover my 401k?")
+
+        assert verdict.is_covered is True
+        assert verdict.top_score == 0.0
+        assert "failing open" in verdict.reasoning.lower()
+        llm_router.call.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_chunks_present_runs_llm_verifier(self):
+        from api.main import _make_coverage_checker
+        from data_pipeline.llm_router import LLMResponse
+
+        rag_engine = Mock()
+        rag_engine._cached_query = AsyncMock(
+            return_value=[
+                {"id": "c1", "score": 0.62, "metadata": {"article_title": "X"}},
+                {"id": "c2", "score": 0.55, "metadata": {"article_title": "Y"}},
+            ]
+        )
+        llm_router = Mock()
+        llm_router.call = AsyncMock(
+            return_value=LLMResponse(
+                content='{"covered": true, "reasoning": "X covers it."}',
+                usage=None,
+                provider_used="gemini",
+                model_used="gemini-2.5-flash",
+            )
+        )
+
+        checker = _make_coverage_checker(rag_engine, llm_router)
+        verdict = await checker("How do I rollover my 401k?")
+
+        assert verdict.is_covered is True
+        assert verdict.top_score == 0.62
+        llm_router.call.assert_awaited_once()

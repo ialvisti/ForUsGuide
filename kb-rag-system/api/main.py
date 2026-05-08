@@ -97,16 +97,44 @@ def _make_coverage_checker(rag_engine: RAGEngine, llm_router: LLMRouter):
     import json as _json
 
     async def _coverage(inquiry: str) -> CoverageVerdict:
-        chunks = await rag_engine._cached_query(
-            query_text=inquiry, top_k=5, filter_dict=None
-        )
+        try:
+            chunks = await rag_engine._cached_query(
+                query_text=inquiry, top_k=5, filter_dict=None
+            )
+        except Exception as exc:
+            # Pinecone outages must not block legitimate KB hits. Fail open
+            # so the participant gets routed to /knowledge-question (which
+            # has its own degraded-mode handling) instead of receiving a
+            # spurious "please clarify" response.
+            logger.warning(
+                "Coverage retrieval failed (%s); failing open.",
+                type(exc).__name__,
+            )
+            return CoverageVerdict(
+                is_covered=True,
+                top_score=0.0,
+                reasoning=f"Retrieval failed ({type(exc).__name__}); failing open.",
+            )
+
         top_score = max((c.get("score", 0.0) for c in chunks), default=0.0)
 
         if not chunks:
+            # `query_chunks` (pinecone_uploader.py) currently swallows all
+            # exceptions and returns []. We can't distinguish "Pinecone
+            # transient error" from "literal zero matches" — but with 725+
+            # vectors covering the 401k topic space, a clean rollover/loan/
+            # hardship inquiry returning ZERO matches is almost always the
+            # former. Fail open here too; legit KB gaps surface as
+            # tangential-but-not-answer matches that the LLM verifier
+            # already rejects below.
+            logger.warning(
+                "Coverage retrieval returned 0 chunks for inquiry (likely "
+                "a transient Pinecone error); failing open."
+            )
             return CoverageVerdict(
-                is_covered=False,
+                is_covered=True,
                 top_score=0.0,
-                reasoning="No chunks retrieved from the knowledge base.",
+                reasoning="No chunks retrieved; failing open.",
             )
 
         system_prompt, user_prompt = build_verify_coverage_prompt(

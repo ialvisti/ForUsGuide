@@ -47,7 +47,7 @@
                 "category": "deadline_and_consequences",
                 "rules": [
                     "If the rollover is not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income.",
-                    "If the rollover is not completed within the 60-day window, the participant may owe a 10% early withdrawal penalty if under age 59\u00bd.",
+                    "If the rollover is not completed within the 60-day window, the participant may owe a 10% early withdrawal penalty if under age 59½.",
                     "If the rollover is not completed within the 60-day window, the amount is reported on IRS Form 1099-R as a distribution.",
                     "Depositing the funds into another retirement account later does not qualify as a rollover unless certain exceptions are met."
                 ]
@@ -96,7 +96,7 @@
                 "type": "participant-facing",
                 "visibility": "both",
                 "description": "If the rollover was not completed within 60 days, explain that the distribution is generally treated as taxable income and is reported on IRS Form 1099-R as a distribution.",
-                "notes": "If the participant is under age 59\u00bd, they may owe a 10% early withdrawal penalty."
+                "notes": "If the participant is under age 59½, they may owe a 10% early withdrawal penalty."
             },
             {
                 "step_number": 4,
@@ -138,7 +138,7 @@
             },
             {
                 "issue": "Participant asks whether they will owe taxes or penalties after missing the deadline.",
-                "resolution": "State the article's general consequences (generally taxable; may owe 10% penalty if under 59\u00bd; reported on Form 1099-R) and recommend consulting a qualified tax professional for their specific tax situation."
+                "resolution": "State the article's general consequences (generally taxable; may owe 10% penalty if under 59½; reported on Form 1099-R) and recommend consulting a qualified tax professional for their specific tax situation."
             },
             {
                 "issue": "Participant asks what documentation is needed for self-certification.",
@@ -188,7 +188,7 @@
         "examples": [
             {
                 "scenario": "A participant received a distribution payable to them and did not complete the rollover within 60 days.",
-                "outcome": "The distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if the participant is under age 59\u00bd, and is reported on IRS Form 1099-R as a distribution. Exceptions may be available; recommend consulting a tax professional."
+                "outcome": "The distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if the participant is under age 59½, and is reported on IRS Form 1099-R as a distribution. Exceptions may be available; recommend consulting a tax professional."
             },
             {
                 "scenario": "A participant completed a direct rollover where funds moved directly from one provider to another.",
@@ -247,8 +247,8 @@
                 "outcome": "The article states that the amount is reported on IRS Form 1099-R as a distribution if the rollover is not completed within the 60-day window. For self-certification situations, the participant may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes."
             },
             {
-                "scenario": "A participant is under age 59\u00bd, missed the 60-day window, and asks what additional consequences might apply.",
-                "outcome": "The article states the distribution is generally treated as taxable income and the participant may owe a 10% early withdrawal penalty if under age 59\u00bd. The agent should recommend consulting a qualified tax professional for guidance specific to the participant."
+                "scenario": "A participant is under age 59½, missed the 60-day window, and asks what additional consequences might apply.",
+                "outcome": "The article states the distribution is generally treated as taxable income and the participant may owe a 10% early withdrawal penalty if under age 59½. The agent should recommend consulting a qualified tax professional for guidance specific to the participant."
             }
         ],
         "additional_notes": [
@@ -287,7 +287,7 @@
             },
             {
                 "question": "What happens if I miss the 60-day deadline?",
-                "answer": "If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if you are under age 59\u00bd, and is reported on IRS Form 1099-R as a distribution."
+                "answer": "If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if you are under age 59½, and is reported on IRS Form 1099-R as a distribution."
             },
             {
                 "question": "Are there exceptions if I miss the 60-day rollover deadline?",
@@ -389,7 +389,7 @@
             },
             {
                 "term": "Early withdrawal penalty",
-                "definition": "A potential 10% penalty the article says a participant may owe if they miss the 60-day rollover deadline and are under age 59\u00bd."
+                "definition": "A potential 10% penalty the article says a participant may owe if they miss the 60-day rollover deadline and are under age 59½."
             },
             {
                 "term": "Taxable income",
@@ -408,7 +408,7 @@
                 "Do not tell the participant that depositing the funds after 60 days will still qualify as a rollover unless you also state that it requires meeting an exception.",
                 "Do not instruct the participant on how to complete, submit, or word a self-certification beyond stating that self-certification may be possible and that they should keep proper documentation.",
                 "Do not advise the participant to submit forms to the IRS without also stating the article's recommendation to consult a qualified tax professional first.",
-                "Do not tell the participant they definitely owe the 10% early withdrawal penalty; the article states they may owe it only if they are under age 59\u00bd.",
+                "Do not tell the participant they definitely owe the 10% early withdrawal penalty; the article states they may owe it only if they are under age 59½.",
                 "Do not claim the participant is eligible for an automatic waiver unless it is established that the delay was caused by a financial institution error and all other requirements are met (as stated in the article).",
                 "Do not claim that any specific self-certification circumstance will be accepted by the IRS; the article states self-certification may be possible for specific circumstances.",
                 "Do not suggest that a Private Letter Ruling (PLR) is always required to address a missed 60-day rollover; the article describes PLR as a rare situation.",
@@ -436,7 +436,13 @@
         },
         "references": {
             "participant_portal": null,
-            "internal_articles": [],
+            "internal_articles": [
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+                "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+                "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+                "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+                "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance"
+            ],
             "external_links": [
                 "https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions"
             ],
@@ -487,13 +493,13 @@
             ],
             "nice_to_have": [
                 {
-                    "data_point": "Whether the participant is under age 59\u00bd",
+                    "data_point": "Whether the participant is under age 59½",
                     "meaning": "Determines whether the 10% early withdrawal penalty may apply if the deadline was missed.",
                     "example_values": [
-                        "Under age 59\u00bd",
-                        "Age 59\u00bd or older"
+                        "Under age 59½",
+                        "Age 59½ or older"
                     ],
-                    "why_needed": "Used to communicate that the 10% early withdrawal penalty may apply only if under age 59\u00bd.",
+                    "why_needed": "Used to communicate that the 10% early withdrawal penalty may apply only if under age 59½.",
                     "source_note": null,
                     "source_type": "agent_input"
                 },
@@ -553,7 +559,7 @@
             ],
             "disambiguation_notes": [
                 "The article distinguishes direct rollovers (provider-to-provider) from distributions payable to the participant; the 60-day rule applies only to the latter.",
-                "The article describes consequences as generally taxable and potentially subject to a 10% early withdrawal penalty if under age 59\u00bd; avoid treating this as a guaranteed outcome for every individual situation."
+                "The article describes consequences as generally taxable and potentially subject to a 10% early withdrawal penalty if under age 59½; avoid treating this as a guaranteed outcome for every individual situation."
             ]
         },
         "decision_guide": {
@@ -592,7 +598,7 @@
             "allowed_conclusions": [
                 "If this was a direct rollover sent provider-to-provider, the 60-day rollover rule does not apply.",
                 "If the rollover was not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income.",
-                "If the rollover was not completed within 60 days, the participant may owe a 10% early withdrawal penalty if under age 59\u00bd.",
+                "If the rollover was not completed within 60 days, the participant may owe a 10% early withdrawal penalty if under age 59½.",
                 "If the rollover is not completed within 60 days, the amount is reported on IRS Form 1099-R as a distribution.",
                 "Exceptions may be available through an automatic waiver, self-certification for certain circumstances, or a Private Letter Ruling (PLR) in rare situations.",
                 "A qualified tax professional can help confirm eligibility for an exception, complete documentation, determine whether a PLR is necessary, and report the transaction correctly on the tax return.",
@@ -613,7 +619,7 @@
                     "The IRS 60-day rollover rule allows moving funds between eligible retirement accounts without taxes or penalties if the rollover is completed within 60 days of receiving the funds.",
                     "This rule does not apply to direct rollovers where funds are sent directly from one provider to another.",
                     "If the rollover was not completed within 60 days, the distribution is generally treated as taxable income and is reported on IRS Form 1099-R as a distribution.",
-                    "If you are under age 59\u00bd, you may owe a 10% early withdrawal penalty.",
+                    "If you are under age 59½, you may owe a 10% early withdrawal penalty.",
                     "In some cases, the IRS allows flexibility through waivers or extensions such as an automatic waiver, self-certification for specific circumstances, or a Private Letter Ruling (PLR) in rare situations.",
                     "Before claiming an exception or submitting any forms to the IRS, consult a qualified tax professional.",
                     "If you need help clarifying plan activity, verifying check processing dates, or resending provider documentation, contact ForUsAll support.",

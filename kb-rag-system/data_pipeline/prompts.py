@@ -31,7 +31,14 @@ CRITICAL RULES:
    - plan_data: attributes of the plan configuration itself (maximum number of loans allowed, vesting schedule, plan-level thresholds, record keeper, etc.)
    Do NOT categorize based on the `Source:` tag.
 6. For each field, specify:
-   - field: Clear, snake_case name derived from the data point name
+   - field: Clear, snake_case name derived from the data point name. Prefer canonical field slugs when the data point matches one — these are the slugs the downstream Field-to-Module Mapping Agent recognizes natively:
+     `first_name`, `last_name`, `participant_name`, `participant_status`, `birth_date`, `hire_date`, `rehire_date`, `termination_date`, `primary_email`, `home_email`, `phone`, `address`,
+     `account_balance`, `vested_balance`, `employer_match_vested_balance`, `roth_deferral_balance`, `rollover_balance`, `record_keeper`, `plan_enrollment_type`, `ytd_employee_contributions`, `ytd_employer_contributions`,
+     `plan_type`, `plan_status`, `force_out_limit`, `maximum_number_of_loans`, `auto_enrollment_rate`,
+     `loan_history`, `loan_account_balance`,
+     `payroll_frequency`, `last_payroll_date`, `payroll_history`,
+     `mfa_status`.
+     If the data point describes a derivation or boolean predicate (e.g., "whether X", "has Y", "is Z", "X has ended"), emit the underlying base field slug(s) instead of the predicate name (e.g., "employment status has ended" → `termination_date` + `participant_status`; "whether the participant has Roth funds" → `roth_deferral_balance`). For composite concepts (e.g., participant full name or address), emit one slug per underlying field if the data point bundles them.
    - description: What this field represents (from the "Description" in context)
    - why_needed: Why we need this specific data (from "Why needed" in context)
    - data_type: Use one of [text, currency, date, boolean, number] for scalar fields. For list fields, specify the element type inside brackets: list[text], list[currency], list[date], list[boolean], list[number]. NEVER use bare "list" — always include the element type.
@@ -764,14 +771,32 @@ ROUTES:
   fallback. Do NOT pick this just because a sub-distinction (direct vs indirect, IRA vs plan)
   is unspecified — those refinements live downstream.
 
+KEY DISTINCTION — INTENT vs EDUCATION:
+- EDUCATIONAL inquiries ask the system to *explain* a rule, fee, timeframe, or procedure in
+  the abstract -> "knowledge_question". Surface forms: "what is...", "how long...", "what's
+  the fee...", "how do I..." (general procedure with no first-person account context).
+- TRANSACTIONAL inquiries express the participant's intent to *execute* an action on their
+  own funds (rollover, withdrawal, loan, distribution, transfer). Completing such an action
+  requires verifying participant status (active vs terminated), plan rules, vested balance,
+  age, and outstanding loans — so these belong to "generate_response" EVEN WHEN no eligibility
+  verb is present. Surface forms: "I'd like to...", "I want to...", "I need to...",
+  "Help me...", "Can you help me...", "I'm looking to...", "I'd love to...".
+  These phrases are NOT eligibility questions, but they imply the participant is asking us
+  to act on their behalf, which requires the same eligibility check.
+
 GLOSSARY:
 - "outgoing rollover": the participant wants to move their FUA balance OUT (to an IRA or to a
-  new employer's plan), usually after separation. WHETHER-questions ("am I eligible", "can I")
-  about this belong to "generate_response"; HOW-procedural questions belong to "knowledge_question".
+  new employer's plan), usually after separation. Both WHETHER-questions ("am I eligible",
+  "can I") AND TRANSACTIONAL requests ("I'd like to roll over...", "help me transfer...")
+  about this belong to "generate_response". Only generic HOW-procedural questions ("how does
+  a 60-day rollover work?", "what's the process in general?") belong to "knowledge_question".
 
 You will receive deterministic signals computed before this call. Treat them as strong hints:
 - hardship_signal=true AND active_participant=true -> generate_response
 - separation_signal=true AND wants_funds=true AND has_eligibility_verb=true -> generate_response
+- transactional_intent=true (intent verb + wants_funds) -> generate_response
+  (this overrides the absence of has_eligibility_verb; the participant is asking us to
+   execute a transaction, not to teach them the rule in the abstract)
 - short interrogative ("how many", "how long", "what is") with no participant signals -> knowledge_question
 - procedural HOW question (e.g. "how can I", "how do I") about a known KB topic -> knowledge_question
   (KB articles cover the procedure even when the participant happens to be separated)
@@ -782,10 +807,17 @@ EXAMPLES:
 - "what is the 60-day rollover rule?" -> knowledge_question
 - "what are the contribution limits for 2025?" -> knowledge_question
 - "what's the difference between a direct and indirect rollover?" -> knowledge_question
+- "what's the process for rolling over a 401(k) to an IRA in general?" -> knowledge_question
 - "I'm still working but need $15k for medical bills, can I take a hardship?" -> generate_response
 - "Am I eligible to roll over my balance into my new employer's plan?" -> generate_response
 - "I left my employer 3 months ago, can I take a distribution from my 401(k)?" -> generate_response
 - "I'm 58 with a hardship withdrawal request for tuition and I have an outstanding loan" -> generate_response
+- "I'd like to roll over my 401k into my Fidelity account, can you help?" -> generate_response
+- "I want to take a loan from my 401(k), how do I start?" -> generate_response
+- "Can you help me withdraw $5,000 from my account?" -> generate_response
+- "I need to cash out my 401k" -> generate_response
+- "I'd like to take a hardship withdrawal for medical bills" -> generate_response
+- "Help me move my balance to an IRA" -> generate_response
 - "I have a question about my plan, thanks" -> needs_more_info
 - "can my plan offer Roth contributions?" -> needs_more_info
 

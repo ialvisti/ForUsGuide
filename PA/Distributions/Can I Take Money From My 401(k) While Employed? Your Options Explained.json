@@ -599,7 +599,8 @@
                 "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
                 "How Do I Cancel or Change a Pending Distribution Request?",
                 "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
-                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact"
+                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+                "401(k) Loan Basics and Support Guide"
             ],
             "external_links": [
                 "https://www.calendly.com/forusalladvisory",
@@ -614,8 +615,8 @@
         "required_data": {
             "must_have": [
                 {
-                    "data_point": "Eligibility Status",
-                    "meaning": "The participant's Eligibility Status shown in the participant profile under the Census section.",
+                    "data_point": "Participant Status",
+                    "meaning": "The participant's eligibility/employment status (shown in the participant profile under the Census section as Eligibility Status). Must be Active to proceed with a distribution or loan request while employed.",
                     "example_values": [
                         "Active",
                         "Terminated",
@@ -624,7 +625,7 @@
                         "Unknown"
                     ],
                     "why_needed": "Required to confirm the participant is Active before confirming individual eligibility for a distribution or loan request. Does not block general explanation of the in-service options described in the article.",
-                    "source_note": "Internal check only. Confirm in the participant profile Census section under Eligibility Status. Do not ask the participant to provide this; if it cannot be confirmed internally, direct the participant to contact support to review eligibility.",
+                    "source_note": "Internal check only. Catalog field: census.Eligibility Status. Do not ask the participant to provide this; if it cannot be confirmed internally, direct the participant to contact support to review eligibility.",
                     "source_type": "participant_profile",
                     "blocking_intent": "eligibility_confirmation"
                 },
@@ -652,7 +653,7 @@
                         "3"
                     ],
                     "why_needed": "Determines whether the plan allows loans and whether the participant can take an additional loan under the plan limit. Used only to confirm participant-specific loan eligibility; does not block general explanation of how 401(k) loans work.",
-                    "source_note": "Internal check only. Confirm in the participant profile. If it cannot be confirmed in the participant profile, direct the participant to contact support to double check.",
+                    "source_note": "Internal check only. Catalog field: plan_details.Maximum Number of Loans. If it cannot be confirmed in the participant profile, direct the participant to contact support to double check.",
                     "source_type": "participant_profile",
                     "blocking_intent": "eligibility_confirmation"
                 }
@@ -665,19 +666,19 @@
                         "Plan allows",
                         "Plan does not allow"
                     ],
-                    "why_needed": "The article states these options depend on employer plan rules and may not be available in every plan. When unknown, treat as ambiguous_plan_rules and recommend support confirmation; never block general guidance about the option.",
-                    "source_note": null,
-                    "source_type": "participant_profile"
+                    "why_needed": "The article states these options depend on employer plan rules and may not be available in every plan. When unknown, treat as ambiguous_plan_rules and recommend support confirmation; never block general guidance about the option. No ForUsBots extractor exists for option-by-option plan permission; treat as agent_input or sponsor confirmation.",
+                    "source_note": "No admin-panel extractor for option-level plan permission; collected via agent or sponsor confirmation.",
+                    "source_type": "agent_input"
                 },
                 {
-                    "data_point": "Participant age",
-                    "meaning": "The participant's age, used to assess the typical age-based threshold for in-service distributions and to contextualize early withdrawal penalty discussions.",
+                    "data_point": "Birth Date",
+                    "meaning": "The participant's date of birth, used to evaluate the age 59 1/2 threshold for in-service distributions and to contextualize early withdrawal penalty discussions.",
                     "example_values": [
-                        "59 1/2 or older",
-                        "Under 59 1/2"
+                        "1960-04-15",
+                        "1985-09-30"
                     ],
                     "why_needed": "In-service distributions are typically available at age 59 1/2+ if the plan allows; penalty considerations are described for those under 59 1/2 for hardship withdrawals.",
-                    "source_note": "Must be determined from the participant profile. If not confirmed, ask participant or advise them to contact support for eligibility review.",
+                    "source_note": "Catalog field: census.Birth Date.",
                     "source_type": "participant_profile"
                 },
                 {
@@ -707,36 +708,38 @@
                     "source_type": "message_text"
                 },
                 {
-                    "data_point": "Rollover assets exist in the plan",
-                    "meaning": "Whether the participant has assets rolled over from another retirement account into the current plan.",
+                    "data_point": "Rollover Balance",
+                    "meaning": "The participant's rollover balance shown in the participant profile Savings Rate section. A non-zero value confirms the participant has rollover assets in the current plan that may be available for a rollover source withdrawal.",
                     "example_values": [
-                        "Yes",
-                        "No"
+                        0.0,
+                        12500.0
                     ],
-                    "why_needed": "Rollover source withdrawals are described as potentially available for rollover assets while employed.",
-                    "source_note": "Support must confirm first or advise participant to contact support if unsure",
+                    "why_needed": "Rollover source withdrawals are described as potentially available for rollover assets while employed. A non-zero Rollover Balance indicates the participant has rolled funds into the current plan.",
+                    "source_note": "Catalog field: savings_rate.Rollover Balance.",
                     "source_type": "participant_profile"
                 },
                 {
                     "data_point": "Account Balance",
-                    "meaning": "The participant's Account Balance (this is the Vested Balance), used for 401(k) loan eligibility and loan limit calculations.",
+                    "meaning": "The participant's vested 401(k) account balance (the Account Balance field returned by ForUsBots represents the total vested balance). Used for 401(k) loan eligibility and loan limit calculations, and to compare against the loan contingent amount for hardship or in-service withdrawals.",
                     "example_values": [
-                        "$2,000.00",
-                        "$50,000.00"
+                        0.0,
+                        2000.0,
+                        50000.0,
+                        148485.04
                     ],
-                    "why_needed": "Loans require an available vested balance; the article provides loan limits based on vested balance and states a $2,000 vested balance is needed to take the $1,000 minimum loan.",
-                    "source_note": null,
+                    "why_needed": "Loans require an available vested balance; the article provides loan limits based on vested balance and states a $2,000 vested balance is needed to take the $1,000 minimum loan. Also used to evaluate hardship/in-service withdrawal contingent requirements when active loans exist.",
+                    "source_note": "Catalog field: savings_rate.Account Balance (total vested balance). Internal-only; must not be shared with the participant.",
                     "source_type": "participant_profile"
                 },
                 {
-                    "data_point": "Account tax type for the funds being accessed",
-                    "meaning": "Whether the funds are pre-tax or Roth for determining how taxes may apply as described in the article.",
+                    "data_point": "Roth Deferral Balance",
+                    "meaning": "The participant's Roth deferral balance. A non-zero value confirms the participant has Roth 401(k) funds, which are taxed differently from pre-tax funds (and may be subject to the 5-year Roth rule on earnings).",
                     "example_values": [
-                        "Pre-tax",
-                        "Roth"
+                        0.0,
+                        7500.0
                     ],
-                    "why_needed": "The article explains taxes may apply differently depending on whether funds are pre-tax or Roth.",
-                    "source_note": null,
+                    "why_needed": "The article explains taxes may apply differently depending on whether funds are pre-tax or Roth. A non-zero Roth Deferral Balance signals that Roth-specific tax treatment guidance is relevant.",
+                    "source_note": "Catalog field: savings_rate.Roth Deferral Balance.",
                     "source_type": "participant_profile"
                 },
                 {
@@ -746,56 +749,26 @@
                         "Less than 5 years",
                         "5 years or more"
                     ],
-                    "why_needed": "The article states Roth distributions may be taxed on earnings if taken when it has been less than 5 years.",
-                    "source_note": "Support must confirm first or advise participant to contact support if unsure.",
-                    "source_type": "participant_profile"
+                    "why_needed": "The article states Roth distributions may be taxed on earnings if taken when it has been less than 5 years. No ForUsBots extractor exists for the Roth holding-period start date; support must confirm or advise participant to contact support if unsure.",
+                    "source_note": "No admin-panel extractor for the Roth holding period start; collected via agent or recordkeeper confirmation.",
+                    "source_type": "agent_input"
                 },
                 {
-                    "data_point": "Loan history status",
-                    "meaning": "Whether the participant profile shows an existing loan record or displays No loan history found.",
+                    "data_point": "Loan History",
+                    "meaning": "The participant's loan history array (catalog field: loans.Loan History). Each row exposes Start Date, End Date, Repayment Amount, Principal, Outstanding Balance, and Balance as of Date. An active loan is any row whose Outstanding Balance is greater than $0.00; the string 'No loan history found' indicates the participant has no prior loans on file.",
                     "example_values": [
                         "No loan history found",
-                        "Loan record present"
+                        "[{Outstanding Balance: 0.00}]",
+                        "[{Outstanding Balance: 479.36, Balance as of Date: 2026-03-04}]",
+                        "[{Outstanding Balance: 1000.00}, {Outstanding Balance: 10000.00}]"
                     ],
-                    "why_needed": "Used to confirm whether the participant has active loans on file when evaluating loan eligibility and withdrawal contingent requirements.",
-                    "source_note": null,
-                    "source_type": "participant_profile"
-                },
-                {
-                    "data_point": "Outstanding Balance values for active loan(s)",
-                    "meaning": "Outstanding Balance amounts shown for existing loan(s) in the participant profile.",
-                    "example_values": [
-                        "$1,000.00",
-                        "$10,000.00"
-                    ],
-                    "why_needed": "Used internally to determine the number of active loans and to calculate the loan contingent amount for hardship or in-service withdrawals.",
-                    "source_note": null,
-                    "source_type": "participant_profile"
-                },
-                {
-                    "data_point": "Account Balance",
-                    "meaning": "Account Balance shown in the participant profile Savings Rate section under Account Balance, used internally as Total Vested Balance available.",
-                    "example_values": [
-                        "$0.00",
-                        "$148,485.04"
-                    ],
-                    "why_needed": "Used internally to confirm whether balance is above $2,000 for potential loan availability, and to compare against the loan contingent amount for hardship or in-service withdrawals.",
-                    "source_note": null,
-                    "source_type": "participant_profile"
-                },
-                {
-                    "data_point": "Balance as of Date",
-                    "meaning": "Date associated with loan balance values in the participant profile Loans section.",
-                    "example_values": [
-                        "2026-03-04"
-                    ],
-                    "why_needed": "Provides internal context for when the Outstanding Balance value applies.",
-                    "source_note": null,
+                    "why_needed": "Used to determine whether the participant has active loans on file when evaluating loan eligibility (against Maximum Number of Loans) and withdrawal contingent requirements (2x sum of Outstanding Balance amounts for hardship or in-service withdrawals). Internal-only; must not be shared with the participant.",
+                    "source_note": "Catalog field: loans.Loan History. Derive 'active loans' from rows with Outstanding Balance > 0; consumer computes 'No loan history found' or derives active vs. paid-off loans from Outstanding Balance values.",
                     "source_type": "participant_profile"
                 },
                 {
                     "data_point": "Participant statement about bringing money into the plan",
-                    "meaning": "Whether the participant remembers rolling funds into the current employer plan for rollover source withdrawal screening.",
+                    "meaning": "Whether the participant remembers rolling funds into the current employer plan for rollover source withdrawal screening. Use as a fallback when Rollover Balance cannot be confirmed.",
                     "example_values": [
                         "YES",
                         "NO",
@@ -810,7 +783,7 @@
                 {
                     "missing_data_point": "Participant Status",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant. Confirm in the participant profile Census section under Eligibility Status, must show Active. If it cannot be confirmed internally, direct the participant to contact support to review eligibility."
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Eligibility Status); do not ask participant. Must show Active. If it cannot be confirmed internally, direct the participant to contact support to review eligibility."
                 },
                 {
                     "missing_data_point": "Requested option type",
@@ -818,17 +791,43 @@
                     "agent_note": "Do not provide option-specific eligibility or steps until the requested option is identified."
                 },
                 {
+                    "missing_data_point": "Maximum Number of Loans",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots plan_details.Maximum Number of Loans); do not ask participant. If it cannot be confirmed, direct the participant to contact support."
+                },
+                {
                     "missing_data_point": "Employer plan allows the requested option",
                     "ask_participant": null,
-                    "agent_note": "Check the participant profile. If it cannot be confirmed, treat as ambiguous_plan_rules: explain that availability depends on plan rules and recommend contacting support, but do NOT block general guidance about the option."
+                    "agent_note": "No ForUsBots extractor for option-level plan permission. If it cannot be confirmed, treat as ambiguous_plan_rules: explain that availability depends on plan rules and recommend contacting support, but do NOT block general guidance about the option."
+                },
+                {
+                    "missing_data_point": "Account Balance",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots savings_rate.Account Balance, which is the total vested balance); do not ask participant. Used for loan eligibility ($2,000 minimum vested) and contingent calculations."
+                },
+                {
+                    "missing_data_point": "Loan History",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots loans.Loan History). Derive active loans from rows with Outstanding Balance > 0; do not ask participant."
+                },
+                {
+                    "missing_data_point": "Rollover Balance",
+                    "ask_participant": "Have you rolled any funds from a previous retirement account into your current employer plan?",
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots savings_rate.Rollover Balance) first; a non-zero value confirms the participant has rollover assets in the plan. If unavailable, ask the participant."
+                },
+                {
+                    "missing_data_point": "Roth Deferral Balance",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots savings_rate.Roth Deferral Balance); do not ask participant. A non-zero value signals Roth-specific tax treatment may apply."
                 }
             ],
             "disambiguation_notes": [
                 "Plan-specific rules apply for in-service distributions, hardship withdrawals, and loans; do not assume availability without confirmation.",
                 "The article distinguishes between withdrawals (generally permanent impact) and loans (repayable, temporary impact if repaid).",
                 "Maximum Number of Loans is an internal plan setting used to determine whether loans are allowed and how many can be active at once.",
-                "Account Balance and loan Outstanding Balance values are internal-only and must not be shared with the participant.",
-                "For hardship withdrawals and in-service distributions with active loans, eligibility depends on leaving a contingent amount equal to 2 times the sum of Outstanding Balance amounts; support must confirm."
+                "Account Balance and Loan History values (including Outstanding Balance) are internal-only and must not be shared with the participant.",
+                "For hardship withdrawals and in-service distributions with active loans, eligibility depends on leaving a contingent amount equal to 2 times the sum of all Outstanding Balance amounts across active Loan History rows; support must confirm.",
+                "Active loans are derived from Loan History rows whose Outstanding Balance is greater than $0.00. A 'No loan history found' value or rows with Outstanding Balance = $0.00 indicate no active loans."
             ]
         },
         "decision_guide": {
@@ -888,7 +887,7 @@
                 "Do not claim a specific portal URL or portal behavior not stated in the article.",
                 "Do not state an approval or disbursal timeline different from what is stated in the article.",
                 "Do not conclude that a participant qualifies for an in-service distribution solely because they are employed; the article ties eligibility to age (typically 59 1/2+) and plan rules.",
-                "Do not conclude that a participant under age 59 1/2 can take an in-service distribution under this article\u2019s guidance; the article describes in-service distributions as typically age 59 1/2+ if the plan allows.",
+                "Do not conclude that a participant under age 59 1/2 can take an in-service distribution under this article’s guidance; the article describes in-service distributions as typically age 59 1/2+ if the plan allows.",
                 "Do not conclude that a hardship withdrawal will be approved just because the participant reports financial stress; the article requires an immediate and serious financial need and a qualifying hardship under IRS guidelines, and plan rules must allow it.",
                 "Do not conclude that any hardship reason not listed in the article is qualifying; the article provides a specific list of IRS-defined reasons.",
                 "Do not conclude that a hardship withdrawal can be repaid or reversed later; the article states funds cannot be repaid.",

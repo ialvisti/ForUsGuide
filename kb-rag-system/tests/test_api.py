@@ -449,6 +449,49 @@ class TestRouteInquiryEndpoint:
         assert data["suggested_endpoint"] == "/api/v1/generate-response"
         assert data["user_message"] is None
 
+    def test_route_inquiry_transactional_rollover_routes_to_generate_response(
+        self, client, test_api_key
+    ):
+        """Bug-report inquiry: 'I'd like to roll over my 401k into Fidelity'.
+
+        Transactional intent without explicit eligibility verb. The engine's
+        new fast-path rule routes this to generate_response because executing
+        the rollover requires participant data (status, plan rules, balance,
+        loans). Endpoint must surface the generate-response template.
+        """
+        client.app.state.inquiry_router.classify = AsyncMock(
+            return_value=self._make_classification(
+                route="generate_response",
+                confidence=0.85,
+                reasoning="Transactional intent on participant funds.",
+                signals={
+                    "transactional_intent": True,
+                    "has_action_verb": True,
+                    "wants_funds": True,
+                    "has_eligibility_verb": False,
+                    "separation_signal": False,
+                },
+            )
+        )
+
+        inquiry = (
+            "Hi, I'd like to roll over my 401k into my Fidelity account. "
+            "Can you help me with that please?"
+        )
+        response = client.post(
+            "/api/v1/route-inquiry",
+            json={"inquiry": inquiry, "router_mode": "full"},
+            headers={"X-API-Key": test_api_key},
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["route"] == "generate_response"
+        assert data["confidence"] >= 0.85
+        assert data["suggested_endpoint"] == "/api/v1/generate-response"
+        assert data["signals"]["transactional_intent"] is True
+        assert data["user_message"] is None
+
     def test_route_inquiry_ambiguous_includes_user_message(
         self, client, test_api_key
     ):

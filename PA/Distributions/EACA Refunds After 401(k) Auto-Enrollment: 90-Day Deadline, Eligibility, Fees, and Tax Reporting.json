@@ -355,7 +355,8 @@
             "internal_articles": [
                 "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
                 "Can I Take Money From My 401(k) While Employed? Your Options Explained",
-                "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention"
+                "ADP/ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention",
+                "How Do I Cancel or Change a Pending Distribution Request?"
             ],
             "external_links": [],
             "contact": {
@@ -367,36 +368,39 @@
         "required_data": {
             "must_have": [
                 {
-                    "data_point": "Auto-enrollment occurred and automatic contributions were taken",
-                    "meaning": "Confirmation that the participant was automatically enrolled in the employer's 401(k) plan and contributions were taken from paychecks due to auto-enrollment.",
+                    "data_point": "Auto Enrollment Rate",
+                    "meaning": "The plan's automatic enrollment contribution rate as recorded on the participant's profile. A non-empty/non-zero value confirms the participant was automatically enrolled and that automatic contributions were taken from paychecks due to auto-enrollment.",
                     "example_values": [
-                        "Plan enrollment type: Auto-enrollment"
+                        0.0,
+                        0.03,
+                        0.06
                     ],
-                    "why_needed": "Required to confirm individual eligibility for an EACA refund. Does not block general explanation of EACA refund rules and the 90-day deadline.",
-                    "source_note": null,
+                    "why_needed": "Required to confirm individual eligibility for an EACA refund (auto-enrollment must have occurred). Does not block general explanation of EACA refund rules and the 90-day deadline. Note: this field alone does not confirm whether the plan is specifically configured as an EACA plan — that must be confirmed separately.",
+                    "source_note": "Catalog field: census.Auto Enrollment Rate.",
                     "source_type": "participant_profile",
                     "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Plan is set up as an EACA plan",
-                    "meaning": "Confirmation that the employer's plan is specifically configured as an Eligible Automatic Contribution Arrangement.",
+                    "meaning": "Confirmation that the employer's plan is specifically configured as an Eligible Automatic Contribution Arrangement (EACA). Not every auto-enrollment plan qualifies as an EACA.",
                     "example_values": [
-                        "EACA Plan"
+                        "EACA Plan",
+                        "Auto-enrollment plan but NOT EACA"
                     ],
-                    "why_needed": "Required to confirm individual eligibility (not every auto-enrollment plan is an EACA). Does not block general explanation of EACA refund rules.",
-                    "source_note": null,
-                    "source_type": "plan_profile",
+                    "why_needed": "Required to confirm individual eligibility (not every auto-enrollment plan is an EACA). Does not block general explanation of EACA refund rules. No ForUsBots extractor exists for the EACA flag; must be confirmed by support or via plan documents.",
+                    "source_note": "No admin-panel extractor available; confirm via plan documents or support.",
+                    "source_type": "agent_input",
                     "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Date of first automatic 401(k) deferral or contribution deposit",
-                    "meaning": "The date of the first paycheck deduction that was deposited into the 401(k) plan due to auto-enrollment.",
+                    "meaning": "The date of the first paycheck deduction that was deposited into the 401(k) plan due to auto-enrollment. Used to compute the 90-day EACA refund deadline.",
                     "example_values": [
-                        "First contribution 2026-01-15"
+                        "2026-01-15"
                     ],
-                    "why_needed": "Required to compute the participant's 90-day deadline. Does not block general explanation that the deadline is 90 days from the first auto-enrollment contribution.",
-                    "source_note": null,
-                    "source_type": "participant_profile",
+                    "why_needed": "Required to compute the participant's 90-day deadline. Does not block general explanation that the deadline is 90 days from the first auto-enrollment contribution. No ForUsBots extractor returns the first-deposit date directly; consumers may derive an approximation from Payroll History (loans.Last Payroll Date is the most recent, not the first) or confirm with recordkeeper records.",
+                    "source_note": "No admin-panel extractor available for the first contribution date; derive from Payroll History or confirm via recordkeeper.",
+                    "source_type": "agent_input",
                     "blocking_intent": "eligibility_confirmation"
                 },
                 {
@@ -422,54 +426,56 @@
                     "blocking_intent": "execution_only"
                 },
                 {
-                    "data_point": "Address on file for check delivery",
-                    "meaning": "The mailing address currently on file is where the refund check will be mailed via regular USPS.",
+                    "data_point": "Address",
+                    "meaning": "The participant's mailing address on file (catalog: census.Address). The refund check will be mailed via regular USPS to this address.",
                     "example_values": [
-                        "1234 Main St Capital City, State 12345"
+                        "1234 Main St, Capital City, ST 12345"
                     ],
                     "why_needed": "Required only to actually deliver the refund check. Does not block general explanation of how the check is delivered.",
-                    "source_note": null,
+                    "source_note": "Catalog field: census.Address.",
                     "source_type": "participant_profile",
                     "blocking_intent": "execution_only"
                 }
             ],
             "nice_to_have": [
                 {
-                    "data_point": "Participant email address",
-                    "meaning": "Email address used to deliver the RightSignature form electronically.",
+                    "data_point": "Primary Email",
+                    "meaning": "The participant's primary email address (catalog: census.Primary Email). Used to deliver the RightSignature form electronically.",
                     "example_values": [
-                        "participant@email.com"
+                        "participant@example.com"
                     ],
                     "why_needed": "Confirms the correct email for RightSignature form delivery and follow-up communications.",
-                    "source_note": null,
+                    "source_note": "Catalog field: census.Primary Email.",
                     "source_type": "participant_profile"
                 },
                 {
-                    "data_point": "Current investment allocation or account balance",
-                    "meaning": "The participant's current 401(k) investment holdings and balance from auto-enrollment contributions.",
+                    "data_point": "Account Balance",
+                    "meaning": "The participant's vested 401(k) account balance (catalog: savings_rate.Account Balance). Used as a proxy for the auto-enrollment contributions on file when explaining why the refund amount may differ from total contributions due to earnings or losses.",
                     "example_values": [
-                        "Balance: $1,200 in target-date fund"
+                        0.0,
+                        1200.0,
+                        5000.0
                     ],
                     "why_needed": "Helps explain to the participant why the refund amount may differ from total contributions due to earnings or losses.",
-                    "source_note": null,
+                    "source_note": "Catalog field: savings_rate.Account Balance.",
                     "source_type": "participant_profile"
                 }
             ],
             "if_missing": [
                 {
-                    "missing_data_point": "Auto-enrollment occurred and automatic contributions were taken",
+                    "missing_data_point": "Auto Enrollment Rate",
                     "ask_participant": null,
-                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Auto Enrollment Rate); do not ask participant. A non-empty/non-zero value indicates auto-enrollment occurred."
                 },
                 {
                     "missing_data_point": "Plan is set up as an EACA plan",
                     "ask_participant": null,
-                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                    "agent_note": "no ForUsBots extractor; confirm via plan documents or support before assuming eligibility."
                 },
                 {
                     "missing_data_point": "Date of first automatic 401(k) deferral or contribution deposit",
                     "ask_participant": null,
-                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                    "agent_note": "no ForUsBots extractor returns the first-deposit date directly; derive an approximation from loans.Payroll History entries or confirm with the recordkeeper."
                 },
                 {
                     "missing_data_point": "Participant request to opt out and request an EACA refund",
@@ -482,13 +488,14 @@
                     "agent_note": "Do not state the refund will be processed until the signed form is submitted and received."
                 },
                 {
-                    "missing_data_point": "Address on file for check delivery",
+                    "missing_data_point": "Address",
                     "ask_participant": null,
-                    "agent_note": "Retrieve from admin/portal systems (ForUsBots); do not ask participant."
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Address); do not ask participant."
                 }
             ],
             "disambiguation_notes": [
                 "Auto-enrollment plan does not automatically mean the plan is an EACA plan; EACA setup must be confirmed.",
+                "A non-empty/non-zero Auto Enrollment Rate confirms the plan auto-enrolled the participant, but does NOT by itself confirm the plan is an EACA-qualified plan — that must be confirmed separately via plan documents or support.",
                 "The 90-day window is based on the first deposit date of the automatic paycheck deduction, not the enrollment date or hire date.",
                 "Do not proceed with the refund process until the participant clearly requests the EACA refund.",
                 "The EACA refund is not a loan and cannot be repaid or rolled over."

@@ -446,7 +446,12 @@
         "references": {
             "participant_portal": null,
             "internal_articles": [
-                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact"
+                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+                "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+                "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+                "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+                "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+                "How Do I Cancel or Change a Pending Distribution Request?"
             ],
             "external_links": [
                 "www.calendly.com/forusalladvisory"

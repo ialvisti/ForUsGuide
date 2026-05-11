@@ -104,11 +104,10 @@ _INTERROGATIVE_PHRASE_RE = re.compile(
 )
 
 _FIRST_PERSON_STATUS_RE = re.compile(
-    r"\b("
-    r"my balance|my employer|my plan|my account|"
-    r"i'?m \d+|i am \d+|"
-    r"i\s+(left|quit|terminated|retired|separated)"
-    r")\b",
+    r"\bmy\s+(?:balance|employer|plan|account|401\s*\(?k\)?|"
+    r"retirement(?:\s+account)?|\w+\s+account)"
+    r"|\bi'?m\s+\d+|\bi\s+am\s+\d+"
+    r"|\bi\s+(?:left|quit|terminated|retired|separated)\b",
     re.IGNORECASE,
 )
 
@@ -126,6 +125,21 @@ _ELIGIBILITY_VERB_RE = re.compile(
 # defers to the LLM instead of routing to generate_response.
 _PROCEDURAL_HOW_RE = re.compile(
     r"\bhow\s+(?:can|do|would|should)\s+i\b|\bhow\s+to\b",
+    re.IGNORECASE,
+)
+
+# Transactional intent: first-person verb phrases that signal the participant
+# wants to *execute* an action ("I'd like to...", "help me...", "can you help"),
+# not learn about it abstractly. Combined with wants_funds (rollover, withdraw,
+# loan, etc.) this signature is enough to demand eligibility verification —
+# even when the participant never says "am I eligible" or "can I".
+_TRANSACTIONAL_INTENT_RE = re.compile(
+    r"\bi(?:'d| would)\s+like\s+to\b"
+    r"|\bi\s+(?:want|need|wish|plan|intend)\s+to\b"
+    r"|\bi'?m\s+(?:trying|looking|hoping|planning)\s+to\b"
+    r"|\bi'?d\s+love\s+to\b"
+    r"|\bhelp\s+me\b|\bcan\s+you\s+help\b|\bplease\s+help\b"
+    r"|\bhow\s+(?:can|do)\s+i\s+(?:start|begin|initiate|proceed|request|submit|process)\b",
     re.IGNORECASE,
 )
 
@@ -201,6 +215,10 @@ def _has_eligibility_verb(inquiry: str) -> bool:
     return bool(_ELIGIBILITY_VERB_RE.search(inquiry or ""))
 
 
+def _has_action_verb(inquiry: str) -> bool:
+    return bool(_TRANSACTIONAL_INTENT_RE.search(inquiry or ""))
+
+
 def compute_deterministic_features(inquiry: str) -> Dict[str, Any]:
     """Combine the engine's advisory signals with classifier-only predicates."""
     base = detect_advisory_concepts(
@@ -208,11 +226,24 @@ def compute_deterministic_features(inquiry: str) -> Dict[str, Any]:
         topic=None,
         collected_data=None,
     )
+    has_action_verb = _has_action_verb(inquiry)
+    # Transactional intent fires when the participant pairs a first-person
+    # action verb with any signal that the action targets their funds — not
+    # just wants_funds (cash-out / withdraw / rollover) but also loan_signal
+    # ("take a loan") and hardship_signal ("hardship withdrawal"), each of
+    # which is a transaction in its own right that needs eligibility checks.
+    funds_targeted = bool(
+        base.get("wants_funds", False)
+        or base.get("loan_signal", False)
+        or base.get("hardship_signal", False)
+    )
     extras = {
         "word_count": len((inquiry or "").split()),
         "is_short_interrogative": _is_short_interrogative(inquiry),
         "has_first_person_status": _has_first_person_status(inquiry),
         "has_eligibility_verb": _has_eligibility_verb(inquiry),
+        "has_action_verb": has_action_verb,
+        "transactional_intent": has_action_verb and funds_targeted,
     }
     return {**base, **extras}
 
@@ -261,6 +292,25 @@ def apply_fast_path_rules(
             route="generate_response",
             confidence=0.9,
             reasoning="Eligibility verb plus hardship/loan/separation signal.",
+            latency_ms=(time.monotonic() - start) * 1000,
+        )
+
+    # Transactional action request: the participant expresses intent to execute
+    # a transaction on their funds (rollover, withdrawal, loan), even without
+    # an explicit eligibility verb. Completing the action requires participant
+    # data (active vs terminated, plan rules, vested balance, outstanding loans),
+    # so the request belongs to generate_response. Skip when the inquiry is
+    # purely procedural ("how do I…") — those are KB-answerable — or a short
+    # interrogative — those have no participant context to act on.
+    if (
+        signals.get("transactional_intent")
+        and not _PROCEDURAL_HOW_RE.search(inquiry or "")
+        and not signals.get("is_short_interrogative")
+    ):
+        return FastPathDecision(
+            route="generate_response",
+            confidence=0.85,
+            reasoning="Transactional intent on participant funds.",
             latency_ms=(time.monotonic() - start) * 1000,
         )
 

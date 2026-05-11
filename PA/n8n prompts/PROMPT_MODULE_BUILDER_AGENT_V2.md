@@ -405,6 +405,24 @@ Only include modules that contain at least one requested field. Never add extra 
 
 If a field has `"required": true` and you can map it, it MUST appear in the output. If it cannot be mapped, it MUST appear in `_unmapped`.
 
+## Rule 10: Predicate Decomposition
+
+If a `field` name is phrased as a boolean predicate — for example, it starts with `whether_`, `has_`, `is_`, `was_`, or `does_`, or ends in `_has_ended`, `_is_complete`, `_occurred`, `_completed`, `_exists`, `_taken` — do **NOT** mark it `_unmapped` immediately. Instead, decompose it into the underlying admin-panel field(s) needed to evaluate the predicate, then map those fields normally.
+
+Use the input `description` and `why_needed` to confirm the predicate's intent before decomposing.
+
+Examples:
+
+- `employment_status_has_ended`, `employment_has_ended` → `census` → `Termination Date` AND `Eligibility Status` (employment is ended when `Termination Date` is non-empty and/or `Eligibility Status` indicates separation).
+- `whether_participant_is_under_59_and_a_half`, `is_under_59_and_a_half` → `census` → `Birth Date`.
+- `whether_participant_has_roth_funds`, `has_roth_funds`, `has_completed_in_plan_roth_conversion` → `savings_rate` → `Roth Deferral Balance` (a non-zero value confirms Roth funds exist; the conversion-this-year half has no extractor — split into `_unmapped` if the predicate specifically requires conversion history).
+- `auto_enrollment_occurred`, `auto_enrollment_was_taken`, `whether_plan_auto_enrolled_participant` → `plan_details` → `Auto Enrollment Rate` (a non-empty/non-zero value confirms auto-enrollment).
+- `rollover_assets_exist`, `has_rollover_balance`, `whether_participant_brought_money_into_plan` → `savings_rate` → `Rollover Balance` (a non-zero value confirms rollover assets in the current plan).
+- `whether_participant_owns_5_percent_or_more`, `is_5_percent_owner` → no admin-panel extractor → `_unmapped` (with reason: "5% ownership not exposed via ForUsBots; collect via sponsor/participant").
+- `whether_funds_were_received_by_participant`, `participant_received_check` → no admin-panel extractor → `_unmapped`.
+
+If the decomposed predicate maps to multiple base fields, return all of them. If decomposition does not yield a known catalog field, return `_unmapped` with a short reason explaining what was needed and why no extractor exists.
+
 ---
 
 # COMMON INPUT-TO-FIELD MAPPINGS (Quick Reference)
@@ -413,7 +431,7 @@ If a field has `"required": true` and you can map it, it MUST appear in the outp
 |---------------------------------|-----------------|-----------------------------|
 | `first_name`                    | `census`        | `First Name`                |
 | `last_name`                     | `census`        | `Last Name`                 |
-| `participant_name`, `full_name` | `census`        | `First Name`, `Last Name`   |
+| `participant_name`, `full_name`, `participant_s_name` | `census` | `First Name`, `Last Name`  |
 | `ssn`, `full_ssn`               | `census`        | `SSN`                       |
 | `partial_ssn`, `ssn_last4`      | `census`        | `Partial SSN`               |
 | `participant_status`, `eligibility_status`, `employment_status` | `census` | `Eligibility Status` |
@@ -426,19 +444,23 @@ If a field has `"required": true` and you can map it, it MUST appear in the outp
 | `phone`                         | `census`        | `Phone`                     |
 | `address`                       | `census`        | `Address 1`, `Address 2`, `City`, `State`, `Zip Code` |
 | `account_balance`, `total_balance` | `savings_rate` | `Account Balance`         |
-| `vested_balance`                | `savings_rate`  | `Account Balance` (total vested balance) |
+| `vested_balance`, `total_vested_balance`, `account_total_vested_balance` | `savings_rate` | `Account Balance` (total vested balance) |
+| `employer_match_vested_balance` | `savings_rate`  | `Employer Match Vested Balance` |
+| `roth_deferral_balance`, `roth_balance` | `savings_rate` | `Roth Deferral Balance` |
+| `rollover_balance`              | `savings_rate`  | `Rollover Balance`          |
 | `pretax_percent`                | `savings_rate`  | `Current Pre-tax Percent`   |
 | `roth_percent`                  | `savings_rate`  | `Current Roth Percent`      |
 | `record_keeper`                 | `savings_rate`  | `Record Keeper`             |
-| `enrollment_type`               | `savings_rate`  | `Plan enrollment type`      |
+| `enrollment_type`, `plan_enrollment_type` | `savings_rate` | `Plan enrollment type` |
 | `ytd_employee_contributions`    | `savings_rate`  | `YTD Employee contributions`|
 | `ytd_employer_contributions`    | `savings_rate`  | `YTD Employer contributions`|
 | `plan_type`                     | `plan_details`  | `Plan Type`                 |
 | `plan_status`                   | `plan_details`  | `Status`                    |
 | `force_out_limit`               | `plan_details`  | `Force-out Limit`           |
-| `max_loans`                     | `plan_details`  | `Maximum Number of Loans`   |
-| `loan_history`, `loans`         | `loans`         | `Loan History`              |
-| `loan_balance`                  | `loans`         | `Account Balance`           |
+| `max_loans`, `maximum_number_of_loans` | `plan_details` | `Maximum Number of Loans` |
+| `auto_enrollment_rate`          | `plan_details`  | `Auto Enrollment Rate`      |
+| `loan_history`, `loans`, `active_loans`, `outstanding_loan_balance`, `loan_history_status` | `loans` | `Loan History` (derive "active" from rows whose `Outstanding Balance > 0`) |
+| `loan_balance`, `loan_account_balance` | `loans`  | `Account Balance`           |
 | `payroll_frequency`             | `payroll`       | `Payroll Frequency`         |
 | `last_payroll_date`, `last_paycheck`, `latest_payroll`, `last_payroll_record`, `most_recent_payroll` | `payroll` | `Latest Payroll` ⚠️ NEVER `years:all` |
 | `payroll`, `payroll_data` (general, no year specified) | `payroll` | `years:CURRENT_YEAR` |

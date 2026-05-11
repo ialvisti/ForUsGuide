@@ -266,7 +266,9 @@
             "internal_articles": [
                 "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
                 "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
-                "How Do I Cancel or Change a Pending Distribution Request?"
+                "How Do I Cancel or Change a Pending Distribution Request?",
+                "401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact",
+                "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional"
             ],
             "external_links": [],
             "contact": {
@@ -278,24 +280,43 @@
         "required_data": {
             "must_have": [
                 {
-                    "data_point": "Employment status has ended",
-                    "meaning": "Confirmation that the participant is a former employee and no longer employed.",
+                    "data_point": "Termination Date",
+                    "meaning": "The date the participant's employment with the sponsoring employer ended. A non-empty value confirms the participant is a former employee.",
                     "example_values": [
-                        "Former employee"
+                        "2025-06-15",
+                        "2026-01-09",
+                        null
                     ],
-                    "why_needed": "Force-outs can only be initiated after employment ends. Required to confirm an individual force-out can proceed; does not block general explanation of the force-out process to a sponsor.",
-                    "source_note": null,
+                    "why_needed": "Force-outs can only be initiated after employment ends. Together with Participant Status, this confirms an individual force-out can proceed; does not block general explanation of the force-out process to a sponsor.",
+                    "source_note": "Supported by business_rules.eligibility: force-outs apply only after employment ends",
+                    "source_type": "participant_profile",
+                    "blocking_intent": "eligibility_confirmation"
+                },
+                {
+                    "data_point": "Participant Status",
+                    "meaning": "The participant's eligibility/employment status in the system. A status of 'Terminated' (or any non-Active value indicating separation) confirms the participant is no longer employed.",
+                    "example_values": [
+                        "Active",
+                        "Terminated",
+                        "Ineligible",
+                        "Deceased",
+                        "Unknown"
+                    ],
+                    "why_needed": "Force-outs can only be initiated after employment ends. Together with Termination Date, this confirms the participant is a former employee. Required for individual force-out eligibility; does not block general explanation of the force-out process.",
+                    "source_note": "Supported by business_rules.eligibility: force-outs apply only after employment ends",
                     "source_type": "participant_profile",
                     "blocking_intent": "eligibility_confirmation"
                 },
                 {
                     "data_point": "Account Balance",
-                    "meaning": "The participant's Account Balance (this is the Vested Balance), used to determine force-out eligibility and distribution method.",
+                    "meaning": "The participant's vested 401(k) account balance (the Account Balance field returned by ForUsBots represents the total vested balance). Used to determine force-out eligibility and distribution method.",
                     "example_values": [
-                        "Balance under $7,000"
+                        7000,
+                        10590.79,
+                        1000.05
                     ],
                     "why_needed": "Eligibility and distribution method depend on whether the balance is $80 or less, greater than $80 and under $1,000, or between $1,000 and $7,000. Required for individual force-out eligibility; does not block general explanation of thresholds and methods.",
-                    "source_note": null,
+                    "source_note": "Supported by business_rules.distribution_thresholds",
                     "source_type": "participant_profile",
                     "blocking_intent": "eligibility_confirmation"
                 },
@@ -307,9 +328,9 @@
                         "Elected otherwise",
                         "No response received"
                     ],
-                    "why_needed": "Determines whether to process a voluntary distribution, proceed with an involuntary force-out, or follow the participant's election. Required only to actually execute a specific force-out for that participant.",
-                    "source_note": null,
-                    "source_type": "participant_profile",
+                    "why_needed": "Determines whether to process a voluntary distribution, proceed with an involuntary force-out, or follow the participant's election. Required only to actually execute a specific force-out for that participant. No ForUsBots extractor exists for this field; route to human support if needed.",
+                    "source_note": "No admin-panel extractor available for notice responses; tracked in support tooling.",
+                    "source_type": "agent_input",
                     "blocking_intent": "execution_only"
                 }
             ],
@@ -327,23 +348,29 @@
             ],
             "if_missing": [
                 {
-                    "missing_data_point": "Employment status has ended",
+                    "missing_data_point": "Termination Date",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Termination Date); do not ask participant. A non-empty date confirms employment has ended."
+                },
+                {
+                    "missing_data_point": "Participant Status",
+                    "ask_participant": null,
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Eligibility Status); do not ask participant. Used together with Termination Date to confirm the participant is a former employee."
                 },
                 {
                     "missing_data_point": "Account Balance",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots savings_rate.Account Balance, which is the total vested balance); do not ask participant"
                 },
                 {
                     "missing_data_point": "Participant response to advance notice",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                    "agent_note": "no ForUsBots extractor exists for this field; confirm with human support using sponsor/notice tracking records"
                 }
             ],
             "disambiguation_notes": [
                 "Force-out eligibility is based on vested balance under $7,000 and terminated employment status.",
+                "Employment has ended when Termination Date is non-empty and/or Participant Status indicates separation (e.g., 'Terminated'). Use both fields together to avoid false positives from stale or partial records.",
                 "Balances of $80 or less result in a fee-out (see definitions). Balances over $80 and under $1,000 may be paid in cash with mandatory 20% federal withholding. Balances of $1,000–$7,000 must be rolled to a safe harbor IRA unless the participant elects otherwise."
             ]
         },
@@ -364,8 +391,14 @@
             ],
             "missing_data_conditions": [
                 {
-                    "condition": "Employment status is not confirmed.",
-                    "missing_data_point": "Employment status has ended",
+                    "condition": "Termination Date is empty.",
+                    "missing_data_point": "Termination Date",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": null
+                },
+                {
+                    "condition": "Participant Status is unknown or inconsistent with the termination date.",
+                    "missing_data_point": "Participant Status",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": null
                 },

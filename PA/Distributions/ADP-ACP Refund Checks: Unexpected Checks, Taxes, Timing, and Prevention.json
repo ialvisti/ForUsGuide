@@ -733,7 +733,11 @@
         },
         "references": {
             "participant_portal": null,
-            "internal_articles": [],
+            "internal_articles": [
+                "EACA Refunds After 401(k) Auto-Enrollment: 90-Day Deadline, Eligibility, Fees, and Tax Reporting",
+                "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+                "How Do I Cancel or Change a Pending Distribution Request?"
+            ],
             "external_links": [
                 "https://www.irs.gov/retirement-plans/401k-plan-fix-it-guide-the-plan-failed-the-401k-adp-and-acp-nondiscrimination-tests]"
             ],
@@ -747,20 +751,20 @@
             "must_have": [],
             "nice_to_have": [
                 {
-                    "data_point": "Participant's name",
-                    "meaning": "The first and last name of the participant.",
+                    "data_point": "Participant Name",
+                    "meaning": "The participant's full name (first + last). Catalog: census.First Name + census.Last Name.",
                     "example_values": [
                         "John Doe",
                         "Jane Doe",
                         "Oscar Santiago Garcia"
                     ],
                     "why_needed": "Useful for internal context to match the participant in the system. Does NOT block general explanation of ADP/ACP refund mechanics.",
-                    "source_note": "Supported by this article section",
+                    "source_note": "Supported by this article section. Catalog fields: census.First Name + census.Last Name.",
                     "source_type": "participant_profile"
                 },
                 {
                     "data_point": "Participant Status",
-                    "meaning": "The status of the participant in the system.",
+                    "meaning": "The participant's eligibility/employment status in the system. Used for internal context when reviewing the participant profile.",
                     "example_values": [
                         "Active",
                         "Terminated",
@@ -769,7 +773,17 @@
                         "Unknown"
                     ],
                     "why_needed": "Useful for internal context. Does NOT block general explanation of ADP/ACP refunds.",
-                    "source_note": "Supported by this article section",
+                    "source_note": "Supported by this article section. Catalog field: census.Eligibility Status.",
+                    "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "Primary Email",
+                    "meaning": "The participant's primary email address used for internal context when reviewing the participant profile. Catalog: census.Primary Email.",
+                    "example_values": [
+                        "jane.doe@example.com"
+                    ],
+                    "why_needed": "Used for internal context when reviewing participant information; not required to explain ADP/ACP refund mechanics.",
+                    "source_note": "Catalog field: census.Primary Email.",
                     "source_type": "participant_profile"
                 },
                 {
@@ -780,7 +794,7 @@
                         "Bristol Myers (nvn)"
                     ],
                     "why_needed": "Useful for internal context. Does NOT block general explanation of ADP/ACP refunds.",
-                    "source_note": "Supported by this article section",
+                    "source_note": "Supported by this article section.",
                     "source_type": "participant_profile"
                 },
                 {
@@ -792,8 +806,8 @@
                         "A value stated in this article"
                     ],
                     "why_needed": "Refines a personalized tax explanation. Does NOT block general guidance: the agent can always explain that pre-tax refunds are fully taxable while Roth refunds are taxable only on the earnings portion, and recommend the participant consult their 1099-R or a tax advisor.",
-                    "source_note": "Supported by article section: Tax implications for pre-tax vs Roth refunds",
-                    "source_type": "unknown"
+                    "source_note": "Supported by article section: Tax implications for pre-tax vs Roth refunds. No admin-panel extractor exists; collected via agent conversation or the 1099-R.",
+                    "source_type": "agent_input"
                 },
                 {
                     "data_point": "Year the refund was issued/received",
@@ -827,43 +841,13 @@
                     "why_needed": "Helps contextualize the corrective refund and supports discussion of what the amount includes (excess contributions plus earnings or losses).",
                     "source_note": "Supported by article section: Amount returned includes excess contributions and earnings or losses",
                     "source_type": "message_text"
-                },
-                {
-                    "data_point": "Participant status",
-                    "meaning": "Participant status used for internal context when reviewing the participant profile.",
-                    "example_values": [
-                        "Active",
-                        "Terminated",
-                        "Ineligible",
-                        "Deceased",
-                        "Unknown"
-                    ],
-                    "why_needed": "Used for internal context when reviewing participant information.",
-                    "source_note": null,
-                    "source_type": "participant_profile"
-                },
-                {
-                    "data_point": "Participant first and last name",
-                    "meaning": "Participant name used for internal context when reviewing the participant profile.",
-                    "example_values": [],
-                    "why_needed": "Used for internal context when reviewing participant information.",
-                    "source_note": null,
-                    "source_type": "participant_profile"
-                },
-                {
-                    "data_point": "Primary email",
-                    "meaning": "Participant email used for internal context when reviewing the participant profile.",
-                    "example_values": [],
-                    "why_needed": "Used for internal context when reviewing participant information.",
-                    "source_note": null,
-                    "source_type": "participant_profile"
                 }
             ],
             "if_missing": [
                 {
                     "missing_data_point": "Refund contribution source",
                     "ask_participant": "Was the refund from pre-tax contributions or Roth contributions (or does your 1099-R indicate which)?",
-                    "agent_note": "Do not state what portion is taxable without knowing whether the refund source was pre-tax or Roth; support can help confirm the refund source if needed."
+                    "agent_note": "No ForUsBots extractor exists; ask the participant or rely on the 1099-R. Do not state what portion is taxable without knowing whether the refund source was pre-tax or Roth; support can help confirm the refund source if needed."
                 },
                 {
                     "missing_data_point": "Form 1099-R details",
@@ -871,19 +855,19 @@
                     "agent_note": "Do not guess taxable amounts or withholding; the 1099-R shows the breakdown and withholding. Support can help confirm details if the participant is unsure."
                 },
                 {
-                    "missing_data_point": "Participant status",
+                    "missing_data_point": "Participant Status",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Eligibility Status); do not ask participant"
                 },
                 {
-                    "missing_data_point": "Participant first and last name",
+                    "missing_data_point": "Participant Name",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.First Name + census.Last Name); do not ask participant"
                 },
                 {
-                    "missing_data_point": "Primary email",
+                    "missing_data_point": "Primary Email",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant"
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Primary Email); do not ask participant"
                 }
             ],
             "disambiguation_notes": [

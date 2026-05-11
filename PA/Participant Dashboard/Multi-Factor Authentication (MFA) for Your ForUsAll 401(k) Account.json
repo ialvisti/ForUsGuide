@@ -1,0 +1,651 @@
+{
+    "metadata": {
+        "article_id": "multi_factor_authentication_mfa_for_forusall_401k_account",
+        "title": "LT: Multi-Factor Authentication (MFA) for Your ForUsAll 401(k) Account",
+        "description": "Internal guide for AI support agents on Multi-Factor Authentication for ForUsAll 401(k) accounts on LT Trust. Covers MFA enrollment with supported authenticator apps (Google Authenticator, Okta Verify, Microsoft Authenticator, Authy) and the browser-based Authenticator.cc option, login flow after setup, troubleshooting time-based 6-digit codes, when an MFA reset is needed, and the phone-only reset path that requires identity verification via the ForUsAll Participant Support Team (844-401-2253).",
+        "topic": "multi_factor_authentication",
+        "subtopics": [
+            "mfa",
+            "mfa_setup",
+            "authenticator_apps",
+            "browser_based_authenticator",
+            "qr_code_and_manual_setup_key",
+            "login_troubleshooting",
+            "code_refresh_behavior",
+            "app_specific_setup",
+            "mfa_reset",
+            "identity_verification",
+            "unsupported_methods_text_email_phone"
+        ],
+        "audience": "Internal AI Support Agent",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "scope": "recordkeeper-specific",
+        "tags": [
+            "MFA",
+            "Participant Dashboard"
+        ],
+        "language": "en-US",
+        "last_updated": null,
+        "schema_version": "kb_article_v2",
+        "transformed_at": "2026-05-08",
+        "source_last_updated": null,
+        "source_system": "DevRev"
+    },
+    "details": {
+        "business_rules": [
+            {
+                "category": "requirement",
+                "rules": [
+                    "Multi-Factor Authentication is required for accessing a ForUsAll 401(k) account.",
+                    "ForUsAll requires MFA for all participants.",
+                    "MFA cannot be disabled.",
+                    "After MFA is set up, future logins require the participant's email address, password, and current 6-digit code from the authenticator app used during setup."
+                ]
+            },
+            {
+                "category": "supported_methods",
+                "rules": [
+                    "ForUsAll supports authenticator apps that generate time-based one-time passcodes.",
+                    "Common supported authenticator options include Google Authenticator, Okta Verify, Microsoft Authenticator, Authy, and Authenticator.cc.",
+                    "Authenticator.cc is a browser-based option for participants who do not have or do not want to use a smartphone.",
+                    "ForUsAll does not support MFA codes by text message, email, or phone call verification."
+                ]
+            },
+            {
+                "category": "setup",
+                "rules": [
+                    "Participants are prompted to set up MFA when logging in for the first time or after ForUsAll Support resets MFA.",
+                    "The QR code is only used during initial setup or after an MFA reset.",
+                    "Participants do not need to scan the QR code every time they log in.",
+                    "For the easiest setup, the participant setup guide recommends using a computer or laptop with a smartphone.",
+                    "If the participant cannot scan the QR code, they may use the manual setup key shown below the QR code or contact ForUsAll Support for help.",
+                    "After MFA setup is complete, the participant should keep the authenticator app installed because it is needed for future logins.",
+                    "Codes refresh about every 30 seconds, so participants should use the newest code shown in the app."
+                ]
+            },
+            {
+                "category": "mfa_reset",
+                "rules": [
+                    "An MFA reset is needed if a participant previously enrolled in MFA but can no longer access the authentication code.",
+                    "Common reasons for needing an MFA reset include getting a new phone, losing or breaking a phone, deleting the authenticator app, the ForUsAll code no longer appearing in the app, the authenticator app not generating a working code, or needing a new QR code.",
+                    "Reinstalling the authenticator app does not automatically restore the ForUsAll MFA code.",
+                    "If the participant changed devices or deleted the app, they must complete the official reset process.",
+                    "For security reasons, MFA resets cannot be completed by email or chat.",
+                    "To request an MFA reset, the participant must call the ForUsAll Participant Support Team.",
+                    "During the call, the support team will verify the participant's identity using a secure questionnaire.",
+                    "Once identity is verified, the support team can reset MFA.",
+                    "After MFA is reset, the next login prompts the participant to set up MFA again by scanning a new QR code or using a manual setup key."
+                ]
+            }
+        ],
+        "steps": [
+            {
+                "step_number": 1,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Go to forusall.com/login and enter the email address and password for the ForUsAll account.",
+                "notes": "MFA setup appears during first login or after ForUsAll Support resets MFA."
+            },
+            {
+                "step_number": 2,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "When prompted to set up two-factor authentication, download and open an authenticator app such as Google Authenticator or Okta Verify.",
+                "notes": "Supported options include Google Authenticator, Okta Verify, Microsoft Authenticator, Authy, and Authenticator.cc."
+            },
+            {
+                "step_number": 3,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Use the authenticator app to scan the QR code displayed on the ForUsAll login page.",
+                "notes": "If the participant cannot scan the QR code, they may use the manual setup key shown below the QR code or contact ForUsAll Support for help."
+            },
+            {
+                "step_number": 4,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Enter the 6-digit authentication code displayed in the authenticator app on the ForUsAll website to complete setup.",
+                "notes": "Codes refresh about every 30 seconds, so the participant should use the newest code shown in the app."
+            },
+            {
+                "step_number": 5,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "Keep the authenticator app installed after setup.",
+                "notes": "The app is needed for future logins."
+            },
+            {
+                "step_number": 6,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "For future logins, go to forusall.com/login, enter the email address and password, open the authenticator app or browser-based authenticator used during setup, find the ForUsAll code, and enter the current 6-digit code when prompted.",
+                "notes": "The code may be labeled ForUsAll, forus-employee-portal, or something similar."
+            },
+            {
+                "step_number": 7,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If the MFA code does not work, make sure the phone's date and time are set to automatic, use the newest code, enter the code before it refreshes, restart the authenticator app or phone, and confirm the code is connected to the ForUsAll account.",
+                "notes": "If the ForUsAll code no longer appears in the app, the participant may have deleted the account from the app, changed phones, or lost access to the MFA method."
+            },
+            {
+                "step_number": 8,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "If an MFA reset is needed, call the ForUsAll Participant Support Team at 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST.",
+                "notes": "MFA resets cannot be completed by email or chat."
+            },
+            {
+                "step_number": 9,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "During the call, complete the secure identity verification questionnaire.",
+                "notes": "Once identity is verified, the support team can reset MFA."
+            },
+            {
+                "step_number": 10,
+                "type": "participant-facing",
+                "visibility": "both",
+                "description": "After MFA is reset, log in again and set up MFA by scanning a new QR code or using a manual setup key.",
+                "notes": "The participant will be prompted to set up MFA again on the next login."
+            }
+        ],
+        "common_issues": [
+            {
+                "issue": "Participant thinks the QR code must be scanned every login.",
+                "resolution": "Explain that the QR code is only used during initial setup or after an MFA reset. Future logins require the current 6-digit code from the authenticator app used during setup."
+            },
+            {
+                "issue": "MFA code does not work.",
+                "resolution": "Ask the participant to make sure the phone's date and time are set to automatic, use the newest code shown, enter the code before it refreshes, restart the authenticator app or phone, and confirm they are using the code connected to their ForUsAll account."
+            },
+            {
+                "issue": "Participant no longer sees the ForUsAll code in the authenticator app.",
+                "resolution": "Explain that they may have deleted the account from the app, changed phones, or lost access to the MFA method. Their MFA will need to be reset."
+            },
+            {
+                "issue": "Participant got a new phone or lost access to the old device.",
+                "resolution": "Explain that reinstalling the authenticator app does not automatically restore the ForUsAll MFA code and that the participant must complete the official reset process by calling the ForUsAll Participant Support Team."
+            },
+            {
+                "issue": "Participant does not have a smartphone.",
+                "resolution": "Explain that the participant can use a browser-based authenticator such as Authenticator.cc on a desktop or laptop and should bookmark the page for future access."
+            },
+            {
+                "issue": "Participant wants MFA reset by email or chat.",
+                "resolution": "Explain that MFA resets cannot be completed by email or chat for security reasons and that the participant must call the ForUsAll Participant Support Team."
+            },
+            {
+                "issue": "Participant cannot scan the QR code because of a camera or app permission issue.",
+                "resolution": "Ask the participant to confirm the authenticator app has camera permission enabled on the device, try better lighting, or hold the camera further from the screen so the QR code is fully framed. If scanning still fails, direct them to use the manual setup key shown below the QR code on the ForUsAll login page, or contact ForUsAll Support for help."
+            }
+        ],
+        "examples": [
+            {
+                "scenario": "A participant is logging in for the first time and sees a QR code.",
+                "outcome": "The participant should set up MFA by opening a supported authenticator app, scanning the QR code, and entering the 6-digit code displayed by the app on the ForUsAll website."
+            },
+            {
+                "scenario": "A participant has already completed MFA setup and is logging in again.",
+                "outcome": "The participant should not scan the QR code again. They should enter their email address, password, and the current 6-digit code from the authenticator app or browser-based authenticator used during setup."
+            },
+            {
+                "scenario": "A participant cannot scan the QR code during setup.",
+                "outcome": "The participant may use the manual setup key shown below the QR code or contact ForUsAll Support for help."
+            },
+            {
+                "scenario": "A participant deleted the authenticator app or changed phones.",
+                "outcome": "The participant must complete the official MFA reset process because reinstalling the authenticator app does not automatically restore the ForUsAll MFA code."
+            },
+            {
+                "scenario": "A participant requests an MFA reset by email.",
+                "outcome": "The agent should explain that MFA resets cannot be completed by email or chat and direct the participant to call the ForUsAll Participant Support Team."
+            }
+        ],
+        "additional_notes": [
+            {
+                "category": "security",
+                "notes": [
+                    "MFA helps protect sensitive personal and financial information in the ForUsAll 401(k) account.",
+                    "Protected information includes profile information, account balance, transaction history, and access to actions like withdrawals or loans.",
+                    "For security reasons, MFA codes by text message, email, or phone call verification are not supported."
+                ]
+            },
+            {
+                "category": "code_behavior",
+                "notes": [
+                    "Authenticator codes are 6-digit codes.",
+                    "Codes refresh about every 30 seconds.",
+                    "Participants should use the newest code shown and enter it promptly before it expires."
+                ]
+            },
+            {
+                "category": "app_specific_setup",
+                "notes": [
+                    "For Google Authenticator, the setup guide identifies the correct app as the one with the multicolor star icon.",
+                    "In Google Authenticator, the participant taps the + sign, selects Scan a QR code, points the camera at the QR code on the ForUsAll login page, and enters the displayed 6-digit code on the ForUsAll website.",
+                    "Google Authenticator also allows the participant to select Enter a setup key if they need to manually enter the setup key from the ForUsAll login page.",
+                    "For Okta Verify, the setup guide notes that the correct app is Okta Verify with a blue circle and check mark, not Okta Mobile.",
+                    "In Okta Verify, the participant taps Add or the + button, chooses Organization, selects Skip when asked Add account from Another Device?, selects Yes, Ready to Scan when asked Do you have a QR Code?, scans the QR code, and enters the displayed 6-digit code on the ForUsAll website.",
+                    "Okta Verify also provides an option to enter the key manually after selecting Yes, Ready to Scan."
+                ]
+            },
+            {
+                "category": "contact_options",
+                "notes": [
+                    "For setup help or login issues, participants can contact ForUsAll Support at help@forusall.com or call 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST.",
+                    "MFA reset requests require a phone call to the ForUsAll Participant Support Team at 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST and cannot be completed by email or chat."
+                ]
+            }
+        ],
+        "faq_pairs": [
+            {
+                "question": "Is MFA required for my ForUsAll 401(k) account?",
+                "answer": "Yes. MFA is required for all ForUsAll participants and cannot be turned off."
+            },
+            {
+                "question": "Do I need to scan the QR code every time I log in?",
+                "answer": "No. The QR code is only used during initial setup or after an MFA reset. Future logins require your email address, password, and current 6-digit code from the authenticator app you used during setup."
+            },
+            {
+                "question": "Which MFA methods are supported?",
+                "answer": "ForUsAll supports authenticator apps that generate time-based one-time passcodes. Common options include Google Authenticator, Okta Verify, Microsoft Authenticator, Authy, and Authenticator.cc."
+            },
+            {
+                "question": "Can I receive MFA codes by text message, email, or phone call?",
+                "answer": "No. For security reasons, ForUsAll does not support MFA codes by text message, email, or phone call verification."
+            },
+            {
+                "question": "What should I do if I cannot scan the QR code?",
+                "answer": "You may use the manual setup key shown below the QR code or contact ForUsAll Support for help."
+            },
+            {
+                "question": "What should I do if I do not have a smartphone?",
+                "answer": "You can use a browser-based authenticator such as Authenticator.cc on a desktop or laptop. If you use a browser-based authenticator, bookmark the page so you can access your codes easily in the future."
+            },
+            {
+                "question": "What should I do if my MFA code does not work?",
+                "answer": "Make sure your phone's date and time are set to automatic, use the newest code shown in the authenticator app, enter the code before it refreshes, restart the authenticator app or your phone, and confirm you are using the code connected to your ForUsAll account."
+            },
+            {
+                "question": "When is an MFA reset needed?",
+                "answer": "An MFA reset is needed if you previously enrolled in MFA but can no longer access your authentication code. Common reasons include getting a new phone, losing or breaking your phone, deleting your authenticator app, the ForUsAll code no longer appearing in the app, the authenticator app not generating a working code, or needing a new QR code."
+            },
+            {
+                "question": "Can MFA be reset by email or chat?",
+                "answer": "No. For security reasons, MFA resets cannot be completed by email or chat. To request a reset, call the ForUsAll Participant Support Team."
+            },
+            {
+                "question": "What happens after my MFA is reset?",
+                "answer": "The next time you log in, you will be prompted to set up MFA again by scanning a new QR code or using a manual setup key."
+            },
+            {
+                "question": "Can I switch from Google Authenticator to Okta Verify (or another supported app) without losing access to my ForUsAll account?",
+                "answer": "There is no automatic migration. To move the ForUsAll code to a different authenticator app, you must complete an MFA reset by calling the ForUsAll Participant Support Team at 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST. After the reset, log in again and set up MFA with your preferred authenticator app by scanning a new QR code or using the manual setup key."
+            }
+        ],
+        "definitions": [
+            {
+                "term": "Multi-Factor Authentication",
+                "definition": "A required security step for accessing a ForUsAll 401(k) account that requires the participant to enter a one-time 6-digit code from an authenticator app in addition to their email address and password."
+            },
+            {
+                "term": "MFA",
+                "definition": "The abbreviation for Multi-Factor Authentication."
+            },
+            {
+                "term": "Authenticator app",
+                "definition": "An app that generates time-based one-time passcodes used to complete MFA login."
+            },
+            {
+                "term": "6-digit authentication code",
+                "definition": "The one-time code generated by an authenticator app or browser-based authenticator and entered during MFA setup or login."
+            },
+            {
+                "term": "QR code",
+                "definition": "The code displayed on the ForUsAll login page during initial MFA setup or after an MFA reset, which the participant scans with an authenticator app."
+            },
+            {
+                "term": "Manual setup key",
+                "definition": "A key shown below the QR code that can be entered manually if the participant cannot scan the QR code."
+            },
+            {
+                "term": "Authenticator.cc",
+                "definition": "A browser-based authenticator option for participants who do not have or do not want to use a smartphone."
+            },
+            {
+                "term": "MFA reset",
+                "definition": "The process used when a participant previously enrolled in MFA but can no longer access their authentication code."
+            },
+            {
+                "term": "Time-based one-time passcode (TOTP)",
+                "definition": "The type of 6-digit code generated by supported authenticator apps for ForUsAll MFA. Codes are derived from the current time and refresh about every 30 seconds, so participants should use the newest code shown in the app."
+            },
+            {
+                "term": "ForUsAll Participant Support Team",
+                "definition": "The ForUsAll support team reached at 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST. The team handles MFA reset requests by phone after completing an identity verification questionnaire; resets cannot be completed by email or chat."
+            },
+            {
+                "term": "Identity verification questionnaire",
+                "definition": "The secure set of questions the ForUsAll Participant Support Team uses to confirm a participant's identity by phone before resetting MFA."
+            }
+        ],
+        "guardrails": {
+            "must_not": [
+                "Do not say MFA can be disabled.",
+                "Do not say MFA is optional for ForUsAll participants.",
+                "Do not tell participants they can receive MFA codes by text message, email, or phone call verification.",
+                "Do not tell participants they need to scan the QR code every time they log in.",
+                "Do not claim that reinstalling an authenticator app will automatically restore the ForUsAll MFA code.",
+                "Do not complete or promise an MFA reset by email or chat.",
+                "Do not provide processing timelines for MFA reset beyond what the article states.",
+                "Do not provide any phone number, support hours, email address, portal URL, or setup method not stated in the article.",
+                "Do not claim that a specific authenticator app is the only supported option when the article lists multiple common supported options."
+            ],
+            "must_do_if_unsure": [
+                "If the participant cannot complete setup or cannot scan the QR code, direct them to use the manual setup key shown below the QR code or contact ForUsAll Support for help.",
+                "If the participant can no longer access the authentication code, explain that an MFA reset is needed and that resets require calling the ForUsAll Participant Support Team.",
+                "If a participant's code does not work, first guide them through the troubleshooting steps stated in the article before concluding that a reset is needed."
+            ]
+        },
+        "references": {
+            "participant_portal": "https://forusall.com/login",
+            "internal_articles": [
+                "LT: 401(k) Loan Complete Guide — Submission, Repayment & Support",
+                "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+                "LT: Can I Split My 401(k) Rollover Between Multiple Providers?"
+            ],
+            "external_links": [],
+            "contact": {
+                "email": "help@forusall.com",
+                "phone": "844-401-2253",
+                "support_hours": "Monday-Friday, 7:00 AM-5:00 PM PST"
+            }
+        },
+        "required_data": {
+            "must_have": [
+                {
+                    "data_point": "Participant's ForUsAll account email address",
+                    "meaning": "The email address the participant uses to log in to the ForUsAll account.",
+                    "example_values": [
+                        "A value entered by the participant at login"
+                    ],
+                    "why_needed": "Needed for login before MFA setup or MFA verification can occur.",
+                    "source_note": "Supported by article section: How to Set Up MFA",
+                    "source_type": "participant_action"
+                },
+                {
+                    "data_point": "Participant's ForUsAll account password",
+                    "meaning": "The password the participant uses with their email address to log in to the ForUsAll account. The participant uses it during login and should not provide it to the agent in chat.",
+                    "example_values": [
+                        "A value entered by the participant during login"
+                    ],
+                    "why_needed": "Needed by the participant during login before MFA setup or MFA verification can occur.",
+                    "source_note": "Supported by article section: How to Set Up MFA",
+                    "source_type": "participant_action"
+                },
+                {
+                    "data_point": "Current 6-digit authentication code",
+                    "meaning": "The current one-time code generated by the authenticator app or browser-based authenticator connected to the participant's ForUsAll account. The participant enters it on the ForUsAll website and should not provide it to the agent in chat.",
+                    "example_values": [
+                        "A 6-digit code shown in the authenticator app and entered by the participant on the ForUsAll website"
+                    ],
+                    "why_needed": "Needed by the participant to complete MFA setup and future logins after MFA is set up.",
+                    "source_note": "Supported by article sections: How to Set Up MFA and Logging In After MFA Setup",
+                    "source_type": "participant_action"
+                },
+                {
+                    "data_point": "Access to the authenticator method used during setup",
+                    "meaning": "The participant must have access to the authenticator app or browser-based authenticator that generates the ForUsAll code.",
+                    "example_values": [
+                        "Google Authenticator",
+                        "Okta Verify",
+                        "Microsoft Authenticator",
+                        "Authy",
+                        "Authenticator.cc"
+                    ],
+                    "why_needed": "Needed for future logins after MFA setup and to determine whether an MFA reset may be required.",
+                    "source_note": "Supported by article sections: Supported MFA Methods and Logging In After MFA Setup",
+                    "source_type": "participant_action"
+                }
+            ],
+            "nice_to_have": [
+                {
+                    "data_point": "Whether the participant is setting up MFA for the first time or after a reset",
+                    "meaning": "Clarifies whether the participant is in the initial setup flow or the post-reset setup flow.",
+                    "example_values": [
+                        "First-time login",
+                        "After ForUsAll Support resets MFA"
+                    ],
+                    "why_needed": "Helps determine why the participant is seeing the setup prompt and whether scanning a QR code or using a manual setup key is expected.",
+                    "source_note": "Supported by article section: When MFA Is Required",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Whether the participant can scan the QR code",
+                    "meaning": "Indicates whether the participant can complete setup by scanning the QR code or may need to use the manual setup key.",
+                    "example_values": [
+                        "Can scan QR code",
+                        "Cannot scan QR code"
+                    ],
+                    "why_needed": "Helps guide the participant to scan the QR code, use the manual setup key, or contact support for help.",
+                    "source_note": "Supported by article section: Before You Start",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Whether the participant has a smartphone",
+                    "meaning": "Indicates whether the participant can use a mobile authenticator app or may need a browser-based authenticator.",
+                    "example_values": [
+                        "Has smartphone",
+                        "Does not have smartphone"
+                    ],
+                    "why_needed": "Helps guide the participant to use an authenticator app or browser-based option such as Authenticator.cc.",
+                    "source_note": "Supported by article section: If You Do Not Have a Smartphone",
+                    "source_type": "message_text"
+                },
+                {
+                    "data_point": "Reason the participant cannot access the MFA code",
+                    "meaning": "The reason a participant who previously enrolled in MFA can no longer access or use their authentication code.",
+                    "example_values": [
+                        "Got a new phone",
+                        "Phone was lost or broken",
+                        "Deleted authenticator app",
+                        "ForUsAll code no longer appears in the app",
+                        "Authenticator app is not generating a working code",
+                        "Needs a new QR code"
+                    ],
+                    "why_needed": "Helps determine whether an MFA reset is needed.",
+                    "source_note": "Supported by article section: When an MFA Reset Is Needed",
+                    "source_type": "message_text"
+                }
+            ],
+            "if_missing": [
+                {
+                    "missing_data_point": "Current 6-digit authentication code",
+                    "ask_participant": "Can you open the authenticator app or browser-based authenticator you used during setup and enter the current 6-digit code shown for ForUsAll on the ForUsAll website?",
+                    "agent_note": "Do not ask the participant to provide the current 6-digit authentication code in chat. Do not confirm that login can proceed without the current 6-digit authentication code unless the participant is in setup or reset flow."
+                },
+                {
+                    "missing_data_point": "Access to existing authenticator method used during prior setup",
+                    "ask_participant": "Do you still have access to the authenticator app or browser-based authenticator that shows your ForUsAll code?",
+                    "agent_note": "If the participant no longer has access to the code, explain that an MFA reset is needed and that resets require calling the ForUsAll Participant Support Team."
+                },
+                {
+                    "missing_data_point": "Access to a supported authenticator method for first-time setup",
+                    "ask_participant": "Do you have access to a supported authenticator app or browser-based authenticator that can generate a ForUsAll code?",
+                    "agent_note": "If the participant does not have access to an authenticator method for ForUsAll, explain that an MFA reset may be needed if MFA was already set up, or direct them to use a supported authenticator option for setup."
+                }
+            ],
+            "disambiguation_notes": [
+                "The article uses MFA and Multi-Factor Authentication to refer to the same required security step.",
+                "The QR code is for initial setup or after an MFA reset, not for every login.",
+                "Okta Verify is supported; the article specifically says it is not Okta Mobile.",
+                "Authenticator.cc is a browser-based authenticator option for participants without a smartphone."
+            ]
+        },
+        "decision_guide": {
+            "supported_outcomes": [
+                "can_proceed",
+                "blocked_missing_data",
+                "blocked_not_eligible",
+                "ambiguous_plan_rules"
+            ],
+            "eligibility_requirements": [
+                "MFA is required for all ForUsAll participants and cannot be disabled.",
+                "MFA resets require the participant to call the ForUsAll Participant Support Team because resets cannot be completed by email or chat.",
+                "The participant must retain access to the authenticator method used during setup to log in after MFA setup; loss of access requires an MFA reset."
+            ],
+            "blocking_conditions": [
+                "The participant cannot complete a normal post-setup login without the current 6-digit code from the authenticator app or browser-based authenticator used during setup.",
+                "The participant cannot complete an MFA reset by email or chat.",
+                "The participant cannot use text message, email, or phone call verification as an MFA code delivery method."
+            ],
+            "missing_data_conditions": [
+                {
+                    "condition": "The participant is logging in after MFA setup but does not have the current 6-digit authentication code.",
+                    "missing_data_point": "Current 6-digit authentication code",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Can you open the authenticator app or browser-based authenticator you used during setup and enter the current 6-digit code shown for ForUsAll on the ForUsAll website?"
+                },
+                {
+                    "condition": "The participant previously enrolled in MFA but it is unclear whether they can still access the authenticator method used during setup.",
+                    "missing_data_point": "Access to existing authenticator method used during prior setup",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Do you still have access to the authenticator app or browser-based authenticator that shows your ForUsAll code?"
+                },
+                {
+                    "condition": "The participant is setting up MFA and it is unclear whether they have access to a supported authenticator app or browser-based authenticator.",
+                    "missing_data_point": "Access to a supported authenticator method for first-time setup",
+                    "resulting_outcome": "blocked_missing_data",
+                    "ask_participant": "Do you have access to a supported authenticator app or browser-based authenticator that can generate a ForUsAll code?"
+                }
+            ],
+            "allowed_conclusions": [
+                "MFA is required for all ForUsAll participants.",
+                "MFA cannot be disabled.",
+                "The participant needs an email address, password, and current 6-digit authenticator code for future logins after setup.",
+                "The QR code is only used during initial MFA setup or after an MFA reset.",
+                "Google Authenticator, Okta Verify, Microsoft Authenticator, Authy, and Authenticator.cc are common supported MFA options.",
+                "Text message, email, and phone call verification are not supported MFA code methods.",
+                "If the participant no longer has access to the ForUsAll code, an MFA reset is needed.",
+                "MFA resets cannot be completed by email or chat and require calling the ForUsAll Participant Support Team.",
+                "After an MFA reset, the participant will be prompted to set up MFA again by scanning a new QR code or using a manual setup key."
+            ],
+            "not_allowed_conclusions": [
+                "Do not say MFA can be turned off.",
+                "Do not say MFA is optional.",
+                "Do not say the participant can receive MFA codes by text message, email, or phone call.",
+                "Do not say the participant can reset MFA by email or chat.",
+                "Do not say the QR code must be scanned every login.",
+                "Do not say reinstalling the authenticator app automatically restores the ForUsAll MFA code.",
+                "Do not provide timelines for MFA reset that are not stated in the article.",
+                "Do not say any specific app is required when the article lists multiple supported options."
+            ]
+        },
+        "response_frames": {
+            "can_proceed": {
+                "participant_message_components": [
+                    "MFA is required for your ForUsAll 401(k) account and cannot be turned off.",
+                    "To set up MFA, log in at forusall.com/login with your email address and password, then use a supported authenticator app to scan the QR code.",
+                    "Enter the 6-digit code shown in the authenticator app on the ForUsAll website to complete setup.",
+                    "For future logins, use your email address, password, and the current 6-digit code from the authenticator app or browser-based authenticator you used during setup.",
+                    "Keep the authenticator app installed because you will need it for future logins."
+                ],
+                "next_steps": [
+                    "Use a computer or laptop with a smartphone for the easiest setup.",
+                    "Use the newest code shown in the authenticator app because codes refresh about every 30 seconds.",
+                    "If you do not have a smartphone, use a browser-based authenticator such as Authenticator.cc on a desktop or laptop and bookmark the page."
+                ],
+                "warnings": [
+                    "ForUsAll does not support MFA codes by text message, email, or phone call verification.",
+                    "The QR code is only used during initial setup or after an MFA reset.",
+                    "Codes refresh about every 30 seconds."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not say MFA is optional or can be disabled.",
+                    "Do not tell the participant to scan the QR code every time they log in.",
+                    "Do not suggest text message, email, or phone call verification for MFA codes."
+                ]
+            },
+            "blocked_missing_data": {
+                "participant_message_components": [
+                    "A current 6-digit code from the authenticator app or browser-based authenticator used during setup is required for login after MFA has been set up. Enter the code on the ForUsAll website, not in chat.",
+                    "If you cannot scan the QR code during setup, you may use the manual setup key shown below the QR code or contact ForUsAll Support for help.",
+                    "If you no longer have access to the ForUsAll code, your MFA will need to be reset."
+                ],
+                "next_steps": [
+                    "Check the authenticator app or browser-based authenticator used during setup for the current ForUsAll code.",
+                    "Use the newest code shown and enter it before it refreshes.",
+                    "If you cannot access the code anymore, call the ForUsAll Participant Support Team at 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST."
+                ],
+                "warnings": [
+                    "MFA resets cannot be completed by email or chat.",
+                    "Reinstalling the authenticator app does not automatically restore the ForUsAll MFA code."
+                ],
+                "questions_to_ask": [
+                    "Do you still have access to the authenticator app or browser-based authenticator that shows your ForUsAll code?",
+                    "Are you able to scan the QR code shown on the ForUsAll login page?",
+                    "Can you enter the newest 6-digit code shown in the authenticator app on the ForUsAll website before it refreshes?"
+                ],
+                "what_not_to_say": [
+                    "Do not ask the participant to provide a password or MFA code in chat, and do not confirm that the participant can log in after MFA setup without a current 6-digit code.",
+                    "Do not say an MFA reset can be completed by email or chat.",
+                    "Do not say reinstalling the authenticator app restores the ForUsAll MFA code."
+                ]
+            },
+            "blocked_not_eligible": {
+                "participant_message_components": [
+                    "MFA cannot be disabled because ForUsAll requires MFA for all participants.",
+                    "MFA codes cannot be sent by text message, email, or phone call verification.",
+                    "MFA resets cannot be completed by email or chat for security reasons."
+                ],
+                "next_steps": [
+                    "Use a supported authenticator app or browser-based authenticator for MFA codes.",
+                    "For an MFA reset, call the ForUsAll Participant Support Team at 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST.",
+                    "For general setup or login help, contact ForUsAll Support at help@forusall.com or call 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST. MFA reset requests must be handled by phone and cannot be completed by email or chat."
+                ],
+                "warnings": [
+                    "MFA is required and cannot be turned off.",
+                    "ForUsAll does not support MFA codes by text message, email, or phone call verification.",
+                    "MFA resets cannot be completed by email or chat."
+                ],
+                "questions_to_ask": [],
+                "what_not_to_say": [
+                    "Do not offer to disable MFA.",
+                    "Do not offer text, email, or phone call verification as an MFA code method.",
+                    "Do not offer to complete an MFA reset by email or chat."
+                ]
+            },
+            "ambiguous_plan_rules": {
+                "participant_message_components": [
+                    "I do not want to guess about an MFA issue that is not covered by the article.",
+                    "ForUsAll Support can help with setup or login issues.",
+                    "For MFA reset requests, you must call the ForUsAll Participant Support Team because resets cannot be completed by email or chat."
+                ],
+                "next_steps": [
+                    "For setup help or login issues, contact ForUsAll Support at help@forusall.com or call 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST.",
+                    "For an MFA reset, call the ForUsAll Participant Support Team at 844-401-2253 Monday-Friday, 7:00 AM-5:00 PM PST."
+                ],
+                "warnings": [
+                    "Do not guess about setup methods, support channels, phone numbers, support hours, timelines, or MFA reset options not stated in the article.",
+                    "MFA reset requests cannot be completed by email or chat."
+                ],
+                "questions_to_ask": [
+                    "Are you trying to set up MFA, log in after MFA setup, troubleshoot a code that does not work, or request an MFA reset?"
+                ],
+                "what_not_to_say": [
+                    "Do not guess or provide unsupported MFA instructions.",
+                    "Do not provide any phone number, support hours, email address, portal URL, setup method, or reset timeline not stated in the article.",
+                    "Do not say an MFA reset can be completed by email or chat."
+                ]
+            }
+        },
+        "critical_flags": {
+            "portal_required": true,
+            "mfa_relevant": true,
+            "record_keeper_must_be": "LT Trust"
+        }
+    }
+}

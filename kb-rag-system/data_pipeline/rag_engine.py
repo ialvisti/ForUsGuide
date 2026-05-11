@@ -266,6 +266,12 @@ def detect_advisory_concepts(
         "rolling over",
         "rolled over",
         "transfer",
+        # "move my balance / 401k", "moving my funds" — possessive phrasing
+        # that signals a transfer over the participant's own funds, without
+        # false-positives from generic "move to a new state" usage.
+        "move my",
+        "moving my",
+        "moved my",
     ])
     separation_signal = _contains_any(text, [
         "separation",

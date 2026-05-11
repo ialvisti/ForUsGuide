@@ -141,6 +141,63 @@ class TestDeterministicFeatures:
         )
         assert signals["separation_signal"] is True
 
+    def test_first_person_status_my_401k(self):
+        # "my 401k" must count as first-person status — it's a participant
+        # asserting ownership of an account just like "my balance".
+        assert _has_first_person_status("I'd like to roll over my 401k") is True
+        assert _has_first_person_status("my 401(k) is at LT Trust") is True
+
+    def test_first_person_status_my_named_account(self):
+        # "my Fidelity account" / "my IRA account" — possessive + named
+        # institution + "account" should count.
+        assert _has_first_person_status("transfer to my Fidelity account") is True
+        assert _has_first_person_status("send to my IRA account") is True
+
+    def test_first_person_status_my_retirement(self):
+        assert _has_first_person_status("I want to access my retirement") is True
+        assert (
+            _has_first_person_status("withdraw from my retirement account") is True
+        )
+
+    def test_transactional_intent_id_like_to_rollover(self):
+        # Bug-report inquiry: intent-verb ("I'd like to") + wants_funds
+        # ("rollover") -> transactional_intent=True.
+        signals = compute_deterministic_features(
+            "Hi, I'd like to roll over my 401k into my Fidelity account. "
+            "Can you help me with that please?"
+        )
+        assert signals["has_action_verb"] is True
+        assert signals["wants_funds"] is True
+        assert signals["transactional_intent"] is True
+
+    def test_transactional_intent_help_me_withdraw(self):
+        signals = compute_deterministic_features(
+            "Can you help me withdraw $5,000 from my account?"
+        )
+        assert signals["has_action_verb"] is True
+        assert signals["wants_funds"] is True
+        assert signals["transactional_intent"] is True
+
+    def test_transactional_intent_negative_education(self):
+        # Educational question without intent-verb — has_action_verb stays
+        # False, transactional_intent stays False.
+        signals = compute_deterministic_features(
+            "what is the 60-day rollover rule?"
+        )
+        assert signals["has_action_verb"] is False
+        assert signals["transactional_intent"] is False
+
+    def test_transactional_intent_action_verb_without_funds_stays_false(self):
+        # "I'd like to know more" expresses intent but not over funds; the
+        # composite signal must remain False so we don't false-positive
+        # generic curiosity into generate_response.
+        signals = compute_deterministic_features(
+            "I'd like to know more about my plan's vesting schedule"
+        )
+        assert signals["has_action_verb"] is True
+        assert signals["wants_funds"] is False
+        assert signals["transactional_intent"] is False
+
 
 # ---------------------------------------------------------------------------
 # 2) Fast-path rules
@@ -171,6 +228,76 @@ class TestFastPathRules:
         signals = compute_deterministic_features("what is my balance right now?")
         decision = apply_fast_path_rules("what is my balance right now?", signals)
         assert decision is None
+
+    def test_transactional_intent_rollover_fidelity_routes_generate(self):
+        # The exact bug-report inquiry: intent-verb + rollover (wants_funds)
+        # but NO eligibility verb and NO separation signal. Must still route
+        # to generate_response because the action requires participant data.
+        inquiry = (
+            "Hi, I'd like to roll over my 401k into my Fidelity account. "
+            "Can you help me with that please?"
+        )
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        assert decision is not None
+        assert decision.route == "generate_response"
+        assert decision.confidence >= 0.85
+        assert "transactional" in decision.reasoning.lower()
+
+    def test_transactional_intent_take_loan_routes_generate(self):
+        inquiry = "I want to take a loan from my 401(k), can you help me start?"
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        assert decision is not None
+        assert decision.route == "generate_response"
+
+    def test_transactional_intent_help_me_withdraw_routes_generate(self):
+        inquiry = "Can you help me withdraw $5,000 from my account?"
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        assert decision is not None
+        assert decision.route == "generate_response"
+
+    def test_transactional_intent_cash_out_routes_generate(self):
+        inquiry = "I need to cash out my 401k"
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        assert decision is not None
+        assert decision.route == "generate_response"
+
+    def test_transactional_intent_hardship_request_routes_generate(self):
+        inquiry = "I'd like to take a hardship withdrawal for medical bills"
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        assert decision is not None
+        assert decision.route == "generate_response"
+
+    def test_transactional_intent_help_me_move_balance_routes_generate(self):
+        inquiry = "Help me move my balance to an IRA"
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        assert decision is not None
+        assert decision.route == "generate_response"
+
+    def test_procedural_how_with_intent_defers_to_llm(self):
+        # "how do I roll over my 401k?" — has wants_funds but procedural HOW
+        # exclusion in the new rule must keep it out of generate_response.
+        inquiry = "how do I roll over my 401k?"
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        # Should NOT fast-path to generate_response. May still fast-path to
+        # knowledge_question via the short-interrogative rule, or defer.
+        if decision is not None:
+            assert decision.route != "generate_response"
+
+    def test_educational_rollover_question_does_not_fast_path_to_generate(self):
+        # Educational rollover question — no intent verb, no eligibility verb.
+        # Must NOT fast-path to generate_response.
+        inquiry = "what is the 60-day rollover rule?"
+        signals = compute_deterministic_features(inquiry)
+        decision = apply_fast_path_rules(inquiry, signals)
+        if decision is not None:
+            assert decision.route != "generate_response"
 
 
 # ---------------------------------------------------------------------------
@@ -342,6 +469,25 @@ class TestRealInquiries:
         assert result.route == "knowledge_question"
         assert result.confidence >= 0.7
         assert result.fast_path_hit is True
+        assert result.user_message is None
+
+    @pytest.mark.asyncio
+    async def test_rollover_to_fidelity_routes_to_generate_response(self, engine):
+        # The exact bug-report inquiry. Must fast-path to generate_response
+        # via the new transactional-intent rule — the LLM must not even be
+        # consulted, since the deterministic shortcut is conclusive.
+        inquiry = (
+            "Hi, I'd like to roll over my 401k into my Fidelity account. "
+            "Can you help me with that please?"
+        )
+        result = await engine.classify(inquiry=inquiry)
+
+        assert result.route == "generate_response"
+        assert result.fast_path_hit is True
+        assert result.confidence >= 0.85
+        assert result.signals["transactional_intent"] is True
+        assert result.signals["has_action_verb"] is True
+        assert result.signals["wants_funds"] is True
         assert result.user_message is None
 
     @pytest.mark.asyncio
@@ -665,14 +811,18 @@ class TestNormalizationIntegration:
     async def test_wrappered_inquiry_normalized_before_llm(self, mock_llm_router):
         mock_llm_router.call.return_value = _llm_response(
             '{"route": "knowledge_question", "confidence": 0.9, '
-            '"reasoning": "rollover how-to", "user_message": null}'
+            '"reasoning": "vesting question", "user_message": null}'
         )
         engine = InquiryRouterEngine(llm_router=mock_llm_router)
 
+        # Educational vesting question wrapped in email scaffolding. Stays
+        # off the deterministic fast-path (no transactional_intent, no
+        # eligibility verb + signal combo, not a bare short interrogative
+        # since "my plan" trips first-person status), so the LLM IS consulted.
         await engine.classify(
             inquiry=(
-                "Request: I would like to roll over my 401k. "
-                "Summary: Customer wants rollover help."
+                "Request: what is my plan's vesting schedule for the "
+                "employer match? Summary: customer asks about vesting."
             )
         )
 
@@ -686,15 +836,16 @@ class TestNormalizationIntegration:
     async def test_email_signature_stripped_before_llm(self, mock_llm_router):
         mock_llm_router.call.return_value = _llm_response(
             '{"route": "knowledge_question", "confidence": 0.9, '
-            '"reasoning": "rollover how-to", "user_message": null}'
+            '"reasoning": "vesting question", "user_message": null}'
         )
         engine = InquiryRouterEngine(llm_router=mock_llm_router)
 
+        # Educational question + email signature. Body has no transactional
+        # intent and no eligibility verb, so the engine reaches the LLM call.
         await engine.classify(
             inquiry=(
-                "Hi support team, I am writing to ask about rolling over my "
-                "401k balance from my prior employer plan to my new employer "
-                "plan. Can you help? Thanks. -- John"
+                "Hi support team, what is my plan's vesting schedule for the "
+                "employer match? Thanks. -- John"
             )
         )
 
@@ -742,14 +893,16 @@ class TestClassifyParseFallback:
             _llm_response("not json {{{"),
             _llm_response(
                 '{"route": "knowledge_question", "confidence": 0.9, '
-                '"reasoning": "rollover how-to from fallback", '
+                '"reasoning": "vesting question from fallback", '
                 '"user_message": null}'
             ),
         ]
         engine = InquiryRouterEngine(llm_router=mock_llm_router)
 
+        # Use an educational question that escapes every fast-path so the
+        # LLM is actually consulted — that's what this test exercises.
         result = await engine.classify(
-            inquiry="I want to rollover my 401k from old job to new"
+            inquiry="what is my plan's vesting schedule for employer match?"
         )
 
         assert mock_llm_router.call.call_count == 2

@@ -369,8 +369,8 @@
         "required_data": {
             "must_have": [
                 {
-                    "data_point": "Participant date of birth",
-                    "meaning": "Used to determine whether the participant has reached the applicable RMD age (age 73, or age 75 if born in 1960 or later) and to apply the related required beginning date timing rules.",
+                    "data_point": "Birth Date",
+                    "meaning": "The participant's date of birth, used to determine whether they have reached the applicable RMD age (age 73, or age 75 if born in 1960 or later) and to apply the related required beginning date timing rules.",
                     "example_values": [
                         "1951-01-01",
                         "1959-12-31",
@@ -382,8 +382,8 @@
                     "blocking_intent": "eligibility_confirmation"
                 },
                 {
-                    "data_point": "Participant employment status with the sponsoring employer",
-                    "meaning": "Whether the participant is still actively employed by the employer sponsoring the plan.",
+                    "data_point": "Participant Status",
+                    "meaning": "The participant's eligibility/employment status with the sponsoring employer in the system (e.g., Active, Terminated). Used to evaluate the still-working exception, which is available only when the participant is still actively employed by the sponsoring employer.",
                     "example_values": [
                         "Active",
                         "Terminated",
@@ -396,56 +396,69 @@
                     "blocking_intent": "eligibility_confirmation"
                 },
                 {
-                    "data_point": "Whether the participant owns 5% or more of the sponsoring business (including family-attributed ownership)",
-                    "meaning": "Determines whether the still-working exception is disallowed due to ownership rules.",
+                    "data_point": "Participant 5% Ownership",
+                    "meaning": "Whether the participant owns 5% or more of the sponsoring business, including family-attributed ownership (shares held by a spouse, child, or parent may count). Determines whether the still-working exception is disallowed due to ownership rules.",
                     "example_values": [
-                        "Participant owns less than 5% of the business"
+                        "Participant owns less than 5% of the business",
+                        "Participant owns 5% or more (including family-attributed ownership)"
                     ],
-                    "why_needed": "Required only when confirming whether THIS participant qualifies for the still-working exception. Does not block general explanation of the 5% ownership rule.",
-                    "source_note": "Supported by article section: Ownership Exception",
+                    "why_needed": "Required only when confirming whether THIS participant qualifies for the still-working exception. Does not block general explanation of the 5% ownership rule. No ForUsBots extractor exists; must be collected from the participant or sponsor.",
+                    "source_note": "No admin-panel extractor available; collected via agent conversation or sponsor records.",
                     "source_type": "agent_input",
                     "blocking_intent": "eligibility_confirmation"
                 }
             ],
             "nice_to_have": [
                 {
-                    "data_point": "Account balance as of December 31 of the previous year",
-                    "meaning": "The prior year-end account balance used to calculate the RMD amount.",
+                    "data_point": "Account Balance",
+                    "meaning": "The participant's vested 401(k) account balance. ForUsBots returns the current Account Balance value (and Account Balance As Of date); the RMD calculation technically uses the prior December 31 balance, so treat the current value as a working estimate and confirm the official prior year-end figure with ForUsAll or the recordkeeper for the actual RMD calculation.",
                     "example_values": [
-                        "$100,000.00",
-                        "$23,450.75"
+                        100000.0,
+                        23450.75
                     ],
-                    "why_needed": "Used in the RMD calculation formula described in the article.",
-                    "source_note": "Supported by article section: How Are RMDs Calculated?",
+                    "why_needed": "Used as an input to the RMD calculation formula described in the article. The exact prior-year-end snapshot is not exposed via ForUsBots, so the current Account Balance is a proxy only.",
+                    "source_note": "Supported by article section: How Are RMDs Calculated?. Catalog field: savings_rate.Account Balance (current vested balance).",
                     "source_type": "participant_profile"
                 },
                 {
-                    "data_point": "Whether the participant has Roth 401(k) funds or has completed an in-plan Roth conversion",
-                    "meaning": "Indicates whether the participant has funds that may be exempt from RMDs and whether Roth conversion guidance is relevant.",
+                    "data_point": "Roth Deferral Balance",
+                    "meaning": "The participant's Roth deferral balance. A non-zero value confirms the participant has Roth 401(k) funds, which (as of 2024 under SECURE 2.0) are exempt from RMDs during the account owner's lifetime. Note: this field does not by itself indicate whether the participant has completed an in-plan Roth conversion this year — that information has no admin-panel extractor.",
                     "example_values": [
-                        "Participant has both pre-tax and Roth 401(k) balances",
-                        "Participant converted $50,000 from pre-tax to Roth in 2024"
+                        0.0,
+                        15000.0,
+                        50000.0
                     ],
                     "why_needed": "Helps determine whether to surface Roth conversion guidance and whether part of the participant's balance is already exempt from RMDs.",
-                    "source_note": "Supported by article section: Roth Conversion and RMDs",
+                    "source_note": "Supported by article section: Roth Conversion and RMDs. Catalog field: savings_rate.Roth Deferral Balance.",
                     "source_type": "participant_profile"
+                },
+                {
+                    "data_point": "In-plan Roth Conversion Completed",
+                    "meaning": "Whether the participant has completed an in-plan Roth conversion in the current year. Used to assess whether Roth conversion guidance is currently relevant to the participant's situation.",
+                    "example_values": [
+                        "Participant converted $50,000 from pre-tax to Roth in 2024",
+                        "No in-plan Roth conversion in the current year"
+                    ],
+                    "why_needed": "Helps determine whether to surface follow-up guidance about the 5-year holding rule and the requirement that RMDs cannot be converted. No ForUsBots extractor exists for this field; must be confirmed via agent conversation or recordkeeper history.",
+                    "source_note": "No admin-panel extractor available; collected via agent conversation or recordkeeper transaction history.",
+                    "source_type": "agent_input"
                 }
             ],
             "if_missing": [
                 {
-                    "missing_data_point": "Participant date of birth",
+                    "missing_data_point": "Birth Date",
                     "ask_participant": "What is your date of birth?",
-                    "agent_note": "Date of birth is needed to determine both whether the participant has reached the applicable RMD age and which threshold applies (age 73, or age 75 if born in 1960 or later). If only age is provided, confirm whether they were born before or in/after 1960 to determine the correct threshold."
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Birth Date). If only age is provided, confirm whether they were born before or in/after 1960 to determine the correct RMD threshold (age 73 vs 75)."
                 },
                 {
-                    "missing_data_point": "Participant employment status with the sponsoring employer",
+                    "missing_data_point": "Participant Status",
                     "ask_participant": "Are you still actively employed by the employer sponsoring this plan?",
-                    "agent_note": "Employment status is part of determining whether RMDs from a current employer plan may be deferred if the plan permits it."
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.Eligibility Status). Used to evaluate the still-working exception."
                 },
                 {
-                    "missing_data_point": "Whether the participant owns 5% or more of the sponsoring business (including family-attributed ownership)",
+                    "missing_data_point": "Participant 5% Ownership",
                     "ask_participant": "Do you own 5% or more of the sponsoring business (including family-attributed ownership)?",
-                    "agent_note": "If the participant owns 5% or more, the still-working exception does not apply."
+                    "agent_note": "no ForUsBots extractor; must be collected from participant or sponsor. If the participant owns 5% or more, the still-working exception does not apply."
                 }
             ],
             "disambiguation_notes": [
@@ -473,19 +486,19 @@
             "missing_data_conditions": [
                 {
                     "condition": "Age or date of birth is not known, so it cannot be determined whether the participant has reached the applicable RMD age (age 73, or age 75 if born in 1960 or later).",
-                    "missing_data_point": "Participant date of birth",
+                    "missing_data_point": "Birth Date",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": "What is your age?"
                 },
                 {
                     "condition": "Employment status with the sponsoring employer is not known, so it cannot be determined whether the still-working exception might apply.",
-                    "missing_data_point": "Participant employment status with the sponsoring employer",
+                    "missing_data_point": "Participant Status",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": "Are you still actively employed by the employer sponsoring this plan?"
                 },
                 {
                     "condition": "Ownership status is not known, so it cannot be determined whether the still-working exception is disallowed due to the 5% ownership rule.",
-                    "missing_data_point": "Whether the participant owns 5% or more of the sponsoring business (including family-attributed ownership)",
+                    "missing_data_point": "Participant 5% Ownership",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": "Are you a 5% (or more) owner of the sponsoring business (including family-attributed ownership)?"
                 }

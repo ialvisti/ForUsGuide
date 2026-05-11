@@ -380,7 +380,11 @@
                 "ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines)",
                 "Can I Take Money From My 401(k) While Employed? Your Options Explained",
                 "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
-                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact"
+                "401k_required_minimum_distributions_rmds_rules_deadlines_penalties_exceptions_and_roth_conversion_impact",
+                "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+                "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+                "LT: 401(k) Loan Complete Guide — Submission, Repayment & Support",
+                "Vanguard: How to Submit a Loan Request"
             ],
             "external_links": [],
             "contact": {
@@ -392,12 +396,12 @@
         "required_data": {
             "must_have": [
                 {
-                    "data_point": "Participant's name",
-                    "meaning": "The name of the participant.",
+                    "data_point": "Participant Name",
+                    "meaning": "The participant's full name (first + last). Catalog: census.First Name + census.Last Name.",
                     "example_values": [
                         "John Doe",
                         "Jane Doe",
-                        "Oscar Santiago Garcia "
+                        "Oscar Santiago Garcia"
                     ],
                     "why_needed": "Required to confirm we found a matching user in our system before handing the cancel/change to support. Does not block general explanation of how cancel/change works.",
                     "source_note": "Required for request identification; referenced in steps and common_issues.",
@@ -476,9 +480,9 @@
             ],
             "if_missing": [
                 {
-                    "missing_data_point": "Participant's name",
+                    "missing_data_point": "Participant Name",
                     "ask_participant": "What is your full name?",
-                    "agent_note": "Do not proceed to conclusions about what can be changed or canceled without enough information to identify the request."
+                    "agent_note": "retrieve from admin/portal systems (ForUsBots census.First Name + census.Last Name). Do not proceed to conclusions about what can be changed or canceled without enough information to identify the request."
                 },
                 {
                     "missing_data_point": "Type of request",
@@ -529,8 +533,8 @@
             ],
             "missing_data_conditions": [
                 {
-                    "condition": "Participant's name is not provided.",
-                    "missing_data_point": "Participant's name",
+                    "condition": "Participant name is not provided.",
+                    "missing_data_point": "Participant Name",
                     "resulting_outcome": "blocked_missing_data",
                     "ask_participant": "What is your full name?"
                 },

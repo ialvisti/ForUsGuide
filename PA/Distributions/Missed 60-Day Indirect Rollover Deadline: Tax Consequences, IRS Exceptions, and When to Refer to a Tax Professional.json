@@ -46,7 +46,7 @@
             {
                 "category": "deadline_and_consequences",
                 "rules": [
-                    "If the rollover is not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income.",
+                    "If the rollover is not completed within 60 days of receiving the funds, the distribution is generally treated as taxable income subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence and applicable state tax laws.",
                     "If the rollover is not completed within the 60-day window, the participant may owe a 10% early withdrawal penalty if under age 59½.",
                     "If the rollover is not completed within the 60-day window, the amount is reported on IRS Form 1099-R as a distribution.",
                     "Depositing the funds into another retirement account later does not qualify as a rollover unless certain exceptions are met."
@@ -95,7 +95,7 @@
                 "step_number": 3,
                 "type": "participant-facing",
                 "visibility": "both",
-                "description": "If the rollover was not completed within 60 days, explain that the distribution is generally treated as taxable income and is reported on IRS Form 1099-R as a distribution.",
+                "description": "If the rollover was not completed within 60 days, explain that the distribution is generally treated as taxable income (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence) and is reported on IRS Form 1099-R as a distribution.",
                 "notes": "If the participant is under age 59½, they may owe a 10% early withdrawal penalty."
             },
             {
@@ -138,7 +138,7 @@
             },
             {
                 "issue": "Participant asks whether they will owe taxes or penalties after missing the deadline.",
-                "resolution": "State the article's general consequences (generally taxable; may owe 10% penalty if under 59½; reported on Form 1099-R) and recommend consulting a qualified tax professional for their specific tax situation."
+                "resolution": "State the article's general consequences (generally taxable for federal income tax purposes and state income taxes may also apply depending on the participant's state of residence; may owe 10% penalty if under 59½; reported on Form 1099-R) and recommend consulting a qualified tax professional for their specific tax situation."
             },
             {
                 "issue": "Participant asks what documentation is needed for self-certification.",
@@ -188,7 +188,7 @@
         "examples": [
             {
                 "scenario": "A participant received a distribution payable to them and did not complete the rollover within 60 days.",
-                "outcome": "The distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if the participant is under age 59½, and is reported on IRS Form 1099-R as a distribution. Exceptions may be available; recommend consulting a tax professional."
+                "outcome": "The distribution is generally treated as taxable income (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence), may be subject to a 10% early withdrawal penalty if the participant is under age 59½, and is reported on IRS Form 1099-R as a distribution. Exceptions may be available; recommend consulting a tax professional."
             },
             {
                 "scenario": "A participant completed a direct rollover where funds moved directly from one provider to another.",
@@ -248,14 +248,14 @@
             },
             {
                 "scenario": "A participant is under age 59½, missed the 60-day window, and asks what additional consequences might apply.",
-                "outcome": "The article states the distribution is generally treated as taxable income and the participant may owe a 10% early withdrawal penalty if under age 59½. The agent should recommend consulting a qualified tax professional for guidance specific to the participant."
+                "outcome": "The article states the distribution is generally treated as taxable income (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence) and the participant may owe a 10% early withdrawal penalty if under age 59½. The agent should recommend consulting a qualified tax professional for guidance specific to the participant."
             }
         ],
         "additional_notes": [
             {
                 "category": "irs_reporting",
                 "notes": [
-                    "If the rollover is not completed within the 60-day window, the amount is reported on IRS Form 1099-R as a distribution.",
+                    "If the rollover is not completed within the 60-day window, the amount is reported on IRS Form 1099-R as a distribution and is generally treated as taxable income subject to federal income tax; state income taxes may also apply depending on the participant's state of residence and applicable state tax laws.",
                     "For self-certification situations, the participant may obtain IRS Form 5498 and file or attach it as part of self-certification when filing taxes."
                 ]
             },
@@ -287,7 +287,7 @@
             },
             {
                 "question": "What happens if I miss the 60-day deadline?",
-                "answer": "If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable income, may be subject to a 10% early withdrawal penalty if you are under age 59½, and is reported on IRS Form 1099-R as a distribution."
+                "answer": "If the rollover is not completed within the 60-day window, the distribution is generally treated as taxable income (subject to federal income tax, and state income taxes may also apply depending on your state of residence), may be subject to a 10% early withdrawal penalty if you are under age 59½, and is reported on IRS Form 1099-R as a distribution."
             },
             {
                 "question": "Are there exceptions if I miss the 60-day rollover deadline?",
@@ -393,7 +393,7 @@
             },
             {
                 "term": "Taxable income",
-                "definition": "How the article describes a distribution that is not rolled over within the 60-day window: it is generally treated as taxable income."
+                "definition": "How the article describes a distribution that is not rolled over within the 60-day window: it is generally treated as taxable income subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence and applicable state tax laws."
             }
         ],
         "guardrails": {

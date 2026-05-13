@@ -67,6 +67,7 @@
                 "category": "tax_and_penalties",
                 "rules": [
                     "Hardship withdrawals are subject to federal income taxes.",
+                    "State income taxes may also apply depending on the participant's state of residence and applicable state tax laws.",
                     "If the participant is under age 59.5, a 10% early withdrawal penalty may apply."
                 ]
             }
@@ -236,6 +237,7 @@
                 "Do not promise an exact processing or delivery date beyond the estimated timelines listed in the article.",
                 "Do not state or imply that ForUsAll collects, reviews, or stores supporting documentation for hardship withdrawals.",
                 "Do not claim the 10% early withdrawal penalty will apply; it may apply if the participant is under age 59.5.",
+                "Do not guarantee whether state income tax withholding will apply or specify state withholding amounts; state taxes vary by state.",
                 "Do not claim the participant can withdraw more than the documented hardship expense amount or withdraw extra for unrelated expenses.",
                 "Do not invent additional IRS hardship reasons, fees, or timelines not listed in the article."
             ],
@@ -370,7 +372,7 @@
             "allowed_conclusions": [
                 "After setting expectations and providing the Hardship Distribution Guidelines, send the participant the Hardship Withdrawal RightSignature Request Form link to complete the form: https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133",
                 "Standard processing has a $75 fee, with an additional +$35 for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.",
-                "Funds are subject to federal income taxes, and a 10% early withdrawal penalty may apply if the participant is under age 59.5.",
+                "Funds are subject to federal income taxes, state income taxes may also apply depending on the participant's state of residence, and a 10% early withdrawal penalty may apply if the participant is under age 59.5.",
                 "ForUsAll does not collect supporting documents; the participant must retain documentation in case of an IRS audit."
             ],
             "not_allowed_conclusions": [

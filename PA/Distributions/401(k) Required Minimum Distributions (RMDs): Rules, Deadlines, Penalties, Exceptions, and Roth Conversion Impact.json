@@ -74,7 +74,7 @@
                 "category": "taxation",
                 "rules": [
                     "RMDs are taxed as ordinary income.",
-                    "Participants should plan for taxes by ensuring withholding is set up or preparing for a potential tax payment."
+                    "Participants should plan for taxes by ensuring federal (and, if applicable, state) tax withholding is set up on the distribution or by preparing for a potential tax payment when filing. State income taxes may apply depending on the participant's state of residence and applicable state tax laws."
                 ]
             },
             {
@@ -526,7 +526,7 @@
                 "participant_message_components": [
                     "Your first RMD can be taken by April 1 of the year after you reach the applicable RMD age (age 73, or age 75 if you were born in 1960 or later); after that, RMDs are due by December 31 each year.",
                     "You can take your RMD as a lump sum or in installments throughout the year.",
-                    "RMDs are taxed as ordinary income, so consider setting up withholding or preparing for a potential tax payment.",
+                    "RMDs are taxed as ordinary income, so consider setting up federal (and, if applicable, state) tax withholding or preparing for a potential tax payment. State income taxes may apply depending on your state of residence and applicable state tax laws.",
                     "If you have converted pre-tax funds to Roth within your 401(k), the converted portion is exempt from RMDs starting in 2024. Converted funds must be held for at least 5 years for tax-free withdrawals."
                 ],
                 "next_steps": [

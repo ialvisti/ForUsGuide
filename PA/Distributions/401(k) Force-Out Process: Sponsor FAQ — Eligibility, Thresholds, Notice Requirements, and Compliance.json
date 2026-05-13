@@ -44,7 +44,7 @@
                 "category": "distribution_thresholds",
                 "rules": [
                     "Balances of $80 or less: The $80 administrative fee fully absorbs the balance, closing the account with no funds transferred (fee-out).",
-                    "Greater than $80 and under $1,000: Plans may issue a cash distribution, minus mandatory 20% federal tax withholding.",
+                    "Greater than $80 and under $1,000: Plans may issue a cash distribution, minus mandatory 20% federal tax withholding. State income tax withholding may also apply depending on the participant's state of residence and applicable state rules.",
                     "$1,000 to $7,000: The plan must automatically roll the balance into a safe harbor IRA, unless the participant elects otherwise."
                 ]
             },
@@ -67,7 +67,7 @@
                 "category": "tax_reporting",
                 "rules": [
                     "Force-out distributions are taxable events and must be reported on IRS Form 1099-R.",
-                    "Cash distributions under $1,000 are subject to mandatory 20% federal tax withholding at the time of distribution.",
+                    "Cash distributions under $1,000 are subject to mandatory 20% federal tax withholding at the time of distribution. State income tax withholding may also apply depending on the participant's state of residence and applicable state tax rules.",
                     "Safe harbor IRA rollovers ($1,000–$7,000) are not taxed at rollover but are reported as direct rollovers on Form 1099-R."
                 ]
             },
@@ -154,13 +154,13 @@
             },
             {
                 "issue": "Participant asks about the tax impact of their force-out distribution.",
-                "resolution": "Cash distributions are subject to mandatory 20% federal withholding and reported on Form 1099-R. Safe harbor IRA rollovers are reported as direct rollovers and not taxed at the time of transfer."
+                "resolution": "Cash distributions are subject to mandatory 20% federal withholding (and state income tax withholding may also apply depending on the participant's state of residence) and are reported on Form 1099-R. Safe harbor IRA rollovers are reported as direct rollovers and not taxed at the time of transfer."
             }
         ],
         "examples": [
             {
                 "scenario": "A terminated participant has a vested balance of $900 and does not respond to the advance notice.",
-                "outcome": "The plan issues a cash distribution of $720 ($900 minus mandatory 20% federal withholding of $180). A 1099-R is issued for the tax year."
+                "outcome": "The plan issues a cash distribution of $900 minus mandatory 20% federal withholding ($180). State income tax withholding may also apply depending on the participant's state of residence. A 1099-R is issued for the tax year showing the gross distribution, taxable amount, and any federal and state taxes withheld."
             },
             {
                 "scenario": "A terminated participant has a vested balance of $3,500 and does not respond to the advance notice.",
@@ -202,7 +202,7 @@
             },
             {
                 "question": "What balance thresholds apply to force-outs?",
-                "answer": "Force-outs apply only to former employees with vested balances under $7,000. Balances of $80 or less are absorbed by the administrative fee (fee-out). Balances greater than $80 and under $1,000 may be paid in cash with 20% federal withholding. Balances of $1,000 to $7,000 must be rolled into a safe harbor IRA unless the participant elects otherwise."
+                "answer": "Force-outs apply only to former employees with vested balances under $7,000. Balances of $80 or less are absorbed by the administrative fee (fee-out). Balances greater than $80 and under $1,000 may be paid in cash with 20% federal withholding (and state income tax withholding may also apply depending on the participant's state of residence). Balances of $1,000 to $7,000 must be rolled into a safe harbor IRA unless the participant elects otherwise."
             },
             {
                 "question": "Is participant notice required before a force-out?",
@@ -214,7 +214,7 @@
             },
             {
                 "question": "What tax reporting is required for force-out distributions?",
-                "answer": "All force-out distributions must be reported on IRS Form 1099-R. Cash distributions are subject to mandatory 20% federal withholding and reported with the applicable distribution code. Safe harbor IRA rollovers are reported as direct rollovers using code G and are not taxed at the time of transfer."
+                "answer": "All force-out distributions must be reported on IRS Form 1099-R. Cash distributions are subject to mandatory 20% federal withholding and reported with the applicable distribution code; state income tax withholding may also apply depending on the participant's state of residence and applicable state rules. Safe harbor IRA rollovers are reported as direct rollovers using code G and are not taxed at the time of transfer."
             },
             {
                 "question": "Can a force-out be initiated for an active employee?",
@@ -436,7 +436,7 @@
                 "participant_message_components": [
                     "A force-out can proceed because employment has ended and the vested balance is under $7,000.",
                     "Advance written notice must be provided before any involuntary distribution.",
-                    "The distribution method depends on the balance: fee-out for $80 or less, cash with 20% withholding for $80–$1,000, or safe harbor IRA rollover for $1,000–$7,000.",
+                    "The distribution method depends on the balance: fee-out for $80 or less, cash with 20% federal withholding (and state income tax withholding may also apply depending on the participant's state of residence) for $80–$1,000, or safe harbor IRA rollover for $1,000–$7,000.",
                     "A 1099-R will be issued for the distribution."
                 ],
                 "next_steps": [

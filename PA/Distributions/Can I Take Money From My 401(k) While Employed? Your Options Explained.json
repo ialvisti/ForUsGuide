@@ -69,10 +69,10 @@
             {
                 "category": "tax_and_penalty",
                 "rules": [
-                    "In-service distributions are typically penalty-free but may be subject to ordinary income tax for pre-tax funds or for Roth funds where it has been less than 5 years; for Roth in that case, taxes would apply only to earnings.",
-                    "Hardship withdrawals are subject to ordinary income tax.",
+                    "In-service distributions are typically penalty-free but may be subject to ordinary income tax for pre-tax funds or for Roth funds where it has been less than 5 years; for Roth in that case, taxes would apply only to earnings. State income taxes may also apply depending on the participant's state of residence and applicable state tax laws.",
+                    "Hardship withdrawals are subject to ordinary income tax. State income taxes may also apply depending on the participant's state of residence and applicable state tax laws.",
                     "A 10% early withdrawal penalty typically applies to hardship withdrawals and rollover sources (Depending on Pre tax or Roth) if the participant is under age 59 1/2, unless an exception is met.",
-                    "Taxes may apply to rollover source withdrawals depending on whether the funds are pre-tax or Roth.",
+                    "Taxes may apply to rollover source withdrawals depending on whether the funds are pre-tax or Roth. State income taxes may also apply depending on the participant's state of residence and applicable state tax laws.",
                     "401(k) loans are not taxable while repaid properly through payroll deductions or paid off in full via a one-time payment, and carry no early withdrawal penalty when repaid on time. However, failure to repay a loan may result in it being treated as a taxable distribution. If the participant terminates employment and requests the 401(k) funds out through a cash distribution or rollover, it is recommended the loan be paid off first; if it is not paid off before the cash-out or rollover, the outstanding loan amount will become taxable."
                 ]
             },
@@ -238,7 +238,7 @@
             },
             {
                 "issue": "Participant asks for a specific tax amount or guaranteed tax outcome for an in-service distribution or hardship withdrawal.",
-                "resolution": "State only what the article supports: distributions may be subject to ordinary income tax depending on whether funds are pre-tax or Roth, and hardship withdrawals are subject to ordinary income tax; do not quote specific tax amounts or guarantees. If needed, advise them to consider tax implications before proceeding."
+                "resolution": "State only what the article supports: distributions may be subject to ordinary income tax depending on whether funds are pre-tax or Roth, and hardship withdrawals are subject to ordinary income tax. State income taxes may also apply depending on the participant's state of residence. Do not quote specific tax amounts or guarantees. If needed, advise them to consider tax implications before proceeding."
             },
             {
                 "issue": "Participant believes a Roth in-service distribution is always tax-free.",
@@ -246,7 +246,7 @@
             },
             {
                 "issue": "Participant expects hardship withdrawals are automatically penalty-free if they have a qualifying reason.",
-                "resolution": "Explain that the 10% early withdrawal penalty typically applies if under age 59 1/2 unless an exception is met, and the distribution is subject to ordinary income tax; avoid claiming any specific exception applies unless the participant has one confirmed outside this article."
+                "resolution": "Explain that the 10% early withdrawal penalty typically applies if under age 59 1/2 unless an exception is met, and the distribution is subject to ordinary income tax (state income taxes may also apply depending on the participant's state of residence); avoid claiming any specific exception applies unless the participant has one confirmed outside this article."
             },
             {
                 "issue": "Participant wants to withdraw more than needed for a hardship (for example, to create extra savings).",
@@ -266,7 +266,7 @@
             },
             {
                 "issue": "Participant thinks rollover source withdrawals have the same tax treatment in all cases.",
-                "resolution": "Explain that taxes may apply depending on whether the rollover funds are pre-tax or Roth, and do not claim a single tax outcome for all rollover withdrawals."
+                "resolution": "Explain that taxes may apply depending on whether the rollover funds are pre-tax or Roth, and state income taxes may also apply depending on the participant's state of residence. Do not claim a single tax outcome for all rollover withdrawals."
             },
             {
                 "issue": "Participant wants a 401(k) loan but does not understand the loan limit calculation and asks for the maximum they can borrow.",
@@ -320,7 +320,7 @@
             },
             {
                 "scenario": "A participant under age 59 1/2 wants funds for medical expenses and asks for a hardship withdrawal.",
-                "outcome": "Medical expenses are listed as a qualifying hardship reason; hardship withdrawals are subject to ordinary income tax and typically a 10% early withdrawal penalty if under 59 1/2 unless an exception is met, and the participant must retain supporting documentation for potential IRS audit."
+                "outcome": "Medical expenses are listed as a qualifying hardship reason; hardship withdrawals are subject to ordinary income tax (state income taxes may also apply depending on the participant's state of residence) and typically a 10% early withdrawal penalty if under 59 1/2 unless an exception is met, and the participant must retain supporting documentation for potential IRS audit."
             },
             {
                 "scenario": "A participant wants $1,000 as a 401(k) loan but has only $1,500 vested.",
@@ -328,7 +328,7 @@
             },
             {
                 "scenario": "A participant rolled over an old retirement account into the current plan and asks if they can withdraw just those funds while employed.",
-                "outcome": "They may be able to withdraw rollover assets even while still employed, depending on plan rules; taxes may apply depending on whether the funds are pre-tax or Roth."
+                "outcome": "They may be able to withdraw rollover assets even while still employed, depending on plan rules; taxes may apply depending on whether the funds are pre-tax or Roth, and state income taxes may also apply depending on the participant's state of residence."
             },
             {
                 "scenario": "A participant age 58 asks whether they can take an in-service distribution while still employed.",
@@ -336,15 +336,15 @@
             },
             {
                 "scenario": "A participant age 62 asks if an in-service distribution will be penalty-free and whether taxes apply.",
-                "outcome": "State that in-service distributions are typically penalty-free at age 59 1/2+ if the plan allows, but may be subject to ordinary income tax depending on whether funds are pre-tax or Roth, and for Roth where it has been less than 5 years taxes apply only to earnings."
+                "outcome": "State that in-service distributions are typically penalty-free at age 59 1/2+ if the plan allows, but may be subject to ordinary income tax depending on whether funds are pre-tax or Roth, and for Roth where it has been less than 5 years taxes apply only to earnings. State income taxes may also apply depending on the participant's state of residence."
             },
             {
                 "scenario": "A participant requests a hardship withdrawal for tuition and education expenses.",
-                "outcome": "Tuition and education expenses are listed as a qualifying hardship reason; the hardship amount is limited to the amount necessary to meet the need, is subject to ordinary income tax, and typically has a 10% early withdrawal penalty if under 59 1/2 unless an exception is met; the participant must retain supporting documentation for IRS audit purposes."
+                "outcome": "Tuition and education expenses are listed as a qualifying hardship reason; the hardship amount is limited to the amount necessary to meet the need, is subject to ordinary income tax (state income taxes may also apply depending on the participant's state of residence), and typically has a 10% early withdrawal penalty if under 59 1/2 unless an exception is met; the participant must retain supporting documentation for IRS audit purposes."
             },
             {
                 "scenario": "A participant asks for a hardship withdrawal to prevent eviction and wants the money quickly.",
-                "outcome": "Preventing foreclosure or eviction is listed as a qualifying hardship reason; approval is generally within 1-2 days if the plan allows hardship withdrawals, and disbursal is typically within 1 to 3 weeks; taxes and potential penalties apply as described."
+                "outcome": "Preventing foreclosure or eviction is listed as a qualifying hardship reason; approval is generally within 1-2 days if the plan allows hardship withdrawals, and disbursal is typically within 1 to 3 weeks; federal taxes and potential penalties apply as described, and state income taxes may also apply depending on the participant's state of residence."
             },
             {
                 "scenario": "A participant asks whether they can repay a hardship withdrawal after their situation improves.",
@@ -421,7 +421,7 @@
             },
             {
                 "question": "Are withdrawals or loans taxed or penalized?",
-                "answer": "The article explains that in-service distributions are typically penalty-free but may be taxed depending on whether funds are pre-tax or Roth and, for Roth, whether it has been less than 5 years (taxes apply only to earnings in that case). Hardship withdrawals are subject to ordinary income tax and typically a 10% early withdrawal penalty applies if under age 59 1/2 unless an exception is met. Rollover source withdrawals may be taxed depending on whether the funds are pre-tax or Roth. Loans are not taxable if repaid on time, but failure to repay may result in the loan being treated as a taxable distribution, and loans can be taxable if they default when the participant terminates employment and requests funds out via cash distribution or rollover."
+                "answer": "The article explains that in-service distributions are typically penalty-free but may be taxed depending on whether funds are pre-tax or Roth and, for Roth, whether it has been less than 5 years (taxes apply only to earnings in that case). Hardship withdrawals are subject to ordinary income tax and typically a 10% early withdrawal penalty applies if under age 59 1/2 unless an exception is met. Rollover source withdrawals may be taxed depending on whether the funds are pre-tax or Roth. State income taxes may also apply to any of these taxable cash distributions depending on the participant's state of residence and applicable state tax laws. Loans are not taxable if repaid on time, but failure to repay may result in the loan being treated as a taxable distribution, and loans can be taxable if they default when the participant terminates employment and requests funds out via cash distribution or rollover."
             },
             {
                 "question": "Are in-service distributions available in every employer plan?",
@@ -433,7 +433,7 @@
             },
             {
                 "question": "Are in-service distributions always tax-free?",
-                "answer": "No. The article explains they may be subject to ordinary income tax if taken from pre-tax funds or out of Roth funds where it has been less than 5 years; for Roth in that case, taxes would apply only to earnings."
+                "answer": "No. The article explains they may be subject to ordinary income tax if taken from pre-tax funds or out of Roth funds where it has been less than 5 years; for Roth in that case, taxes would apply only to earnings. State income taxes may also apply depending on the participant's state of residence and applicable state tax laws."
             },
             {
                 "question": "How much can I take for a hardship withdrawal?",
@@ -569,6 +569,7 @@
                 "Do not provide processing or disbursal timelines beyond what is stated in the article.",
                 "Do not claim that hardship withdrawal funds can be repaid.",
                 "Do not claim taxes or penalties will or will not apply beyond the conditions described in the article.",
+                "Do not guarantee whether state income tax withholding will apply or specify state withholding amounts; state taxes vary by state of residence and applicable state tax laws.",
                 "Do not claim a specific portal URL for the ForUsAll account because the article does not provide one.",
                 "Do not guarantee that an in-service distribution will be penalty-free in all cases; only state it is typically penalty-free as described and only if the plan allows and the participant meets the age threshold.",
                 "Do not claim that Roth distributions are always tax-free; only state the article's rule that taxes may apply to earnings if the Roth funds have been in the account for less than 5 years.",
@@ -905,13 +906,13 @@
             "can_proceed": {
                 "participant_message_components": [
                     "Based on what you shared, this option may be available while you are employed if your employer plan allows it.",
-                    "Here are the key considerations the article highlights: plan rules vary, taxes may apply depending on the type of funds, and withdrawals can permanently reduce retirement savings."
+                    "Here are the key considerations the article highlights: plan rules vary, federal (and possibly state) taxes may apply depending on the type of funds, and withdrawals can permanently reduce retirement savings."
                 ],
                 "next_steps": [
                     "Initiate the request via your online ForUsAll account or contact the ForUsAll Participant Support Team for help reviewing eligibility and next steps."
                 ],
                 "warnings": [
-                    "Tax implications and potential penalties may apply depending on the option and your situation.",
+                    "Tax implications and potential penalties may apply depending on the option and your situation; both federal and state income taxes may apply to taxable cash distributions, with state taxes varying by state of residence.",
                     "Withdrawals can have a long-term impact on your retirement savings.",
                     "If you have an active loan or loans, you may need to leave a required amount in the account before requesting a hardship withdrawal or in-service distribution; Participant Support must confirm eligibility.",
                     "Loan availability depends on your plan settings and whether you already have active loans; Participant Support can confirm if you are unsure."
@@ -963,7 +964,7 @@
                     "You may be able to start a loan request from the Loans and Distributions tab if your plan allows loans, or contact the ForUsAll Participant Support Team to confirm eligibility and next steps."
                 ],
                 "warnings": [
-                    "Withdrawals can permanently reduce retirement savings, and taxes or penalties may apply depending on the option.",
+                    "Withdrawals can permanently reduce retirement savings, and federal taxes or penalties may apply depending on the option; state income taxes may also apply depending on your state of residence.",
                     "If you have active loans, additional eligibility conditions may apply for hardship withdrawals or in-service distributions; Participant Support must confirm.",
                     "I cannot share internal account balance or loan detail information."
                 ],

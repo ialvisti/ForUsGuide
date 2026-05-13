@@ -159,7 +159,7 @@
         "category": "outstanding_loans",
         "rules": [
           "If a participant has an outstanding 401(k) loan at the time of the termination distribution, they may repay the loan in full to avoid taxes and penalties on the loan balance.",
-          "If the outstanding loan is not repaid, the remaining loan balance will be treated as a taxable distribution and may also incur an additional 10% IRS early withdrawal penalty if the participant is under 59 1/2.",
+          "If the outstanding loan is not repaid, the remaining loan balance will be treated as a taxable distribution (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence) and may also incur an additional 10% IRS early withdrawal penalty if the participant is under 59 1/2.",
           "Participants should contact ForUsAll Support to discuss loan repayment options before initiating the distribution request."
         ]
       }
@@ -215,7 +215,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must choose the distribution type and how funds will be delivered.",
-        "notes": "The participant must choose from the following options: lump sum cash distribution, full direct rollover to an IRA or qualified plan, or partial direct rollover to an IRA or qualified plan with the remaining balance as a cash distribution."
+        "notes": "The participant must choose from the following options: lump sum cash distribution, a direct rollover of my vested balance to an IRA or a Qualified Retirement Plan, or partial direct rollover to an IRA or qualified plan with the remaining balance as a cash distribution."
       },
       {
         "step_number": 6,
@@ -362,7 +362,7 @@
       },
       {
         "issue": "The participant has an outstanding 401(k) loan and wants to request a termination distribution.",
-        "resolution": "Explain that the participant may repay the outstanding loan in full before initiating the distribution to avoid taxes and penalties on the loan balance. If the loan is not repaid, the remaining loan balance will be treated as a taxable distribution and may also incur an additional 10% IRS early withdrawal penalty if the participant is under 59 1/2. Advise the participant to contact ForUsAll Support to discuss loan repayment options before initiating the distribution request."
+        "resolution": "Explain that the participant may repay the outstanding loan in full before initiating the distribution to avoid taxes and penalties on the loan balance. If the loan is not repaid, the remaining loan balance will be treated as a taxable distribution (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence) and may also incur an additional 10% IRS early withdrawal penalty if the participant is under 59 1/2. Advise the participant to contact ForUsAll Support to discuss loan repayment options before initiating the distribution request."
       },
       {
         "issue": "The participant has already tried the common troubleshooting steps and is still experiencing issues or the issue mentioned is not listed in the common issues.",

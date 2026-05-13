@@ -742,14 +742,50 @@ USER_PROMPT_DECOMPOSE_TEMPLATE = """QUESTION:
 Break this into focused search sub-queries. Return ONLY the JSON object."""
 
 
-def build_decompose_question_prompt(question: str) -> tuple:
+# Fix 7: anchor decomposition on record_keeper + topic when the caller knows
+# them (required_data does). Prevents the LLM from drifting toward generic
+# tax-theory or education topics when the participant's intent is operational.
+USER_PROMPT_DECOMPOSE_TEMPLATE_ANCHORED = """QUESTION:
+{question}
+
+CONTEXT — anchor sub-queries to this scope:
+- Recordkeeper: {record_keeper}
+- Topic: {topic}
+
+Anchor each sub-query on this recordkeeper's procedures for this topic when
+the question implies an operational action (rollover, distribution, loan,
+withdrawal, force-out). Do NOT reframe the participant's intent into a
+generic tax-theory or general-education search unless the question is
+explicitly tax-theoretical. Keep sub-queries grounded in the recordkeeper's
+operational procedures whenever the question is procedural.
+
+Break this into focused search sub-queries. Return ONLY the JSON object."""
+
+
+def build_decompose_question_prompt(
+    question: str,
+    record_keeper: str = "",
+    topic: str = "",
+) -> tuple:
     """
     Construye los prompts para descomponer una pregunta en sub-queries.
-    
+
+    Optional ``record_keeper`` and ``topic`` anchor the sub-queries to the
+    caller's known scope; when omitted, the legacy unanchored prompt is used
+    so callers that don't have a topic/RK (knowledge_question, etc.) keep
+    their existing behaviour.
+
     Returns:
         (system_prompt, user_prompt)
     """
-    user_prompt = USER_PROMPT_DECOMPOSE_TEMPLATE.format(question=question)
+    if record_keeper or topic:
+        user_prompt = USER_PROMPT_DECOMPOSE_TEMPLATE_ANCHORED.format(
+            question=question,
+            record_keeper=record_keeper or "unknown",
+            topic=topic or "unknown",
+        )
+    else:
+        user_prompt = USER_PROMPT_DECOMPOSE_TEMPLATE.format(question=question)
     return SYSTEM_PROMPT_DECOMPOSE_QUESTION, user_prompt
 
 

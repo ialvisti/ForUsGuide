@@ -292,7 +292,7 @@ class TestRequiredDataSafetyNetIntegration:
 
         chunks = self._rdmh_chunks(engine.RD_RETRIEVAL_MIN_SCORE + 0.20)
 
-        async def fake_decompose(inquiry):
+        async def fake_decompose(inquiry, **kwargs):
             return [inquiry]
 
         async def fake_search(**kwargs):
@@ -355,7 +355,7 @@ class TestRequiredDataSafetyNetIntegration:
 
         chunks = self._rdmh_chunks(engine.RD_RETRIEVAL_MIN_SCORE + 0.20)
 
-        async def fake_decompose(inquiry):
+        async def fake_decompose(inquiry, **kwargs):
             return [inquiry]
 
         async def fake_search(**kwargs):

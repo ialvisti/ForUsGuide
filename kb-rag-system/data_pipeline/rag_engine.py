@@ -450,8 +450,12 @@ class RAGEngine:
         logger.info(f"get_required_data() - Topic: {topic}, RK: {record_keeper}")
         
         try:
-            # 1. Decompose inquiry into sub-queries
-            sub_queries = await self._decompose_question(inquiry)
+            # 1. Decompose inquiry into sub-queries (Fix 7: anchor on RK + topic)
+            sub_queries = await self._decompose_question(
+                inquiry,
+                record_keeper=record_keeper or "",
+                topic=topic or "",
+            )
             advisory_signal = self._detect_advisory_concepts(
                 inquiry=inquiry,
                 topic=topic,
@@ -464,19 +468,35 @@ class RAGEngine:
                 advisory_signal=advisory_signal,
             )
             enriched_queries = [f"{sq} {topic}" for sq in sub_queries]
-            
+
             # Include original inquiry as fallback if decomposition didn't preserve it
             if inquiry not in sub_queries:
                 enriched_queries.append(f"{inquiry} {topic}")
-            
+
             logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
-            
+
+            # Fix 4: Build the deterministic retrieval profile so required_data
+            # can use the same primary_article_id / excluded_articles signals
+            # already computed for generate_response. The named-employer
+            # relaxation is enabled because participants often describe
+            # terminations as "rollover process from <X> to <Y>".
+            retrieval_profile = self._build_retrieval_profile(
+                inquiry=inquiry,
+                topic=topic,
+                record_keeper=record_keeper,
+                plan_type=plan_type,
+                collected_data=None,
+                assume_termination_on_named_employer=True,
+            )
+
             # 2. Parallel multi-query search with RK cascade
             chunks, per_query_scores = await self._search_for_required_data(
                 enriched_queries=enriched_queries,
                 record_keeper=record_keeper,
                 plan_type=plan_type,
-                topic=topic
+                topic=topic,
+                inquiry=inquiry,
+                retrieval_profile=retrieval_profile,
             )
             
             if not chunks:
@@ -485,16 +505,31 @@ class RAGEngine:
                     "No relevant articles found for this topic"
                 )
             
-            # 2b. Guard 1: Retrieval quality gate — skip LLM if no rdmh chunk is relevant
+            # 2b. Guard 1: Retrieval quality gate — skip LLM if no rdmh chunk is relevant.
+            #    Fix 6: require both boosted score >= RD_RETRIEVAL_MIN_SCORE AND
+            #    raw cosine score >= RD_RETRIEVAL_MIN_RAW_SCORE so the boost
+            #    can save a near-miss but cannot manufacture a false positive.
+            rdmh_chunks = [
+                c for c in chunks
+                if c['metadata'].get('chunk_type') == 'required_data_must_have'
+            ]
             best_rdmh_score = max(
-                (c.get('score', 0) for c in chunks
-                 if c['metadata'].get('chunk_type') == 'required_data_must_have'),
+                (c.get('score', 0) for c in rdmh_chunks),
                 default=0.0
             )
-            if best_rdmh_score < self.RD_RETRIEVAL_MIN_SCORE:
+            best_rdmh_raw_score = max(
+                (c.get('raw_score', c.get('score', 0)) for c in rdmh_chunks),
+                default=0.0
+            )
+            if (
+                best_rdmh_score < self.RD_RETRIEVAL_MIN_SCORE
+                or best_rdmh_raw_score < self.RD_RETRIEVAL_MIN_RAW_SCORE
+            ):
                 logger.info(
                     f"Retrieval quality gate: best rdmh score {best_rdmh_score:.4f} "
-                    f"< threshold {self.RD_RETRIEVAL_MIN_SCORE}. Skipping LLM."
+                    f"(raw {best_rdmh_raw_score:.4f}) below thresholds "
+                    f"score>={self.RD_RETRIEVAL_MIN_SCORE} "
+                    f"raw>={self.RD_RETRIEVAL_MIN_RAW_SCORE}. Skipping LLM."
                 )
                 pqs = {sq: per_query_scores.get(eq, 0.0)
                        for sq, eq in zip(sub_queries, enriched_queries)}
@@ -515,14 +550,29 @@ class RAGEngine:
                     tokens_used=0,
                 )
             
-            # 3. Build context with article diversity
-            context, selected_chunks, tokens_used = self._build_context_with_diversity(
-                chunks=chunks,
-                budget=self.RD_CONTEXT_BUDGET,
-                prioritize_types=['required_data_must_have', 'eligibility', 'business_rules'],
-                max_per_article=self.RD_MAX_CHUNKS_PER_ARTICLE
+            # 3. Build context — primary-first when a primary article was
+            #    deterministically routed (Fix 5), otherwise fall back to
+            #    diversity-balanced building.
+            primary_article_id = (retrieval_profile or {}).get(
+                "primary_article_id"
             )
-            
+            if primary_article_id:
+                context, selected_chunks, tokens_used = (
+                    self._build_required_data_context_primary_first(
+                        chunks=chunks,
+                        budget=self.RD_CONTEXT_BUDGET,
+                        max_per_article=self.RD_MAX_CHUNKS_PER_ARTICLE,
+                        primary_article_id=primary_article_id,
+                    )
+                )
+            else:
+                context, selected_chunks, tokens_used = self._build_context_with_diversity(
+                    chunks=chunks,
+                    budget=self.RD_CONTEXT_BUDGET,
+                    prioritize_types=['required_data_must_have', 'eligibility', 'business_rules'],
+                    max_per_article=self.RD_MAX_CHUNKS_PER_ARTICLE
+                )
+
             logger.info(f"Context construido: {len(selected_chunks)} chunks, {tokens_used} tokens")
             
             # 4. Generate prompts and call LLM
@@ -1113,7 +1163,21 @@ class RAGEngine:
     RD_TOP_K_PER_QUERY = 5
     RD_MAX_CHUNKS_PER_ARTICLE = 4
     RD_RETRIEVAL_MIN_SCORE = 0.25
+    # Fix 6: independent floor on raw cosine score so the boost added by
+    # `_rank_rdmh_chunks` cannot fully rescue a chunk with no semantic signal.
+    RD_RETRIEVAL_MIN_RAW_SCORE = 0.18
     RD_NO_MATCH_CONFIDENCE = 0.40
+    # Below this chunk count the topic-scoped lane is considered too narrow
+    # and the cascade is re-run without the topic filter as a safety net.
+    RD_TOPIC_LANE_MIN_CHUNKS = 2
+    # Fix 4: cap the number of distinct articles whose rdmh chunks reach
+    # the LLM context. 1 primary + up to 2 supporting articles (compatible
+    # by record_keeper + topic via the upstream cascade filters).
+    RD_MAX_DISTINCT_ARTICLES = 3
+    # Fix 6: when primary_article_id is set AND the boosted score gap from
+    # chunks[0] to chunks[1] reaches this threshold, prune everything below
+    # the leader so the LLM context contains only the dominant article.
+    RD_SCORE_GAP_PRUNE_THRESHOLD = 0.08
     
     # Generate Response settings
     RESPONSE_MIN_CONTEXT_TOKENS = 4000
@@ -1172,7 +1236,13 @@ class RAGEngine:
     IN_SERVICE_ARTICLE_ID = (
         "can_i_take_money_from_my_401k_while_employed_your_options_explained"
     )
+    # Fix K (Round 2): the actual KB slug is `lt_trust_401k_…` — the prior
+    # constants used `lt_401k_…` and `lt_401_k_…` which never matched live
+    # Pinecone data. The legacy variants are kept in LOAN_ARTICLE_IDS as a
+    # defensive fallback in case a re-ingest writes them again.
+    LT_LOAN_ARTICLE_ID = "lt_trust_401k_loan_complete_guide_submission_repayment_support"
     LOAN_ARTICLE_IDS = (
+        LT_LOAN_ARTICLE_ID,
         "lt_401k_loan_complete_guide_submission_repayment_support",
         "lt_401_k_loan_complete_guide_submission_repayment_support",
     )
@@ -1465,6 +1535,23 @@ class RAGEngine:
     RK_FALLBACK_DEFAULT = "LT Trust"
     RK_CASCADE_MIN_CHUNKS = 1
     RK_CASCADE_MIN_SCORE = 0.15
+    # Fix 2: when record_keeper is in this allowlist, required_data first
+    # runs only the RK-specific cascade level. The global lane only fires
+    # if Stage 1a fails to meet RK_PRIMARY_SUFFICIENT_{CHUNKS,SCORE}. This
+    # prevents weakly-relevant global articles from competing with the
+    # dedicated record-keeper article for well-covered RKs.
+    RK_PRIMARY_STAGED_RECORD_KEEPERS = frozenset({"LT Trust"})
+    RK_PRIMARY_SUFFICIENT_CHUNKS = 1
+    RK_PRIMARY_SUFFICIENT_SCORE = 0.20
+    # Fix H (Round 2): topics where no record-keeper-specific article exists
+    # in the KB. For these, RK is a preference (handled by `_rank_rdmh_chunks`
+    # boost) — not a requirement. The cascade must NOT gate the global lane
+    # behind Stage 1a sufficiency, otherwise hardship/in-service inquiries for
+    # an RK like "LT Trust" would starve and return no-match.
+    RK_OPTIONAL_TOPICS = frozenset({
+        "hardship_withdrawal",
+        "in_service_withdrawal_options",
+    })
 
     # ``TOPIC_NORMALIZATION_MAP`` and ``resolve_topic_filter`` live at module
     # level (see top of this file) so other modules can reuse them without
@@ -1638,11 +1725,24 @@ class RAGEngine:
             return "terminated"
         return "unknown"
 
+    # Fix 4: when the caller opts in (required_data), a "rollover|moving|
+    # transferring … from … to …" structure is treated as evidence of a
+    # termination context even if no explicit "former/left/separated" wording
+    # appears. The pattern requires both the action verb and the from/to
+    # structure in the same clause so phrases like "rollover into IRA" or
+    # "rollover at Fidelity" do NOT trigger.
+    _NAMED_EMPLOYER_ROLLOVER_PATTERN = re.compile(
+        r"\b(rollover|rolling over|roll over|moving|moved|transferring|transfer)\b"
+        r"[^.!?]*\bfrom\b[^.!?]*\bto\b",
+        re.IGNORECASE,
+    )
+
     def _infer_retrieval_signals(
         self,
         inquiry: str,
         topic: str,
         collected_data: Optional[Dict[str, Any]],
+        assume_termination_on_named_employer: bool = False,
     ) -> Dict[str, Any]:
         participant_data = (collected_data or {}).get("participant_data") or {}
         plan_data = (collected_data or {}).get("plan_data") or {}
@@ -1748,6 +1848,18 @@ class RAGEngine:
             "dollar amount",
             "divide the rollover",
             "divided by",
+            # Fix I (Round 2): broaden triggers so phrases like
+            # "split my 401(k) rollover between Vanguard and Fidelity,
+            # half to each provider" qualify as split intent.
+            "split my 401",
+            "split this rollover",
+            "split the rollover",
+            "between two",
+            "to two providers",
+            "to two iras",
+            "to two accounts",
+            "half to each",
+            "half and half",
         ])
         indirect_rollover_60_day = rollover_intent and self._contains_any(profile_text, [
             "60-day",
@@ -1812,6 +1924,17 @@ class RAGEngine:
                 "former employee",
             ])
         )
+        # Fix 4: required_data callers opt into the named-employer pattern so
+        # "rollover process … from <employer> to <destination>" qualifies as
+        # termination context. Gated behind the parameter so generate_response
+        # behavior is unchanged.
+        if (
+            assume_termination_on_named_employer
+            and rollover_intent
+            and not termination_distribution
+            and self._NAMED_EMPLOYER_ROLLOVER_PATTERN.search(inquiry or "")
+        ):
+            termination_distribution = True
 
         return {
             "text": profile_text,
@@ -1837,6 +1960,7 @@ class RAGEngine:
         record_keeper: Optional[str],
         plan_type: str,
         collected_data: Optional[Dict[str, Any]],
+        assume_termination_on_named_employer: bool = False,
     ) -> Dict[str, Any]:
         """
         Build a deterministic routing profile before Pinecone search.
@@ -1846,11 +1970,17 @@ class RAGEngine:
         LT Trust rollover after employment has ended and no adjacent procedure
         (split rollover, 60-day indirect rollover, force-out, or RMD) is
         signalled.
+
+        ``assume_termination_on_named_employer`` is opt-in (used by
+        required_data) so a "rollover from <employer> to <destination>"
+        phrasing also counts as termination context. generate_response keeps
+        its default (False) so its golden tests remain stable.
         """
         signals = self._infer_retrieval_signals(
             inquiry=inquiry,
             topic=topic,
             collected_data=collected_data,
+            assume_termination_on_named_employer=assume_termination_on_named_employer,
         )
         record_keeper_text = (record_keeper or "").strip().lower()
         plan_type_text = self._normalize_plan_type(plan_type)
@@ -1877,6 +2007,28 @@ class RAGEngine:
         exact_termination_procedure = (
             exact_termination_rollover or exact_termination_distribution
         )
+        # Fix J (Round 2): when the inquiry triggers the 60-day indirect
+        # rollover signal, route to the dedicated global article instead of
+        # the LT termination procedure. The article is RK-agnostic so this
+        # fires regardless of `is_lt_401k`.
+        exact_indirect_rollover_60_day = signals["indirect_rollover_60_day"]
+        # Fix K (Round 2): dedicated exact-procedure mode for LT loan
+        # requests. Requires loan signal AND no competing exact-procedure
+        # signals to avoid mis-routing ambiguous inquiries.
+        exact_loan_request = (
+            is_lt_401k
+            and signals["loan_signal"]
+            and not signals["split_rollover"]
+            and not signals["termination_distribution"]
+            and not signals["force_out"]
+            and not signals["rmd"]
+            and not signals["indirect_rollover_60_day"]
+        )
+        exact_procedure_routing = (
+            exact_termination_procedure
+            or exact_indirect_rollover_60_day
+            or exact_loan_request
+        )
 
         excluded_articles: List[str] = []
         exclusion_reasons: Dict[str, str] = {}
@@ -1887,7 +2039,7 @@ class RAGEngine:
             exclusion_reasons[article_id] = reason
 
         if (
-            (signals["rollover_intent"] or exact_termination_procedure)
+            (signals["rollover_intent"] or exact_procedure_routing)
             and not signals["split_rollover"]
         ):
             exclude(
@@ -1895,23 +2047,31 @@ class RAGEngine:
                 "No split-rollover signal; participant appears to request a single destination.",
             )
         if (
-            (signals["rollover_intent"] or exact_termination_procedure)
+            (signals["rollover_intent"] or exact_procedure_routing)
             and not signals["indirect_rollover_60_day"]
         ):
             exclude(
                 self.MISSED_60_DAY_ARTICLE_ID,
                 "No indirect-rollover or missed-60-day deadline signal.",
             )
-        if exact_termination_procedure and not signals["loan_signal"]:
+        if exact_procedure_routing and not signals["loan_signal"]:
             for article_id in self.LOAN_ARTICLE_IDS:
                 exclude(
                     article_id,
-                    "Exact LT Trust termination procedure selected; no loan signal.",
+                    "Exact procedure routing selected; no loan signal.",
                 )
-        if exact_termination_procedure:
+        if exact_procedure_routing:
             exclude(
                 self.GENERAL_POST_TERMINATION_OPTIONS_ARTICLE_ID,
-                "Exact LT Trust procedure selected; general post-termination options are tangential.",
+                "Exact procedure routing selected; general post-termination options are tangential.",
+            )
+        # Fix J/K: when a non-termination exact procedure wins (60-day or
+        # loan), explicitly exclude the LT termination article so it does
+        # not compete for primary slot.
+        if exact_indirect_rollover_60_day or exact_loan_request:
+            exclude(
+                self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID,
+                "Different exact procedure routing (60-day or loan); LT termination is tangential.",
             )
         if not signals["force_out"]:
             for article_id in self.FORCE_OUT_ARTICLE_IDS:
@@ -1938,20 +2098,33 @@ class RAGEngine:
         elif signals["rollover_intent"]:
             rollover_mode = "single_destination"
 
-        primary_article_id = (
-            self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID
-            if exact_termination_rollover or exact_termination_distribution
-            else None
-        )
+        # Fix J/K (Round 2): primary_article_id is resolved by exact-procedure
+        # precedence — 60-day deadline > termination > loan request — so the
+        # narrowest-fit procedure wins when multiple signals are plausible.
+        if exact_indirect_rollover_60_day:
+            primary_article_id = self.MISSED_60_DAY_ARTICLE_ID
+        elif exact_termination_rollover or exact_termination_distribution:
+            primary_article_id = self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID
+        elif exact_loan_request:
+            primary_article_id = self.LT_LOAN_ARTICLE_ID
+        else:
+            primary_article_id = None
+
         primary_action = "unknown"
-        if exact_termination_rollover:
+        if exact_indirect_rollover_60_day:
+            primary_action = "indirect_rollover_60_day"
+        elif exact_termination_rollover:
             primary_action = "termination_rollover"
         elif exact_termination_distribution:
             primary_action = "termination_distribution"
+        elif exact_loan_request:
+            primary_action = "loan_request"
         elif signals["rollover_intent"]:
             primary_action = "rollover"
         elif signals["distribution_intent"]:
             primary_action = "distribution"
+        elif signals["loan_signal"]:
+            primary_action = "loan"
 
         exclusion_signals = [
             name for name, value in {
@@ -1966,7 +2139,7 @@ class RAGEngine:
         return {
             "mode": (
                 "exact_procedure"
-                if exact_termination_procedure
+                if exact_procedure_routing
                 else "broad_search"
             ),
             "primary_action": primary_action,
@@ -3105,53 +3278,268 @@ class RAGEngine:
         enriched_queries: List[str],
         record_keeper: Optional[str],
         plan_type: str,
-        topic: str
+        topic: str,
+        inquiry: str = "",
+        retrieval_profile: Optional[Dict[str, Any]] = None,
     ) -> tuple:
         """
         Parallel multi-query search for required_data endpoint.
-        
+
         Runs all enriched sub-queries in parallel across the RK cascade,
         then merges, deduplicates, and ranks results. Tracks per-query
         best scores for observability.
-        
+
+        Topic filter (Fix 1): when `topic` resolves to canonical values via
+        TOPIC_NORMALIZATION_MAP, the cascade first runs a topic-scoped lane.
+        If it yields fewer than RD_TOPIC_LANE_MIN_CHUNKS, the cascade is
+        re-run without the topic filter as a safety net.
+
+        Boost ranker (Fix 3): rdmh chunks get a small additive boost over
+        their cosine score (preserving raw_score) when their record_keeper
+        matches the request, their topic is in the resolved topic set, or
+        any subtopic matches inquiry text. This resolves near-ties in favor
+        of RK-specific / topic-specific articles.
+
+        Profile (Fix 4): when ``retrieval_profile`` provides
+        ``excluded_articles``, those article_ids are filtered out of the
+        rdmh results. When ``primary_article_id`` is set, the primary
+        article's rdmh chunk is promoted to position 0 (and explicitly
+        fetched if missing). The result is then truncated to a small set
+        of distinct articles so the LLM context stays focused on the
+        primary article.
+
         Returns:
             (merged_chunks, per_query_scores)
         """
-        rk_cascade = self._build_rk_cascade(record_keeper)
-        required_data_chunks: List[Dict[str, Any]] = []
+        resolved_topics = self._resolve_topic_filter(topic)
+
         per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
+
+        # Topic-scoped lane first (when topic resolves); broad lane as fallback.
+        required_data_chunks = await self._run_required_data_rk_cascade(
+            enriched_queries=enriched_queries,
+            record_keeper=record_keeper,
+            plan_type=plan_type,
+            resolved_topics=resolved_topics,
+            per_query_scores=per_query_scores,
+        )
+
+        if (
+            resolved_topics
+            and len(required_data_chunks) < self.RD_TOPIC_LANE_MIN_CHUNKS
+        ):
+            logger.info(
+                f"Topic-scoped lane returned {len(required_data_chunks)} chunks "
+                f"(< {self.RD_TOPIC_LANE_MIN_CHUNKS}). Falling back to broad lane."
+            )
+            broad_chunks = await self._run_required_data_rk_cascade(
+                enriched_queries=enriched_queries,
+                record_keeper=record_keeper,
+                plan_type=plan_type,
+                resolved_topics=None,
+                per_query_scores=per_query_scores,
+            )
+            required_data_chunks = self._merge_and_rank_chunks(
+                required_data_chunks, broad_chunks
+            )
+
+        # Fix 4: drop chunks from articles the profile deterministically excluded.
+        if retrieval_profile:
+            required_data_chunks = self._filter_excluded_response_articles(
+                required_data_chunks, retrieval_profile
+            )
+
+        # Apply origin / topic-specificity / subtopic boost to rdmh chunks.
+        required_data_chunks = self._rank_rdmh_chunks(
+            required_data_chunks,
+            record_keeper=record_keeper,
+            resolved_topics=resolved_topics,
+            inquiry_text=inquiry,
+        )
+
+        # Fix 4: promote the deterministic primary article (if any) to slot 0
+        # and cap the distinct-article tail so the LLM sees a focused context.
+        primary_article_id = (retrieval_profile or {}).get("primary_article_id")
+        if primary_article_id:
+            required_data_chunks = await self._promote_primary_rdmh_chunk(
+                required_data_chunks, primary_article_id
+            )
+            # Fix 6: when the primary article has a clear score lead, prune
+            # the rest so the LLM context narrows to just the dominant article.
+            required_data_chunks = self._prune_below_score_gap(
+                required_data_chunks,
+                primary_article_id=primary_article_id,
+                gap=self.RD_SCORE_GAP_PRUNE_THRESHOLD,
+            )
+        required_data_chunks = self._cap_rdmh_distinct_articles(
+            required_data_chunks,
+            limit=self.RD_MAX_DISTINCT_ARTICLES,
+        )
+
+        if required_data_chunks:
+            best = required_data_chunks[0]
+            logger.info(
+                f"Required data best match: article={best['metadata'].get('article_id')}, "
+                f"topic={best['metadata'].get('topic')}, score={best['score']:.4f}, "
+                f"raw_score={best.get('raw_score', best['score']):.4f}, "
+                f"boost={best.get('score_boost', 0):.4f}"
+            )
+        else:
+            logger.warning("Required data: No required_data_must_have chunks found across all cascade levels")
+            return [], per_query_scores
+
+        # ── Phase 2: Context chunks from the winning article ──
+        best_article_id = required_data_chunks[0]['metadata'].get('article_id')
+
+        context_filters = {
+            "article_id": {"$eq": best_article_id},
+            "chunk_type": {"$in": ["eligibility", "business_rules"]}
+        }
+        logger.info(f"Phase 2: focusing context on article_id={best_article_id}")
+
+        context_chunks = await self._cached_query(
+            enriched_queries[0], top_k=7, filter_dict=context_filters
+        )
+        logger.info(f"Phase 2 (context): found {len(context_chunks)} chunks")
+
+        merged = self._merge_and_rank_chunks(required_data_chunks, context_chunks)
+
+        logger.info(f"Total merged chunks for required_data: {len(merged)}")
+        return merged, per_query_scores
+
+    async def _run_required_data_rk_cascade(
+        self,
+        enriched_queries: List[str],
+        record_keeper: Optional[str],
+        plan_type: str,
+        resolved_topics: Optional[List[str]],
+        per_query_scores: Dict[str, float],
+    ) -> List[Dict[str, Any]]:
+        """
+        Run the RK cascade for required_data with an optional topic filter.
+
+        Mutates `per_query_scores` in place. Returns the merged & ranked chunks
+        from the first cascade level that satisfies `_rk_results_sufficient`,
+        or an empty list if no level produced any chunks.
+        """
+        rk_cascade = self._build_rk_cascade(record_keeper)
         top_k = self.RD_TOP_K_PER_QUERY
-        
+        topic_filter = (
+            {"topic": {"$in": resolved_topics}} if resolved_topics else {}
+        )
+        topic_label = f"topic={resolved_topics}" if resolved_topics else "no-topic"
+        required_data_chunks: List[Dict[str, Any]] = []
+
         if record_keeper:
-            # ── RK provided: run all sub-queries × first two cascade levels in parallel ──
-            search_tasks = []
-            for eq in enriched_queries:
-                rk_filters = {
-                    **rk_cascade[0]["filters"],
-                    "plan_type": {"$in": [plan_type, "all"]},
-                    "chunk_type": {"$eq": "required_data_must_have"}
-                }
-                global_filters = {
-                    **rk_cascade[1]["filters"],
-                    "plan_type": {"$in": [plan_type, "all"]},
-                    "chunk_type": {"$eq": "required_data_must_have"}
-                }
-                search_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=rk_filters))
-                search_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=global_filters))
-            
-            results = await asyncio.gather(*search_tasks)
-            
-            # Track per-query best scores from individual results before merging
-            for i, eq in enumerate(enriched_queries):
-                eq_chunks = results[2 * i] + results[2 * i + 1]
-                best = max((c.get('score', 0) for c in eq_chunks), default=0)
-                per_query_scores[eq] = round(best, 4)
-            
-            required_data_chunks = self._merge_and_rank_chunks(*results)
-            
-            logger.info(f"Phase 1 parallel ({len(search_tasks)} tasks): found {len(required_data_chunks)} unique chunks")
-            
-            # If parallel levels insufficient, continue cascade from level 2+
+            staged_primary = record_keeper in self.RK_PRIMARY_STAGED_RECORD_KEEPERS
+            # Fix H (Round 2): topics with no RK-specific article must NOT
+            # short-circuit on Stage 1a — the global lane must always run so
+            # hardship/in-service inquiries reach their global article. The
+            # boost ranker still prioritises RK matches when both lanes hit.
+            if (
+                staged_primary
+                and resolved_topics
+                and set(resolved_topics).issubset(self.RK_OPTIONAL_TOPICS)
+            ):
+                logger.info(
+                    f"RK-optional topic ({resolved_topics}): disabling Stage 1a "
+                    f"short-circuit; running RK + global lanes in parallel."
+                )
+                staged_primary = False
+
+            if staged_primary:
+                # Stage 1a: RK-specific lane only. Skip global lane if sufficient.
+                stage_1a_tasks = []
+                for eq in enriched_queries:
+                    rk_filters = {
+                        **rk_cascade[0]["filters"],
+                        "plan_type": {"$in": [plan_type, "all"]},
+                        "chunk_type": {"$eq": "required_data_must_have"},
+                        **topic_filter,
+                    }
+                    stage_1a_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=rk_filters))
+
+                stage_1a_results = await asyncio.gather(*stage_1a_tasks)
+                for i, eq in enumerate(enriched_queries):
+                    best = max((c.get('score', 0) for c in stage_1a_results[i]), default=0)
+                    per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+
+                stage_1a_chunks = self._merge_and_rank_chunks(*stage_1a_results)
+                logger.info(
+                    f"Stage 1a (RK={record_keeper}, {topic_label}): "
+                    f"found {len(stage_1a_chunks)} chunks"
+                )
+
+                if self._rk_results_sufficient(
+                    stage_1a_chunks,
+                    min_chunks=self.RK_PRIMARY_SUFFICIENT_CHUNKS,
+                    min_score=self.RK_PRIMARY_SUFFICIENT_SCORE,
+                ):
+                    logger.info(
+                        f"Stage 1a sufficient (>= {self.RK_PRIMARY_SUFFICIENT_CHUNKS} "
+                        f"chunks, top score >= {self.RK_PRIMARY_SUFFICIENT_SCORE}). "
+                        f"Skipping global lane."
+                    )
+                    return stage_1a_chunks
+                required_data_chunks = stage_1a_chunks
+
+                # Stage 1b: open global lane and merge.
+                stage_1b_tasks = []
+                for eq in enriched_queries:
+                    global_filters = {
+                        **rk_cascade[1]["filters"],
+                        "plan_type": {"$in": [plan_type, "all"]},
+                        "chunk_type": {"$eq": "required_data_must_have"},
+                        **topic_filter,
+                    }
+                    stage_1b_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=global_filters))
+
+                stage_1b_results = await asyncio.gather(*stage_1b_tasks)
+                for i, eq in enumerate(enriched_queries):
+                    best = max((c.get('score', 0) for c in stage_1b_results[i]), default=0)
+                    per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+
+                stage_1b_chunks = self._merge_and_rank_chunks(*stage_1b_results)
+                logger.info(
+                    f"Stage 1b (scope=global, {topic_label}): "
+                    f"found {len(stage_1b_chunks)} chunks"
+                )
+                required_data_chunks = self._merge_and_rank_chunks(
+                    required_data_chunks, stage_1b_chunks
+                )
+            else:
+                # Legacy parallel behaviour for record-keepers without enough
+                # dedicated coverage to benefit from staging.
+                search_tasks = []
+                for eq in enriched_queries:
+                    rk_filters = {
+                        **rk_cascade[0]["filters"],
+                        "plan_type": {"$in": [plan_type, "all"]},
+                        "chunk_type": {"$eq": "required_data_must_have"},
+                        **topic_filter,
+                    }
+                    global_filters = {
+                        **rk_cascade[1]["filters"],
+                        "plan_type": {"$in": [plan_type, "all"]},
+                        "chunk_type": {"$eq": "required_data_must_have"},
+                        **topic_filter,
+                    }
+                    search_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=rk_filters))
+                    search_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=global_filters))
+
+                results = await asyncio.gather(*search_tasks)
+
+                for i, eq in enumerate(enriched_queries):
+                    eq_chunks = results[2 * i] + results[2 * i + 1]
+                    best = max((c.get('score', 0) for c in eq_chunks), default=0)
+                    per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
+
+                required_data_chunks = self._merge_and_rank_chunks(*results)
+                logger.info(
+                    f"Phase 1 parallel ({len(search_tasks)} tasks, {topic_label}): "
+                    f"found {len(required_data_chunks)} unique chunks"
+                )
+
             if not self._rk_results_sufficient(required_data_chunks):
                 for level in rk_cascade[2:]:
                     fallback_tasks = []
@@ -3159,79 +3547,55 @@ class RAGEngine:
                         level_filters = {
                             **level["filters"],
                             "plan_type": {"$in": [plan_type, "all"]},
-                            "chunk_type": {"$eq": "required_data_must_have"}
+                            "chunk_type": {"$eq": "required_data_must_have"},
+                            **topic_filter,
                         }
                         fallback_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=level_filters))
-                    
+
                     level_results = await asyncio.gather(*fallback_tasks)
-                    
                     for i, eq in enumerate(enriched_queries):
                         best = max((c.get('score', 0) for c in level_results[i]), default=0)
                         per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
-                    
+
                     level_chunks = self._merge_and_rank_chunks(*level_results)
-                    logger.info(f"Cascade ({level['label']}): found {len(level_chunks)} chunks")
-                    
+                    logger.info(
+                        f"Cascade ({level['label']}, {topic_label}): "
+                        f"found {len(level_chunks)} chunks"
+                    )
                     if self._rk_results_sufficient(level_chunks):
                         required_data_chunks = self._merge_and_rank_chunks(
                             required_data_chunks, level_chunks
                         )
                         break
         else:
-            # ── No RK: run all sub-queries at each cascade level sequentially ──
             for level in rk_cascade:
                 level_tasks = []
                 for eq in enriched_queries:
                     level_filters = {
                         **level["filters"],
                         "plan_type": {"$in": [plan_type, "all"]},
-                        "chunk_type": {"$eq": "required_data_must_have"}
+                        "chunk_type": {"$eq": "required_data_must_have"},
+                        **topic_filter,
                     }
                     level_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=level_filters))
-                
+
                 level_results = await asyncio.gather(*level_tasks)
-                
                 for i, eq in enumerate(enriched_queries):
                     best = max((c.get('score', 0) for c in level_results[i]), default=0)
                     per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
-                
+
                 level_chunks = self._merge_and_rank_chunks(*level_results)
-                logger.info(f"Cascade ({level['label']}): found {len(level_chunks)} chunks")
-                
+                logger.info(
+                    f"Cascade ({level['label']}, {topic_label}): "
+                    f"found {len(level_chunks)} chunks"
+                )
                 if self._rk_results_sufficient(level_chunks):
                     required_data_chunks = self._merge_and_rank_chunks(
                         required_data_chunks, level_chunks
                     )
                     break
-        
-        if required_data_chunks:
-            best = required_data_chunks[0]
-            logger.info(
-                f"Required data best match: article={best['metadata'].get('article_id')}, "
-                f"topic={best['metadata'].get('topic')}, score={best['score']:.4f}"
-            )
-        else:
-            logger.warning("Required data: No required_data_must_have chunks found across all cascade levels")
-            return [], per_query_scores
-        
-        # ── Phase 2: Context chunks from the winning article ──
-        best_article_id = required_data_chunks[0]['metadata'].get('article_id')
-        
-        context_filters = {
-            "article_id": {"$eq": best_article_id},
-            "chunk_type": {"$in": ["eligibility", "business_rules"]}
-        }
-        logger.info(f"Phase 2: focusing context on article_id={best_article_id}")
-        
-        context_chunks = await self._cached_query(
-            enriched_queries[0], top_k=7, filter_dict=context_filters
-        )
-        logger.info(f"Phase 2 (context): found {len(context_chunks)} chunks")
-        
-        merged = self._merge_and_rank_chunks(required_data_chunks, context_chunks)
-        
-        logger.info(f"Total merged chunks for required_data: {len(merged)}")
-        return merged, per_query_scores
+
+        return required_data_chunks
     
     def _merge_and_rank_chunks(
         self,
@@ -3239,22 +3603,217 @@ class RAGEngine:
     ) -> List[Dict[str, Any]]:
         """
         Merge múltiples listas de chunks, deduplicar por ID, ordenar por score.
-        
+
         Returns:
             Lista deduplicada ordenada por score descendente (mejor primero)
         """
         seen_ids = set()
         all_chunks = []
-        
+
         for chunk_list in chunk_lists:
             for chunk in chunk_list:
                 chunk_id = chunk.get('id')
                 if chunk_id not in seen_ids:
                     seen_ids.add(chunk_id)
                     all_chunks.append(chunk)
-        
+
         all_chunks.sort(key=lambda c: c.get('score', 0), reverse=True)
         return all_chunks
+
+    # Boost constants for `_rank_rdmh_chunks` (Fix 3).
+    RD_BOOST_RK = 0.05
+    RD_BOOST_TOPIC = 0.03
+    RD_BOOST_SUBTOPIC = 0.02
+    RD_BOOST_CAP = 0.10
+
+    def _rank_rdmh_chunks(
+        self,
+        chunks: List[Dict[str, Any]],
+        record_keeper: Optional[str],
+        resolved_topics: Optional[List[str]],
+        inquiry_text: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Apply origin / topic-specificity / subtopic boost to rdmh chunks.
+
+        The boost is additive on `score` and preserves the original cosine
+        score as `raw_score` for observability. Total boost is capped at
+        RD_BOOST_CAP so a low cosine chunk cannot overtake a strong one;
+        the boost only resolves near-ties.
+
+        Components:
+          * RD_BOOST_RK   if chunk.metadata.record_keeper == requested RK
+          * RD_BOOST_TOPIC if chunk.metadata.topic is in resolved_topics
+          * RD_BOOST_SUBTOPIC if any chunk subtopic appears in inquiry_text
+        """
+        inquiry_lower = (inquiry_text or "").lower()
+        resolved_set = set(resolved_topics or [])
+
+        for chunk in chunks:
+            raw_score = chunk.get("raw_score")
+            if raw_score is None:
+                raw_score = chunk.get("score", 0.0)
+                chunk["raw_score"] = raw_score
+
+            meta = chunk.get("metadata") or {}
+            boost = 0.0
+
+            if record_keeper and meta.get("record_keeper") == record_keeper:
+                boost += self.RD_BOOST_RK
+
+            if resolved_set and meta.get("topic") in resolved_set:
+                boost += self.RD_BOOST_TOPIC
+
+            subtopics = meta.get("subtopics") or []
+            if isinstance(subtopics, str):
+                subtopics = [subtopics]
+            for st in subtopics:
+                if isinstance(st, str) and st and st.lower() in inquiry_lower:
+                    boost += self.RD_BOOST_SUBTOPIC
+                    break
+
+            boost = min(boost, self.RD_BOOST_CAP)
+            chunk["score"] = raw_score + boost
+            chunk["score_boost"] = round(boost, 4)
+
+        chunks.sort(key=lambda c: c.get("score", 0), reverse=True)
+        return chunks
+
+    async def _promote_primary_rdmh_chunk(
+        self,
+        chunks: List[Dict[str, Any]],
+        primary_article_id: str,
+    ) -> List[Dict[str, Any]]:
+        """
+        Ensure the primary article's rdmh chunk sits at index 0.
+
+        If the chunk is already present, move it to the front (preserving its
+        boosted score). If not, fetch it explicitly via Pinecone's prefix
+        list-and-fetch and prepend it with score_boost=0.
+        """
+        for i, chunk in enumerate(chunks):
+            if chunk.get("metadata", {}).get("article_id") == primary_article_id:
+                if i != 0:
+                    chunks.insert(0, chunks.pop(i))
+                return chunks
+
+        try:
+            fetched = await asyncio.to_thread(
+                self.pinecone.list_and_fetch_chunks,
+                prefix=primary_article_id,
+                limit=50,
+            )
+        except Exception as e:
+            logger.warning(
+                f"Could not fetch primary article {primary_article_id}: {e}"
+            )
+            return chunks
+
+        rdmh_chunk = next(
+            (
+                c for c in (fetched or [])
+                if (c.get("metadata") or {}).get("chunk_type")
+                == "required_data_must_have"
+            ),
+            None,
+        )
+        if not rdmh_chunk:
+            logger.warning(
+                f"Primary article {primary_article_id} has no rdmh chunk to promote"
+            )
+            return chunks
+
+        # Explicit-fetched chunks have no cosine signal. Pin both score AND
+        # raw_score above the retrieval gates (RD_RETRIEVAL_MIN_SCORE and
+        # RD_RETRIEVAL_MIN_RAW_SCORE introduced in Round 1 Fix 6) so the
+        # downstream guard treats this as an authoritative match rather than
+        # a near-miss. raw_score must clear RD_RETRIEVAL_MIN_RAW_SCORE on its
+        # own — leaving it at 0.0 caused T4 to fail the gate even when the
+        # primary article was correctly routed.
+        floor_score = max(
+            self.RD_RETRIEVAL_MIN_SCORE,
+            (chunks[0]["score"] if chunks else 0.0),
+        )
+        floor_raw = max(
+            self.RD_RETRIEVAL_MIN_RAW_SCORE,
+            (chunks[0].get("raw_score", 0.0) if chunks else 0.0),
+        )
+        promoted = {
+            "id": rdmh_chunk.get("id"),
+            "score": floor_score,
+            "raw_score": floor_raw,
+            "score_boost": round(floor_score - floor_raw, 4),
+            "metadata": rdmh_chunk.get("metadata") or {},
+        }
+        logger.info(
+            f"Promoted primary rdmh chunk {promoted['id']} via explicit fetch "
+            f"(score={floor_score:.4f}, raw_score={floor_raw:.4f})"
+        )
+        chunks.insert(0, promoted)
+        return chunks
+
+    def _prune_below_score_gap(
+        self,
+        chunks: List[Dict[str, Any]],
+        primary_article_id: str,
+        gap: float,
+    ) -> List[Dict[str, Any]]:
+        """
+        Fix 6: when chunks[0] is the primary article AND the score lead over
+        the next distinct article reaches ``gap``, drop everything except
+        the primary's chunks. Preserves chunks belonging to the primary.
+        """
+        if not chunks or gap <= 0:
+            return chunks
+        top = chunks[0]
+        top_aid = (top.get("metadata") or {}).get("article_id")
+        if top_aid != primary_article_id:
+            return chunks
+        runner_up_score: Optional[float] = None
+        for chunk in chunks[1:]:
+            aid = (chunk.get("metadata") or {}).get("article_id")
+            if aid != primary_article_id:
+                runner_up_score = chunk.get("score", 0.0)
+                break
+        if runner_up_score is None:
+            return chunks
+        if top.get("score", 0.0) - runner_up_score < gap:
+            return chunks
+        pruned = [
+            c for c in chunks
+            if (c.get("metadata") or {}).get("article_id") == primary_article_id
+        ]
+        logger.info(
+            f"Score-gap prune: top {top['score']:.4f} - runner_up "
+            f"{runner_up_score:.4f} >= gap {gap}; kept {len(pruned)} primary chunks"
+        )
+        return pruned
+
+    def _cap_rdmh_distinct_articles(
+        self,
+        chunks: List[Dict[str, Any]],
+        limit: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Keep chunks belonging to at most ``limit`` distinct article_ids.
+
+        Preserves the existing chunk order (which already reflects the
+        boosted ranking + primary promotion).
+        """
+        if limit <= 0:
+            return chunks
+        kept: List[Dict[str, Any]] = []
+        seen_articles: List[str] = []
+        for chunk in chunks:
+            aid = (chunk.get("metadata") or {}).get("article_id")
+            if aid in seen_articles:
+                kept.append(chunk)
+                continue
+            if len(seen_articles) >= limit:
+                continue
+            seen_articles.append(aid)
+            kept.append(chunk)
+        return kept
     
     async def _search_for_response_parallel_cascade(
         self,
@@ -3448,18 +4007,32 @@ class RAGEngine:
     # Helper Methods - Query Decomposition
     # ========================================================================
     
-    async def _decompose_question(self, question: str) -> List[str]:
+    async def _decompose_question(
+        self,
+        question: str,
+        record_keeper: str = "",
+        topic: str = "",
+    ) -> List[str]:
         """
         Decompose a multi-part question into focused sub-queries for parallel search.
-        
+
         Uses a lightweight LLM call to identify distinct 401(k) concepts in the
         question. Falls back to the original question on any error.
-        
+
+        Fix 7: optional ``record_keeper`` / ``topic`` anchor sub-query
+        generation to the caller's scope. Callers that don't pass them get
+        the legacy behaviour, so generate_response/knowledge_question paths
+        are unchanged.
+
         Returns:
             List of 1-3 focused sub-queries
         """
         try:
-            system_prompt, user_prompt = build_decompose_question_prompt(question)
+            system_prompt, user_prompt = build_decompose_question_prompt(
+                question,
+                record_keeper=record_keeper,
+                topic=topic,
+            )
             llm_result = await self._call_llm(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
@@ -3468,10 +4041,10 @@ class RAGEngine:
             )
             parsed = json.loads(llm_result.content)
             sub_queries = parsed.get("sub_queries", [])
-            
+
             if not sub_queries or not isinstance(sub_queries, list):
                 return [question]
-            
+
             return [sq for sq in sub_queries[:3] if isinstance(sq, str) and sq.strip()]
         except Exception as e:
             logger.warning(f"Question decomposition failed, using original: {e}")
@@ -3532,6 +4105,107 @@ class RAGEngine:
         context = "\n".join(context_parts)
         return context, selected, tokens_used
     
+    def _build_required_data_context_primary_first(
+        self,
+        chunks: List[Dict[str, Any]],
+        budget: int,
+        max_per_article: int,
+        primary_article_id: str,
+        max_secondary_articles: int = 2,
+        max_chunks_per_secondary: int = 1,
+    ) -> tuple:
+        """
+        Fix 5: Build the required_data context with a dominant primary article.
+
+        Order of filling:
+          1. All eligible chunks from the primary article (rdmh first, then
+             eligibility / business_rules) up to ``max_per_article``.
+          2. At most ``max_chunks_per_secondary`` chunks from each of the next
+             ``max_secondary_articles`` distinct articles, prioritising rdmh.
+
+        Returns ``(context_string, selected_chunks, tokens_used)`` in the same
+        shape as ``_build_context_with_diversity``.
+        """
+        if not chunks:
+            return "", [], 0
+
+        type_priority = {
+            "required_data_must_have": 0,
+            "eligibility": 1,
+            "business_rules": 2,
+        }
+
+        def _type_key(chunk: Dict[str, Any]) -> int:
+            return type_priority.get(
+                (chunk.get("metadata") or {}).get("chunk_type"),
+                99,
+            )
+
+        primary_chunks = sorted(
+            (
+                c for c in chunks
+                if (c.get("metadata") or {}).get("article_id")
+                == primary_article_id
+            ),
+            key=lambda c: (_type_key(c), -c.get("score", 0)),
+        )
+
+        selected: List[Dict[str, Any]] = []
+        selected_ids: set = set()
+        tokens_used = 0
+
+        for chunk in primary_chunks[:max_per_article]:
+            content = (chunk.get("metadata") or {}).get("content", "")
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens > budget:
+                continue
+            selected.append(chunk)
+            selected_ids.add(chunk.get("id"))
+            tokens_used += chunk_tokens
+
+        secondaries_seen: List[str] = []
+        secondary_counts: Dict[str, int] = defaultdict(int)
+        for chunk in chunks:
+            cid = chunk.get("id")
+            if cid in selected_ids:
+                continue
+            aid = (chunk.get("metadata") or {}).get("article_id")
+            if not aid or aid == primary_article_id:
+                continue
+            if aid not in secondaries_seen:
+                if len(secondaries_seen) >= max_secondary_articles:
+                    continue
+                secondaries_seen.append(aid)
+            if secondary_counts[aid] >= max_chunks_per_secondary:
+                continue
+            content = (chunk.get("metadata") or {}).get("content", "")
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens > budget:
+                continue
+            selected.append(chunk)
+            selected_ids.add(cid)
+            secondary_counts[aid] += 1
+            tokens_used += chunk_tokens
+
+        selected.sort(key=lambda c: c.get("score", 0), reverse=True)
+
+        logger.info(
+            f"Primary-first context: {len(selected)} chunks, "
+            f"primary={primary_article_id}, secondaries={secondaries_seen}, "
+            f"tokens={tokens_used}"
+        )
+
+        context_parts = []
+        for i, chunk in enumerate(selected, 1):
+            meta = chunk.get("metadata") or {}
+            content = meta.get("content", "")
+            chunk_type = meta.get("chunk_type", "unknown")
+            article_title = meta.get("article_title", "")
+            context_parts.append(
+                f"--- Section {i} ({chunk_type} | Source: {article_title}) ---\n{content}\n"
+            )
+        return "\n".join(context_parts), selected, tokens_used
+
     def _build_context_with_diversity(
         self,
         chunks: List[Dict[str, Any]],

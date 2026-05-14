@@ -187,7 +187,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.",
-        "notes": "Portal submission is the fastest route. The participant must use the portal login URL provided in references. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan."
+        "notes": "Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan."
       },
       {
         "step_number": 2,

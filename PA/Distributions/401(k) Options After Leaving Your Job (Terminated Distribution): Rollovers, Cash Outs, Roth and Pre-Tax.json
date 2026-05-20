@@ -42,7 +42,18 @@
                 "category": "post_employment_options",
                 "rules": [
                     "After leaving a job, the participant's 401(k) savings remain theirs, but they must decide what to do with them.",
-                    "The article describes three options after leaving a job: leave funds in the plan, take a cash distribution, or roll over the 401(k)."
+                    "The article describes three options after leaving a job: leave funds in the plan, take a cash distribution, or roll over the 401(k).",
+                    "Retiring counts as leaving a job: a participant who retires has separated from service and is eligible for the same termination-distribution options (leave funds in plan, cash distribution, or rollover) as any other terminated participant.",
+                    "Voluntary distributions after retirement are NOT the same as Required Minimum Distributions (RMDs); RMD rules force a participant to start taking distributions at a specific age, while voluntary distributions can be requested by any separated participant at any time using the termination-distribution flow."
+                ]
+            },
+            {
+                "category": "voluntary_post_retirement_distributions",
+                "rules": [
+                    "A participant who has retired is treated as separated from service and can request voluntary distributions (cash, rollover, or partial) at any time, regardless of whether they have started Required Minimum Distributions.",
+                    "Age 59½ matters for the 10% early-withdrawal penalty exception, not for eligibility to request a voluntary distribution; a retired participant of any age can request a voluntary distribution but may owe the 10% penalty if under 59½ and no other exception applies.",
+                    "The standard termination-distribution rules in this article (tax withholding, rollover handling, Roth and pre-tax separation) apply identically to retired participants.",
+                    "RMDs and voluntary distributions are independent: a retired participant may have already taken voluntary distributions and still be subject to RMD rules once they reach RMD age."
                 ]
             },
             {

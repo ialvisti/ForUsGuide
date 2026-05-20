@@ -162,6 +162,17 @@
           "If the outstanding loan is not repaid, the remaining loan balance will be treated as a taxable distribution (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence) and may also incur an additional 10% IRS early withdrawal penalty if the participant is under 59 1/2.",
           "Participants should contact ForUsAll Support to discuss loan repayment options before initiating the distribution request."
         ]
+      },
+      {
+        "category": "incoming_rollover_from_prior_employer",
+        "rules": [
+          "This article primarily covers OUTGOING rollovers (moving funds out of the ForUsAll plan). The flow for INCOMING rollovers (bringing funds from a previous employer's 401(k) or another qualified plan INTO the ForUsAll plan) is the inverse and is initiated by the participant on the SENDING institution's side, not in the ForUsAll portal.",
+          "To roll over a 401(k) from a prior employer into the ForUsAll plan, the participant must contact the prior recordkeeper (the one currently holding the old 401(k)) and request an outgoing rollover/distribution from THAT recordkeeper, payable to the ForUsAll plan FBO (for the benefit of) the participant.",
+          "The participant should provide the prior recordkeeper with the ForUsAll receiving instructions: plan name, ForUsAll's mailing address for rollover checks (or wire instructions if supported), the participant's name, and the participant's ForUsAll account/SSN as required.",
+          "Once the funds arrive at ForUsAll, the participant should notify ForUsAll Support so the incoming rollover can be matched to their account and invested per their election.",
+          "Incoming rollovers from a Roth 401(k) or Roth IRA must be kept in Roth source; pre-tax rollovers go to the pre-tax source. Mixing sources is not allowed.",
+          "The 60-day indirect rollover rule applies if the prior recordkeeper sends the funds to the participant first rather than directly to ForUsAll: the participant has 60 days from receipt to deposit the funds into the ForUsAll plan, or the distribution is taxable."
+        ]
       }
     ],
     "fees": [
@@ -481,6 +492,18 @@
         ]
       },
       {
+        "category": "incoming_rollover_from_prior_employer_procedure",
+        "notes": [
+          "Direction: this is the INCOMING rollover flow — bringing money from a previous employer's 401(k) into the participant's ForUsAll 401(k). It is the opposite of the outgoing rollover flow that the rest of this article describes.",
+          "Step 1 — Contact the prior recordkeeper: the participant must call or log in to the recordkeeper that holds the old 401(k) and request a rollover distribution. ForUsAll cannot initiate this from its portal because ForUsAll is the RECEIVING plan, not the holder of the funds.",
+          "Step 2 — Choose direct vs indirect rollover: direct rollover (recommended) — the prior recordkeeper sends funds directly to ForUsAll, no taxes withheld. Indirect rollover — the participant receives the funds personally and has 60 days to deposit them into ForUsAll or the distribution becomes taxable.",
+          "Step 3 — Provide ForUsAll receiving instructions: the participant gives the prior recordkeeper the ForUsAll plan name, the FBO (for benefit of) participant designation, and the mailing/wire instructions provided by ForUsAll Support.",
+          "Step 4 — Notify ForUsAll once funds are in transit: the participant should email or call ForUsAll Support with the expected amount, source institution, and tax character (Roth vs pre-tax) so the rollover can be matched to their account when it arrives.",
+          "Step 5 — Confirm allocation: once posted, the participant should verify the rollover appears in their ForUsAll account and is invested per their current election.",
+          "Source preservation: Roth funds from the prior plan must come in as Roth source; pre-tax funds must come in as pre-tax source. The prior recordkeeper's distribution paperwork will indicate which source each portion is from."
+        ]
+      },
+      {
         "category": "rollover_data_entry_tips",
         "notes": [
           "Some fields (such as financial institution name or address) have system-imposed character limits; participants may need abbreviated names or addresses.",
@@ -515,6 +538,10 @@
         "answer": "ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS, wires typically complete in about 1–2 weeks after approval depending on the receiving institution, and overnight checks typically complete in about 1–2 weeks after approval."
       },
       {
+        "question": "How long does a rollover approval typically take?",
+        "answer": "ForUsAll reviews the rollover request and supporting paperwork within about two business days after submission. Once approved, the funds are released to the receiving institution: wires and overnight checks typically complete in about 1–2 weeks after approval, and standard USPS checks typically arrive in about 2–3 weeks after approval. The approval review itself (two business days) is separate from the delivery time."
+      },
+      {
         "question": "What taxes apply to a cash distribution?",
         "answer": "A 20% federal withholding applies and state withholding may also apply. The distribution is taxable income for the calendar year processed."
       },
@@ -533,6 +560,14 @@
       {
         "question": "Where does the participant start the rollover process online?",
         "answer": "The participant logs in at forusall.com/login, then selects Loans & Distributions from the dashboard and chooses Separation of Service under Termination Distribution."
+      },
+      {
+        "question": "How do I roll over my old employer's 401(k) into my ForUsAll plan?",
+        "answer": "This is an INCOMING rollover (the opposite of the outgoing flow this article mostly describes). The participant initiates it by contacting the prior recordkeeper (the institution holding the old 401(k)) and requesting a rollover distribution payable to the ForUsAll plan FBO (for the benefit of) the participant. A direct rollover — funds sent straight from the prior recordkeeper to ForUsAll — is recommended to avoid the 60-day indirect-rollover risk. The participant should also notify ForUsAll Support with the expected amount, source institution, and tax character (Roth vs pre-tax) so the incoming funds can be matched to the account once they arrive."
+      },
+      {
+        "question": "What information does the prior recordkeeper need to send funds to ForUsAll?",
+        "answer": "The prior recordkeeper needs the ForUsAll plan name, FBO designation (for benefit of [participant name]), and ForUsAll's mailing address for rollover checks (or wire instructions if the prior recordkeeper supports outgoing wires). Contact ForUsAll Support to obtain the current receiving instructions; they may include a specific mailing PO box, plan ID, and the participant's account number or SSN as required."
       },
       {
         "question": "What should a participant do if they are still employed but want to roll over eligible funds?",
@@ -619,6 +654,10 @@
       {
         "term": "Partial Rollover",
         "definition": "Transfers part of the participant's balance to another qualified retirement account and distributes the remaining balance as cash."
+      },
+      {
+        "term": "Vested",
+        "definition": "In a 401(k), being vested means the participant has earned the legal right to keep employer contributions (and their earnings) even if they leave the company. Participant contributions are always 100% vested from day one. Employer contributions vest according to the plan's vesting schedule — common schedules include immediate (100% vested right away), graded (e.g., 20% per year over 5 years), and cliff (e.g., 0% until 3 years of service, then 100%). The vested percentage determines how much of the account balance the participant can take with them when they leave."
       },
       {
         "term": "Vested balance",

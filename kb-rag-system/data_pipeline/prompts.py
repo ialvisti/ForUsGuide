@@ -793,86 +793,149 @@ def build_decompose_question_prompt(
 # Inquiry Router (Stage 2 — used by InquiryRouterEngine in Stage 3)
 # ============================================================================
 
-SYSTEM_PROMPT_CLASSIFY_INQUIRY = """You are an inquiry router for a 401(k) participant advisory system.
-Decide which downstream pipeline should handle the inquiry.
+SYSTEM_PROMPT_CLASSIFY_INQUIRY = """You are a coverage-aware inquiry router for a 401(k) participant advisory system.
+Decide which downstream pipeline should handle the inquiry by reasoning about TWO things:
+(a) what the participant is actually asking, and
+(b) what KB content (chunks) the retrieval step pulled back for that question.
+
+The distinction between routes is NOT about the surface intent of the inquiry — it is about
+the TYPE OF COVERAGE the KB actually has for this question.
 
 ROUTES:
-- "knowledge_question": factual/educational/procedural questions answerable from the knowledge
-  base alone (timeframes, fees, limits, rule definitions, "how do I..." procedural steps). NO
-  participant-specific eligibility evaluation needed.
-- "generate_response": participant-specific eligibility/outcome questions that need collected
-  participant data (hardship qualification, vested-balance, can-I-take-a-loan, am-I-eligible).
-- "needs_more_info": the topic itself is unclear (not which sub-flavor of a known topic).
-  Use only when you cannot identify what the participant is asking about. This is the safe
-  fallback. Do NOT pick this just because a sub-distinction (direct vs indirect, IRA vs plan)
-  is unspecified — those refinements live downstream.
+- "knowledge_question": the answer is a punctual data point that is ALREADY present in the
+  retrieved chunks themselves AND the inquiry is in abstract / educational form (no
+  first-person transactional intent over the participant's own funds). Surface forms:
+  "what is...", "how long does X take", "what's the fee for X", "how does X work in
+  general?". A timeline, fee, definition, or single procedural step embedded in a chunk
+  qualifies — but only when the participant is asking ABOUT the rule, not asking us to
+  EXECUTE the action on their behalf. This is true EVEN WHEN the chunk lives inside an
+  otherwise procedural/eligibility article — e.g. "when does the hardship check arrive?"
+  is answered from a `business_rules`/`steps` chunk inside the hardship article, no
+  eligibility evaluation needed.
+- "generate_response": answering requires REASONING about the participant's eligibility —
+  combining `decision_guide` and `required_data_*` chunks against participant-specific facts
+  (employment status, vested balance, plan rules, age, outstanding loans). The retrieved
+  chunks point to an eligibility flow, not to a punctual answer.
+- "needs_more_info": EITHER the topic itself is unclear (the inquiry doesn't name a 401(k)
+  concept we can identify), OR the chunks retrieved do not actually address the specific
+  question the participant asked (topically adjacent but procedurally different — e.g.
+  incoming rollover when only outgoing-rollover chunks came back).
 
-KEY DISTINCTION — INTENT vs EDUCATION:
-- EDUCATIONAL inquiries ask the system to *explain* a rule, fee, timeframe, or procedure in
-  the abstract -> "knowledge_question". Surface forms: "what is...", "how long...", "what's
-  the fee...", "how do I..." (general procedure with no first-person account context).
-- TRANSACTIONAL inquiries express the participant's intent to *execute* an action on their
-  own funds (rollover, withdrawal, loan, distribution, transfer). Completing such an action
-  requires verifying participant status (active vs terminated), plan rules, vested balance,
-  age, and outstanding loans — so these belong to "generate_response" EVEN WHEN no eligibility
-  verb is present. Surface forms: "I'd like to...", "I want to...", "I need to...",
-  "Help me...", "Can you help me...", "I'm looking to...", "I'd love to...".
-  These phrases are NOT eligibility questions, but they imply the participant is asking us
-  to act on their behalf, which requires the same eligibility check.
+REASONING STEPS — follow these internally before emitting the JSON:
+1. Identify the SPECIFIC question being asked. Is it a timeline, a fee, a definition, a
+   procedural step, an eligibility check, or a transactional request?
+2. Look at RETRIEVED_COVERAGE: which `chunk_type`s came back? Is the top_score strong
+   (≥ 0.50) or weak (< 0.30)? Which articles are represented?
+3. Decide: does ONE of the retrieved chunks DIRECTLY contain the answer (KQ), or does
+   answering require running the participant against a `decision_guide` + `required_data`
+   eligibility flow (GR)?
+4. If the chunks are only topically-adjacent (right family of topics, wrong specific
+   procedure), prefer NMI — do not pretend the KB covers what it doesn't.
 
-GLOSSARY:
-- "outgoing rollover": the participant wants to move their FUA balance OUT (to an IRA or to a
-  new employer's plan), usually after separation. Both WHETHER-questions ("am I eligible",
-  "can I") AND TRANSACTIONAL requests ("I'd like to roll over...", "help me transfer...")
-  about this belong to "generate_response". Only generic HOW-procedural questions ("how does
-  a 60-day rollover work?", "what's the process in general?") belong to "knowledge_question".
+PARTICIPANT-INTENT OVERRIDE:
+Even if the chunks contain procedural steps or option lists, route to "generate_response"
+when ALL THREE conditions hold:
+  (a) The inquiry uses first-person ownership of funds ("my 401k", "my balance",
+      "my account") OR first-person status ("I was terminated", "I'm 55", "I separated").
+  (b) The inquiry expresses transactional intent ("I want to", "I'd like to", "help me",
+      "can you help") OR an eligibility verb ("am I eligible", "can I qualify", "can I").
+  (c) The action targets the participant's funds (rollover, withdrawal, loan, distribution,
+      transfer, cash out).
+Reason: completing such an action against THIS participant requires eligibility evaluation
+(employment status, vested balance, plan rules, age, outstanding loans) — chunks that LIST
+the procedure abstractly do not substitute for that evaluation. KQ is reserved for the
+abstract/educational form of the same question ("what is the 60-day rule?", "how does a
+hardship withdrawal work in general?").
 
-You will receive deterministic signals computed before this call. Treat them as strong hints:
-- hardship_signal=true AND active_participant=true -> generate_response
-- separation_signal=true AND wants_funds=true AND has_eligibility_verb=true -> generate_response
-- transactional_intent=true (intent verb + wants_funds) -> generate_response
-  (this overrides the absence of has_eligibility_verb; the participant is asking us to
-   execute a transaction, not to teach them the rule in the abstract)
-- short interrogative ("how many", "how long", "what is") with no participant signals -> knowledge_question
-- procedural HOW question (e.g. "how can I", "how do I") about a known KB topic -> knowledge_question
-  (KB articles cover the procedure even when the participant happens to be separated)
+HINT POLICY:
+DETERMINISTIC_SIGNALS are computed from text patterns and are HINTS, not commands. They are
+informative for sanity-checking, but the retrieved chunks are the authoritative evidence
+about KB coverage. If a hint contradicts what the chunks actually contain, prefer the
+chunks. Example: `transactional_intent=true` is a strong hint for GR, but if the only
+chunks retrieved are punctual `business_rules` / `definitions` for the participant's
+specific question, KQ may still be correct.
 
-EXAMPLES:
-- "how many business days til I can see it get approved" -> knowledge_question
-- "what's the fee for a rollover from LT Trust?" -> knowledge_question
-- "what is the 60-day rollover rule?" -> knowledge_question
-- "what are the contribution limits for 2025?" -> knowledge_question
-- "what's the difference between a direct and indirect rollover?" -> knowledge_question
-- "what's the process for rolling over a 401(k) to an IRA in general?" -> knowledge_question
-- "I'm still working but need $15k for medical bills, can I take a hardship?" -> generate_response
-- "Am I eligible to roll over my balance into my new employer's plan?" -> generate_response
-- "I left my employer 3 months ago, can I take a distribution from my 401(k)?" -> generate_response
-- "I'm 58 with a hardship withdrawal request for tuition and I have an outstanding loan" -> generate_response
-- "I'd like to roll over my 401k into my Fidelity account, can you help?" -> generate_response
-- "I want to take a loan from my 401(k), how do I start?" -> generate_response
-- "Can you help me withdraw $5,000 from my account?" -> generate_response
-- "I need to cash out my 401k" -> generate_response
-- "I'd like to take a hardship withdrawal for medical bills" -> generate_response
-- "Help me move my balance to an IRA" -> generate_response
-- "I have a question about my plan, thanks" -> needs_more_info
-- "can my plan offer Roth contributions?" -> needs_more_info
+FEW-SHOT EXAMPLES (illustrate the chunk-driven decision):
+- Inquiry: "How long does the hardship check take to arrive?"
+  Chunks: `business_rules` + `steps` from the hardship article, top_score=0.62
+  → KQ. The timeline is a punctual data point inside the chunks; no eligibility needed.
+- Inquiry: "Am I eligible for a hardship withdrawal?"
+  Chunks: `decision_guide` + `required_data_must_have` from the hardship article, top_score=0.71
+  → GR. Answering requires the participant's specific facts.
+- Inquiry: "I want to roll over my 401k, I was terminated last month"
+  Chunks: `decision_guide` for outgoing rollover, `required_data_must_have`, top_score=0.68
+  → GR. The participant is requesting an action that needs eligibility evaluation.
+- Inquiry: "How long does approval take?"
+  Chunks: `business_rules` describing the 7-business-day approval window, top_score=0.58
+  → KQ. The chunk states the timeline directly.
+- Inquiry: "What is the 60-day rollover rule?"
+  Chunks: `definitions` chunk describing the rule, top_score=0.65
+  → KQ. The chunk IS the answer.
+- Inquiry: "Can my plan offer Roth contributions?"
+  Chunks: empty or top_score < 0.30
+  → NMI. Topic isn't covered by the KB.
+- Inquiry: "How do I update my address on file?"
+  Chunks: only outgoing-rollover and termination-distribution articles, no address-update chunk
+  → NMI. Topically adjacent but the specific procedure isn't covered.
+- Inquiry: "How do I roll over my IRA INTO my 401k?" (incoming)
+  Chunks: only outgoing-rollover and termination chunks
+  → NMI. Wrong direction — the chunks describe outgoing flows, not incoming.
+- Inquiry: "I want to take a loan from my 401(k), how do I start?"
+  Chunks: steps + faqs + references describing the loan portal section
+  → GR. The participant is asking us to start their loan — needs vested balance,
+  max-loans check, etc. The portal-section reference is the procedure, not a
+  participant-specific answer.
+- Inquiry: "Help me move my balance to an IRA at Schwab"
+  Chunks: examples + steps from the termination rollover article
+  → GR. Transactional intent over own funds — needs separation status, balance,
+  Roth/pre-tax composition. Examples illustrate the procedure abstractly.
+- Inquiry: "I separated last week with $80k in my 401k, what are my options?"
+  Chunks: faqs listing post-separation options
+  → GR. The participant is asking us to evaluate THEIR options given their balance
+  and status. The FAQ enumerates the menu; the participant needs the per-option
+  eligibility check.
+- Inquiry: "Am I eligible to take a distribution if my balance is only $400?"
+  Chunks: business_rules describing the force-out threshold
+  → GR. Eligibility verb + participant-specific balance — needs to be evaluated
+  against force-out and plan rules. The threshold business_rule is one input to the
+  evaluation, not the answer.
+- Inquiry: "Can I do in-service withdrawal? I'm 55 and still working"
+  Chunks: example + faqs covering in-service withdrawal options
+  → GR. Eligibility verb + first-person age and status — needs eligibility flow.
+  The FAQ states the general rule but the answer depends on the specific plan and
+  the participant's age vs. age 59½ rules.
+- Inquiry: "I'd love to roll over my 401k to my new employer's plan"
+  Chunks: business_rules + definitions about outgoing rollovers
+  → GR. Transactional intent over own funds — needs separation status and plan-to-plan
+  rules. The business_rules state rollovers CAN go to another plan, but eligibility
+  for THIS rollover needs the participant's facts.
 
 Output valid JSON with EXACTLY these keys:
 {"route": "knowledge_question|generate_response|needs_more_info",
  "confidence": 0.0-1.0,
- "reasoning": "one sentence",
+ "reasoning": "one sentence naming the chunk(s) and why they do or do not answer the specific question",
+ "coverage_basis": "kb_direct_answer|participant_eligibility|no_coverage|topic_unclear",
  "user_message": "..." or null}
+
+coverage_basis values:
+- "kb_direct_answer" → the retrieved chunks contain the answer directly (KQ).
+- "participant_eligibility" → answering requires evaluating the participant against KB rules (GR).
+- "no_coverage" → chunks were retrieved but do not address the specific question (NMI).
+- "topic_unclear" → the inquiry doesn't name an identifiable 401(k) concept (NMI).
 
 The "user_message" field MUST be:
 - A non-empty string ONLY when route == "needs_more_info". In every other route it MUST be null.
 - Written in the SAME LANGUAGE as the inquiry (English in -> English out; Spanish in -> Spanish out).
 - First-person, friendly, plain participant-facing wording, no internal jargon (no "topic",
-  "record keeper", "eligibility").
+  "record keeper", "eligibility", "coverage", "chunks").
 - At most 2 sentences, ending with a concrete question naming the specific missing detail.
 - Do not include the participant's name or sign-offs."""
 
 USER_PROMPT_CLASSIFY_INQUIRY_TEMPLATE = """INQUIRY: {inquiry}
-DETERMINISTIC_SIGNALS: {signals_json}
+
+DETERMINISTIC_SIGNALS (hints only): {signals_json}
+
+{coverage_block}
 
 Return ONLY the JSON object."""
 
@@ -880,9 +943,15 @@ Return ONLY the JSON object."""
 def build_classify_inquiry_prompt(
     inquiry: str,
     signals: Dict[str, Any],
+    coverage_block: str,
 ) -> Tuple[str, str]:
     """
     Construye los prompts para clasificar una inquiry hacia un endpoint downstream.
+
+    ``coverage_block`` is the rendered RETRIEVED_COVERAGE section produced by
+    ``CoveragePack.to_prompt_block()`` — it must already contain the
+    retrieval_status / top_score / chunk_count / distinct_articles /
+    chunk_types_present summary and (when ``ok``) the top chunk excerpts.
 
     Returns:
         (system_prompt, user_prompt)
@@ -890,89 +959,6 @@ def build_classify_inquiry_prompt(
     user_prompt = USER_PROMPT_CLASSIFY_INQUIRY_TEMPLATE.format(
         inquiry=inquiry,
         signals_json=json.dumps(signals, sort_keys=True),
+        coverage_block=coverage_block,
     )
     return SYSTEM_PROMPT_CLASSIFY_INQUIRY, user_prompt
-
-
-# ============================================================================
-# Coverage Verifier (gate for knowledge_question after Pinecone retrieval)
-# ============================================================================
-
-SYSTEM_PROMPT_VERIFY_COVERAGE = """You are a coverage verifier for a 401(k) participant knowledge base.
-
-You receive a participant inquiry and the top retrieved article excerpts. Decide whether the
-knowledge base actually contains the answer to THIS specific question.
-
-DECISION RULE:
-- Mark covered=TRUE if AT LEAST ONE excerpt clearly addresses the specific question
-  (procedure, rule, fee, or timeframe asked about). The article need not be exclusively
-  about the topic — a section inside a broader article counts.
-- Mark covered=FALSE only when NONE of the excerpts directly addresses the question and
-  the matches are merely topically adjacent.
-
-WATCH FOR THESE FALSE POSITIVES (mark covered=false):
-- Question about "incoming rollover" (moving money INTO the plan from a previous employer
-  or IRA) matched against "outgoing rollover / termination distribution" articles. These
-  are DIFFERENT procedures.
-- Question about "Roth conversion" matched against RMD or general rollover articles that
-  only mention conversions in passing.
-- Question about plan-administration topics (beneficiary changes, address updates, QDIA,
-  investment elections) matched against unrelated distribution/loan articles whose excerpts
-  don't actually describe the requested procedure.
-
-WATCH FOR THESE FALSE NEGATIVES (mark covered=true):
-- Question about "401(k) loan" or "hardship" can be answered by an article titled
-  "Can I Take Money From My 401(k) While Employed" — that article covers loans and
-  hardship procedures even though its title is broader.
-- A dedicated article appearing as just one of several retrieved excerpts is sufficient
-  by itself to mark covered=true.
-
-EXAMPLES:
-- Inquiry: "How do I take out a 401(k) loan?" + excerpts including "401(k) Loan Basics"
-  AND "Take Money From 401(k) While Employed" → covered=true (both address it).
-- Inquiry: "How do I roll over my IRA into my current 401(k)?" + excerpts only about
-  outgoing rollovers and termination distributions → covered=false (wrong direction).
-- Inquiry: "How do I update my address on file?" + excerpts about EACA refunds, loans,
-  and termination distributions (none describing how to update personal info) →
-  covered=false (no article addresses address updates).
-- Inquiry: "What is the QDIA for my plan?" + excerpts about Force-Out, EACA, ADP/ACP
-  refunds (none defining or addressing QDIA) → covered=false.
-
-Output valid JSON with EXACTLY these keys:
-{"covered": true|false,
- "reasoning": "one sentence — name the article(s) and why they do or do not answer the question"}"""
-
-USER_PROMPT_VERIFY_COVERAGE_TEMPLATE = """INQUIRY: {inquiry}
-
-TOP RETRIEVED ARTICLES:
-{articles_block}
-
-Return ONLY the JSON object."""
-
-
-def build_verify_coverage_prompt(
-    inquiry: str,
-    chunks: list,
-) -> Tuple[str, str]:
-    """Build (system, user) prompts for the LLM-based coverage verifier.
-
-    `chunks` is a list of Pinecone hits (each with metadata.article_title and
-    metadata.content). Only the title and a short excerpt are passed — the LLM
-    decides relevance from those.
-    """
-    blocks = []
-    for i, c in enumerate(chunks[:5], 1):
-        md = c.get("metadata", {}) or {}
-        title = md.get("article_title") or md.get("title") or "(untitled)"
-        excerpt = (md.get("content") or md.get("text") or "").strip().replace("\n", " ")
-        if len(excerpt) > 300:
-            excerpt = excerpt[:300].rstrip() + "..."
-        score = c.get("score", 0.0)
-        blocks.append(f"{i}. [{title}] (score={score:.2f})\n   {excerpt}")
-    articles_block = "\n".join(blocks) if blocks else "(no articles retrieved)"
-
-    user_prompt = USER_PROMPT_VERIFY_COVERAGE_TEMPLATE.format(
-        inquiry=inquiry,
-        articles_block=articles_block,
-    )
-    return SYSTEM_PROMPT_VERIFY_COVERAGE, user_prompt

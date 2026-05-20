@@ -694,65 +694,76 @@ class TestRouteInquiryEndpoint:
         assert "router_mode_override" not in data["metadata"]
 
 
-class TestCoverageCheckerFailClosed:
-    """The coverage checker must fail closed when Pinecone retrieval throws
-    or returns 0 chunks. route-inquiry should not route to knowledge_question
-    without positive KB evidence.
+class TestCoveragePackBuilder:
+    """The coverage pack builder retrieves the top-K KB chunks before each
+    classification. Pinecone exceptions become ``CoveragePack.failed`` and
+    zero results become ``CoveragePack.empty``; both states steer the LLM
+    toward needs_more_info via the rendered coverage block.
     """
 
     @pytest.mark.asyncio
-    async def test_pinecone_exception_fails_closed(self):
-        from api.main import _make_coverage_checker
+    async def test_pinecone_exception_returns_failed_pack(self):
+        from api.main import _make_coverage_pack_builder
 
         rag_engine = Mock()
         rag_engine._cached_query = AsyncMock(
             side_effect=RuntimeError("pinecone outage")
         )
-        llm_router = Mock()
-        # The LLM verifier must NOT be called when retrieval fails.
-        llm_router.call = AsyncMock()
 
-        checker = _make_coverage_checker(rag_engine, llm_router)
-        verdict = await checker("How do I rollover my 401k?")
+        builder = _make_coverage_pack_builder(rag_engine)
+        pack = await builder("How do I rollover my 401k?")
 
-        assert verdict.is_covered is False
-        assert verdict.top_score == 0.0
-        assert "RuntimeError" in verdict.reasoning
-        assert "failing closed" in verdict.reasoning.lower()
-        llm_router.call.assert_not_awaited()
+        assert pack.retrieval_status == "failed"
+        assert pack.top_score == 0.0
+        assert pack.chunk_count == 0
+        assert pack.pinecone_error == "RuntimeError"
+        assert pack.chunks == []
 
     @pytest.mark.asyncio
-    async def test_zero_chunks_fails_closed(self):
-        from api.main import _make_coverage_checker
+    async def test_zero_chunks_returns_empty_pack(self):
+        from api.main import _make_coverage_pack_builder
 
         rag_engine = Mock()
         rag_engine._cached_query = AsyncMock(return_value=[])
-        llm_router = Mock()
-        llm_router.call = AsyncMock()
 
-        checker = _make_coverage_checker(rag_engine, llm_router)
-        verdict = await checker("How do I rollover my 401k?")
+        builder = _make_coverage_pack_builder(rag_engine)
+        pack = await builder("How do I rollover my 401k?")
 
-        assert verdict.is_covered is False
-        assert verdict.top_score == 0.0
-        assert "failing closed" in verdict.reasoning.lower()
-        llm_router.call.assert_not_awaited()
+        assert pack.retrieval_status == "empty"
+        assert pack.top_score == 0.0
+        assert pack.chunk_count == 0
+        assert pack.pinecone_error is None
 
-    def test_route_inquiry_zero_chunks_does_not_return_knowledge_question(
+    def test_route_inquiry_with_empty_retrieval_does_not_return_kq(
         self, client, test_api_key, monkeypatch
     ):
-        from api.main import _make_coverage_checker
+        # End-to-end through the route-inquiry endpoint: when retrieval is
+        # empty the LLM sees retrieval_status=empty and should pick NMI.
+        from api.main import _make_coverage_pack_builder
         from api.config import settings
         from data_pipeline.inquiry_router import InquiryRouterEngine
+        from data_pipeline.llm_router import LLMResponse
 
         monkeypatch.setattr(settings, "API_KEY", test_api_key)
         rag_engine = Mock()
         rag_engine._cached_query = AsyncMock(return_value=[])
         llm_router = Mock()
-        llm_router.call = AsyncMock()
+        llm_router.call = AsyncMock(
+            return_value=LLMResponse(
+                content=(
+                    '{"route": "needs_more_info", "confidence": 0.9, '
+                    '"reasoning": "no chunks retrieved", '
+                    '"coverage_basis": "no_coverage", '
+                    '"user_message": "Could you share more detail?"}'
+                ),
+                usage=None,
+                provider_used="gemini",
+                model_used="gemini-2.5-flash",
+            )
+        )
         client.app.state.inquiry_router = InquiryRouterEngine(
             llm_router=llm_router,
-            coverage_checker=_make_coverage_checker(rag_engine, llm_router),
+            coverage_pack_builder=_make_coverage_pack_builder(rag_engine),
         )
 
         response = client.post(
@@ -765,35 +776,48 @@ class TestCoverageCheckerFailClosed:
         data = response.json()
         assert data["route"] == "needs_more_info"
         assert data["suggested_endpoint"] == "/api/v1/required-data"
-        assert data["metadata"]["fast_path_hit"] is True
-        assert data["metadata"]["kb_coverage_top_score"] == 0.0
-        assert "failing closed" in data["metadata"]["kb_coverage_reasoning"].lower()
+        assert data["metadata"]["coverage_signals"]["retrieval_status"] == "empty"
+        assert data["metadata"]["coverage_signals"]["top_score"] == 0.0
+        assert data["metadata"]["coverage_basis"] == "no_coverage"
 
     @pytest.mark.asyncio
-    async def test_chunks_present_runs_llm_verifier(self):
-        from api.main import _make_coverage_checker
-        from data_pipeline.llm_router import LLMResponse
+    async def test_chunks_present_populates_pack(self):
+        from api.main import _make_coverage_pack_builder
 
         rag_engine = Mock()
         rag_engine._cached_query = AsyncMock(
             return_value=[
-                {"id": "c1", "score": 0.62, "metadata": {"article_title": "X"}},
-                {"id": "c2", "score": 0.55, "metadata": {"article_title": "Y"}},
+                {
+                    "id": "c1",
+                    "score": 0.62,
+                    "metadata": {
+                        "article_title": "Hardship Article",
+                        "chunk_type": "business_rules",
+                        "chunk_tier": "high",
+                        "topic": "hardship",
+                        "content": "Approval typically takes 7 business days.",
+                    },
+                },
+                {
+                    "id": "c2",
+                    "score": 0.55,
+                    "metadata": {
+                        "article_title": "Hardship Article",
+                        "chunk_type": "steps",
+                        "chunk_tier": "high",
+                        "topic": "hardship",
+                        "content": "Step 1: submit the form.",
+                    },
+                },
             ]
         )
-        llm_router = Mock()
-        llm_router.call = AsyncMock(
-            return_value=LLMResponse(
-                content='{"covered": true, "reasoning": "X covers it."}',
-                usage=None,
-                provider_used="gemini",
-                model_used="gemini-2.5-flash",
-            )
-        )
 
-        checker = _make_coverage_checker(rag_engine, llm_router)
-        verdict = await checker("How do I rollover my 401k?")
+        builder = _make_coverage_pack_builder(rag_engine)
+        pack = await builder("How long does approval take?")
 
-        assert verdict.is_covered is True
-        assert verdict.top_score == 0.62
-        llm_router.call.assert_awaited_once()
+        assert pack.retrieval_status == "ok"
+        assert pack.top_score == pytest.approx(0.62)
+        assert pack.chunk_count == 2
+        assert pack.distinct_articles == ["Hardship Article"]
+        assert pack.chunk_types_present == ["business_rules", "steps"]
+        assert len(pack.chunks) == 2

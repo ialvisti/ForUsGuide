@@ -40,7 +40,9 @@
                 "category": "eligibility",
                 "rules": [
                     "The hardship request must meet one of the IRS-approved hardship reasons listed in this article.",
-                    "The withdrawal amount must be necessary to meet the financial need and cannot exceed the documented hardship expenses."
+                    "The withdrawal amount must be necessary to meet the financial need and cannot exceed the documented hardship expenses.",
+                    "IRS-approved hardship (safe-harbor) reasons are: (1) unreimbursed medical expenses for the participant, spouse, or dependents; (2) post-secondary education expenses for the next 12 months for the participant, spouse, or dependents; (3) purchase of a primary residence (down payment and closing costs, not mortgage payments); (4) preventing eviction or foreclosure on the primary residence; (5) funeral or burial expenses for the participant's parent, spouse, child, or dependent; (6) expenses to repair damage to the primary residence that qualify as a casualty deduction.",
+                    "Funeral or burial expenses are an IRS safe-harbor hardship reason and qualify when the expenses are for the participant's parent, spouse, child, or dependent. Funeral expenses for siblings, in-laws, or other relatives do not qualify under the safe-harbor list unless they are a tax dependent of the participant."
                 ]
             },
             {
@@ -151,6 +153,14 @@
             {
                 "scenario": "Participant asks whether employer match funds can be included.",
                 "outcome": "Explain that eligibility of employer match depends on the specific plan and will be determined by reviewing plan documents; do not guarantee employer match eligibility."
+            },
+            {
+                "scenario": "Participant's parent (mother or father) recently passed away and the participant requests a hardship withdrawal to cover funeral and burial expenses.",
+                "outcome": "This fits the IRS safe-harbor funeral-or-burial-expenses category, which explicitly includes the participant's parent. Confirm the participant has documentation of the funeral/burial costs and limit the withdrawal to the amount necessary to cover those expenses; the standard hardship eligibility, plan-specific limits, and tax-and-penalty rules still apply."
+            },
+            {
+                "scenario": "Participant requests a hardship withdrawal for a sibling's funeral expenses.",
+                "outcome": "Siblings are not in the IRS safe-harbor list (which covers parent, spouse, child, or dependent). If the sibling is a tax dependent of the participant, the request may qualify; otherwise, the funeral-expenses safe-harbor reason does not apply and the participant should be informed that other hardship reasons would need to be evaluated."
             }
         ],
         "additional_notes": [

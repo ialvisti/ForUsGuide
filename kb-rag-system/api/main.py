@@ -14,7 +14,7 @@ Endpoints:
 import logging
 import time
 from contextlib import asynccontextmanager
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
@@ -36,8 +36,11 @@ from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.pinecone_uploader import PineconeUploader
 from data_pipeline.execution_logger import ExecutionLogger
 from data_pipeline.llm_router import LLMRouter, build_routes_from_settings
-from data_pipeline.inquiry_router import CoverageVerdict, InquiryRouterEngine
-from data_pipeline.prompts import build_verify_coverage_prompt
+from data_pipeline.inquiry_router import (
+    COVERAGE_TOP_K,
+    CoveragePack,
+    InquiryRouterEngine,
+)
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -149,92 +152,63 @@ def _log_pinecone_startup_diagnostics(
     )
 
 
-def _make_coverage_checker(rag_engine: RAGEngine, llm_router: LLMRouter):
-    """Build an async callable that verifies whether the KB actually has
-    coverage for a knowledge_question inquiry.
+def _make_coverage_pack_builder(rag_engine: RAGEngine):
+    """Build an async callable that retrieves the top-K KB chunks for an
+    inquiry and packages them into a :class:`CoveragePack` for the classifier.
 
-    Two-step: (1) Pinecone retrieval reusing the RAGEngine TTL cache,
-    (2) a small LLM call (`verify_coverage` task) that reads the top-3
-    article excerpts and returns yes/no. The LLM is the authority on
-    relevance because cosine similarity alone confuses semantically-near
-    but procedurally-different topics (e.g. incoming vs outgoing rollover).
+    The pack carries enough structure (chunk_type, chunk_tier, topic,
+    article_title, excerpt, score) for the LLM to decide — by looking at the
+    actual content — whether the chunks directly answer the question (KQ),
+    point to an eligibility flow (GR), or only match topically (NMI).
 
-    Fail-closed on Pinecone retrieval failures or zero retrieved chunks:
-    route-inquiry must not choose knowledge_question without positive KB
-    evidence. Verifier parse/call failures still fail open because retrieval
-    already proved relevant KB context exists.
+    Pinecone exceptions and empty results are converted into
+    ``CoveragePack.failed`` / ``CoveragePack.empty``; both states steer the
+    LLM toward NMI via the prompt.
     """
-    import json as _json
 
-    async def _coverage(inquiry: str) -> CoverageVerdict:
+    async def _builder(inquiry: str) -> CoveragePack:
         try:
             chunks = await rag_engine._cached_query(
-                query_text=inquiry, top_k=5, filter_dict=None
+                query_text=inquiry, top_k=COVERAGE_TOP_K, filter_dict=None
             )
         except Exception as exc:
             logger.warning(
-                "Coverage retrieval failed (%s); failing closed.",
+                "Coverage retrieval failed (%s); returning failed pack.",
                 type(exc).__name__,
             )
-            return CoverageVerdict(
-                is_covered=False,
-                top_score=0.0,
-                reasoning=f"Retrieval failed ({type(exc).__name__}); failing closed.",
-            )
-
-        top_score = max((c.get("score", 0.0) for c in chunks), default=0.0)
+            return CoveragePack.failed(type(exc).__name__)
 
         if not chunks:
-            logger.warning(
-                "Coverage retrieval returned 0 chunks; failing closed."
-            )
-            return CoverageVerdict(
-                is_covered=False,
-                top_score=0.0,
-                reasoning="No chunks retrieved; failing closed.",
-            )
+            logger.info("Coverage retrieval returned 0 chunks.")
+            return CoveragePack.empty()
 
-        system_prompt, user_prompt = build_verify_coverage_prompt(
-            inquiry=inquiry, chunks=chunks
-        )
-        try:
-            llm_result = await llm_router.call(
-                task_type="verify_coverage",
-                system_prompt=system_prompt,
-                user_prompt=user_prompt,
-                max_tokens=200,
-            )
-            parsed = _json.loads(llm_result.content or "{}")
-            is_covered = bool(parsed.get("covered", True))
-            reasoning = (parsed.get("reasoning") or "").strip() or (
-                "covered" if is_covered else "not covered"
-            )
-        except (_json.JSONDecodeError, TypeError, ValueError, KeyError) as exc:
-            logger.warning(
-                "Coverage verifier output unparseable (%s); failing open.",
-                type(exc).__name__,
-            )
-            return CoverageVerdict(
-                is_covered=True,
-                top_score=top_score,
-                reasoning="Verifier output unparseable; failing open.",
-            )
-        except Exception as exc:
-            logger.warning(
-                "Coverage verifier call failed (%s); failing open.",
-                type(exc).__name__,
-            )
-            return CoverageVerdict(
-                is_covered=True,
-                top_score=top_score,
-                reasoning=f"Verifier call failed ({type(exc).__name__}); failing open.",
-            )
-
-        return CoverageVerdict(
-            is_covered=is_covered, top_score=top_score, reasoning=reasoning
+        top_score = max(
+            (float(c.get("score", 0.0) or 0.0) for c in chunks), default=0.0
         )
 
-    return _coverage
+        # Preserve order of first appearance — the LLM uses position as a
+        # secondary signal of relevance after score.
+        distinct_articles: List[str] = []
+        chunk_types_present: List[str] = []
+        for c in chunks:
+            md = c.get("metadata", {}) or {}
+            title = md.get("article_title") or md.get("title")
+            if title and title not in distinct_articles:
+                distinct_articles.append(title)
+            chunk_type = md.get("chunk_type")
+            if chunk_type and chunk_type not in chunk_types_present:
+                chunk_types_present.append(chunk_type)
+
+        return CoveragePack(
+            retrieval_status="ok",
+            top_score=top_score,
+            chunk_count=len(chunks),
+            distinct_articles=distinct_articles,
+            chunk_types_present=chunk_types_present,
+            chunks=chunks,
+        )
+
+    return _builder
 
 
 # ============================================================================
@@ -286,14 +260,14 @@ async def lifespan(app: FastAPI):
         )
         logger.info("✅ RAG Engine initialized")
 
-        # Inicializar Inquiry Router → app.state (shares LLM Router + an
-        # LLM-based coverage_checker that retrieves top KB chunks via
-        # Pinecone and asks a small LLM whether they actually answer the
-        # inquiry, gating the knowledge_question route).
+        # Inicializar Inquiry Router → app.state. Shares the LLM Router and
+        # a coverage_pack_builder that retrieves the top-K KB chunks via
+        # Pinecone before each classification, so the LLM reasons about
+        # actual KB content rather than just surface text patterns.
         app.state.inquiry_router = InquiryRouterEngine(
             llm_router=llm_router,
-            coverage_checker=_make_coverage_checker(
-                app.state.rag_engine, llm_router
+            coverage_pack_builder=_make_coverage_pack_builder(
+                app.state.rag_engine
             ),
         )
         logger.info("✅ Inquiry Router initialized")
@@ -879,6 +853,12 @@ async def route_inquiry_endpoint(
         else:
             user_message = result.user_message
 
+        # ``result.metadata`` already carries ``coverage_signals`` (the
+        # retrieval_status / top_score / chunk_count / distinct_articles /
+        # chunk_types_present summary), ``coverage_basis`` (the LLM's reading
+        # of why this route was chosen), and the legacy
+        # ``kb_coverage_top_score`` / ``kb_coverage_reasoning`` fields for
+        # backwards compatibility with downstream consumers.
         metadata: Dict[str, Any] = {
             **result.metadata,
             "fast_path_hit": result.fast_path_hit,

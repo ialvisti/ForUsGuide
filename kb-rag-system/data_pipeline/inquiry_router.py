@@ -4,25 +4,21 @@ Inquiry Router Engine.
 Classifies inbound participant inquiries into one of three downstream routes:
 
 - ``knowledge_question``: punctual, factual KB lookup (delegate to
-  ``/api/v1/knowledge-question``).
+  ``/api/v1/knowledge-question``). Used when the retrieved chunks contain a
+  direct answer (timeline, fee, definition, single procedural step) and no
+  participant-specific eligibility evaluation is needed.
 - ``generate_response``: participant-specific eligibility/outcome question
   that needs the heavy ``required-data -> ForUsBots -> generate-response``
-  pipeline.
-- ``needs_more_info``: ambiguous; preserve today's flow as a safe fallback.
+  pipeline. Used when answering requires reasoning about
+  ``decision_guide`` + ``required_data_*`` chunks against participant facts.
+- ``needs_more_info``: ambiguous topic OR no KB coverage for the specific
+  question asked.
 
-The classifier is hybrid:
-
-1. Compute deterministic signals via :func:`detect_advisory_concepts` plus
-   small classifier-specific predicates.
-2. Try a conservative regex fast-path that fires only on unambiguous cases
-   (free, sub-millisecond).
-3. Otherwise, call the configured ``classify_inquiry`` LLM route with a
-   compact JSON-only prompt.
-4. Coerce low-confidence LLM verdicts (< ``CONFIDENCE_FALLBACK_THRESHOLD``)
-   to ``needs_more_info`` so we never silently send an unsure call to the
-   wrong pipeline.
-5. Gate every final ``knowledge_question`` verdict through KB coverage,
-   including fast-path decisions.
+The classifier is coverage-driven: every classification runs a Pinecone
+retrieval first and passes the resulting chunks (their types, scores, and
+short excerpts) to a single LLM call. The LLM decides the route by reasoning
+about (a) the inquiry and (b) the kind of KB content that came back, instead
+of pattern-matching on surface form.
 """
 
 from __future__ import annotations
@@ -32,7 +28,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass, field
-from typing import Any, Awaitable, Callable, Dict, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from data_pipeline.llm_router import LLMRouter
 from data_pipeline.prompts import build_classify_inquiry_prompt
@@ -43,7 +39,32 @@ logger = logging.getLogger(__name__)
 
 CONFIDENCE_FALLBACK_THRESHOLD = 0.55
 
+# Safety net: when the LLM emits knowledge_question but the top-retrieved
+# chunk's similarity is below this threshold, treat the call as a hallucinated
+# "covered" verdict and downgrade to needs_more_info. Calibrated against the
+# 40-case eval (20 GR + 15 KQ + 5 NMI): every correctly-classified KQ in that
+# set had top_score >= 0.43, so 0.40 catches marginal-coverage KQs without
+# squashing real positives. The previous value (0.30) was too low to ever
+# fire and provided no protection. Bump if real KQs start getting squashed.
+KQ_TOP_SCORE_FLOOR = 0.40
+
+# Number of chunks pulled into the coverage pack. Five is enough for the LLM
+# to see the dominant article and a couple of related ones, without bloating
+# the prompt.
+COVERAGE_TOP_K = 5
+
+# Excerpt cap (chars) per chunk in the rendered coverage block. The LLM only
+# needs enough text to judge whether the chunk answers the question.
+COVERAGE_EXCERPT_CHARS = 250
+
 VALID_ROUTES = frozenset({"knowledge_question", "generate_response", "needs_more_info"})
+
+VALID_COVERAGE_BASIS = frozenset({
+    "kb_direct_answer",
+    "participant_eligibility",
+    "no_coverage",
+    "topic_unclear",
+})
 
 # Fallback message used when the classifier coerces a route to needs_more_info
 # (low confidence, malformed JSON, missing user_message) and we need *something*
@@ -70,27 +91,115 @@ class ClassificationResult:
 
 
 @dataclass
-class FastPathDecision:
-    route: str
-    confidence: float
-    reasoning: str
-    latency_ms: float
+class CoveragePack:
+    """Snapshot of what Pinecone returned for the routing query.
 
+    Passed to the LLM as a rendered block so the classifier reasons about
+    actual KB content, not just the surface text of the inquiry. Also kept
+    around so the engine can apply the post-LLM safety net (``top_score``)
+    and surface coverage_signals in the response metadata.
 
-@dataclass
-class CoverageVerdict:
-    """Result of the LLM-based coverage check that gates knowledge_question
-    verdicts. ``is_covered=False`` causes the engine to downgrade the route to
-    ``needs_more_info``. ``top_score`` is informational (Pinecone top similarity)
-    and surfaces in metadata for observability.
+    ``retrieval_status``:
+        - ``ok``: at least one chunk came back.
+        - ``empty``: Pinecone returned zero chunks for this query.
+        - ``failed``: Pinecone raised an exception. ``pinecone_error`` carries
+          the exception type name for observability.
     """
-    is_covered: bool
+
+    retrieval_status: str
     top_score: float
-    reasoning: str
+    chunk_count: int
+    distinct_articles: List[str]
+    chunk_types_present: List[str]
+    chunks: List[Dict[str, Any]] = field(default_factory=list)
+    pinecone_error: Optional[str] = None
+
+    @classmethod
+    def empty(cls) -> "CoveragePack":
+        return cls(
+            retrieval_status="empty",
+            top_score=0.0,
+            chunk_count=0,
+            distinct_articles=[],
+            chunk_types_present=[],
+            chunks=[],
+        )
+
+    @classmethod
+    def failed(cls, exception_name: str) -> "CoveragePack":
+        return cls(
+            retrieval_status="failed",
+            top_score=0.0,
+            chunk_count=0,
+            distinct_articles=[],
+            chunk_types_present=[],
+            chunks=[],
+            pinecone_error=exception_name,
+        )
+
+    def signals_dict(self) -> Dict[str, Any]:
+        """Compact form of the pack for response metadata."""
+        return {
+            "retrieval_status": self.retrieval_status,
+            "top_score": self.top_score,
+            "chunk_count": self.chunk_count,
+            "distinct_articles": self.distinct_articles,
+            "chunk_types_present": self.chunk_types_present,
+            "pinecone_error": self.pinecone_error,
+        }
+
+    def to_prompt_block(self) -> str:
+        """Render the RETRIEVED_COVERAGE section injected into the user prompt.
+
+        For ``ok`` packs, emits a summary header plus a numbered list of the
+        top chunks (article title, chunk_type, chunk_tier, topic, score, and a
+        short excerpt). For ``empty`` / ``failed`` packs, emits only the
+        summary header — the LLM should treat this as "no chunks support the
+        answer" and prefer NMI.
+        """
+        header_lines = [
+            "RETRIEVED_COVERAGE:",
+            f"  retrieval_status: {self.retrieval_status}",
+            f"  top_score: {self.top_score:.2f}",
+            f"  chunk_count: {self.chunk_count}",
+            f"  distinct_articles: {self.distinct_articles}",
+            f"  chunk_types_present: {self.chunk_types_present}",
+        ]
+        if self.pinecone_error:
+            header_lines.append(f"  pinecone_error: {self.pinecone_error}")
+
+        if not self.chunks:
+            return "\n".join(header_lines)
+
+        header_lines.append("  chunks:")
+        for i, c in enumerate(self.chunks, 1):
+            md = c.get("metadata", {}) or {}
+            title = (
+                md.get("article_title") or md.get("title") or "(untitled)"
+            )
+            chunk_type = md.get("chunk_type", "unknown")
+            chunk_tier = md.get("chunk_tier", "unknown")
+            topic = md.get("topic", "unknown")
+            score = float(c.get("score", 0.0) or 0.0)
+            excerpt = (md.get("content") or md.get("text") or "").strip()
+            excerpt = re.sub(r"\s+", " ", excerpt)
+            if len(excerpt) > COVERAGE_EXCERPT_CHARS:
+                excerpt = excerpt[:COVERAGE_EXCERPT_CHARS].rstrip() + "..."
+            header_lines.append(
+                f"    {i}. [{title}] type={chunk_type} tier={chunk_tier} "
+                f"topic={topic} score={score:.2f}"
+            )
+            header_lines.append(f"       {excerpt}")
+
+        return "\n".join(header_lines)
+
+
+# Callable contract: given a normalized inquiry, return a CoveragePack.
+CoveragePackBuilder = Callable[[str], Awaitable[CoveragePack]]
 
 
 # ---------------------------------------------------------------------------
-# Deterministic predicates
+# Deterministic predicates (now informative hints, not authoritative)
 # ---------------------------------------------------------------------------
 
 
@@ -119,20 +228,6 @@ _ELIGIBILITY_VERB_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Procedural HOW phrases ("how can I", "how do I", "how to", "how would I")
-# look like eligibility intent because they contain "can i" / "do i", but they
-# are really asking for KB-procedural steps. Detect these so the fast-path
-# defers to the LLM instead of routing to generate_response.
-_PROCEDURAL_HOW_RE = re.compile(
-    r"\bhow\s+(?:can|do|would|should)\s+i\b|\bhow\s+to\b",
-    re.IGNORECASE,
-)
-
-# Transactional intent: first-person verb phrases that signal the participant
-# wants to *execute* an action ("I'd like to...", "help me...", "can you help"),
-# not learn about it abstractly. Combined with wants_funds (rollover, withdraw,
-# loan, etc.) this signature is enough to demand eligibility verification —
-# even when the participant never says "am I eligible" or "can I".
 _TRANSACTIONAL_INTENT_RE = re.compile(
     r"\bi(?:'d| would)\s+like\s+to\b"
     r"|\bi\s+(?:want|need|wish|plan|intend)\s+to\b"
@@ -150,35 +245,21 @@ _TRANSACTIONAL_INTENT_RE = re.compile(
 #
 # Real inbound inquiries arrive wrapped in email scaffolding ("Subject: …",
 # "Request: …", "Summary: …"), with PII inline (emails, phones), and trailing
-# signatures ("Thanks, -- John"). With Gemini Flash + JSON mode + a non-zero
-# thinking budget, this scaffolding causes the model to truncate its JSON
-# response (observed completion_tokens=18-22 for wrappered inputs vs 60-90
-# for clean ones), and pollutes the embedding query passed to Pinecone for
-# the coverage check. Normalizing once at engine entry fixes both.
+# signatures ("Thanks, -- John"). Normalizing once at engine entry keeps the
+# LLM prompt and the Pinecone query both seeing the same clean intent.
 
-# Metadata-style label prefixes we strip whenever they appear as a whole
-# word followed by a colon. Real production inputs from email/CRM exporters
-# concatenate these labels onto a single line ("Request: ... Summary: ..."),
-# so a start-of-line anchor wouldn't catch them. The label is removed and
-# the content after the colon is preserved.
 _METADATA_LABEL_RE = re.compile(
     r"(?i)\b(?:subject|body|from|to|message|request|summary)\s*:\s*"
 )
 
-# RFC-loose email matcher. Replace with the literal token EMAIL so that
-# "old email vs new email" distinctions remain visible to the classifier
-# without the address noise dominating the embedding.
 _EMAIL_RE = re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.-]+\b")
 
-# Trailing signatures: a sign-off line ("Thanks", "Best", "Regards", …) or
-# an email-style "-- " separator, plus everything that follows to end of
-# input. Anchored to the END so we don't chop legitimate body sentences.
 _TRAILING_SIGNATURE_RE = re.compile(
     r"(?is)"
     r"(?:[\.!,\s])\s*"
-    r"(?:--\s.*"                                       # -- signature block
+    r"(?:--\s.*"
     r"|(?:thanks|thank\s+you|best|regards|sincerely|cheers)"
-    r"(?:[,!.\s].*)?"                                  # trailing pleasantry
+    r"(?:[,!.\s].*)?"
     r")\Z"
 )
 
@@ -220,18 +301,17 @@ def _has_action_verb(inquiry: str) -> bool:
 
 
 def compute_deterministic_features(inquiry: str) -> Dict[str, Any]:
-    """Combine the engine's advisory signals with classifier-only predicates."""
+    """Combine the engine's advisory signals with classifier-only predicates.
+
+    These features are no longer authoritative — the LLM treats them as hints
+    and can override them when the retrieved chunks contradict.
+    """
     base = detect_advisory_concepts(
         inquiry=inquiry,
         topic=None,
         collected_data=None,
     )
     has_action_verb = _has_action_verb(inquiry)
-    # Transactional intent fires when the participant pairs a first-person
-    # action verb with any signal that the action targets their funds — not
-    # just wants_funds (cash-out / withdraw / rollover) but also loan_signal
-    # ("take a loan") and hardship_signal ("hardship withdrawal"), each of
-    # which is a transaction in its own right that needs eligibility checks.
     funds_targeted = bool(
         base.get("wants_funds", False)
         or base.get("loan_signal", False)
@@ -246,75 +326,6 @@ def compute_deterministic_features(inquiry: str) -> Dict[str, Any]:
         "transactional_intent": has_action_verb and funds_targeted,
     }
     return {**base, **extras}
-
-
-# ---------------------------------------------------------------------------
-# Fast-path
-# ---------------------------------------------------------------------------
-
-
-def apply_fast_path_rules(
-    inquiry: str,
-    signals: Dict[str, Any],
-) -> Optional[FastPathDecision]:
-    """Conservative deterministic shortcut. Returns ``None`` when ambiguous."""
-    start = time.monotonic()
-
-    # Punctual factual question with no participant signals.
-    if (
-        signals.get("is_short_interrogative")
-        and not signals.get("has_first_person_status")
-        and not signals.get("has_eligibility_verb")
-        and not signals.get("hardship_signal")
-        and not signals.get("loan_signal")
-        and not signals.get("separation_signal")
-    ):
-        return FastPathDecision(
-            route="knowledge_question",
-            confidence=0.9,
-            reasoning="Short interrogative with no participant signals.",
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
-
-    # Strong eligibility intent paired with a hardship/loan/separation signal.
-    # Skip when the inquiry is a procedural HOW question — "how can I rollover…"
-    # contains "can I" but is asking for KB-procedural steps, not eligibility.
-    if (
-        signals.get("has_eligibility_verb")
-        and not _PROCEDURAL_HOW_RE.search(inquiry or "")
-        and (
-            signals.get("hardship_signal")
-            or signals.get("loan_signal")
-            or signals.get("separation_signal")
-        )
-    ):
-        return FastPathDecision(
-            route="generate_response",
-            confidence=0.9,
-            reasoning="Eligibility verb plus hardship/loan/separation signal.",
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
-
-    # Transactional action request: the participant expresses intent to execute
-    # a transaction on their funds (rollover, withdrawal, loan), even without
-    # an explicit eligibility verb. Completing the action requires participant
-    # data (active vs terminated, plan rules, vested balance, outstanding loans),
-    # so the request belongs to generate_response. Skip when the inquiry is
-    # purely procedural ("how do I…") — those are KB-answerable — or a short
-    # interrogative — those have no participant context to act on.
-    if (
-        signals.get("transactional_intent")
-        and not _PROCEDURAL_HOW_RE.search(inquiry or "")
-        and not signals.get("is_short_interrogative")
-    ):
-        return FastPathDecision(
-            route="generate_response",
-            confidence=0.85,
-            reasoning="Transactional intent on participant funds.",
-            latency_ms=(time.monotonic() - start) * 1000,
-        )
-
-    return None
 
 
 # ---------------------------------------------------------------------------
@@ -334,6 +345,7 @@ def _unparseable_default() -> Dict[str, Any]:
         "route": "needs_more_info",
         "confidence": 0.0,
         "reasoning": "Classifier output unparseable",
+        "coverage_basis": "topic_unclear",
         "user_message": None,
     }
 
@@ -362,9 +374,6 @@ def _safe_parse_classifier_json(
     try:
         parsed = json.loads(text)
     except (json.JSONDecodeError, TypeError):
-        # Last-ditch: extract the first {...} object from chatter and retry.
-        # Doesn't help with truncated-mid-string output, but covers Gemini's
-        # occasional "preamble + JSON" mode.
         obj_match = _FIRST_JSON_OBJECT_RE.search(text)
         if obj_match:
             try:
@@ -392,6 +401,7 @@ def _safe_parse_classifier_json(
         parsed["reasoning"] = (
             f"Invalid route {route!r}; coerced to needs_more_info."
         )
+        parsed["coverage_basis"] = "topic_unclear"
 
     return parsed, True
 
@@ -412,88 +422,73 @@ def _resolve_user_message(route: str, raw: Any) -> Optional[str]:
     return _DEFAULT_USER_MESSAGE
 
 
+def _resolve_coverage_basis(route: str, raw: Any) -> str:
+    """Normalize the classifier's ``coverage_basis`` to a valid value.
+
+    Coerces to a sensible default based on the final route when the LLM
+    omits the field or emits an unknown value.
+    """
+    if isinstance(raw, str) and raw in VALID_COVERAGE_BASIS:
+        return raw
+    if route == "knowledge_question":
+        return "kb_direct_answer"
+    if route == "generate_response":
+        return "participant_eligibility"
+    return "topic_unclear"
+
+
 # ---------------------------------------------------------------------------
 # Engine
 # ---------------------------------------------------------------------------
 
 
 class InquiryRouterEngine:
-    """Hybrid (deterministic + LLM) classifier for inbound inquiries."""
+    """Coverage-driven (RAG + LLM) classifier for inbound inquiries."""
 
     LLM_MAX_TOKENS = 800
 
     def __init__(
         self,
         llm_router: LLMRouter,
-        coverage_checker: Optional[
-            Callable[[str], Awaitable["CoverageVerdict"]]
-        ] = None,
+        coverage_pack_builder: Optional[CoveragePackBuilder] = None,
     ):
         self._llm = llm_router
-        self._coverage_checker = coverage_checker
+        self._coverage_pack_builder = coverage_pack_builder
 
-    async def _apply_knowledge_coverage(
-        self,
-        *,
-        route: str,
-        reasoning: str,
-        inquiry_norm: str,
-    ) -> Tuple[str, str, Optional[float], Optional[str]]:
-        kb_coverage_top_score: Optional[float] = None
-        kb_coverage_reasoning: Optional[str] = None
+    async def _build_coverage_pack(self, inquiry_norm: str) -> CoveragePack:
+        """Run the configured pack builder, or return an empty pack.
 
-        if route != "knowledge_question" or self._coverage_checker is None:
-            return route, reasoning, kb_coverage_top_score, kb_coverage_reasoning
-
-        verdict = await self._coverage_checker(inquiry_norm)
-        kb_coverage_top_score = verdict.top_score
-        kb_coverage_reasoning = verdict.reasoning
-        if not verdict.is_covered:
-            reasoning = (
-                f"KB coverage check rejected: {verdict.reasoning}. "
-                f"Original: {reasoning}"
+        When no builder is wired (unit tests, degraded mode), the engine still
+        proceeds — the LLM will see ``retrieval_status=empty`` and is steered
+        toward NMI for anything that needs coverage evidence.
+        """
+        if self._coverage_pack_builder is None:
+            return CoveragePack.empty()
+        try:
+            return await self._coverage_pack_builder(inquiry_norm)
+        except Exception as exc:
+            # Belt-and-suspenders: the builder is expected to catch its own
+            # exceptions and return a ``failed`` pack, but if it doesn't we
+            # don't want to take down the whole route-inquiry call.
+            logger.warning(
+                "Coverage pack builder raised (%s); treating as failed retrieval.",
+                type(exc).__name__,
             )
-            route = "needs_more_info"
-
-        return route, reasoning, kb_coverage_top_score, kb_coverage_reasoning
+            return CoveragePack.failed(type(exc).__name__)
 
     async def classify(self, inquiry: str) -> ClassificationResult:
         # Strip email scaffolding / inline emails / signatures once, up front;
-        # every downstream consumer (deterministic signals, fast-path, LLM
-        # prompt, coverage checker / Pinecone query) sees the cleaned form.
+        # every downstream consumer (deterministic signals, coverage pack,
+        # LLM prompt) sees the cleaned form.
         inquiry_norm = _normalize_inquiry(inquiry)
         signals = compute_deterministic_features(inquiry_norm)
 
-        fast = apply_fast_path_rules(inquiry_norm, signals)
-        if fast is not None:
-            route, reasoning, kb_coverage_top_score, kb_coverage_reasoning = (
-                await self._apply_knowledge_coverage(
-                    route=fast.route,
-                    reasoning=fast.reasoning,
-                    inquiry_norm=inquiry_norm,
-                )
-            )
-            # Fast paths only return knowledge_question / generate_response,
-            # but knowledge_question must still prove KB coverage.
-            return ClassificationResult(
-                route=route,
-                confidence=fast.confidence,
-                reasoning=reasoning,
-                signals=signals,
-                fast_path_hit=True,
-                metadata={
-                    "model": None,
-                    "provider": None,
-                    "latency_ms": fast.latency_ms,
-                    "kb_coverage_top_score": kb_coverage_top_score,
-                    "kb_coverage_reasoning": kb_coverage_reasoning,
-                },
-                user_message=_resolve_user_message(route, None),
-            )
+        coverage_pack = await self._build_coverage_pack(inquiry_norm)
 
         system_prompt, user_prompt = build_classify_inquiry_prompt(
             inquiry=inquiry_norm,
             signals=signals,
+            coverage_block=coverage_pack.to_prompt_block(),
         )
 
         llm_start = time.monotonic()
@@ -507,9 +502,7 @@ class InquiryRouterEngine:
         parsed, parse_ok = _safe_parse_classifier_json(llm_result.content)
 
         # Gemini Flash with thinking + JSON mode occasionally truncates output
-        # mid-string for inputs the normalizer didn't fully clean. Retry once
-        # against the configured fallback model — costs a single extra call
-        # only on the rare failure path.
+        # mid-string. Retry once against the configured fallback model.
         if not parse_ok:
             try:
                 llm_result = await self._llm.call(
@@ -546,14 +539,20 @@ class InquiryRouterEngine:
             )
             route = "needs_more_info"
 
-        route, reasoning, kb_coverage_top_score, kb_coverage_reasoning = (
-            await self._apply_knowledge_coverage(
-                route=route,
-                reasoning=reasoning,
-                inquiry_norm=inquiry_norm,
+        # Safety net: the LLM said KQ but the top chunk score is too weak to
+        # support that verdict — the chunks are likely only topically adjacent
+        # and the LLM hallucinated coverage. Downgrade to NMI.
+        if (
+            route == "knowledge_question"
+            and coverage_pack.top_score < KQ_TOP_SCORE_FLOOR
+        ):
+            reasoning = (
+                f"Safety net: top chunk score {coverage_pack.top_score:.2f} "
+                f"below floor {KQ_TOP_SCORE_FLOOR:.2f}. Original: {reasoning}"
             )
-        )
+            route = "needs_more_info"
 
+        coverage_basis = _resolve_coverage_basis(route, parsed.get("coverage_basis"))
         user_message = _resolve_user_message(route, parsed.get("user_message"))
 
         return ClassificationResult(
@@ -567,8 +566,11 @@ class InquiryRouterEngine:
                 "provider": llm_result.provider_used,
                 "usage": llm_result.usage,
                 "latency_ms": llm_latency_ms,
-                "kb_coverage_top_score": kb_coverage_top_score,
-                "kb_coverage_reasoning": kb_coverage_reasoning,
+                "coverage_signals": coverage_pack.signals_dict(),
+                "coverage_basis": coverage_basis,
+                # Kept for backwards compatibility with existing consumers.
+                "kb_coverage_top_score": coverage_pack.top_score,
+                "kb_coverage_reasoning": reasoning,
             },
             user_message=user_message,
         )

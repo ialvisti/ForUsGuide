@@ -600,4 +600,19 @@ class RouteInquiryResponse(BaseModel):
             "Solo populado cuando route == 'needs_more_info'; en otras rutas es None."
         ),
     )
-    metadata: Dict[str, Any] = Field(..., description="Metadata del procesamiento")
+    metadata: Dict[str, Any] = Field(
+        ...,
+        description=(
+            "Metadata del procesamiento. Incluye: "
+            "model/provider/latency_ms del LLM; "
+            "coverage_signals={retrieval_status, top_score, chunk_count, "
+            "distinct_articles, chunk_types_present, pinecone_error}, snapshot "
+            "del retrieval Pinecone que vio el clasificador; "
+            "coverage_basis (kb_direct_answer | participant_eligibility | "
+            "no_coverage | topic_unclear), la lectura del LLM sobre por qué "
+            "se eligió esta ruta; "
+            "kb_coverage_top_score y kb_coverage_reasoning (backwards-compat); "
+            "fast_path_hit (siempre False ahora, kept por compat); "
+            "router_mode + router_mode_override + original_route cuando aplica."
+        ),
+    )

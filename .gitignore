@@ -3,3 +3,4 @@
 .env.*
 .env.backup*
 sa-key.json
+PLAN_skip_rk_lanes_for_global_only_topics_v2.md

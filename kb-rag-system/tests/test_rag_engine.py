@@ -10,6 +10,7 @@ mock router that exposes an async `call()` method and pass it into the
 
 import json as _json
 import asyncio
+import logging
 
 import pytest
 from unittest.mock import AsyncMock, Mock, patch
@@ -793,6 +794,9 @@ class TestAdvisoryAlternatives:
         assert "rollover" in resolved
         assert "termination_distribution_request" in resolved
         assert "distribution" in resolved
+        # The rollover set is mixed (not all global-only), so RK lanes must NOT
+        # be skipped for it.
+        assert not set(resolved).issubset(mock_rag_engine.GLOBAL_ONLY_TOPICS)
 
     def test_advisory_separation_picks_up_company_phrase(self, mock_rag_engine):
         signal = mock_rag_engine._detect_advisory_concepts(
@@ -1334,3 +1338,395 @@ class TestAdvisoryAlternatives:
         assert "do not force blocked_missing_data" in system_prompt
         assert "questions_to_ask" in system_prompt
         assert "without a participant name" in system_prompt
+
+
+# ── Global-only topic skip (skip RK-specific lanes/levels) ──
+
+RAG_LOGGER = "data_pipeline.rag_engine"
+
+
+def _go_chunk(idx, *, article_id="hardship_guide", topic="hardship_withdrawal",
+              scope="global", chunk_type="required_data_must_have", score=0.7,
+              record_keeper=None):
+    """Build a chunk shaped like a Pinecone hit for the global-only tests."""
+    meta = {
+        "article_id": article_id,
+        "article_title": "ForUsAll 401(k) Hardship Withdrawal — Complete Guide",
+        "topic": topic,
+        "scope": scope,
+        "chunk_type": chunk_type,
+        "content": "Hardship withdrawal eligibility, fees, steps and timelines.",
+    }
+    if record_keeper is not None:
+        meta["record_keeper"] = record_keeper
+    return {"id": f"go_chunk_{idx}", "score": score, "metadata": meta}
+
+
+def _capturing_cached_query(calls, *, chunks_per_call=4, score=0.7,
+                            chunk_type="decision_guide", empty=False,
+                            provenance=False, topic="hardship_withdrawal"):
+    """Async spy for ``_cached_query`` that records every ``filter_dict``.
+
+    Returns unique-id chunks per call so the merged set clears
+    ``GR_FALLBACK_MIN_CHUNKS`` (the H fallback does not fire) and each chunk
+    scores above the fallback / cascade-sufficiency thresholds. ``empty=True``
+    forces 0 chunks (to exercise the must_have=[] / broad-fallback path).
+
+    ``provenance=True`` makes the returned ``article_id`` depend on the filter:
+    a record_keeper-filtered lane (A/C) yields ``"rk_specific_noise"`` while the
+    record_keeper-free lanes (E/G/H) yield the global ``"hardship_guide"``. This
+    lets a test prove the *correct* article arrives via E/G and that no
+    RK-specific article leaks in (which would only happen if A/C had run).
+    """
+    state = {"i": 0}
+
+    async def spy(query_text, top_k=None, filter_dict=None, rerank=None):
+        calls.append(filter_dict)
+        if empty:
+            return []
+        base = state["i"]
+        state["i"] += chunks_per_call
+        article_id = "hardship_guide"
+        if provenance and filter_dict and "record_keeper" in filter_dict:
+            article_id = "rk_specific_noise"
+        return [
+            _go_chunk(base + j, article_id=article_id, topic=topic,
+                      chunk_type=chunk_type, score=score)
+            for j in range(chunks_per_call)
+        ]
+
+    return spy
+
+
+class TestGlobalOnlyTopicSkip:
+    """The lane/level-skip optimization for structurally global-only topics."""
+
+    # ---- generate path: _search_for_response_parallel_cascade ----
+
+    @pytest.mark.asyncio
+    async def test_global_only_topic_skips_rk_lanes_in_generate_response(
+        self, mock_rag_engine, caplog
+    ):
+        caplog.set_level(logging.INFO, logger=RAG_LOGGER)
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls)
+        )
+
+        chunks, _scores = await mock_rag_engine._search_for_response_parallel_cascade(
+            enriched_queries=["hardship withdrawal eligibility"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="hardship_withdrawal",
+        )
+
+        # No lane filtered by record_keeper (A and C were skipped).
+        assert all("record_keeper" not in (f or {}) for f in calls)
+        # Only E (scope=global) and G (semantic, filter=None) ran.
+        assert any(f is None for f in calls), "G:semantic lane (filter=None) missing"
+        assert any(
+            f and f.get("scope") == {"$eq": "global"} for f in calls
+        ), "E:global_broad lane missing"
+        assert "Global-only topic detected" in caplog.text
+        assert chunks  # the global lanes still return content
+
+    @pytest.mark.asyncio
+    async def test_global_only_topic_hardship_guide_surfaces_in_generate_response(
+        self, mock_rag_engine
+    ):
+        calls = []
+        # provenance spy: E/G return the global guide; A/C (if they ran) would
+        # return "rk_specific_noise". This gives the assertion real signal.
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls, provenance=True)
+        )
+
+        chunks, _scores = await mock_rag_engine._search_for_response_parallel_cascade(
+            enriched_queries=["hardship withdrawal eligibility"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="hardship_withdrawal",
+        )
+
+        article_ids = {c["metadata"].get("article_id") for c in chunks}
+        # The correct global article must still reach the caller via E/G...
+        assert "hardship_guide" in article_ids
+        # ...and NO RK-specific article leaks in (it would only appear if the
+        # skipped A/C lanes had run).
+        assert "rk_specific_noise" not in article_ids
+
+    @pytest.mark.asyncio
+    async def test_caller_alias_hardship_triggers_skip(self, mock_rag_engine, caplog):
+        caplog.set_level(logging.INFO, logger=RAG_LOGGER)
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls)
+        )
+
+        await mock_rag_engine._search_for_response_parallel_cascade(
+            enriched_queries=["hardship withdrawal"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="hardship",  # alias -> ["hardship_withdrawal"]
+        )
+
+        assert all("record_keeper" not in (f or {}) for f in calls)
+        assert "Global-only topic detected" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_mixed_alias_rollover_does_not_skip_rk_lanes(
+        self, mock_rag_engine, caplog
+    ):
+        caplog.set_level(logging.INFO, logger=RAG_LOGGER)
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls)
+        )
+
+        await mock_rag_engine._search_for_response_parallel_cascade(
+            enriched_queries=["rollover guidance"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="rollover",  # resolves to a mixed (non global-only) set
+        )
+
+        # RK-filtered lanes A and C must still run.
+        assert any(
+            f and f.get("record_keeper") == {"$eq": "LT Trust"} for f in calls
+        )
+        assert "Global-only topic detected" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_no_record_keeper_is_noop(self, mock_rag_engine, caplog):
+        caplog.set_level(logging.INFO, logger=RAG_LOGGER)
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls)
+        )
+
+        await mock_rag_engine._search_for_response_parallel_cascade(
+            enriched_queries=["hardship withdrawal"],
+            record_keeper=None,
+            plan_type="401(k)",
+            topic="hardship_withdrawal",
+        )
+
+        # A and C are off because has_rk is False, not because of the skip.
+        assert all("record_keeper" not in (f or {}) for f in calls)
+        # The skip log must NOT fire when there is no record_keeper.
+        assert "Global-only topic detected" not in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_global_only_h_fallback_pins_scope_global(
+        self, mock_rag_engine, caplog
+    ):
+        """If the H fallback fires under skip_rk_lanes, it must stay pinned to
+        scope=global so it cannot reintroduce RK-specific articles. Forcing the
+        fallback (low score) and asserting the pin makes a revert of the pin
+        fail loudly."""
+        caplog.set_level(logging.INFO, logger=RAG_LOGGER)
+        calls = []
+        # score below GR_FALLBACK_MIN_SCORE (0.35) forces the H fallback.
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls, score=0.10)
+        )
+
+        await mock_rag_engine._search_for_response_parallel_cascade(
+            enriched_queries=["hardship withdrawal eligibility"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="hardship_withdrawal",
+        )
+
+        # E and G run in the primary gather; H runs afterwards -> 3 calls total.
+        assert len(calls) == 3, f"expected E, G, H; got {calls}"
+        assert "GR fallback triggered" in caplog.text
+        # The H fallback (the last call) is scope-pinned to global.
+        assert calls[-1] == {
+            "plan_type": {"$in": ["401(k)", "all"]},
+            "scope": {"$eq": "global"},
+        }
+        assert all("record_keeper" not in (f or {}) for f in calls)
+
+    # ---- required_data path: _search_for_required_data ----
+
+    @pytest.mark.asyncio
+    async def test_global_only_topic_skips_rk_levels_in_required_data(
+        self, mock_rag_engine, caplog
+    ):
+        caplog.set_level(logging.INFO, logger=RAG_LOGGER)
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls, chunk_type="required_data_must_have")
+        )
+
+        _chunks, per_query_scores = await mock_rag_engine._search_for_required_data(
+            enriched_queries=["hardship withdrawal required data"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="hardship_withdrawal",
+        )
+
+        # (a) No record_keeper-filtered level ran.
+        assert all("record_keeper" not in (f or {}) for f in calls)
+        # (b) per_query_scores was mutated (catches the dropped-mutation hazard).
+        assert any(v > 0 for v in per_query_scores.values())
+        # (c) the skip log fired.
+        assert "skipping RK-specific levels in required_data" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_global_only_required_data_skips_broad_fallback(
+        self, mock_rag_engine
+    ):
+        calls = []
+        # must_have=[] simulation: the topic-scoped lane returns 0 chunks.
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls, empty=True)
+        )
+
+        chunks, _scores = await mock_rag_engine._search_for_required_data(
+            enriched_queries=["hardship withdrawal required data"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="hardship_withdrawal",
+        )
+
+        assert chunks == []
+        # No RK-filtered call anywhere (broad-fallback would re-run RK levels).
+        assert all("record_keeper" not in (f or {}) for f in calls)
+        # Every issued cascade filter is topic-scoped (broad-fallback drops the
+        # topic key); its absence proves the broad re-run did not happen.
+        assert all("topic" in (f or {}) for f in calls)
+        # Exactly the two record_keeper-free levels (scope=global, then any),
+        # no Phase-2 context query, no broad fallback.
+        assert len(calls) == 2
+
+    @pytest.mark.asyncio
+    async def test_global_only_in_service_skips_rk_levels_in_required_data(
+        self, mock_rag_engine, caplog
+    ):
+        """in_service_withdrawal_options (must_have=[3], lane fills) takes the
+        same skip path as hardship — confirms the predicate covers all three
+        global-only topics, not just hardship."""
+        caplog.set_level(logging.INFO, logger=RAG_LOGGER)
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(
+                calls,
+                chunk_type="required_data_must_have",
+                topic="in_service_withdrawal_options",
+            )
+        )
+
+        _chunks, per_query_scores = await mock_rag_engine._search_for_required_data(
+            enriched_queries=["in service withdrawal options required data"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="in_service_withdrawal_options",
+        )
+
+        assert all("record_keeper" not in (f or {}) for f in calls)
+        assert any(v > 0 for v in per_query_scores.values())
+        assert "skipping RK-specific levels in required_data" in caplog.text
+
+    @pytest.mark.asyncio
+    async def test_global_only_excess_required_data_skips_broad_fallback(
+        self, mock_rag_engine
+    ):
+        """excess_contribution_refund (must_have=[], empty lane) mirrors the
+        hardship empty-lane case: no RK level, no broad fallback."""
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls, empty=True)
+        )
+
+        chunks, _scores = await mock_rag_engine._search_for_required_data(
+            enriched_queries=["excess contribution refund required data"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="excess_contribution_refund",
+        )
+
+        assert chunks == []
+        assert all("record_keeper" not in (f or {}) for f in calls)
+        assert all("topic" in (f or {}) for f in calls)
+        assert len(calls) == 2
+
+    # ---- predicate / drift / flag ----
+
+    def test_global_only_topics_are_canonical(self, mock_rag_engine):
+        from data_pipeline.rag_engine import TOPIC_NORMALIZATION_MAP
+
+        # TOPIC_NORMALIZATION_MAP values are List[str]; flatten before union.
+        canonical = set().union(*TOPIC_NORMALIZATION_MAP.values())
+        assert mock_rag_engine.GLOBAL_ONLY_TOPICS.issubset(canonical)
+
+    @pytest.mark.asyncio
+    async def test_feature_flag_disables_skip(self, mock_rag_engine):
+        # Disable the kill-switch on the instance (shadows the class attr).
+        mock_rag_engine.GLOBAL_ONLY_SKIP_ENABLED = False
+        calls = []
+        mock_rag_engine._cached_query = AsyncMock(
+            side_effect=_capturing_cached_query(calls)
+        )
+
+        await mock_rag_engine._search_for_response_parallel_cascade(
+            enriched_queries=["hardship withdrawal"],
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="hardship_withdrawal",
+        )
+
+        # With the flag off, hardship behaves like any RK topic: A and C run.
+        assert any(
+            f and f.get("record_keeper") == {"$eq": "LT Trust"} for f in calls
+        )
+
+    def test_is_global_only_topic_predicate(self, mock_rag_engine):
+        assert mock_rag_engine._is_global_only_topic(["hardship_withdrawal"])
+        assert mock_rag_engine._is_global_only_topic(
+            ["hardship_withdrawal", "excess_contribution_refund"]
+        )
+        # Mixed set -> not a subset.
+        assert not mock_rag_engine._is_global_only_topic(
+            ["hardship_withdrawal", "rollover"]
+        )
+        # Empty / None guards.
+        assert not mock_rag_engine._is_global_only_topic([])
+        assert not mock_rag_engine._is_global_only_topic(None)
+
+
+def test_global_only_topics_have_no_rk_specific_articles():
+    """Static drift guard (primary): the KB JSON on disk is the source of
+    truth. If an RK-specific article is ever added for a global-only topic,
+    the skip would make it permanently unreachable — fail loudly here."""
+    import glob
+    import json
+    from pathlib import Path
+
+    from data_pipeline.rag_engine import RAGEngine
+
+    repo_root = Path(__file__).resolve().parents[2]
+    pa_dir = repo_root / "PA"
+    paths = glob.glob(str(pa_dir / "**" / "*.json"), recursive=True)
+    assert paths, f"No KB JSON files found under {pa_dir}"
+
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (json.JSONDecodeError, UnicodeDecodeError, OSError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        meta = data.get("metadata", {}) or {}
+        if meta.get("topic") in RAGEngine.GLOBAL_ONLY_TOPICS:
+            rk = meta.get("record_keeper")
+            assert rk in (None, "all"), (
+                f"{path}: global-only topic with record_keeper={rk!r}. "
+                f"Remove the topic from GLOBAL_ONLY_TOPICS or change the article."
+            )
+            assert meta.get("scope") == "global", (
+                f"{path}: global-only topic with scope={meta.get('scope')!r} "
+                f"(expected 'global')."
+            )

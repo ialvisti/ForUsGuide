@@ -132,6 +132,13 @@ class PineconeUploader:
             logger.warning("No hay chunks para subir")
             return {"success": 0, "failed": 0}
 
+        # Invariant guard (mirrors RAGEngine.GLOBAL_ONLY_TOPICS): topics for
+        # which the retrieval engine deliberately skips record_keeper-filtered
+        # lanes must never have an RK-specific chunk in the index, or those
+        # chunks would become permanently unreachable. Fail at upsert time —
+        # the exact moment of the violation — instead of silently degrading.
+        self._assert_global_only_topic_invariant(chunks)
+
         logger.info(f"📤 Subiendo {len(chunks)} chunks a Pinecone...")
         logger.info(f"   Batch size: {self.batch_size}")
         logger.info(f"   Namespace: {self.namespace}")
@@ -166,6 +173,38 @@ class PineconeUploader:
             "failed": failed_count
         }
     
+    @staticmethod
+    def _assert_global_only_topic_invariant(chunks: List[Dict[str, Any]]) -> None:
+        """Reject an upsert that would index an RK-specific chunk for a
+        global-only topic. Single source of truth is
+        ``RAGEngine.GLOBAL_ONLY_TOPICS`` (lazy import breaks the module cycle;
+        ``rag_engine`` imports this module at its top).
+        """
+        # Lazy import: rag_engine imports pinecone_uploader at module load, so
+        # importing it here (at runtime) avoids a circular import.
+        from .rag_engine import RAGEngine
+
+        global_only = RAGEngine.GLOBAL_ONLY_TOPICS
+        for chunk in chunks:
+            meta = chunk.get("metadata", {}) or {}
+            topic = meta.get("topic")
+            if topic not in global_only:
+                continue
+            record_keeper = meta.get("record_keeper")
+            if record_keeper not in (None, "all"):
+                raise ValueError(
+                    f"Chunk {chunk.get('id')!r} has topic={topic!r} (global-only) "
+                    f"but record_keeper={record_keeper!r}. Either remove "
+                    f"{topic!r} from RAGEngine.GLOBAL_ONLY_TOPICS or make the "
+                    f"article scope=global / record_keeper=null."
+                )
+            scope = meta.get("scope")
+            if scope not in (None, "global"):
+                raise ValueError(
+                    f"Chunk {chunk.get('id')!r} has topic={topic!r} (global-only) "
+                    f"but scope={scope!r} (expected 'global')."
+                )
+
     def _upload_batch(self, batch: List[Dict[str, Any]]) -> bool:
         """
         Sube un batch de chunks con retry logic.

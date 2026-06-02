@@ -117,13 +117,14 @@ class KnowledgeQuestionResult:
 # canonical values. This table translates caller-side topics to the
 # exact metadata values used at chunking time. An empty list means
 # "no meaningful mapping — skip the topic filter entirely". Unmapped
-# topics fall through to ``[topic_lower]`` so new vocabulary keeps
-# working if it happens to match.
+# topics return ``None`` (skip the topic filter) so we don't activate
+# topic-filtered lanes against a value that can't match anything.
 TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
     "distribution": ["distribution"],
     "distributions": ["distribution"],
     "rollover": ["rollover", "termination_distribution_request", "distribution"],
     "rollovers": ["rollover", "termination_distribution_request", "distribution"],
+    "incoming_rollover": ["rollover", "distribution"],
     "loan": ["loan"],
     "loans": ["loan"],
     "hardship": ["hardship_withdrawal"],
@@ -132,6 +133,7 @@ TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
     "termination": ["termination_distribution_request"],
     "termination_distribution": ["termination_distribution_request"],
     "termination_distribution_request": ["termination_distribution_request"],
+    "termination_movement": ["termination_distribution_request"],
     "excess_contribution": ["excess_contribution_refund"],
     "excess_contributions": ["excess_contribution_refund"],
     "excess_contribution_refund": ["excess_contribution_refund"],
@@ -147,6 +149,10 @@ TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
     "investment": [],
     "contributions": [],
     "contribution": [],
+    "general_inquiry": [],
+    "taxes": [],
+    "savings_rate": [],
+    "dashboard_access": [],
 }
 
 
@@ -174,9 +180,12 @@ def _ordered_unique(values: List[str]) -> List[str]:
 def resolve_topic_filter(topic: Optional[str]) -> Optional[List[str]]:
     """Translate a caller topic into Pinecone ``topic`` metadata values.
 
-    Returns ``None`` when no topic filter should be applied (either
-    because the caller did not provide a topic or because the mapping
-    is explicitly empty).
+    Returns ``None`` when no topic filter should be applied: caller did
+    not provide a topic, the mapping is explicitly empty, or the topic
+    is unknown. Unknown topics return ``None`` instead of ``[topic]``
+    because raw caller vocabulary almost never matches the canonical
+    indexed values, so activating a topic-filtered lane against it
+    would burn a rerank call on a filter guaranteed to return zero.
     """
     if not topic:
         return None
@@ -184,7 +193,7 @@ def resolve_topic_filter(topic: Optional[str]) -> Optional[List[str]]:
     mapped = TOPIC_NORMALIZATION_MAP.get(key)
     if mapped is not None:
         return mapped or None
-    return [key]
+    return None
 
 
 def detect_advisory_concepts(
@@ -1553,12 +1562,49 @@ class RAGEngine:
         "in_service_withdrawal_options",
     })
 
+    # Canonical topics for which the KB ONLY has scope=global content (0
+    # RK-specific articles). Activating record_keeper-filtered lanes/levels
+    # for these burns reranks and injects off-topic RK noise.
+    # Maintenance: (1) if an RK-specific article is added for any of these
+    #   topics, REMOVE it from this set in the SAME PR (enforced by the
+    #   static drift test, Cambio 4). (2) These topics may have
+    #   `required_data.must_have = []` (hardship, excess today); in that case
+    #   required_data returns empty for the topic — that is correct, not a bug.
+    GLOBAL_ONLY_TOPICS = frozenset({
+        "hardship_withdrawal",
+        "in_service_withdrawal_options",
+        "excess_contribution_refund",
+    })
+
+    # Kill-switch: revert via env-var without redeploy. Same pattern as
+    # GR_RERANK_ENABLED. The failure mode of the skip is silent (a worse
+    # answer, no error), so a cheap env-var revert is the right safety valve.
+    GLOBAL_ONLY_SKIP_ENABLED = os.getenv("GLOBAL_ONLY_SKIP_ENABLED", "true").lower() in {
+        "1", "true", "yes", "on",
+    }
+
     # ``TOPIC_NORMALIZATION_MAP`` and ``resolve_topic_filter`` live at module
     # level (see top of this file) so other modules can reuse them without
     # instantiating the engine.
 
     def _resolve_topic_filter(self, topic: Optional[str]) -> Optional[List[str]]:
         return resolve_topic_filter(topic)
+
+    def _is_global_only_topic(self, resolved_topics: Optional[List[str]]) -> bool:
+        """True if the full resolved set is a non-empty subset of GLOBAL_ONLY_TOPICS.
+
+        Computed once from the original resolved set and propagated explicitly;
+        never recomputed from a ``resolved_topics`` that may have been mutated to
+        ``None``. The feature flag lives inside the helper so a single
+        ``_is_global_only_topic(...) -> False`` disables the behaviour across
+        both retrieval paths at once.
+        """
+        return (
+            self.GLOBAL_ONLY_SKIP_ENABLED
+            and resolved_topics is not None
+            and len(resolved_topics) > 0
+            and set(resolved_topics).issubset(self.GLOBAL_ONLY_TOPICS)
+        )
 
     def _get_topic_variations(self, topic: str) -> List[str]:
         """
@@ -3312,6 +3358,7 @@ class RAGEngine:
             (merged_chunks, per_query_scores)
         """
         resolved_topics = self._resolve_topic_filter(topic)
+        is_global_only = self._is_global_only_topic(resolved_topics)
 
         per_query_scores: Dict[str, float] = {eq: 0.0 for eq in enriched_queries}
 
@@ -3322,10 +3369,18 @@ class RAGEngine:
             plan_type=plan_type,
             resolved_topics=resolved_topics,
             per_query_scores=per_query_scores,
+            skip_rk_levels=is_global_only,
         )
 
+        # Broad-fallback: do NOT run for global-only topics. Re-running with
+        # resolved_topics=None reintroduces RK levels and pulls
+        # required_data_must_have chunks from OTHER topics (loan/termination/MFA)
+        # — off-topic noise. For a global-only topic, "0 required_data" is the
+        # correct answer (hardship/excess have must_have=[]); in_service fills
+        # the lane and never reaches the fallback anyway.
         if (
             resolved_topics
+            and not is_global_only
             and len(required_data_chunks) < self.RD_TOPIC_LANE_MIN_CHUNKS
         ):
             logger.info(
@@ -3338,6 +3393,7 @@ class RAGEngine:
                 plan_type=plan_type,
                 resolved_topics=None,
                 per_query_scores=per_query_scores,
+                skip_rk_levels=False,
             )
             required_data_chunks = self._merge_and_rank_chunks(
                 required_data_chunks, broad_chunks
@@ -3414,6 +3470,7 @@ class RAGEngine:
         plan_type: str,
         resolved_topics: Optional[List[str]],
         per_query_scores: Dict[str, float],
+        skip_rk_levels: bool = False,
     ) -> List[Dict[str, Any]]:
         """
         Run the RK cascade for required_data with an optional topic filter.
@@ -3421,6 +3478,10 @@ class RAGEngine:
         Mutates `per_query_scores` in place. Returns the merged & ranked chunks
         from the first cascade level that satisfies `_rk_results_sufficient`,
         or an empty list if no level produced any chunks.
+
+        When `skip_rk_levels` is True (global-only topic + record_keeper), the
+        record_keeper-filtered cascade levels are dropped entirely; only the
+        record_keeper-free levels (scope=global, then any) run.
         """
         rk_cascade = self._build_rk_cascade(record_keeper)
         top_k = self.RD_TOP_K_PER_QUERY
@@ -3431,6 +3492,28 @@ class RAGEngine:
         required_data_chunks: List[Dict[str, Any]] = []
 
         if record_keeper:
+            if skip_rk_levels:
+                logger.info(
+                    f"Global-only topic ({resolved_topics}) for RK={record_keeper}: "
+                    f"skipping RK-specific levels in required_data."
+                )
+                # _build_rk_cascade(record_keeper) produces:
+                #   [0] {record_keeper}, [1] {scope=global},
+                #   [2] {record_keeper=LT Trust} (only if rk != LT Trust), [-1] {}.
+                # Keep only the levels WITHOUT a record_keeper filter ->
+                #   [scope=global, {}]. (For LT Trust the [2] level never exists.)
+                non_rk_cascade = [
+                    lvl for lvl in rk_cascade if "record_keeper" not in lvl["filters"]
+                ]
+                return await self._iterate_rk_cascade_levels(
+                    non_rk_cascade,
+                    enriched_queries,
+                    plan_type,
+                    topic_filter,
+                    per_query_scores,
+                    top_k,
+                    topic_label,
+                )
             staged_primary = record_keeper in self.RK_PRIMARY_STAGED_RECORD_KEEPERS
             # Fix H (Round 2): topics with no RK-specific article must NOT
             # short-circuit on Stage 1a — the global lane must always run so
@@ -3541,62 +3624,79 @@ class RAGEngine:
                 )
 
             if not self._rk_results_sufficient(required_data_chunks):
-                for level in rk_cascade[2:]:
-                    fallback_tasks = []
-                    for eq in enriched_queries:
-                        level_filters = {
-                            **level["filters"],
-                            "plan_type": {"$in": [plan_type, "all"]},
-                            "chunk_type": {"$eq": "required_data_must_have"},
-                            **topic_filter,
-                        }
-                        fallback_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=level_filters))
-
-                    level_results = await asyncio.gather(*fallback_tasks)
-                    for i, eq in enumerate(enriched_queries):
-                        best = max((c.get('score', 0) for c in level_results[i]), default=0)
-                        per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
-
-                    level_chunks = self._merge_and_rank_chunks(*level_results)
-                    logger.info(
-                        f"Cascade ({level['label']}, {topic_label}): "
-                        f"found {len(level_chunks)} chunks"
+                fallback_chunks = await self._iterate_rk_cascade_levels(
+                    rk_cascade[2:],
+                    enriched_queries,
+                    plan_type,
+                    topic_filter,
+                    per_query_scores,
+                    top_k,
+                    topic_label,
+                )
+                if fallback_chunks:
+                    required_data_chunks = self._merge_and_rank_chunks(
+                        required_data_chunks, fallback_chunks
                     )
-                    if self._rk_results_sufficient(level_chunks):
-                        required_data_chunks = self._merge_and_rank_chunks(
-                            required_data_chunks, level_chunks
-                        )
-                        break
         else:
-            for level in rk_cascade:
-                level_tasks = []
-                for eq in enriched_queries:
-                    level_filters = {
+            required_data_chunks = await self._iterate_rk_cascade_levels(
+                rk_cascade,
+                enriched_queries,
+                plan_type,
+                topic_filter,
+                per_query_scores,
+                top_k,
+                topic_label,
+            )
+
+        return required_data_chunks
+
+    async def _iterate_rk_cascade_levels(
+        self,
+        cascade: List[Dict[str, Any]],
+        enriched_queries: List[str],
+        plan_type: str,
+        topic_filter: Dict[str, Any],
+        per_query_scores: Dict[str, float],
+        top_k: int,
+        topic_label: str = "",
+    ) -> List[Dict[str, Any]]:
+        """Iterate cascade levels one by one, short-circuiting on the first
+        level that satisfies ``_rk_results_sufficient``.
+
+        Mutates ``per_query_scores`` in place — this dict is returned to the API
+        for observability, so the per-level best-score update is load-bearing.
+        Centralising it here removes the copy-paste hazard of the previously
+        duplicated cascade loops. Returns the first sufficient level's merged &
+        ranked chunks, or ``[]`` if no level produced sufficient results.
+        """
+        chunks: List[Dict[str, Any]] = []
+        for level in cascade:
+            tasks = [
+                self._cached_query(
+                    eq,
+                    top_k=top_k,
+                    filter_dict={
                         **level["filters"],
                         "plan_type": {"$in": [plan_type, "all"]},
                         "chunk_type": {"$eq": "required_data_must_have"},
                         **topic_filter,
-                    }
-                    level_tasks.append(self._cached_query(eq, top_k=top_k, filter_dict=level_filters))
-
-                level_results = await asyncio.gather(*level_tasks)
-                for i, eq in enumerate(enriched_queries):
-                    best = max((c.get('score', 0) for c in level_results[i]), default=0)
-                    per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
-
-                level_chunks = self._merge_and_rank_chunks(*level_results)
-                logger.info(
-                    f"Cascade ({level['label']}, {topic_label}): "
-                    f"found {len(level_chunks)} chunks"
+                    },
                 )
-                if self._rk_results_sufficient(level_chunks):
-                    required_data_chunks = self._merge_and_rank_chunks(
-                        required_data_chunks, level_chunks
-                    )
-                    break
+                for eq in enriched_queries
+            ]
+            results = await asyncio.gather(*tasks)
+            for i, eq in enumerate(enriched_queries):
+                best = max((c.get("score", 0) for c in results[i]), default=0)
+                per_query_scores[eq] = max(per_query_scores[eq], round(best, 4))
 
-        return required_data_chunks
-    
+            level_chunks = self._merge_and_rank_chunks(*results)
+            label = f"{level['label']}, {topic_label}" if topic_label else level["label"]
+            logger.info(f"Cascade ({label}): found {len(level_chunks)} chunks")
+            if self._rk_results_sufficient(level_chunks):
+                chunks = self._merge_and_rank_chunks(chunks, level_chunks)
+                break
+        return chunks
+
     def _merge_and_rank_chunks(
         self,
         *chunk_lists: List[Dict[str, Any]]
@@ -3825,18 +3925,32 @@ class RAGEngine:
         """
         Parallel RK/topic-aware search for generate_response endpoint.
 
-        Runs the full cascade (RK + topic exact + tags variations + global
-        scope + LT Trust fallback + semantic) in a single asyncio.gather
-        round instead of the sequential short-circuit cascade used by
-        required_data. Adds a conditional fallback pass (plan_type-only)
-        when the primary pass yields too few or low-scoring chunks.
+        Runs the active lanes (A:rk+topic, C:rk_broad, E:global_broad,
+        G:semantic) in a single asyncio.gather round instead of the sequential
+        short-circuit cascade used by required_data. Adds a conditional
+        fallback pass H (plan_type-only) when the primary pass yields too few or
+        low-scoring chunks.
+
+        For structurally global-only topics (GLOBAL_ONLY_TOPICS) with a
+        record_keeper, the RK-specific lanes A and C are skipped (they return 0
+        or pure noise); E and G carry the retrieval and the H fallback is pinned
+        to scope=global so it cannot reintroduce RK-specific articles.
         """
         plan_filter = {"$in": [plan_type, "all"]}
         has_rk = bool(record_keeper)
         resolved_topics = self._resolve_topic_filter(topic)
         has_topic_filter = resolved_topics is not None
-        rk_is_default = record_keeper == self.RK_FALLBACK_DEFAULT
-        topic_variations = self._get_topic_variations(topic) if topic else []
+
+        # Global-only topics: the KB has no RK-specific article, so lanes A
+        # (rk+topic) and C (rk_broad) return 0 / pure noise. Skip them and let
+        # E (global_broad) + G (semantic) carry the retrieval.
+        skip_rk_lanes = has_rk and self._is_global_only_topic(resolved_topics)
+        if skip_rk_lanes:
+            logger.info(
+                f"Global-only topic detected (resolved={resolved_topics}); skipping lanes "
+                f"A and C for record_keeper={record_keeper}. Only E (global_broad) and "
+                f"G (semantic) run."
+            )
 
         tasks: List = []
         task_meta: List[tuple] = []
@@ -3863,38 +3977,21 @@ class RAGEngine:
             task_meta.append((eq, lane))
 
         for eq in enriched_queries:
-            if has_rk and has_topic_filter:
+            if has_rk and has_topic_filter and not skip_rk_lanes:
                 add(eq, "A:rk+topic", 10, {
                     "plan_type": plan_filter,
                     "record_keeper": {"$eq": record_keeper},
                     "topic": {"$in": resolved_topics},
                 })
-            if has_rk and topic_variations:
-                add(eq, "B:rk+tags", 8, {
-                    "plan_type": plan_filter,
-                    "record_keeper": {"$eq": record_keeper},
-                    "tags": {"$in": topic_variations},
-                })
-            if has_rk:
+            if has_rk and not skip_rk_lanes:
                 add(eq, "C:rk_broad", 12, {
                     "plan_type": plan_filter,
                     "record_keeper": {"$eq": record_keeper},
-                })
-            if has_topic_filter:
-                add(eq, "D:global+topic", 10, {
-                    "plan_type": plan_filter,
-                    "scope": {"$eq": "global"},
-                    "topic": {"$in": resolved_topics},
                 })
             add(eq, "E:global_broad", 10, {
                 "plan_type": plan_filter,
                 "scope": {"$eq": "global"},
             })
-            if has_rk and not rk_is_default:
-                add(eq, "F:lt_trust", 10, {
-                    "plan_type": plan_filter,
-                    "record_keeper": {"$eq": self.RK_FALLBACK_DEFAULT},
-                })
             add(eq, "G:semantic", self.GR_UNFILTERED_TOP_K, None)
 
         results = await asyncio.gather(*tasks)
@@ -3916,8 +4013,14 @@ class RAGEngine:
             logger.info(
                 f"GR fallback triggered: {len(chunks)} chunks, top_score={top_score:.3f}"
             )
+            # Fallback H filters only by plan_type (no record_keeper). When the
+            # RK lanes were skipped for a global-only topic, also pin scope=global
+            # so this last resort cannot reintroduce RK-specific articles.
+            fallback_filter = {"plan_type": plan_filter}
+            if skip_rk_lanes:
+                fallback_filter["scope"] = {"$eq": "global"}
             fallback_tasks = [
-                self._cached_query(eq, top_k=15, filter_dict={"plan_type": plan_filter})
+                self._cached_query(eq, top_k=15, filter_dict=fallback_filter)
                 for eq in enriched_queries
             ]
             fallback_results = await asyncio.gather(*fallback_tasks)

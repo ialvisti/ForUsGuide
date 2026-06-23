@@ -328,6 +328,32 @@ class TestKnowledgeBranch:
         assert out.diagnostics.get("kb_insufficient") is True
         rag.ask_knowledge_question.assert_not_awaited()
 
+    async def test_kq_synthesis_is_inquiry_scoped(self):
+        # Cross-contamination fix: the KB-question synthesis must focus on THIS
+        # inquiry's text, not the whole ticket, so a co-occurring second topic
+        # cannot hijack the synthesized question (eval f3-07/f3-03).
+        llm = LLMStub({"kb_question_synthesis":
+                       '{"question": "How does a participant change their contribution rate?"}'})
+        deps, rag, _r, _f = _deps(llm=llm, classify_route="knowledge_question")
+        rag.ask_knowledge_question.return_value = SimpleNamespace(answer="A", key_points=[])
+        orch = TicketOrchestrator(deps, _settings())
+        ext = ExtractedInquiry(
+            "Participant wants to increase their contribution rate from 5% to 10%",
+            "LT Trust", "401(k)", "contribution_change",
+        )
+        req = _req(
+            email_subject="Help with my 401k",
+            email_body=("I want to increase my contribution rate. Also I cannot "
+                        "complete MFA and can't get into the portal."),
+        )
+        await orch.handle_inquiry(
+            ext, req, total_inquiries=2,
+            classification=_classification("knowledge_question"),
+        )
+        synth = llm.user_prompts["kb_question_synthesis"]
+        assert "contribution rate" in synth                    # focused inquiry present
+        assert "MFA" not in synth and "portal" not in synth    # other topic excluded
+
 
 # ---------------------------------------------------------------------------
 # Generate-response branch

@@ -329,7 +329,20 @@ class TicketOrchestrator:
     # ------------------------------------------------------------------
 
     async def _handle_kq(self, ext: ExtractedInquiry, req: Any, classification: Any) -> InquiryOutcome:
-        agent_input = {"ticketData": self._build_ticket_data(req)}
+        # Synthesize the KB question from THIS inquiry, not the whole ticket.
+        # ``_build_ticket_data`` returns the full email body + thread, so when a
+        # ticket yields two knowledge_question inquiries (e.g. a financial request
+        # + an account_access blocker) both would synthesize the same question and
+        # the dominant topic would hijack both answers. Feeding the extractor's
+        # per-inquiry text (and clearing the subject/thread) scopes the synthesis
+        # to this inquiry while leaving the parity-locked prompt untouched.
+        focused = {
+            **self._build_ticket_data(req),
+            "emailSubject": "",
+            "emailBody": ext.inquiry,
+            "ticket_messages": {},
+        }
+        agent_input = {"ticketData": focused}
         system, user = prompts.build_kb_question_synthesis_prompt(agent_input)
         diag = self._classifier_diag(classification)
         try:

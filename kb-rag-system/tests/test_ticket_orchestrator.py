@@ -18,6 +18,7 @@ from data_pipeline.ticket_orchestrator import (
     ExtractedInquiry,
     OrchestratorDeps,
     TicketOrchestrator,
+    _detect_account_access_signal,
     _flatten_required_fields,
 )
 
@@ -210,6 +211,88 @@ class TestAccountAccessGuard:
         acct = next(o for o in out if o.topic == "account_access")
         assert "cannot log in" in acct.inquiry
         assert "no longer valid" in acct.inquiry
+
+    # --- DEFECT A (f3-07): "log into" / credential-invalid must be detected ---
+
+    async def test_injects_on_cant_log_into(self):
+        # f3-07 shape: rollover + "can't log into ... credentials are invalid".
+        # The word-bounded match did NOT find "can't log in" inside "can't log
+        # into", so the guard previously missed the split entirely.
+        fin = ('[{"inquiry": "Participant wants to roll over an old 401(k) into '
+               'their current plan", "topic": "rollover"}]')
+        llm = LLMStub({"extract_inquiries": fin})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        req = _req(
+            email_subject="Two things",
+            email_body=("First, I'd like to roll over my old 401(k) into my current "
+                        "plan. Second, I can't log into my account — it says my "
+                        "credentials are invalid."),
+        )
+        out = await orch.extract_inquiries(req)
+        assert len(out) == 2
+        assert {o.topic for o in out} == {"rollover", "account_access"}
+        assert out[1].topic == "account_access"           # injected at index 1
+        assert out[1].related_inquiries == [out[0].inquiry]  # cross-linked
+
+    def test_detects_login_and_credential_variants(self):
+        # Direct unit coverage of the phrases the word boundary used to drop.
+        for phrase in (
+            "i can't log into my account",
+            "i cannot log in to the portal",
+            "i am unable to sign in",
+            "it says my credentials are invalid",
+            "error: invalid credentials",
+        ):
+            assert _detect_account_access_signal(phrase) is not None, phrase
+
+    async def test_no_false_positive_on_benign_login_mention(self):
+        # "log into" WITHOUT a negated verb is a normal request, not a blocker.
+        llm = LLMStub({"extract_inquiries": self._FIN})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        req = _req(
+            email_subject="beneficiary",
+            email_body="I want to log into my account to update my beneficiary designation.",
+        )
+        out = await orch.extract_inquiries(req)
+        assert len(out) == 1
+        assert all(o.topic != "account_access" for o in out)
+
+    # --- DEFECT B: "no longer works" employment phrase must not false-fire ---
+
+    async def test_no_false_positive_on_no_longer_works_employment(self):
+        # Plain financial ticket: "no longer works there" is EMPLOYMENT status,
+        # not an email problem; the benign "email" mention must not split.
+        llm = LLMStub({"extract_inquiries": self._FIN})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        req = _req(
+            email_subject="cash out",
+            email_body=("The user no longer works there and wants to cash out their "
+                        "401(k). Please email them the check."),
+        )
+        out = await orch.extract_inquiries(req)
+        assert len(out) == 1
+        assert all(o.topic != "account_access" for o in out)
+
+    def test_still_detects_genuine_email_no_longer_works(self):
+        # The real "my email no longer works" signal must be preserved.
+        sig = _detect_account_access_signal(
+            "i can't get my statements because my work email no longer works."
+        )
+        assert sig is not None
+        assert "email on file is no longer valid" in sig
+
+    def test_detects_email_no_longer_valid_with_intervening_words(self):
+        # f3-02 pattern: "email" and "no longer valid" are NOT adjacent — the
+        # (email present + validity phrase) form must still fire (guards against
+        # an over-strict adjacency rewrite).
+        sig = _detect_account_access_signal(
+            "the email address used for this account is no longer valid"
+        )
+        assert sig is not None
+        assert "email on file is no longer valid" in sig
 
 
 # ---------------------------------------------------------------------------

@@ -118,27 +118,51 @@ def _detect_account_access_signal(text: str) -> Optional[str]:
     ):
         reasons.append("received a password-reset email they did not request")
 
-    # Cannot log in / access the account.
+    # Cannot log in / access the account. "log into"/"log in to"/"sign in"/"log
+    # on" are listed explicitly because the word-bounded match does NOT find
+    # "can't log in" inside "can't log into" (the trailing "to" breaks the
+    # boundary). Only NEGATED verbs are listed so a benign "log into my account
+    # to update X" never fires; invalid-credential phrases are unambiguous
+    # access blockers and stand on their own.
     if any(
         _contains_phrase(text, p)
         for p in (
             "can't log in", "cannot log in", "can't login", "cannot login",
-            "unable to log in", "unable to login", "can't access", "cannot access",
-            "can't get into", "cannot get into", "locked out", "account locked",
-            "login inaccessible", "lost access",
+            "can't log into", "cannot log into", "can't log in to", "cannot log in to",
+            "unable to log in", "unable to login", "unable to log into", "unable to log in to",
+            "can't log on", "cannot log on",
+            "can't sign in", "cannot sign in", "can't sign into", "cannot sign into",
+            "unable to sign in",
+            "can't access", "cannot access", "can't get into", "cannot get into",
+            "locked out", "account locked", "login inaccessible", "lost access",
+            "invalid credentials", "credentials are invalid", "credentials are not valid",
+            "invalid login credentials",
         )
     ):
         reasons.append("cannot log in to or access their account")
 
-    # Email on file is no longer valid / usable.
-    if _contains_phrase(text, "email") and any(
+    # Email on file is no longer valid / usable. The bare token "no longer works"
+    # was removed: it matched the EMPLOYMENT phrase "no longer works there" and,
+    # paired with any "email" token, produced a spurious split on plain financial
+    # tickets. A genuine "my email no longer works" still fires via the
+    # email-adjacent phrases below.
+    email_invalid = (
+        _contains_phrase(text, "email") and any(
+            _contains_phrase(text, p)
+            for p in (
+                "no longer valid", "no longer have access", "old email",
+                "former work email", "former email", "previous email",
+                "invalid email",
+            )
+        )
+    ) or any(
         _contains_phrase(text, p)
         for p in (
-            "no longer valid", "no longer works", "no longer have access",
-            "old email", "former work email", "former email", "previous email",
-            "invalid email",
+            "email no longer works", "email is no longer working",
+            "email no longer working",
         )
-    ):
+    )
+    if email_invalid:
         reasons.append("the email on file is no longer valid or accessible")
 
     # MFA / two-factor problem — requires a problem context, not a bare mention.

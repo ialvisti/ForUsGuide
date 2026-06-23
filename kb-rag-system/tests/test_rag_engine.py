@@ -1730,3 +1730,103 @@ def test_global_only_topics_have_no_rk_specific_articles():
                 f"{path}: global-only topic with scope={meta.get('scope')!r} "
                 f"(expected 'global')."
             )
+
+
+class TestEvalFixesF1F2F7:
+    """Regression tests for eval 2026-06-22 fixes F2 (hardship signal scope),
+    F1 (incoming-rollover exact mode), F7 (explicit separation overrides active)."""
+
+    def _active(self):
+        return {
+            "participant_data": {"employment_status": "Active", "account_balance": 40000},
+            "plan_data": {"company_status": "Ongoing"},
+        }
+
+    # ---- F2: hardship signal must not fire on generic words ----
+    def test_f2_incoming_rollover_house_does_not_trigger_hardship(self, mock_rag_engine):
+        signal = mock_rag_engine._detect_advisory_concepts(
+            inquiry=("Participant wants to roll over her old 401(k) from a previous "
+                     "provider into her current plan; she also mentioned she just bought a house."),
+            topic="rollover",
+            collected_data=self._active(),
+        )
+        assert signal["hardship_signal"] is False
+        assert "hardship_withdrawal" not in signal["detected_concepts"]
+
+    def test_f2_real_hardship_still_detected(self, mock_rag_engine):
+        signal = mock_rag_engine._detect_advisory_concepts(
+            inquiry="Participant needs a hardship withdrawal to avoid eviction from their home.",
+            topic="hardship_withdrawal",
+            collected_data=self._active(),
+        )
+        assert signal["hardship_signal"] is True
+
+    def test_f2_house_with_foreclosure_context_triggers_but_alone_does_not(self, mock_rag_engine):
+        with_ctx = mock_rag_engine._detect_advisory_concepts(
+            inquiry="My house is in foreclosure and I need funds.", topic="general",
+            collected_data=self._active())
+        without_ctx = mock_rag_engine._detect_advisory_concepts(
+            inquiry="I want to move my 401(k) money to buy a house for my kids.", topic="general",
+            collected_data=self._active())
+        assert with_ctx["hardship_signal"] is True
+        assert without_ctx["hardship_signal"] is False
+
+    # ---- F7: explicit separation claim detection + active override ----
+    def test_f7_explicit_separation_claim_detection(self, mock_rag_engine):
+        for text in ["I resigned last month and want to cash out",
+                     "the participant no longer works at the company",
+                     "I am a former employee and want my 401(k)",
+                     "they let me go and I want to withdraw"]:
+            sig = mock_rag_engine._detect_advisory_concepts(text, "general", None)
+            assert sig["explicit_separation_claim"] is True, text
+
+    def test_f7_future_or_rollover_source_is_not_a_separation_claim(self, mock_rag_engine):
+        for text in ["I'm thinking about quitting next year",
+                     "I want to roll over my previous employer's 401(k) into this plan"]:
+            sig = mock_rag_engine._detect_advisory_concepts(text, "rollover", None)
+            assert sig["explicit_separation_claim"] is False, text
+
+    def test_f7_active_status_with_separation_claim_overrides(self, mock_rag_engine):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry="The participant says they no longer work at the company and wants to cash out their 401(k).",
+            topic="termination_distribution_request",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data={"participant_data": {"employment_status": "Active"}, "plan_data": {}},
+        )
+        assert profile["separation_status_conflict"] is True
+        assert profile["signals"]["explicit_separation_claim"] is True
+        assert profile["signals"]["termination_distribution"] is True
+        excluded = profile["excluded_articles"]
+        assert mock_rag_engine.IN_SERVICE_ARTICLE_ID in excluded
+        assert mock_rag_engine.HARDSHIP_ARTICLE_ID in excluded
+        assert mock_rag_engine.LT_LOAN_ARTICLE_ID in excluded
+
+    # ---- F1: incoming rollover exact-procedure mode ----
+    def test_f1_incoming_rollover_builds_exact_procedure_profile(self, mock_rag_engine):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry=("Participant wants to roll over her previous 401(k) from CalSavers "
+                     "into her current ForUsAll account and is requesting instructions."),
+            topic="rollover",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data=self._active(),
+        )
+        assert profile["mode"] == "exact_procedure"
+        assert profile["primary_action"] == "incoming_rollover"
+        assert profile["rollover_mode"] == "incoming"
+        assert profile["primary_article_id"] == "lt_request_401k_termination_withdrawal_or_rollover"
+        assert profile["signals"]["incoming_rollover"] is True
+        assert profile["signals"]["termination_distribution"] is False
+        assert mock_rag_engine.GENERAL_POST_TERMINATION_OPTIONS_ARTICLE_ID in profile["excluded_articles"]
+
+    def test_f1_outgoing_rollover_to_external_is_not_incoming(self, mock_rag_engine):
+        profile = mock_rag_engine._build_retrieval_profile(
+            inquiry="I am a former employee and want to roll over my 401(k) to my Schwab account.",
+            topic="rollover",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            collected_data={"participant_data": {"employment_status": "Terminated", "termination_date": "2026-01-10"}, "plan_data": {}},
+        )
+        assert profile["signals"]["incoming_rollover"] is False
+        assert profile["primary_action"] != "incoming_rollover"

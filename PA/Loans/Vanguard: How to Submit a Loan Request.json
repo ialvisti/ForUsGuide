@@ -395,8 +395,8 @@
                     "meaning": "The employer's actual payroll schedule that must be entered correctly during submission.",
                     "example_values": [],
                     "why_needed": "Required to actually submit the loan; an incorrect value will cause rejection. Does not block general explanation of why payroll frequency must match.",
-                    "source_note": "Supported by article section: Customize Your Terms",
-                    "source_type": "message_text",
+                    "source_note": "Supported by article section: Customize Your Terms. Scrapeable from the participant profile (payroll module: Payroll Frequency).",
+                    "source_type": "participant_profile",
                     "blocking_intent": "execution_only"
                 },
                 {

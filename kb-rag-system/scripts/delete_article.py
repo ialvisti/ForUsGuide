@@ -17,6 +17,10 @@ from pathlib import Path
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
+# Cargar variables de entorno desde .env (PINECONE_API_KEY, INDEX_NAME, etc.)
+from dotenv import load_dotenv
+load_dotenv(root_dir / ".env")
+
 from data_pipeline.pinecone_uploader import PineconeUploader
 import logging
 

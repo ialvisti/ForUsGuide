@@ -447,6 +447,22 @@ class PineconeUploader:
 
         return default
     
+    @staticmethod
+    def _extract_vector_id(item: Any) -> str:
+        """Extract a plain vector-id string from a list() result item.
+
+        ``index.list()`` yields pages whose items are SDK ``ListItem`` objects
+        (with an ``.id`` attribute), but depending on SDK version they can also
+        be plain dicts or strings. Returning the raw object here would make the
+        subsequent ``fetch`` send malformed IDs (e.g. ``ListItem(id='...')``),
+        silently returning zero vectors.
+        """
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            return item.get('id', '')
+        return getattr(item, 'id', '') or str(item)
+
     def get_article_chunks(
         self,
         article_id: str,
@@ -495,13 +511,15 @@ class PineconeUploader:
                 list_kwargs["prefix"] = prefix
             
             for page in self.index.list(**list_kwargs):
-                if isinstance(page, list):
-                    all_ids.extend(page)
-                elif hasattr(page, 'vectors'):
-                    all_ids.extend(v.get('id', v) if isinstance(v, dict) else v for v in page.vectors)
+                if hasattr(page, 'vectors'):
+                    items = page.vectors
+                elif isinstance(page, list):
+                    items = page
                 else:
-                    all_ids.extend(page)
-                
+                    items = list(page)
+
+                all_ids.extend(self._extract_vector_id(item) for item in items)
+
                 if len(all_ids) >= limit * 2:
                     break
             

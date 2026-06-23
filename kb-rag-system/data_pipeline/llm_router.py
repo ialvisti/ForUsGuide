@@ -434,6 +434,12 @@ def build_routes_from_settings(settings: Any) -> Dict[str, TaskRoute]:
         "gr_response": settings.LLM_ROUTE_GR_RESPONSE,
         "knowledge_question": settings.LLM_ROUTE_KNOWLEDGE,
         "classify_inquiry": settings.LLM_ROUTE_CLASSIFY,
+        # End-to-end ticket handler agents (LLM-first).
+        "extract_inquiries": settings.LLM_ROUTE_EXTRACT_INQUIRIES,
+        "kb_question_synthesis": settings.LLM_ROUTE_KB_QUESTION_SYNTHESIS,
+        "forusbots_field_map": settings.LLM_ROUTE_FORUSBOTS_FIELD_MAP,
+        "gr_body_build": settings.LLM_ROUTE_GR_BODY_BUILD,
+        "ticket_field_extract": settings.LLM_ROUTE_TICKET_FIELD_EXTRACT,
     }
 
     def _apply_override(cfg: ModelConfig, override: Dict[str, Any]) -> ModelConfig:

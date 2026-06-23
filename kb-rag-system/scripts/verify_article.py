@@ -22,6 +22,10 @@ from collections import Counter
 # Agregar parent directory al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Cargar variables de entorno desde .env (PINECONE_API_KEY, INDEX_NAME, etc.)
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 from data_pipeline.pinecone_uploader import PineconeUploader
 
 # Configurar logging

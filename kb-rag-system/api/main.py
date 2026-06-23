@@ -11,6 +11,7 @@ Endpoints:
 - GET /health - Health check
 """
 
+import asyncio
 import logging
 import time
 from contextlib import asynccontextmanager
@@ -19,6 +20,7 @@ from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
+from cachetools import TTLCache
 import sys
 from pathlib import Path
 
@@ -41,6 +43,13 @@ from data_pipeline.inquiry_router import (
     CoveragePack,
     InquiryRouterEngine,
 )
+from data_pipeline.forusbots_client import ForusBotsClient
+from data_pipeline.ticket_orchestrator import (
+    InquiryOutcome,
+    OrchestratorDeps,
+    TicketOrchestrator,
+)
+from data_pipeline.ticket_jobs import TicketJobStore
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -58,7 +67,13 @@ from .models import (
     RouteInquiryRequest,
     RouteInquiryResponse,
     SourceArticle,
-    UsedChunk
+    UsedChunk,
+    HandleTicketRequest,
+    TicketHandleResponse,
+    TicketJobHandle,
+    TicketStatusResponse,
+    InquiryResult,
+    RouteDecision,
 )
 from .config import settings, validate_settings
 from .middleware import (
@@ -285,7 +300,18 @@ async def lifespan(app: FastAPI):
             logger.info("✅ Execution logger initialized (Firestore)")
         else:
             app.state.execution_logger = None
-        
+
+        # End-to-end ticket handler wiring: ForusBots client + in-process job
+        # store + idempotency cache + background-task registry. The orchestrator
+        # itself is built per-request (cheap) from these on app.state.
+        app.state.forusbots_client = ForusBotsClient.from_settings(settings)
+        app.state.ticket_jobs = TicketJobStore(ttl_s=settings.TICKET_JOB_TTL_S)
+        app.state.ticket_idem = TTLCache(maxsize=2048, ttl=settings.TICKET_JOB_TTL_S)
+        app.state.bg_tasks = set()
+        logger.info(
+            "✅ Ticket handler wired (mode=%s)", settings.TICKET_HANDLER_MODE
+        )
+
         logger.info("=" * 80)
         logger.info(f"🚀 API Ready on http://{settings.API_HOST}:{settings.API_PORT}")
         logger.info("=" * 80)
@@ -295,9 +321,15 @@ async def lifespan(app: FastAPI):
         raise
     
     yield
-    
+
     # Shutdown
     logger.info("Shutting down API...")
+    forusbots = getattr(app.state, "forusbots_client", None)
+    if forusbots is not None:
+        try:
+            await forusbots.aclose()
+        except Exception:
+            logger.exception("Error closing ForusBots client")
 
 
 # ============================================================================
@@ -477,6 +509,7 @@ async def health_check(
         openai_configured=openai_configured,
         total_vectors=total_vectors,
         router_mode=settings.ROUTER_MODE,
+        ticket_handler_mode=settings.TICKET_HANDLER_MODE,
     )
 
 
@@ -914,6 +947,373 @@ async def route_inquiry_endpoint(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while routing the inquiry.",
         )
+
+
+# ============================================================================
+# Handle Ticket — end-to-end orchestrator (Endpoint 5)
+# ============================================================================
+
+_TICKET_GREETING = "Could you share a bit more detail about what you'd like help with?"
+
+
+def get_ticket_orchestrator(request: Request) -> TicketOrchestrator:
+    """Build a per-request orchestrator from the engines on app.state."""
+    st = request.app.state
+    if (
+        getattr(st, "rag_engine", None) is None
+        or getattr(st, "inquiry_router", None) is None
+        or getattr(st, "forusbots_client", None) is None
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ticket handler not initialized",
+        )
+    deps = OrchestratorDeps(
+        rag_engine=st.rag_engine,
+        inquiry_router=st.inquiry_router,
+        llm_router=st.llm_router,
+        forusbots=st.forusbots_client,
+        execution_logger=getattr(st, "execution_logger", None),
+    )
+    return TicketOrchestrator(deps, settings)
+
+
+def get_ticket_jobs(request: Request) -> TicketJobStore:
+    jobs = getattr(request.app.state, "ticket_jobs", None)
+    if jobs is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ticket jobs store not initialized",
+        )
+    return jobs
+
+
+def _apply_ticket_handler_mode(route: str, mode: str) -> Tuple[str, Optional[str]]:
+    """Gating mirror of ``_apply_router_mode`` for the ticket handler."""
+    if mode == "knowledge_only" and route == "generate_response":
+        return "needs_more_info", "ticket_handler_mode=knowledge_only coerced generate_response"
+    return route, None
+
+
+def _knowledge_answer_model(r: Any) -> KnowledgeQuestionResponse:
+    return KnowledgeQuestionResponse(
+        answer=r.answer,
+        key_points=r.key_points,
+        source_articles=[SourceArticle(**sa) for sa in r.source_articles],
+        used_chunks=[UsedChunk(**uc) for uc in r.used_chunks],
+        confidence_note=r.confidence_note,
+        metadata=r.metadata,
+    )
+
+
+def _generate_result_model(r: Any) -> GenerateResponseResult:
+    return GenerateResponseResult(
+        decision=r.decision,
+        confidence=r.confidence,
+        response=r.response,
+        source_articles=[SourceArticle(**sa) for sa in r.source_articles],
+        used_chunks=[UsedChunk(**uc) for uc in r.used_chunks],
+        coverage_gaps=r.coverage_gaps,
+        metadata=r.metadata,
+    )
+
+
+def _outcome_to_inquiry_result(o: InquiryOutcome) -> InquiryResult:
+    """Convert the orchestrator's raw-dataclass outcome to the Pydantic model,
+    reusing the exact conversions the per-endpoint handlers use."""
+    return InquiryResult(
+        inquiry=o.inquiry,
+        topic=o.topic,
+        record_keeper=o.record_keeper,
+        plan_type=o.plan_type,
+        route=RouteDecision(o.route),
+        scrape_status=o.scrape_status,
+        knowledge_answer=_knowledge_answer_model(o.knowledge_result) if o.knowledge_result is not None else None,
+        generate_response=_generate_result_model(o.generate_result) if o.generate_result is not None else None,
+        needs_more_info_message=o.needs_more_info_message,
+        diagnostics=o.diagnostics,
+    )
+
+
+def _nmi_outcome(ext: Any, message: str, diagnostics: Optional[Dict[str, Any]] = None) -> InquiryOutcome:
+    return InquiryOutcome(
+        inquiry=ext.inquiry,
+        topic=ext.topic,
+        route="needs_more_info",
+        record_keeper=ext.record_keeper,
+        plan_type=ext.plan_type,
+        needs_more_info_message=message,
+        diagnostics=diagnostics or {},
+    )
+
+
+async def _handle_one_gated(
+    orch: TicketOrchestrator, ext: Any, req: HandleTicketRequest, total: int,
+    classification: Any, override_reason: Optional[str],
+) -> InquiryOutcome:
+    """Run one inquiry, honoring a mode coercion (knowledge_only) without
+    re-classifying."""
+    if override_reason is not None:
+        message = getattr(classification, "user_message", None) or _TICKET_GREETING
+        return _nmi_outcome(ext, message, {
+            "classifier": {"route": getattr(classification, "route", None),
+                           "confidence": getattr(classification, "confidence", None)},
+            "ticket_handler_override": override_reason,
+        })
+    return await orch.handle_inquiry(
+        ext, req, total_inquiries=total, classification=classification
+    )
+
+
+def _aggregate_job_state(outcomes: List[InquiryOutcome]) -> str:
+    degraded = any(
+        o.route == "generate_response" and o.scrape_status in ("failed", "timeout")
+        for o in outcomes
+    )
+    return "partial" if degraded else "succeeded"
+
+
+async def _log_ticket_safe(
+    exec_logger: Optional[ExecutionLogger], http_request: Request,
+    req: HandleTicketRequest, start: float, mode: str,
+    outcomes: List[InquiryOutcome], error: Optional[str],
+    ticket_job_id: Optional[str] = None,
+) -> None:
+    if not exec_logger:
+        return
+    try:
+        duration_ms = (time.monotonic() - start) * 1000
+        route_summary = [
+            {"topic": o.topic, "route": o.route, "scrape_status": o.scrape_status}
+            for o in outcomes
+        ]
+        fb_ids = [
+            o.diagnostics.get("forusbots_job_id")
+            for o in outcomes if o.diagnostics.get("forusbots_job_id")
+        ]
+        await exec_logger.log_ticket_execution(
+            request_id=getattr(http_request.state, "request_id", "unknown"),
+            ticket_job_id=ticket_job_id,
+            mode=mode,
+            route_summary=route_summary,
+            total_inquiries=len(outcomes),
+            forusbots_job_ids=fb_ids,
+            duration_ms=duration_ms,
+            error=error,
+            idempotency_key=req.idempotency_key,
+        )
+    except Exception:
+        logger.exception("ticket execution logging failed")
+
+
+async def _run_ticket_job(
+    app: FastAPI, job_id: str, orch: TicketOrchestrator,
+    capped: List[Any], classifications: List[Any], gated: List[Tuple[str, Optional[str]]],
+    req: HandleTicketRequest, total: int,
+    exec_logger: Optional[ExecutionLogger], http_request: Request,
+    mode: str, start: float,
+) -> None:
+    """Background runner for the slow (generate_response) path."""
+    jobs: TicketJobStore = app.state.ticket_jobs
+    jobs.set_state(job_id, state="running")
+    try:
+        async def _process() -> List[InquiryOutcome]:
+            outs: List[InquiryOutcome] = []
+            for ext, c, (_er, reason) in zip(capped, classifications, gated):
+                out = await asyncio.wait_for(
+                    _handle_one_gated(orch, ext, req, total, c, reason),
+                    settings.TICKET_INQUIRY_BUDGET_S,
+                )
+                outs.append(out)
+            return outs
+
+        outcomes = await asyncio.wait_for(_process(), settings.TICKET_TOTAL_BUDGET_S)
+        fb_ids = [
+            o.diagnostics.get("forusbots_job_id")
+            for o in outcomes if o.diagnostics.get("forusbots_job_id")
+        ]
+        jobs.set_state(
+            job_id, state=_aggregate_job_state(outcomes), outcomes=outcomes,
+            forusbots_job_ids=fb_ids, total_inquiries=total,
+        )
+        await _log_ticket_safe(exec_logger, http_request, req, start, mode, outcomes, None, ticket_job_id=job_id)
+    except asyncio.TimeoutError:
+        logger.warning("ticket job %s exceeded total budget", job_id)
+        jobs.set_state(job_id, state="timeout", error="ticket_total_budget_exceeded")
+        await _log_ticket_safe(exec_logger, http_request, req, start, mode, [], "timeout", ticket_job_id=job_id)
+    except Exception as e:  # noqa: BLE001
+        logger.exception("ticket job %s failed", job_id)
+        jobs.set_state(job_id, state="failed", error=str(e))
+        await _log_ticket_safe(exec_logger, http_request, req, start, mode, [], str(e), ticket_job_id=job_id)
+
+
+@app.post(
+    "/api/v1/handle-ticket",
+    dependencies=[Depends(verify_api_key)],
+    tags=["RAG Endpoints"],
+    responses={200: {"model": TicketHandleResponse}, 202: {"model": TicketJobHandle}},
+)
+async def handle_ticket_endpoint(
+    request: HandleTicketRequest,
+    http_request: Request,
+    orchestrator: TicketOrchestrator = Depends(get_ticket_orchestrator),
+    jobs: TicketJobStore = Depends(get_ticket_jobs),
+    exec_logger: Optional[ExecutionLogger] = Depends(get_execution_logger),
+):
+    """
+    Endpoint 5: end-to-end ticket handler. One call runs the whole flow that
+    n8n used to orchestrate (extract → classify → knowledge_question OR
+    required-data → ForusBots scrape → generate-response).
+
+    **Hybrid contract:** fast routes (knowledge_question / needs_more_info)
+    return inline (``200`` ``TicketHandleResponse``). The slow data path returns
+    ``202`` ``TicketJobHandle`` immediately; poll ``GET /api/v1/tickets/{id}``.
+
+    **Rollout:** gated by ``TICKET_HANDLER_MODE`` (or per-request override):
+    ``disabled`` → 503; ``shadow`` → classify only and tell the caller to use
+    the legacy flow; ``knowledge_only`` → only knowledge questions are handled
+    end-to-end; ``full`` → full orchestration.
+    """
+    start = time.monotonic()
+    effective_mode = request.ticket_handler_mode or settings.TICKET_HANDLER_MODE
+    if effective_mode == "disabled":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ticket handler is disabled.",
+        )
+
+    idem = request.idempotency_key or http_request.headers.get("Idempotency-Key")
+    if idem:
+        existing_id = http_request.app.state.ticket_idem.get(idem)
+        if existing_id:
+            job = jobs.get(existing_id)
+            if job is not None:
+                return JSONResponse(
+                    status_code=status.HTTP_202_ACCEPTED,
+                    content=TicketJobHandle(
+                        ticket_job_id=job.ticket_job_id, state=job.state,
+                        poll_url=f"/api/v1/tickets/{job.ticket_job_id}", estimate={},
+                    ).model_dump(),
+                )
+
+    try:
+        extracted = await orchestrator.extract_inquiries(request)
+        if not extracted:
+            primary = InquiryResult(
+                inquiry=(request.ticket.email_body or request.ticket.email_subject or "(empty)")[:1000],
+                topic="general", plan_type="401(k)",
+                route=RouteDecision.NEEDS_MORE_INFO,
+                needs_more_info_message=_TICKET_GREETING,
+            )
+            await _log_ticket_safe(exec_logger, http_request, request, start, effective_mode, [], None)
+            return TicketHandleResponse(
+                route_taken=RouteDecision.NEEDS_MORE_INFO, primary=primary,
+                total_inquiries_in_ticket=0,
+                metadata={"ticket_handler_mode": effective_mode, "reason": "no_actionable_inquiry"},
+            )
+
+        total = len(extracted)
+        capped = extracted[: 1 + settings.TICKET_MAX_RELATED]
+        classifications = [await orchestrator.classify(e.inquiry) for e in capped]
+
+        # shadow: don't act — classify, report what we WOULD do, defer to legacy.
+        if effective_mode == "shadow":
+            results = [
+                _outcome_to_inquiry_result(_nmi_outcome(
+                    e, getattr(c, "user_message", None) or _TICKET_GREETING,
+                    {"classifier": {"route": getattr(c, "route", None),
+                                    "confidence": getattr(c, "confidence", None)}},
+                ))
+                for e, c in zip(capped, classifications)
+            ]
+            await _log_ticket_safe(exec_logger, http_request, request, start, "shadow", [], None)
+            return TicketHandleResponse(
+                route_taken=RouteDecision.NEEDS_MORE_INFO, primary=results[0],
+                related=results[1:], total_inquiries_in_ticket=total,
+                metadata={"ticket_handler_mode": "shadow", "fallback": True,
+                          "shadow_routes": [getattr(c, "route", None) for c in classifications]},
+            )
+
+        gated = [
+            _apply_ticket_handler_mode(getattr(c, "route", "needs_more_info"), effective_mode)
+            for c in classifications
+        ]
+        slow = any(getattr(c, "route", None) == "generate_response" and reason is None
+                   for c, (_er, reason) in zip(classifications, gated))
+
+        if not slow:
+            outcomes: List[InquiryOutcome] = []
+            for ext, c, (_er, reason) in zip(capped, classifications, gated):
+                outcomes.append(await _handle_one_gated(orchestrator, ext, request, total, c, reason))
+            results = [_outcome_to_inquiry_result(o) for o in outcomes]
+            await _log_ticket_safe(exec_logger, http_request, request, start, effective_mode, outcomes, None)
+            return TicketHandleResponse(
+                route_taken=results[0].route, primary=results[0], related=results[1:],
+                total_inquiries_in_ticket=total,
+                metadata={"ticket_handler_mode": effective_mode},
+            )
+
+        # slow path → background job + 202
+        job = jobs.create()
+        if idem:
+            http_request.app.state.ticket_idem[idem] = job.ticket_job_id
+        task = asyncio.create_task(_run_ticket_job(
+            http_request.app, job.ticket_job_id, orchestrator,
+            capped, classifications, gated, request, total,
+            exec_logger, http_request, effective_mode, start,
+        ))
+        http_request.app.state.bg_tasks.add(task)
+        task.add_done_callback(http_request.app.state.bg_tasks.discard)
+        return JSONResponse(
+            status_code=status.HTTP_202_ACCEPTED,
+            content=TicketJobHandle(
+                ticket_job_id=job.ticket_job_id, state="queued",
+                poll_url=f"/api/v1/tickets/{job.ticket_job_id}",
+                estimate={"avg_seconds": int(settings.FORUSBOTS_MAX_WAIT_S)},
+            ).model_dump(),
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Error in handle_ticket endpoint")
+        await _log_ticket_safe(exec_logger, http_request, request, start, effective_mode, [], str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="An error occurred while handling the ticket.",
+        )
+
+
+@app.get(
+    "/api/v1/tickets/{ticket_job_id}",
+    response_model=TicketStatusResponse,
+    dependencies=[Depends(verify_api_key)],
+    tags=["RAG Endpoints"],
+)
+async def get_ticket_status(
+    ticket_job_id: str,
+    jobs: TicketJobStore = Depends(get_ticket_jobs),
+):
+    """Poll a slow (data-path) ticket job started by ``POST /api/v1/handle-ticket``."""
+    job = jobs.get(ticket_job_id)
+    if job is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ticket job not found or expired.",
+        )
+    results = [_outcome_to_inquiry_result(o) for o in job.outcomes]
+    primary = results[0] if results else None
+    return TicketStatusResponse(
+        ticket_job_id=job.ticket_job_id,
+        state=job.state,
+        route_taken=primary.route if primary else None,
+        primary=primary,
+        related=results[1:] if results else [],
+        total_inquiries_in_ticket=job.total_inquiries,
+        forusbots_job_ids=job.forusbots_job_ids,
+        elapsed_s=round(time.monotonic() - job.created_monotonic, 2),
+        error=job.error,
+    )
 
 
 @app.post(

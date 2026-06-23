@@ -5,8 +5,11 @@ Maneja variables de entorno y settings de la aplicación.
 Pydantic BaseSettings reads env vars automatically — no os.getenv needed.
 """
 
+import logging
 from typing import List
 from pydantic_settings import BaseSettings
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -48,6 +51,14 @@ class Settings(BaseSettings):
     LLM_ROUTE_KNOWLEDGE: str = "gpt-5.5"
     LLM_ROUTE_CLASSIFY: str = "gemini-2.5-flash"
 
+    # LLM Routing for the end-to-end ticket handler (LLM-first: the 4 n8n agents
+    # become 4 internal LLM calls). See ticket-handler-planning/stage-3-*.md.
+    LLM_ROUTE_EXTRACT_INQUIRIES: str = "gpt-5.5"
+    LLM_ROUTE_KB_QUESTION_SYNTHESIS: str = "gpt-5.5"
+    LLM_ROUTE_FORUSBOTS_FIELD_MAP: str = "gpt-5.5"
+    LLM_ROUTE_GR_BODY_BUILD: str = "gpt-5.5"
+    LLM_ROUTE_TICKET_FIELD_EXTRACT: str = "gpt-5.5"
+
     # Inquiry router rollout flag. Stage 4 reads this to decide whether the
     # /route-inquiry endpoint is exposed and how it behaves:
     #   disabled        → endpoint returns 503
@@ -57,6 +68,32 @@ class Settings(BaseSettings):
     # Default is "full" because the endpoint is generally available; operators
     # can downgrade per-environment via the ROUTER_MODE env var.
     ROUTER_MODE: str = "full"
+
+    # ForusBots scraping service (end-to-end ticket handler).
+    # Auth is the `x-auth-token` header. All scrape endpoints are async
+    # (202 + jobId, then poll). See ticket-handler-planning/stage-1-*.md.
+    FORUSBOTS_BASE_URL: str = "https://forusbots-6jyh.onrender.com"
+    FORUSBOTS_AUTH_TOKEN: str = ""
+    FORUSBOTS_POLL_INTERVAL_S: float = 3.0
+    FORUSBOTS_POLL_BACKOFF: float = 1.3
+    FORUSBOTS_POLL_MAX_INTERVAL_S: float = 10.0
+    FORUSBOTS_MAX_WAIT_S: float = 200.0
+    FORUSBOTS_HTTP_READ_TIMEOUT_S: float = 15.0
+    FORUSBOTS_MAX_INFLIGHT: int = 2
+    FORUSBOTS_RESULT_CACHE_TTL_S: int = 180
+
+    # Ticket handler orchestrator rollout flag. Mirrors ROUTER_MODE:
+    #   disabled        → endpoint returns 503
+    #   shadow          → runs the pipeline but tells n8n to use the legacy flow
+    #   knowledge_only  → only knowledge_question tickets are handled end-to-end
+    #   full            → full orchestration
+    # Default "disabled": a brand-new orchestrator ships dark.
+    TICKET_HANDLER_MODE: str = "disabled"
+    TICKET_INQUIRY_BUDGET_S: float = 300.0
+    TICKET_TOTAL_BUDGET_S: float = 480.0
+    TICKET_JOB_TTL_S: int = 1800
+    TICKET_MAX_RELATED: int = 3
+    RATE_LIMIT_HANDLE_TICKET: int = 20
 
     # Pinecone
     PINECONE_API_KEY: str = ""
@@ -124,6 +161,11 @@ def validate_settings():
         "LLM_ROUTE_GR_RESPONSE": settings.LLM_ROUTE_GR_RESPONSE,
         "LLM_ROUTE_KNOWLEDGE": settings.LLM_ROUTE_KNOWLEDGE,
         "LLM_ROUTE_CLASSIFY": settings.LLM_ROUTE_CLASSIFY,
+        "LLM_ROUTE_EXTRACT_INQUIRIES": settings.LLM_ROUTE_EXTRACT_INQUIRIES,
+        "LLM_ROUTE_KB_QUESTION_SYNTHESIS": settings.LLM_ROUTE_KB_QUESTION_SYNTHESIS,
+        "LLM_ROUTE_FORUSBOTS_FIELD_MAP": settings.LLM_ROUTE_FORUSBOTS_FIELD_MAP,
+        "LLM_ROUTE_GR_BODY_BUILD": settings.LLM_ROUTE_GR_BODY_BUILD,
+        "LLM_ROUTE_TICKET_FIELD_EXTRACT": settings.LLM_ROUTE_TICKET_FIELD_EXTRACT,
     }
     for var_name, model_name in route_models.items():
         model_lower = (model_name or "").strip().lower()
@@ -145,7 +187,24 @@ def validate_settings():
                 f"(se esperaba 'gpt-*' o 'gemini-*')"
             )
 
+    # Ticket handler rollout flag must be one of the known modes.
+    valid_ticket_modes = {"disabled", "shadow", "knowledge_only", "full"}
+    if settings.TICKET_HANDLER_MODE not in valid_ticket_modes:
+        errors.append(
+            f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} inválido "
+            f"(se esperaba uno de {sorted(valid_ticket_modes)})"
+        )
+
     if errors:
         raise ValueError(f"Configuración inválida: {', '.join(errors)}")
+
+    # Non-fatal: the ticket handler needs a ForusBots token to scrape, but the
+    # other endpoints must still boot when it's left disabled/unconfigured.
+    if settings.TICKET_HANDLER_MODE != "disabled" and not settings.FORUSBOTS_AUTH_TOKEN:
+        logger.warning(
+            "TICKET_HANDLER_MODE=%s but FORUSBOTS_AUTH_TOKEN is not set — "
+            "the generate_response (data) path will fail until it is configured.",
+            settings.TICKET_HANDLER_MODE,
+        )
 
     return True

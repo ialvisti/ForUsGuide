@@ -177,6 +177,39 @@ def call_route_inquiry(
     return resp.json()
 
 
+def call_handle_ticket(payload: dict, poll_timeout_s: float = 240.0) -> tuple[dict, int, float]:
+    """Call the end-to-end /api/v1/handle-ticket and, for the slow (202) path,
+    poll /api/v1/tickets/{id} until terminal. Returns (final_body, status, ms).
+
+    Use this in the differential harness to compare the consolidated endpoint
+    against the legacy required-data → ForusBots → generate-response sequence.
+    """
+    start = time.time()
+    resp = httpx.post(
+        f"{API_BASE_URL}/api/v1/handle-ticket",
+        headers=_req_headers(HEADERS_AUTH),
+        json=payload,
+        timeout=TIMEOUT,
+    )
+    if resp.status_code != 202:
+        return resp.json(), resp.status_code, (time.time() - start) * 1000
+
+    job_id = resp.json()["ticket_job_id"]
+    deadline = start + poll_timeout_s
+    terminal = {"succeeded", "partial", "failed", "timeout"}
+    while time.time() < deadline:
+        time.sleep(3)
+        s = httpx.get(
+            f"{API_BASE_URL}/api/v1/tickets/{job_id}",
+            headers=_req_headers(HEADERS_AUTH),
+            timeout=30,
+        )
+        body = s.json()
+        if body.get("state") in terminal:
+            return body, s.status_code, (time.time() - start) * 1000
+    return {"state": "timeout", "ticket_job_id": job_id}, 504, (time.time() - start) * 1000
+
+
 # ============================================================================
 # Shared validation helpers
 # ============================================================================

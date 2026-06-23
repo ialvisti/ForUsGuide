@@ -384,6 +384,10 @@ class HealthResponse(BaseModel):
         default="disabled",
         description="Inquiry router rollout flag: disabled | shadow | knowledge_only | full",
     )
+    ticket_handler_mode: str = Field(
+        default="disabled",
+        description="Ticket handler rollout flag: disabled | shadow | knowledge_only | full",
+    )
 
 
 class ErrorResponse(BaseModel):
@@ -616,3 +620,128 @@ class RouteInquiryResponse(BaseModel):
             "router_mode + router_mode_override + original_route cuando aplica."
         ),
     )
+
+
+# ============================================================================
+# Ticket Handler (end-to-end) — Stage 2: modelos (endpoint cableado en Stage 5)
+# ============================================================================
+
+class TicketInput(BaseModel):
+    """Datos del ticket. Hoy la lógica usa solo subject + body; los demás campos
+    son opcionales para forward-compat (no se requieren ni se asumen)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    username: str = Field(..., description="Nombre del participante/usuario del ticket")
+    user_email: str = Field(..., description="Email del participante/usuario del ticket")
+    email_subject: str = Field(..., description="Asunto del email/ticket")
+    email_body: Optional[str] = Field(
+        default=None, description="Cuerpo del email/ticket (puede ser null/vacío)"
+    )
+    # Forward-compat (no usados por la lógica LLM-first actual):
+    ticket_messages: Optional[Dict[str, str]] = Field(
+        default=None, description="Hilo de mensajes {message_1: ..., ...} (opcional)"
+    )
+    tag: Optional[str] = Field(default=None, description="Tag de DevRev (opcional)")
+    ticket_id: Optional[str] = Field(default=None, description="ID del ticket (opcional)")
+    first_contact: Optional[bool] = Field(
+        default=None, description="Si es el primer contacto (opcional)"
+    )
+
+
+class HandleTicketRequest(BaseModel):
+    """Request para el endpoint end-to-end /api/v1/handle-ticket."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    participant_id: str = Field(..., description="ID del participante")
+    plan_id: str = Field(..., description="ID del plan")
+    company_name: str = Field(..., description="Nombre de la empresa")
+    company_status: str = Field(..., description="Estado de la empresa (e.g. Ongoing)")
+    company_status_detail: Optional[str] = Field(
+        default=None, description="Detalle del estado de la empresa (puede ser null)"
+    )
+    ticket: TicketInput = Field(..., description="Datos del ticket")
+    record_keeper: Optional[str] = Field(
+        default=None, max_length=100, description="Record keeper (e.g. 'LT Trust'); puede ser null"
+    )
+    max_response_tokens: int = Field(
+        default=5500, ge=500, le=5500,
+        description="Tope de tokens para la respuesta de generate-response",
+    )
+    ticket_handler_mode: Optional[Literal["disabled", "shadow", "knowledge_only", "full"]] = Field(
+        default=None,
+        description="Override per-request de settings.TICKET_HANDLER_MODE.",
+    )
+    idempotency_key: Optional[str] = Field(
+        default=None, description="Clave de idempotencia (alternativa al header Idempotency-Key)"
+    )
+
+    @field_validator("record_keeper")
+    @classmethod
+    def _normalize_record_keeper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v or v.upper() == "N/A":
+            return None
+        return v
+
+
+class InquiryResult(BaseModel):
+    """Resultado de procesar UNA inquiry del ticket."""
+
+    inquiry: str = Field(..., description="Texto de la inquiry (parafraseada)")
+    topic: str = Field(..., description="Topic detectado (lower_snake_case)")
+    record_keeper: Optional[str] = Field(default=None)
+    plan_type: str = Field(default="401(k)")
+    route: RouteDecision = Field(..., description="Ruta tomada para esta inquiry")
+    scrape_status: Optional[str] = Field(
+        default=None, description="ok | partial | failed | timeout (solo ruta generate_response)"
+    )
+    # Exactamente uno se popula según la ruta:
+    knowledge_answer: Optional[KnowledgeQuestionResponse] = Field(default=None)
+    generate_response: Optional[GenerateResponseResult] = Field(default=None)
+    needs_more_info_message: Optional[str] = Field(default=None)
+    diagnostics: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Diagnóstico por paso: classifier signals/confidence/coverage, "
+            "mapped_modules, _unmapped, forusbots_job_id/elapsed, usage LLM, timings."
+        ),
+    )
+
+
+class TicketHandleResponse(BaseModel):
+    """Respuesta INLINE (rutas rápidas: knowledge_question / needs_more_info)."""
+
+    route_taken: RouteDecision = Field(..., description="Ruta de la inquiry primaria")
+    primary: InquiryResult = Field(..., description="Resultado de la inquiry primaria")
+    related: List[InquiryResult] = Field(
+        default_factory=list, description="Resultados de inquiries relacionadas"
+    )
+    total_inquiries_in_ticket: int = Field(..., ge=0)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TicketJobHandle(BaseModel):
+    """Respuesta 202 para la ruta lenta (generate_response): handle para hacer poll."""
+
+    ticket_job_id: str = Field(..., description="ID del job de ticket en background")
+    state: str = Field(..., description="queued | running")
+    poll_url: str = Field(..., description="URL para hacer poll del estado")
+    estimate: Dict[str, Any] = Field(default_factory=dict)
+
+
+class TicketStatusResponse(BaseModel):
+    """Respuesta de GET /api/v1/tickets/{ticket_job_id}."""
+
+    ticket_job_id: str = Field(...)
+    state: str = Field(..., description="running | succeeded | partial | failed | timeout")
+    route_taken: Optional[RouteDecision] = Field(default=None)
+    primary: Optional[InquiryResult] = Field(default=None)
+    related: List[InquiryResult] = Field(default_factory=list)
+    total_inquiries_in_ticket: Optional[int] = Field(default=None)
+    forusbots_job_ids: List[str] = Field(default_factory=list)
+    elapsed_s: Optional[float] = Field(default=None)
+    error: Optional[str] = Field(default=None)

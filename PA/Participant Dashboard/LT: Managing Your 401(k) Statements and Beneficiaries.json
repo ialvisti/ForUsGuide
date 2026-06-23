@@ -1,0 +1,1464 @@
+{
+  "metadata": {
+    "article_id": "access_manage_401k_statements_beneficiaries",
+    "title": "LT: How to Access and Manage Your ForUsAll 401(k) Statements and Beneficiaries",
+    "description": "Comprehensive guidance for helping a participant log in to the ForUsAll dashboard, view and download quarterly 401(k) statements, understand statement posting timelines and statement sections, update statement delivery preferences, request support for older, archived, custom date, or on-demand statements, and add or update primary and contingent beneficiaries.",
+    "topic": "account_access_and_management",
+    "subtopics": [
+      "forusall_dashboard_login",
+      "participant_account_navigation",
+      "quarterly_statement_access",
+      "statement_view_and_download",
+      "statement_posting_schedule",
+      "quarterly_statement_contents",
+      "account_summary_section",
+      "investment_allocation_and_performance",
+      "account_activity_by_source",
+      "lifetime_income_estimate",
+      "statement_delivery_preferences",
+      "electronic_statement_delivery",
+      "paper_statement_delivery",
+      "on_demand_statement_requests",
+      "older_archived_and_custom_date_statements",
+      "beneficiary_add_or_update",
+      "primary_beneficiary_rules",
+      "contingent_beneficiary_rules",
+      "beneficiary_allocation_requirements",
+      "spousal_consent_plan_variability",
+      "participant_support_contact"
+    ],
+    "audience": "Internal AI Support Agent",
+    "record_keeper": "LT Trust",
+    "plan_type": "401(k)",
+    "scope": "recordkeeper-specific",
+    "tags": [
+      "Participant Dashboard",
+      "Beneficiary Related Information",
+      "MFA"
+    ],
+    "language": "en-US",
+    "last_updated": null,
+    "schema_version": "kb_article_v2",
+    "transformed_at": "2026-05-28",
+    "source_last_updated": null,
+    "source_system": "DevRev"
+  },
+  "details": {
+    "business_rules": [
+      {
+        "category": "dashboard_access",
+        "rules": [
+          "Participants access their ForUsAll dashboard by going to forusall.com/login and entering their login credentials.",
+          "After logging in, participants use the three-dot menu in the top-right corner of the dashboard to access account options such as Statements or Beneficiaries."
+        ]
+      },
+      {
+        "category": "statement_availability",
+        "rules": [
+          "401(k) account statements are generated quarterly.",
+          "Q1 statements cover January 1 through March 31 and are expected to post by the end of April.",
+          "Q2 statements cover April 1 through June 30 and are expected to post by the end of July.",
+          "Q3 statements cover July 1 through September 30 and are expected to post by the end of October.",
+          "Q4 statements cover October 1 through December 31 and are expected to post by the end of January of the next year.",
+          "Statements are generally posted by the end of the month following each calendar quarter.",
+          "A list of available quarterly statement PDFs is displayed in the Statements section."
+        ]
+      },
+      {
+        "category": "statement_contents",
+        "rules": [
+          "Each quarter, ForUsAll issues a 401(k) statement showing how the participant's retirement account changed over the past three months.",
+          "The statement may include an Account Summary section with beginning balance, contributions, transfers, withdrawals and forfeitures if applicable, plan fees, investment gains or losses, and ending balance.",
+          "The statement may include an Account Balance by Fund and Asset Class section with fund details, asset class breakdown, and performance by investment.",
+          "The statement may include an Account Activity by Source section showing where funds came from, such as Roth deferrals or traditional pre-tax contributions, and how each source performed over the quarter.",
+          "The statement may include a Lifetime Income Estimate based on the current 401(k) balance.",
+          "The Lifetime Income Estimate gives a general idea of how much the participant might receive each month starting at age 67 if they kept saving at their current pace.",
+          "The Lifetime Income Estimate may include Single Life and Joint & Survivor estimates.",
+          "Lifetime Income Estimates are planning estimates and are not guaranteed income amounts.",
+          "The statement may include an Investment Performance Summary showing how available plan options performed across time periods such as current quarter, year-to-date, one-year, and five-year performance.",
+          "The final page of the statement may include diversification education and planning reminders, footnotes explaining forfeitures, fees, and expense ratios, and Department of Labor resources for smart investing."
+        ]
+      },
+      {
+        "category": "statement_delivery_preferences",
+        "rules": [
+          "401(k) statements are automatically delivered electronically by default.",
+          "Electronic delivery allows participants to view and download each statement securely from the ForUsAll dashboard once it is available.",
+          "Participants can change their delivery preference if they prefer to receive printed copies by mail.",
+          "Participants can choose Electronic or Paperless to access statements online.",
+          "Participants can choose Paper Mail to receive quarterly statements through USPS.",
+          "If the participant chooses Paper Mail, they should allow additional time for delivery."
+        ]
+      },
+      {
+        "category": "special_statement_requests",
+        "rules": [
+          "If a participant needs a recent statement for loan or mortgage documentation and it has not yet posted, they should contact the Participant Support Team for help generating an on-demand statement.",
+          "Recent statements are available in the dashboard.",
+          "Participants looking for archived statements, custom date account summaries, or statements from several years ago should contact support for assistance."
+        ]
+      },
+      {
+        "category": "beneficiary_access",
+        "rules": [
+          "Participants can add or update beneficiaries from the Beneficiaries option in the three-dot menu of the ForUsAll dashboard.",
+          "The Beneficiaries option becomes available once the participant's first contribution has posted to their 401(k) account.",
+          "Designating a beneficiary helps ensure that 401(k) savings are passed on according to the participant's wishes if they pass away."
+        ]
+      },
+      {
+        "category": "beneficiary_rules",
+        "rules": [
+          "A primary beneficiary is the person or people who will receive the participant's 401(k) funds upon the participant's death.",
+          "Participants may list one or more primary beneficiaries.",
+          "If naming more than one primary beneficiary, the combined allocations must equal 100%.",
+          "Beneficiary percentages must be whole percentages.",
+          "A contingent beneficiary, also known as a secondary beneficiary, will inherit the account only if all primary beneficiaries are deceased.",
+          "Adding contingent beneficiaries helps ensure assets are directed properly if circumstances change.",
+          "As a best practice, participants should add at least one primary beneficiary to keep the account current.",
+          "Participants should provide complete identifying details for beneficiaries, such as full name, relationship, and date of birth.",
+          "Participants should review beneficiary designations after major life events, such as marriage, divorce, or the birth of a child.",
+          "If a participant is married and names someone other than their spouse as primary beneficiary, the plan may require spousal consent."
+        ]
+      }
+    ],
+    "steps": [
+      {
+        "step_number": 1,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Go to forusall.com/login.",
+        "notes": "This is the dashboard login URL stated in the article. If the participant cannot log in or is having issues logging in, direct them to ForUsAll Participant Support."
+      },
+      {
+        "step_number": 2,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Enter login credentials to access the ForUsAll dashboard.",
+        "notes": "The article does not provide account setup, password reset, or MFA troubleshooting steps. If login is blocked, redirect the participant to support."
+      },
+      {
+        "step_number": 3,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Once logged in, use the three-dot menu in the top-right corner of the dashboard to access account options.",
+        "notes": "The article identifies Statements and Beneficiaries as available options from this menu."
+      },
+      {
+        "step_number": 4,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "To view statements, select Statements from the dropdown menu.",
+        "notes": "A list of available quarterly statement PDFs will be displayed."
+      },
+      {
+        "step_number": 5,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Click on a statement to open it or download it to the device by clicking the download icon on the right panel.",
+        "notes": "For best viewing results on a desktop, use a PDF viewer such as Adobe Acrobat Reader."
+      },
+      {
+        "step_number": 6,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "To change statement delivery preferences, go to the Statements section and click Delivery Settings.",
+        "notes": "The article uses Delivery Settings as the supported label. Do not replace this with Manage Delivery unless the source article is updated to use that wording."
+      },
+      {
+        "step_number": 7,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Choose the preferred delivery option: Electronic or Paperless to access statements online, or Paper Mail to receive quarterly statements through USPS.",
+        "notes": "If Paper Mail is selected, the participant should allow additional time for delivery. The article does not provide a specific paper mail delivery timeline."
+      },
+      {
+        "step_number": 8,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "If the participant needs a recent statement for loan or mortgage documentation and it has not yet posted, direct them to contact the Participant Support Team for help generating an on-demand statement.",
+        "notes": "This is a support fallback because the article does not describe a self-service process for generating on-demand statements."
+      },
+      {
+        "step_number": 9,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "If the participant needs archived statements, custom date account summaries, or statements from several years ago, direct them to contact support for assistance.",
+        "notes": "Recent statements are available in the dashboard, but older, archived, and custom date statement requests require support assistance according to the article."
+      },
+      {
+        "step_number": 10,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "To add or update a beneficiary, select Beneficiaries from the three-dot menu in the dashboard.",
+        "notes": "The Beneficiaries option becomes available once the participant's first contribution has posted to their 401(k) account."
+      },
+      {
+        "step_number": 11,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "When adding beneficiaries, provide complete identifying details such as full name, relationship, and date of birth.",
+        "notes": "If adding multiple beneficiaries, ensure the combined allocation percentages equal 100% and use whole percentages."
+      },
+      {
+        "step_number": 12,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "If the participant is married and names someone other than their spouse as primary beneficiary, explain that the plan may require spousal consent and that the ForUsAll team can help guide them if that applies.",
+        "notes": "Do not say spousal consent is always required or never required, because the article says the plan may require it."
+      },
+      {
+        "step_number": 13,
+        "type": "participant-facing",
+        "visibility": "both",
+        "description": "Use ForUsAll Participant Support as a fallback when the participant cannot complete the self-service dashboard steps or needs help with items not available directly in the dashboard.",
+        "notes": "Support applies when the participant cannot log in, cannot access the needed dashboard section, cannot complete the self-service steps, needs help understanding a statement, needs older or on-demand statements, or needs help managing beneficiaries."
+      }
+    ],
+    "common_issues": [
+      {
+        "issue": "Participant cannot find a recently completed quarter's statement.",
+        "resolution": "Explain that statements are generally posted by the end of the month following each calendar quarter. Provide the relevant expected posting date based on the quarter: Q1 by the end of April, Q2 by the end of July, Q3 by the end of October, and Q4 by the end of January of the next year."
+      },
+      {
+        "issue": "Participant does not know where to access statements in the dashboard.",
+        "resolution": "Tell the participant to log in at forusall.com/login, click the three dots in the top-right corner of the dashboard, and select Statements from the dropdown menu."
+      },
+      {
+        "issue": "Participant wants to download or save a quarterly statement.",
+        "resolution": "Tell the participant to open the Statements section, click the statement they want, and download it to their device using the download icon on the right panel."
+      },
+      {
+        "issue": "Participant has trouble viewing the statement PDF on a desktop.",
+        "resolution": "Suggest using a PDF viewer such as Adobe Acrobat Reader for best viewing results on a desktop."
+      },
+      {
+        "issue": "Participant needs a recent statement for a loan or mortgage but it has not posted yet.",
+        "resolution": "Tell the participant to contact the Participant Support Team for help generating an on-demand statement."
+      },
+      {
+        "issue": "Participant needs an archived, older, or custom date statement or account summary.",
+        "resolution": "Tell the participant that recent statements are available in the dashboard and that they should contact support for archived statements, custom date account summaries, or statements from several years ago."
+      },
+      {
+        "issue": "Participant wants paper statements instead of electronic statements.",
+        "resolution": "Direct the participant to log in, select Statements from the three-dot menu, click Delivery Settings, and choose Paper Mail."
+      },
+      {
+        "issue": "Participant wants to confirm or keep electronic statement delivery.",
+        "resolution": "Direct the participant to log in, select Statements from the three-dot menu, click Delivery Settings, and choose Electronic or Paperless to access statements online."
+      },
+      {
+        "issue": "Participant asks how long paper mail delivery takes.",
+        "resolution": "Tell the participant that if they choose Paper Mail, they should allow additional time for delivery. Do not provide a specific delivery timeline because the article does not state one."
+      },
+      {
+        "issue": "Participant does not understand what is included in their 401(k) statement.",
+        "resolution": "Explain that the statement may include sections such as Account Summary, Account Balance by Fund and Asset Class, Account Activity by Source, Lifetime Income Estimate, Investment Performance Summary, and Additional Details and Disclosures."
+      },
+      {
+        "issue": "Participant asks whether the Lifetime Income Estimate is guaranteed.",
+        "resolution": "Explain that the Lifetime Income Estimate is only an estimate to help with planning and is not a guaranteed income amount."
+      },
+      {
+        "issue": "Participant wants to add or update beneficiaries but cannot access the Beneficiaries option.",
+        "resolution": "Explain that the Beneficiaries option becomes available once the participant's first contribution has posted to their 401(k) account."
+      },
+      {
+        "issue": "Participant does not know where to add or update beneficiaries.",
+        "resolution": "Tell the participant to log in at forusall.com/login, click the three-dot menu in the top-right corner of the dashboard, and select Beneficiaries from the dropdown menu."
+      },
+      {
+        "issue": "Participant wants to name multiple primary beneficiaries.",
+        "resolution": "Tell the participant that they may name more than one primary beneficiary, but the combined allocations must equal 100% and percentages must be whole percentages."
+      },
+      {
+        "issue": "Participant does not know the difference between a primary beneficiary and a contingent beneficiary.",
+        "resolution": "Explain that a primary beneficiary receives the 401(k) funds upon the participant's death, while a contingent beneficiary, also known as a secondary beneficiary, inherits the account only if all primary beneficiaries are deceased."
+      },
+      {
+        "issue": "Participant is married and wants to name someone other than their spouse as primary beneficiary.",
+        "resolution": "Explain that the plan may require spousal consent and that the ForUsAll team can help guide the participant if that applies."
+      },
+      {
+        "issue": "Participant does not know what information to provide for a beneficiary.",
+        "resolution": "Tell the participant to provide complete identifying details such as full name, relationship, and date of birth."
+      },
+      {
+        "issue": "Participant asks when they should review beneficiary designations.",
+        "resolution": "Tell the participant to review beneficiary designations after major life events such as marriage, divorce, or the birth of a child."
+      },
+      {
+        "issue": "Participant cannot log in or cannot complete the dashboard self-service steps.",
+        "resolution": "Direct the participant to ForUsAll Participant Support because the article does not provide login troubleshooting, account setup, password reset, or MFA troubleshooting steps."
+      }
+    ],
+    "examples": [
+      {
+        "scenario": "A participant asks where to find their Q2 statement.",
+        "outcome": "Tell the participant that Q2 statements cover April 1 through June 30 and are expected to be available in the dashboard by the end of July."
+      },
+      {
+        "scenario": "A participant asks when Q1 statements are available.",
+        "outcome": "Tell the participant that Q1 statements cover January 1 through March 31 and are generally available by the end of April."
+      },
+      {
+        "scenario": "A participant asks when Q3 statements are available.",
+        "outcome": "Tell the participant that Q3 statements cover July 1 through September 30 and are expected to be available by the end of October."
+      },
+      {
+        "scenario": "A participant asks when Q4 statements are available.",
+        "outcome": "Tell the participant that Q4 statements cover October 1 through December 31 and are expected to be available by the end of January of the next year."
+      },
+      {
+        "scenario": "A participant asks where statements are located in the dashboard.",
+        "outcome": "Tell the participant to log in at forusall.com/login, click the three dots in the top-right corner of the dashboard, and select Statements from the dropdown menu."
+      },
+      {
+        "scenario": "A participant asks how to save a statement to their device.",
+        "outcome": "Tell the participant to log in at forusall.com/login, select Statements from the three-dot menu, click the statement, and use the download icon on the right panel."
+      },
+      {
+        "scenario": "A participant asks how to open a quarterly statement.",
+        "outcome": "Tell the participant to go to the Statements section and click on the available quarterly statement PDF they want to open."
+      },
+      {
+        "scenario": "A participant asks what to use to view the statement PDF on a desktop.",
+        "outcome": "Tell the participant that for best viewing results on a desktop, they can use a PDF viewer such as Adobe Acrobat Reader."
+      },
+      {
+        "scenario": "A participant asks why their most recent quarterly statement is not visible yet.",
+        "outcome": "Explain that statements are generally posted by the end of the month following each calendar quarter, then provide the expected posting date for the applicable quarter."
+      },
+      {
+        "scenario": "A participant asks what information appears in the Account Summary section.",
+        "outcome": "Explain that the Account Summary gives a high-level view of account activity, including beginning balance, contributions, transfers, withdrawals and forfeitures if applicable, plan fees, investment gains or losses, and ending balance."
+      },
+      {
+        "scenario": "A participant asks what the Account Balance by Fund and Asset Class section means.",
+        "outcome": "Explain that this section shows how investments are allocated, including fund details, asset class breakdown, and performance by investment."
+      },
+      {
+        "scenario": "A participant asks what Account Activity by Source means.",
+        "outcome": "Explain that Account Activity by Source tracks where funds came from, such as Roth deferrals or traditional pre-tax contributions, and shows how each source performed over the quarter."
+      },
+      {
+        "scenario": "A participant asks whether the monthly income estimate shown on the statement is guaranteed.",
+        "outcome": "Explain that the Lifetime Income Estimate is only an estimate to help with planning and is not a guaranteed income amount."
+      },
+      {
+        "scenario": "A participant asks what Single Life and Joint & Survivor mean on the statement.",
+        "outcome": "Explain that Single Life is an estimate for the participant only, while Joint & Survivor is an estimate for the participant and the participant's spouse."
+      },
+      {
+        "scenario": "A participant asks what the Investment Performance Summary shows.",
+        "outcome": "Explain that the Investment Performance Summary may show how available plan options performed across time periods such as current quarter, year-to-date, one-year, and five-year performance."
+      },
+      {
+        "scenario": "A participant asks whether every statement will always include all listed sections.",
+        "outcome": "Do not guarantee that every section will always appear. Explain that the statement may include the sections listed in the article."
+      },
+      {
+        "scenario": "A participant wants to receive paper statements.",
+        "outcome": "Tell the participant to go to Statements, click Delivery Settings, and choose Paper Mail. Let them know that paper mail requires additional time for delivery."
+      },
+      {
+        "scenario": "A participant wants to keep electronic or paperless delivery.",
+        "outcome": "Tell the participant to go to Statements, click Delivery Settings, and choose Electronic or Paperless to access statements online."
+      },
+      {
+        "scenario": "A participant asks how long mailed statements will take to arrive.",
+        "outcome": "Tell the participant that if they choose Paper Mail, they should allow additional time for delivery. Do not provide a specific timeline because the article does not state one."
+      },
+      {
+        "scenario": "A participant needs a recent statement for a loan or mortgage, but the statement has not posted yet.",
+        "outcome": "Tell the participant to contact the Participant Support Team for help generating an on-demand statement."
+      },
+      {
+        "scenario": "A participant asks for a statement from several years ago.",
+        "outcome": "Tell the participant that recent statements are available in the dashboard and that they should contact support for archived or older statements."
+      },
+      {
+        "scenario": "A participant asks for a custom date account summary.",
+        "outcome": "Tell the participant to contact support for assistance with custom date account summaries."
+      },
+      {
+        "scenario": "A participant asks how to add a beneficiary.",
+        "outcome": "Tell the participant to log in at forusall.com/login, click the three-dot menu in the top-right corner of the dashboard, and select Beneficiaries."
+      },
+      {
+        "scenario": "A participant asks how to update an existing beneficiary.",
+        "outcome": "Tell the participant to log in at forusall.com/login, click the three-dot menu in the top-right corner of the dashboard, and select Beneficiaries."
+      },
+      {
+        "scenario": "A participant asks why they cannot see the Beneficiaries option.",
+        "outcome": "Tell the participant that the Beneficiaries option becomes available once the first contribution has posted to the 401(k) account."
+      },
+      {
+        "scenario": "A participant asks what information they need to add a beneficiary.",
+        "outcome": "Tell the participant to provide complete identifying details, such as full name, relationship, and date of birth."
+      },
+      {
+        "scenario": "A participant asks what a primary beneficiary is.",
+        "outcome": "Explain that a primary beneficiary is the person or people who will receive the participant's 401(k) funds upon the participant's death."
+      },
+      {
+        "scenario": "A participant asks what a contingent beneficiary is.",
+        "outcome": "Explain that a contingent beneficiary, also known as a secondary beneficiary, will inherit the account only if all primary beneficiaries are deceased."
+      },
+      {
+        "scenario": "A participant wants to add two primary beneficiaries.",
+        "outcome": "Tell the participant they may list more than one primary beneficiary, but the combined allocations must equal 100% and percentages must be whole percentages."
+      },
+      {
+        "scenario": "A participant wants to assign beneficiary percentages with decimals.",
+        "outcome": "Tell the participant that beneficiary percentages must be whole percentages."
+      },
+      {
+        "scenario": "A participant asks whether they should add a contingent beneficiary.",
+        "outcome": "Explain that adding contingent beneficiaries helps ensure assets are directed properly if circumstances change."
+      },
+      {
+        "scenario": "A participant asks when they should review their beneficiary designations.",
+        "outcome": "Tell the participant to review beneficiary designations after major life events such as marriage, divorce, or the birth of a child."
+      },
+      {
+        "scenario": "A participant is married and wants to name someone other than their spouse as primary beneficiary.",
+        "outcome": "Explain that the plan may require spousal consent and that the ForUsAll team can help guide the participant if that applies."
+      },
+      {
+        "scenario": "A participant asks if spousal consent is definitely required.",
+        "outcome": "Do not say it is always required. Explain that the plan may require spousal consent if a married participant names someone other than their spouse as primary beneficiary."
+      },
+      {
+        "scenario": "A participant cannot log in to complete the statement or beneficiary steps.",
+        "outcome": "Direct the participant to ForUsAll Participant Support because the article does not provide login troubleshooting steps."
+      },
+      {
+        "scenario": "A participant can log in but cannot complete the self-service steps in the dashboard.",
+        "outcome": "Direct the participant to ForUsAll Participant Support for assistance completing the statement, delivery preference, or beneficiary task."
+      },
+      {
+        "scenario": "A participant wants to add a beneficiary, but admin or portal systems show their first positive contribution has not posted yet.",
+        "outcome": "Blocked (not eligible yet). Explain that the Beneficiaries option becomes available once the first contribution has posted to the 401(k) account, and that this is not a permanent restriction. Do not claim the option is available before the first contribution has posted, and do not ask the participant to confirm contribution status that should be retrieved from admin or portal systems."
+      },
+      {
+        "scenario": "A participant asks for help with a statement but does not say whether they need a quarterly, older, archived, custom date, or on-demand statement, and does not state which quarter.",
+        "outcome": "Blocked (missing data). Ask what they need before giving a specific workflow: an available quarterly statement (and which quarter: Q1, Q2, Q3, or Q4), an older or archived statement, a custom date account summary, or an on-demand statement for documentation. Do not provide a specific workflow until the request type is clear."
+      }
+    ],
+    "additional_notes": [
+      {
+        "category": "posting_times",
+        "notes": [
+          "Statements are generated quarterly.",
+          "Statements are generally posted by the end of the month following each calendar quarter.",
+          "Q1 statements cover January 1 through March 31 and are expected by the end of April.",
+          "Q2 statements cover April 1 through June 30 and are expected by the end of July.",
+          "Q3 statements cover July 1 through September 30 and are expected by the end of October.",
+          "Q4 statements cover October 1 through December 31 and are expected by the end of January of the next year."
+        ]
+      },
+      {
+        "category": "statement_access",
+        "notes": [
+          "Available quarterly statement PDFs are accessed from the Statements section of the ForUsAll dashboard.",
+          "Participants access the Statements section by logging in at forusall.com/login, clicking the three dots in the top-right corner of the dashboard, and selecting Statements.",
+          "Participants can click a statement to open it or download it to their device by clicking the download icon on the right panel.",
+          "Recent statements are available in the dashboard."
+        ]
+      },
+      {
+        "category": "statement_delivery_defaults",
+        "notes": [
+          "401(k) statements are automatically delivered electronically by default.",
+          "Electronic delivery allows participants to view and download statements securely from the ForUsAll dashboard once they are available.",
+          "Participants can update statement delivery preferences from the Statements section by clicking Delivery Settings."
+        ]
+      },
+      {
+        "category": "delivery_times",
+        "notes": [
+          "Participants can choose Electronic or Paperless to access statements online.",
+          "Participants can choose Paper Mail to receive quarterly statements through USPS.",
+          "If the participant chooses Paper Mail, they should allow additional time for delivery.",
+          "The article does not provide a specific delivery timeline for Paper Mail."
+        ]
+      },
+      {
+        "category": "statement_viewing",
+        "notes": [
+          "For best viewing results on a desktop, participants should use a PDF viewer such as Adobe Acrobat Reader."
+        ]
+      },
+      {
+        "category": "special_statement_requests",
+        "notes": [
+          "If a participant needs a recent statement for loan or mortgage documentation and it has not yet posted, they should contact the Participant Support Team for help generating an on-demand statement.",
+          "If a participant needs archived statements, custom date account summaries, or statements from several years ago, they should contact support for assistance.",
+          "The article does not state that archived statements, custom date account summaries, or statements from several years ago are always available directly in the dashboard."
+        ]
+      },
+      {
+        "category": "statement_contents",
+        "notes": [
+          "Each quarterly 401(k) statement shows how the participant's retirement account changed over the past three months.",
+          "The statement may include Account Summary, Account Balance by Fund and Asset Class, Account Activity by Source, Lifetime Income Estimate, Investment Performance Summary, and Additional Details and Disclosures.",
+          "Because the article says the statement may include these sections, the agent should not state that every section will always appear on every statement."
+        ]
+      },
+      {
+        "category": "statement_estimates",
+        "notes": [
+          "Lifetime Income Estimates are based on the participant's current 401(k) balance.",
+          "The estimate gives a general idea of how much the participant might receive each month starting at age 67 if they kept saving at their current pace.",
+          "The statement may show Single Life and Joint & Survivor estimates.",
+          "Lifetime Income Estimates are provided to help with planning and are not guaranteed income amounts."
+        ]
+      },
+      {
+        "category": "beneficiary_access",
+        "notes": [
+          "Participants can add or update beneficiaries from the Beneficiaries option in the three-dot menu of the ForUsAll dashboard.",
+          "The Beneficiaries option becomes available once the participant's first contribution has posted to their 401(k) account.",
+          "Designating a beneficiary helps ensure that 401(k) savings are passed on according to the participant's wishes if they pass away."
+        ]
+      },
+      {
+        "category": "beneficiary_allocation_rules",
+        "notes": [
+          "Participants may list one or more primary beneficiaries.",
+          "If naming more than one primary beneficiary, the combined allocations must equal 100%.",
+          "Beneficiary percentages must be whole percentages."
+        ]
+      },
+      {
+        "category": "beneficiary_types",
+        "notes": [
+          "A primary beneficiary is the person or people who will receive the participant's 401(k) funds upon the participant's death.",
+          "A contingent beneficiary, also known as a secondary beneficiary, will inherit the account only if all primary beneficiaries are deceased."
+        ]
+      },
+      {
+        "category": "beneficiary_best_practices",
+        "notes": [
+          "As a best practice, participants should add at least one primary beneficiary to keep the account current.",
+          "Participants should provide complete identifying details for beneficiaries, such as full name, relationship, and date of birth.",
+          "Participants should review beneficiary designations after major life events such as marriage, divorce, or the birth of a child."
+        ]
+      },
+      {
+        "category": "plan_variability",
+        "notes": [
+          "If a married participant names someone other than their spouse as primary beneficiary, the plan may require spousal consent.",
+          "The article does not state that spousal consent is always required or never required.",
+          "The ForUsAll team can help guide the participant if spousal consent may apply."
+        ]
+      },
+      {
+        "category": "support_fallback",
+        "notes": [
+          "Participants should contact ForUsAll Participant Support if they cannot log in or cannot complete the self-service dashboard steps.",
+          "Participants should contact support if they need help accessing the dashboard, viewing statements, changing delivery preferences, understanding a statement, requesting older or on-demand statements, or managing beneficiaries.",
+          "ForUsAll Participant Support can be reached at help@forusall.com or 844-401-2253.",
+          "Support hours are Monday-Friday, 7:00 AM - 5:00 PM PT."
+        ]
+      }
+    ],
+    "faq_pairs": [
+      {
+        "question": "How do I log in to my ForUsAll dashboard?",
+        "answer": "Go to forusall.com/login and enter your login credentials."
+      },
+      {
+        "question": "Where do I find my statements in the ForUsAll dashboard?",
+        "answer": "Log in at forusall.com/login, click the three dots in the top-right corner of the dashboard, and select Statements from the dropdown menu."
+      },
+      {
+        "question": "How do I view or download my quarterly 401(k) statement?",
+        "answer": "Log in at forusall.com/login, click the three dots in the top-right corner of the dashboard, select Statements, then click on a statement to open or download it to your device by clicking the download icon on the right panel."
+      },
+      {
+        "question": "When are 401(k) statements generated?",
+        "answer": "401(k) statements are generated quarterly. Q1 statements are expected by the end of April, Q2 by the end of July, Q3 by the end of October, and Q4 by the end of January of the next year."
+      },
+      {
+        "question": "What period does my Q1 statement cover?",
+        "answer": "Q1 statements cover January 1 through March 31 and are expected to post by the end of April."
+      },
+      {
+        "question": "What period does my Q2 statement cover?",
+        "answer": "Q2 statements cover April 1 through June 30 and are expected to post by the end of July."
+      },
+      {
+        "question": "What period does my Q3 statement cover?",
+        "answer": "Q3 statements cover July 1 through September 30 and are expected to post by the end of October."
+      },
+      {
+        "question": "What period does my Q4 statement cover?",
+        "answer": "Q4 statements cover October 1 through December 31 and are expected to post by the end of January of the next year."
+      },
+      {
+        "question": "Why is my most recent statement not available yet?",
+        "answer": "Statements are generally posted by the end of the month following each calendar quarter. If the quarter recently ended, the statement may not be available until the expected posting date for that quarter."
+      },
+      {
+        "question": "What does my quarterly 401(k) statement include?",
+        "answer": "Your statement may include an Account Summary, Account Balance by Fund and Asset Class, Account Activity by Source, Lifetime Income Estimate, Investment Performance Summary, and Additional Details and Disclosures."
+      },
+      {
+        "question": "What is included in the Account Summary section?",
+        "answer": "The Account Summary gives a high-level view of account activity, including beginning balance, contributions, transfers, withdrawals and forfeitures if applicable, plan fees, investment gains or losses, and ending balance."
+      },
+      {
+        "question": "What does Account Balance by Fund and Asset Class show?",
+        "answer": "This section shows how your investments are allocated, including fund details, asset class breakdown, and performance by investment."
+      },
+      {
+        "question": "What does Account Activity by Source mean?",
+        "answer": "Account Activity by Source tracks where your funds came from, such as Roth deferrals or traditional pre-tax contributions, and shows how each source performed over the quarter."
+      },
+      {
+        "question": "What is the Lifetime Income Estimate?",
+        "answer": "The Lifetime Income Estimate is a monthly income estimate for retirement based on your current 401(k) balance. It gives a general idea of how much you might receive each month starting at age 67 if you kept saving at your current pace."
+      },
+      {
+        "question": "Is the Lifetime Income Estimate guaranteed?",
+        "answer": "No. The Lifetime Income Estimate is only an estimate to help with planning and is not a guaranteed income amount."
+      },
+      {
+        "question": "What do Single Life and Joint & Survivor mean?",
+        "answer": "Single Life is an estimate for you only. Joint & Survivor is an estimate for you and your spouse."
+      },
+      {
+        "question": "What does the Investment Performance Summary show?",
+        "answer": "The Investment Performance Summary may show how available plan options performed across different time periods, such as current quarter, year-to-date, one-year, and five-year performance."
+      },
+      {
+        "question": "Does every statement include all listed sections?",
+        "answer": "The article says your statement may include these sections, so not every section should be described as guaranteed to appear on every statement."
+      },
+      {
+        "question": "How are statements delivered by default?",
+        "answer": "Your 401(k) statements are automatically delivered electronically by default, which means you can view and download each statement securely from your ForUsAll dashboard once it is available."
+      },
+      {
+        "question": "How do I change my statement delivery preference?",
+        "answer": "Log in to your ForUsAll dashboard, click the three dots in the top-right corner, select Statements, click Delivery Settings, and choose either Electronic or Paperless to access statements online, or Paper Mail to receive quarterly statements through USPS."
+      },
+      {
+        "question": "How do I receive paper statements?",
+        "answer": "Go to Statements in your ForUsAll dashboard, click Delivery Settings, and choose Paper Mail to receive quarterly statements through USPS."
+      },
+      {
+        "question": "How do I keep electronic or paperless statement delivery?",
+        "answer": "Go to Statements in your ForUsAll dashboard, click Delivery Settings, and choose Electronic or Paperless to access statements online."
+      },
+      {
+        "question": "How long does paper mail delivery take?",
+        "answer": "If you choose Paper Mail, please allow additional time for delivery. The article does not provide a specific delivery timeline."
+      },
+      {
+        "question": "What should I do if I need a statement for a loan or mortgage and it has not posted yet?",
+        "answer": "Contact the Participant Support Team for help generating an on-demand statement."
+      },
+      {
+        "question": "What should I do if I need an older, archived, or custom date statement?",
+        "answer": "Recent statements are available in the dashboard. For archived statements, custom date account summaries, or statements from several years ago, contact support for assistance."
+      },
+      {
+        "question": "How do I add or update a beneficiary?",
+        "answer": "Log in to your dashboard at forusall.com/login, click the three-dot menu in the top-right corner, and select Beneficiaries from the dropdown menu."
+      },
+      {
+        "question": "Why do I not see the Beneficiaries option?",
+        "answer": "The Beneficiaries option becomes available once your first contribution has posted to your 401(k) account."
+      },
+      {
+        "question": "What is a primary beneficiary?",
+        "answer": "A primary beneficiary is the person or people who will receive your 401(k) funds upon your death."
+      },
+      {
+        "question": "What is a contingent beneficiary?",
+        "answer": "A contingent beneficiary, also known as a secondary beneficiary, will inherit your account only if all primary beneficiaries are deceased."
+      },
+      {
+        "question": "Can I name more than one primary beneficiary?",
+        "answer": "Yes. You may list one or more individuals. If naming more than one, make sure the combined allocations equal 100% and use whole percentages."
+      },
+      {
+        "question": "Can beneficiary allocation percentages include decimals?",
+        "answer": "No. Beneficiary percentages must be whole percentages."
+      },
+      {
+        "question": "What information should I provide when adding a beneficiary?",
+        "answer": "Provide complete identifying details, such as full name, relationship, and date of birth."
+      },
+      {
+        "question": "Should I add a contingent beneficiary?",
+        "answer": "Adding contingent beneficiaries helps ensure your assets are directed properly if circumstances change."
+      },
+      {
+        "question": "When should I review my beneficiary designations?",
+        "answer": "You should review your designations after major life events such as marriage, divorce, or the birth of a child."
+      },
+      {
+        "question": "Can a married participant name someone other than their spouse as primary beneficiary?",
+        "answer": "The plan may require spousal consent if a married participant names someone other than their spouse as primary beneficiary. The ForUsAll team can help guide the participant if that applies."
+      },
+      {
+        "question": "Is spousal consent always required if I am married and name someone other than my spouse?",
+        "answer": "The article says the plan may require spousal consent, so it should not be described as always required or never required. The ForUsAll team can help guide you if that applies."
+      },
+      {
+        "question": "What should I do if I cannot log in or cannot complete the dashboard steps?",
+        "answer": "Contact ForUsAll Participant Support if you cannot log in, cannot access the needed dashboard section, or cannot complete the self-service steps."
+      },
+      {
+        "question": "How do I contact ForUsAll Participant Support?",
+        "answer": "You can email help@forusall.com or call 844-401-2253. Support hours are Monday-Friday, 7:00 AM - 5:00 PM PT."
+      }
+    ],
+    "definitions": [
+      {
+        "term": "ForUsAll Dashboard",
+        "definition": "The participant-facing online dashboard accessed at forusall.com/login where participants can view account information and access options such as Statements and Beneficiaries from the three-dot menu."
+      },
+      {
+        "term": "401(k) Statement",
+        "definition": "A quarterly document showing how the participant's retirement account changed over the past three months."
+      },
+      {
+        "term": "Quarterly Statement",
+        "definition": "A 401(k) statement generated each quarter for the participant's account. Q1 covers January 1 through March 31, Q2 covers April 1 through June 30, Q3 covers July 1 through September 30, and Q4 covers October 1 through December 31."
+      },
+      {
+        "term": "Statements Section",
+        "definition": "The dashboard section participants access from the three-dot menu to view or download available quarterly statement PDFs and manage delivery preferences."
+      },
+      {
+        "term": "Delivery Settings",
+        "definition": "The option in the Statements section where participants can change their statement delivery preference."
+      },
+      {
+        "term": "Electronic or Paperless",
+        "definition": "A statement delivery option for accessing statements online through the ForUsAll dashboard."
+      },
+      {
+        "term": "Paper Mail",
+        "definition": "A statement delivery option for receiving quarterly statements through USPS."
+      },
+      {
+        "term": "Account Summary",
+        "definition": "A statement section that gives a high-level view of account activity, such as beginning balance, contributions, transfers, withdrawals and forfeitures if applicable, plan fees, investment gains or losses, and ending balance."
+      },
+      {
+        "term": "Beginning Balance",
+        "definition": "The total balance at the start of the quarter."
+      },
+      {
+        "term": "Ending Balance",
+        "definition": "The total balance at the end of the quarter."
+      },
+      {
+        "term": "Contributions",
+        "definition": "Employee deferrals made during the quarter."
+      },
+      {
+        "term": "Transfers",
+        "definition": "Funds moved into the plan."
+      },
+      {
+        "term": "Withdrawals and Forfeitures",
+        "definition": "Amounts removed or forfeited, if applicable."
+      },
+      {
+        "term": "Plan Fees",
+        "definition": "Fees deducted for recordkeeping or plan services as shown on the statement, if applicable. The article does not provide fee amounts."
+      },
+      {
+        "term": "Investment Gains or Losses",
+        "definition": "The statement item that reflects the performance of the participant's investments."
+      },
+      {
+        "term": "Account Balance by Fund and Asset Class",
+        "definition": "A statement section showing how the participant's investments are allocated, including fund details, asset class breakdown, and performance by investment."
+      },
+      {
+        "term": "Fund Details",
+        "definition": "Statement information showing each fund the participant is invested in, with corresponding expense ratio and current value."
+      },
+      {
+        "term": "Asset Class Breakdown",
+        "definition": "Statement information showing percentages across asset classes."
+      },
+      {
+        "term": "Performance by Investment",
+        "definition": "Statement information showing how each fund performed during the quarter, including contributions, gains or losses, and fees."
+      },
+      {
+        "term": "Account Activity by Source",
+        "definition": "A statement section tracking where funds came from, such as Roth deferrals or traditional pre-tax contributions, and showing how each source performed over the quarter."
+      },
+      {
+        "term": "Roth Deferrals",
+        "definition": "A source of funds that may appear in the Account Activity by Source section of the statement."
+      },
+      {
+        "term": "Traditional Pre-Tax Contributions",
+        "definition": "A source of funds that may appear in the Account Activity by Source section of the statement."
+      },
+      {
+        "term": "Lifetime Income Estimate",
+        "definition": "A monthly retirement income estimate based on the participant's current 401(k) balance. It is used for planning and is not a guaranteed income amount."
+      },
+      {
+        "term": "Single Life",
+        "definition": "A Lifetime Income Estimate for the participant only."
+      },
+      {
+        "term": "Joint & Survivor",
+        "definition": "A Lifetime Income Estimate for the participant and the participant's spouse."
+      },
+      {
+        "term": "Investment Performance Summary",
+        "definition": "A statement section that may show how available plan options performed across various time periods, such as current quarter, year-to-date, one-year, and five-year performance."
+      },
+      {
+        "term": "Additional Details and Disclosures",
+        "definition": "The final page of the statement, which may include diversification education and planning reminders, footnotes explaining forfeitures, fees, and expense ratios, and Department of Labor resources for smart investing."
+      },
+      {
+        "term": "On-Demand Statement",
+        "definition": "A recent statement that Participant Support may help generate if a participant needs documentation for a loan or mortgage and the statement has not yet posted."
+      },
+      {
+        "term": "Archived Statement",
+        "definition": "An older statement, including statements from several years ago, for which participants should contact support for assistance."
+      },
+      {
+        "term": "Custom Date Account Summary",
+        "definition": "A custom date account summary that participants should contact support for assistance with."
+      },
+      {
+        "term": "Beneficiary",
+        "definition": "A person designated to receive the participant's 401(k) savings according to the participant's wishes if the participant passes away."
+      },
+      {
+        "term": "Beneficiaries Section",
+        "definition": "The dashboard section participants access from the three-dot menu to add or update beneficiary information once the first contribution has posted to the 401(k) account."
+      },
+      {
+        "term": "Primary Beneficiary",
+        "definition": "The person or people who will receive the participant's 401(k) funds upon the participant's death."
+      },
+      {
+        "term": "Contingent Beneficiary",
+        "definition": "A secondary beneficiary who will inherit the account only if all primary beneficiaries are deceased."
+      },
+      {
+        "term": "Secondary Beneficiary",
+        "definition": "Another name for a contingent beneficiary."
+      },
+      {
+        "term": "Beneficiary Allocation",
+        "definition": "The percentage assigned to each beneficiary. If naming more than one beneficiary, the combined allocations must equal 100%, and percentages must be whole percentages."
+      },
+      {
+        "term": "Spousal Consent",
+        "definition": "Consent that a plan may require if a married participant names someone other than their spouse as primary beneficiary."
+      },
+      {
+        "term": "Participant Support Team",
+        "definition": "The ForUsAll support team participants can contact for help accessing the dashboard, viewing statements, changing delivery preferences, understanding a statement, requesting older or on-demand statements, or managing beneficiaries."
+      }
+    ],
+    "guardrails": {
+      "must_not": [
+        "Do not invent statement posting dates beyond the quarterly dates stated in the article.",
+        "Do not guarantee that a statement is already available before the expected posting date stated in the article.",
+        "Do not provide a specific paper mail delivery timeline; the article only says to allow additional time for delivery.",
+        "Do not say that all possible statement sections will always appear; the article says the statement may include certain sections.",
+        "Do not treat Lifetime Income Estimates as guaranteed income amounts.",
+        "Do not describe Single Life or Joint & Survivor as guaranteed income amounts.",
+        "Do not provide fee amounts; the article mentions plan fees and fees as statement items but does not provide fee amounts.",
+        "Do not claim that the dashboard always contains archived statements, custom date account summaries, or statements from several years ago; the article says to contact support for those.",
+        "Do not claim that on-demand statements can be generated directly by the participant in the dashboard; the article says to contact the Participant Support Team for help.",
+        "Do not guarantee that spousal consent is always required when a married participant names someone other than their spouse as primary beneficiary; the article says the plan may require it.",
+        "Do not guarantee that spousal consent is never required when a married participant names someone other than their spouse as primary beneficiary.",
+        "Do not provide plan-specific spousal consent rules beyond saying the plan may require spousal consent and the ForUsAll team can guide the participant if that applies.",
+        "Do not tell the participant that the Beneficiaries option is available before the First contribution posted status shows the first contribution has posted.",
+        "Do not say beneficiary percentages can include decimals; the article says percentages must be whole percentages.",
+        "Do not say multiple beneficiary allocations can total less than or more than 100%; the article says combined allocations must equal 100%.",
+        "Do not add beneficiary identifying requirements beyond the complete identifying details listed in the article, such as full name, relationship, and date of birth.",
+        "Do not add eligibility requirements, balance thresholds, fees, processing timelines, or portal behaviors not stated in the article.",
+        "Do not provide account setup, password reset, or MFA troubleshooting steps because this article does not include those instructions; use account setup/MFA only as fallback or related internal article context when login or setup appears to be the issue.",
+        "Do not provide loan, withdrawal, investment election, savings rate, or portfolio change instructions because this article does not cover those processes.",
+        "Do not redirect participants to support before giving the self-service dashboard steps when the article provides self-service instructions and the participant can log in.",
+        "Do not include ticket actions such as closing tickets, tagging, escalation, routing, or internal ticket workflows."
+      ],
+      "must_do_if_unsure": [
+        "If the participant cannot log in or cannot complete the self-service dashboard steps, direct them to ForUsAll Participant Support.",
+        "If the participant needs archived statements, custom date account summaries, or statements from several years ago, direct them to contact support for assistance.",
+        "If the participant needs a recent statement for loan or mortgage documentation and it has not yet posted, direct them to the Participant Support Team for help generating an on-demand statement.",
+        "If the participant asks about a statement section that may or may not appear, explain that the statement may include the sections listed in the article rather than guaranteeing that every section appears.",
+        "If a participant asks whether a Lifetime Income Estimate is guaranteed, explain that it is only an estimate to help with planning and is not a guaranteed income amount.",
+        "If a participant wants to manage statement delivery preferences, direct them to the Statements section and Delivery Settings.",
+        "If a participant wants to add or update beneficiaries, direct them to the Beneficiaries option if First contribution posted status shows the first contribution has posted.",
+        "If the participant cannot access the Beneficiaries option, explain that the option becomes available once the first contribution has posted to the 401(k) account and use First contribution posted status from admin or portal systems when participant-specific guidance is needed.",
+        "If a married participant names someone other than their spouse as primary beneficiary and spousal consent may apply, tell the participant that the ForUsAll team can help guide them.",
+        "If the participant needs help accessing the dashboard, viewing statements, changing delivery preferences, understanding a statement, requesting older or on-demand statements, or managing beneficiaries, direct them to ForUsAll Participant Support when self-service cannot resolve the issue."
+      ]
+    },
+    "references": {
+      "participant_portal": "forusall.com/login",
+      "internal_articles": [
+        "LT: How to Set Up Your ForUsAll 401(k) Account",
+        "LT: Multi-Factor Authentication (MFA) for Your ForUsAll 401(k) Account"
+      ],
+      "external_links": [],
+      "contact": {
+        "email": "help@forusall.com",
+        "phone": "844-401-2253",
+        "support_hours": "Monday-Friday, 7:00 AM - 5:00 PM PT"
+      }
+    },
+    "required_data": {
+      "must_have": [
+        {
+          "data_point": "First contribution posted status",
+          "meaning": "Whether the participant's first positive contribution has posted. Must check recent payrolls or participant profile information.",
+          "example_values": [
+            "2022-07-08 Pre-tax $312.50",
+            "2022-07-08 Roth $312.50",
+            "2022-07-08 After-tax $312.50",
+            "$0.00 entry does not count as a posted contribution"
+          ],
+          "why_needed": "Required for beneficiary requests because the Beneficiaries option only becomes available once the participant's first positive contribution has posted. This is the only field that gates a feature described in this article; general statement guidance does not require it.",
+          "source_note": "Supported by article section: Add or Update Beneficiaries. Must reflect a posted positive contribution; a $0.00 entry should not be used as evidence that the first contribution has posted.",
+          "source_type": "participant_profile"
+        }
+      ],
+      "nice_to_have": [
+        {
+          "data_point": "Participant's name",
+          "meaning": "The name of the participant.",
+          "example_values": ["John Doe", "Jane Doe", "Oscar Santiago Garcia "],
+          "why_needed": "Needed only when looking up the participant or providing participant-specific/account-access guidance; not required for general self-service guidance from this article.",
+          "source_note": "Supported by article section: Prerequisites for participant-specific/account-access guidance.",
+          "source_type": "participant_profile"
+        },
+        {
+          "data_point": "Participant's email",
+          "meaning": "The email of the participant.",
+          "example_values": ["oscar.garcia@forusall.com"],
+          "why_needed": "Needed only when confirming participant-specific/account-access details, including whether there is a Primary Email on file. If the Primary Email field is empty during account-access review, redirect to support.",
+          "source_note": "Supported by article section: Prerequisites for participant-specific/account-access guidance.",
+          "source_type": "participant_profile"
+        },
+        {
+          "data_point": "Record Keeper",
+          "meaning": "The Record Keeper of the Participant.",
+          "example_values": ["RK: LT Trust."],
+          "why_needed": "Needed only when applying LT Trust-specific participant/account-access guidance or deciding whether a related LT Trust setup article applies. If the Record Keeper is not LT Trust and the mismatch affects the requested action, redirect to support; do not block general self-service statement or beneficiary guidance solely on this field.",
+          "source_note": "Supported by article section: Prerequisites for recordkeeper-specific participant/account-access guidance.",
+          "source_type": "participant_profile"
+        },
+        {
+          "data_point": "Participant Status",
+          "meaning": "The status of the participant in the system.",
+          "example_values": [
+            "Active",
+            "Terminated",
+            "Ineligible",
+            "Deceased",
+            "Unknown"
+          ],
+          "why_needed": "Used only as context for participant-specific/account-access guidance. This does not determine whether they can use general self-service guidance or create an account by itself.",
+          "source_note": "Supported by article section: Prerequisites for participant-specific/account-access guidance.",
+          "source_type": "participant_profile"
+        },
+        {
+          "data_point": "MFA status",
+          "meaning": "The status of the participant's MFA enrollment, used only when account setup or login fallback guidance may be needed.",
+          "example_values": ["not enrolled", "enrolled"],
+          "why_needed": "Used only to decide whether the related online account setup article may apply or whether the participant should be guided back to login/support. This article does not provide MFA troubleshooting.",
+          "source_note": "Related fallback only: if MFA status is not enrolled and the participant appears to need online account setup, use the referenced internal article LT: How to Set Up Your ForUsAll 401(k) Account. If MFA status is enrolled and the participant cannot use the existing MFA code, redirect to support.",
+          "source_type": "participant_profile"
+        },
+        {
+          "data_point": "Participant intent",
+          "meaning": "The participant's stated reason for contacting support, such as viewing a statement, downloading a statement, changing statement delivery preferences, requesting an older or on-demand statement, or managing beneficiaries.",
+          "example_values": [
+            "View or download a statement",
+            "Change statement delivery preference",
+            "Request an on-demand statement",
+            "Request an archived statement",
+            "Add or update a beneficiary"
+          ],
+          "why_needed": "Used to determine which article steps and guidance apply.",
+          "source_note": "Supported by article sections covering statements, delivery settings, special statement requests, and beneficiaries.",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Requested statement quarter",
+          "meaning": "The quarter the participant is asking about when the participant needs a quarterly statement.",
+          "example_values": ["Q1", "Q2", "Q3", "Q4"],
+          "why_needed": "Used to explain the statement coverage period and expected posting date.",
+          "source_note": "Supported by article section: When Statements Are Generated.",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Statement delivery preference",
+          "meaning": "The delivery method the participant wants for quarterly statements.",
+          "example_values": ["Electronic or Paperless", "Paper Mail"],
+          "why_needed": "Used to guide the participant through updating delivery settings.",
+          "source_note": "Supported by article section: Update Statement Delivery Preferences.",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Statement request type",
+          "meaning": "Whether the participant needs a recent, on-demand, older, archived, or custom date statement or account summary.",
+          "example_values": [
+            "Recent statement",
+            "On-demand statement",
+            "Archived statement",
+            "Custom date account summary",
+            "Statement from several years ago"
+          ],
+          "why_needed": "Used to determine whether the dashboard steps are enough or whether the participant should contact support.",
+          "source_note": "Supported by article sections: Need a Statement for a Loan or Mortgage and Need Older, Archived or Custom Date Statements.",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Beneficiary action",
+          "meaning": "Whether the participant wants to add or update beneficiary information.",
+          "example_values": ["Add a beneficiary", "Update a beneficiary"],
+          "why_needed": "Used to provide the correct dashboard navigation guidance.",
+          "source_note": "Supported by article section: Add or Update a Beneficiary.",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Beneficiary type",
+          "meaning": "Whether the participant is asking about a primary beneficiary or contingent beneficiary.",
+          "example_values": ["Primary Beneficiary", "Contingent Beneficiary"],
+          "why_needed": "Used to explain the difference between beneficiary types.",
+          "source_note": "Supported by article section: Beneficiary Types.",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Beneficiary allocation percentages",
+          "meaning": "The whole percentage allocations assigned to multiple beneficiaries.",
+          "example_values": ["Whole percentages that total 100%"],
+          "why_needed": "Used to remind the participant that combined allocations must equal 100% when naming more than one beneficiary.",
+          "source_note": "Supported by article section: Beneficiary Types.",
+          "source_type": "message_text"
+        },
+        {
+          "data_point": "Beneficiary identifying details",
+          "meaning": "Complete identifying details for a beneficiary.",
+          "example_values": ["Full name", "Relationship", "Date of birth"],
+          "why_needed": "Used to guide participants on what details to provide when adding or updating beneficiaries.",
+          "source_note": "Supported by article section: Beneficiary Best Practices.",
+          "source_type": "message_text"
+        }
+      ],
+      "if_missing": [
+        {
+          "missing_data_point": "Participant's name",
+          "ask_participant": null,
+          "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant when participant-specific/account-access guidance is needed. General self-service guidance can still be provided without this lookup."
+        },
+        {
+          "missing_data_point": "Participant's email",
+          "ask_participant": null,
+          "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant when participant-specific/account-access guidance is needed. Confirm whether there is a Primary Email on file for account-access review. If the Primary Email field is empty, redirect to support."
+        },
+        {
+          "missing_data_point": "Record Keeper",
+          "ask_participant": null,
+          "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant when recordkeeper-specific participant/account-access guidance is needed. If the Record Keeper is not RK: LT Trust and the mismatch affects online account setup or LT Trust-specific account-access guidance, redirect to support."
+        },
+        {
+          "missing_data_point": "Participant Status",
+          "ask_participant": null,
+          "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant when participant-specific/account-access guidance is needed. Use participant status for account-access context, but do not use it by itself to determine whether the participant can create an account or use general guidance."
+        },
+        {
+          "missing_data_point": "MFA status",
+          "ask_participant": null,
+          "agent_note": "retrieve from admin/portal systems (ForUsBots); do not ask participant when online account setup or login fallback guidance is needed. This article does not provide MFA troubleshooting; use the related setup article only when appropriate or redirect to support."
+        }
+      ],
+      "disambiguation_notes": [
+        "Electronic and Paperless both refer to online access to statements in the article.",
+        "Paper Mail refers to receiving quarterly statements through USPS.",
+        "Delivery Settings is the supported article wording for changing statement delivery preferences.",
+        "Statements refers to the dashboard section where participants can view or download available quarterly statement PDFs and manage delivery preferences.",
+        "Quarterly statements are generated for Q1, Q2, Q3, and Q4 reporting periods.",
+        "Q1 covers January 1 through March 31 and is expected by the end of April.",
+        "Q2 covers April 1 through June 30 and is expected by the end of July.",
+        "Q3 covers July 1 through September 30 and is expected by the end of October.",
+        "Q4 covers October 1 through December 31 and is expected by the end of January of the next year.",
+        "Recent statements are available in the dashboard, but archived statements, custom date account summaries, and statements from several years ago require support assistance according to the article.",
+        "An on-demand statement refers to support help generating a recent statement when a participant needs documentation for a loan or mortgage and the statement has not yet posted.",
+        "The article mentions loan or mortgage only as possible reasons for needing a statement; it does not provide loan or mortgage process guidance.",
+        "The article mentions plan fees and fees as content within statements but does not provide service fee amounts for this process.",
+        "Primary Beneficiary means the person or people who receive 401(k) funds upon the participant's death.",
+        "Contingent Beneficiary and secondary beneficiary refer to a beneficiary who inherits only if all primary beneficiaries are deceased.",
+        "Beneficiary percentages must be whole percentages.",
+        "When naming more than one primary beneficiary, combined beneficiary allocations must equal 100%.",
+        "The Beneficiaries option becomes available once the participant's first contribution has posted to their 401(k) account.",
+        "Spousal consent is plan-variable because the article says the plan may require it.",
+        "Do not treat spousal consent as always required or never required unless confirmed by a supported plan-specific source.",
+        "Participant's name, participant's email, Record Keeper, Participant Status, and MFA status are participant-profile data points that should be retrieved from admin or portal systems rather than requested directly from the participant when participant-specific/account-access guidance is needed.",
+        "Participant Status provides context during participant-specific/account-access review but does not determine whether the participant can create an account or receive general self-service guidance by itself.",
+        "If the Primary Email field is empty, redirect to support according to the updated required data guidance.",
+        "If MFA status is not enrolled and the participant appears to need online account setup, use the referenced internal article LT: How to Set Up Your ForUsAll 401(k) Account as a related fallback.",
+        "If MFA status is enrolled and the participant cannot use the existing MFA code, redirect to support; do not provide MFA troubleshooting from this article.",
+        "If the participant cannot log in or cannot complete the dashboard self-service steps, redirect to ForUsAll Participant Support.",
+        "This article should not be used to provide account setup, password reset, MFA troubleshooting, loan, withdrawal, investment election, savings rate, or portfolio change instructions; account setup/MFA should only be referenced as fallback or related internal article guidance when login or setup appears to be the issue."
+      ]
+    },
+    "decision_guide": {
+      "supported_outcomes": [
+        "can_proceed",
+        "blocked_missing_data",
+        "blocked_not_eligible",
+        "ambiguous_plan_rules"
+      ],
+      "eligibility_requirements": [
+        "A matching participant profile is required before participant-specific/account-access guidance can be provided, but general self-service guidance from this article can be provided without a profile lookup.",
+        "A Primary Email on file is required for participant-specific account-access review, but not for general statement or beneficiary navigation guidance.",
+        "For online account setup fallback guidance, this article may reference LT: How to Set Up Your ForUsAll 401(k) Account when MFA status is not enrolled; this article does not provide MFA troubleshooting.",
+        "For dashboard self-service steps, the participant must be able to log in to the ForUsAll dashboard at forusall.com/login.",
+        "The Beneficiaries option becomes available once the participant's first contribution has posted to the 401(k) account."
+      ],
+      "blocking_conditions": [
+        "If no matching participant profile is found when participant-specific/account-access guidance is needed, participant-specific guidance is blocked until the correct profile is located.",
+        "If the Primary Email field is empty during account-access review, redirect the participant to support.",
+        "If the participant cannot log in or cannot complete the dashboard self-service steps, redirect the participant to ForUsAll Participant Support.",
+        "If MFA status is enrolled and the participant cannot use the existing MFA code, redirect the participant to support; do not provide MFA troubleshooting from this article.",
+        "If the participant's first contribution has not posted, the article indicates the Beneficiaries option is not yet available.",
+        "If the participant needs archived statements, custom date account summaries, or statements from several years ago, self-service dashboard guidance is not enough and the participant should contact support.",
+        "If the participant needs a recent statement for loan or mortgage documentation and it has not yet posted, self-service dashboard guidance is not enough and the participant should contact the Participant Support Team for help generating an on-demand statement."
+      ],
+      "missing_data_conditions": [
+        {
+          "condition": "No matching participant profile is found in admin or portal systems when participant-specific/account-access guidance is needed.",
+          "missing_data_point": "Participant's name",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": null
+        },
+        {
+          "condition": "The participant profile does not show a Primary Email on file when account-access review is needed.",
+          "missing_data_point": "Participant's email",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": null
+        },
+        {
+          "condition": "The participant's Record Keeper is missing or cannot be confirmed from admin or portal systems when recordkeeper-specific participant/account-access guidance is needed.",
+          "missing_data_point": "Record Keeper",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": null
+        },
+        {
+          "condition": "The participant status is missing or cannot be confirmed from admin or portal systems when participant-specific/account-access guidance is needed.",
+          "missing_data_point": "Participant Status",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": null
+        },
+        {
+          "condition": "The participant's MFA status is missing or cannot be confirmed from admin or portal systems when online account setup or login fallback guidance is needed.",
+          "missing_data_point": "MFA status",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": null
+        },
+        {
+          "condition": "The participant does not state whether they need help with statements, delivery preferences, special statement requests, beneficiaries, or online account setup fallback.",
+          "missing_data_point": "Participant intent",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "What would you like help with: viewing or downloading a statement, changing statement delivery preferences, requesting an older or on-demand statement, adding or updating a beneficiary, or getting help accessing your online account?"
+        },
+        {
+          "condition": "The participant wants to use the Beneficiaries option but it is unclear from admin or portal systems whether their first positive contribution has posted.",
+          "missing_data_point": "First contribution posted status",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": null
+        },
+        {
+          "condition": "The participant asks about paper statement delivery but does not clearly state whether they want to switch from electronic delivery to Paper Mail.",
+          "missing_data_point": "Statement delivery preference",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "Would you like to switch your statement delivery preference to Paper Mail, or keep Electronic or Paperless delivery?"
+        },
+        {
+          "condition": "The participant asks about a statement but does not specify whether they need a quarterly statement, an older or archived statement, a custom date account summary, or an on-demand statement for documentation.",
+          "missing_data_point": "Statement request type",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "Are you looking for an available quarterly statement, an older or archived statement, a custom date account summary, or an on-demand statement for documentation?"
+        },
+        {
+          "condition": "The participant asks about a specific quarterly statement but does not specify which quarter they need.",
+          "missing_data_point": "Requested statement quarter",
+          "resulting_outcome": "blocked_missing_data",
+          "ask_participant": "Which quarterly statement are you looking for: Q1, Q2, Q3, or Q4?"
+        }
+      ],
+      "allowed_conclusions": [
+        "Participants can access the ForUsAll dashboard at forusall.com/login.",
+        "Participants can enter their login credentials to access the ForUsAll dashboard.",
+        "Participants can use the three-dot menu in the top-right corner of the dashboard to access options such as Statements and Beneficiaries.",
+        "Participants can view available quarterly statement PDFs from the Statements section.",
+        "Participants can download an available quarterly statement by clicking the statement and using the download icon on the right panel.",
+        "For best viewing results on a desktop, participants can use a PDF viewer such as Adobe Acrobat Reader.",
+        "Participants can use Delivery Settings in the Statements section to choose Electronic or Paperless delivery or Paper Mail.",
+        "401(k) statements are automatically delivered electronically by default.",
+        "Electronic or Paperless delivery means the participant can access statements online through the ForUsAll dashboard.",
+        "Paper Mail means the participant receives quarterly statements through USPS.",
+        "If a participant chooses Paper Mail, they should allow additional time for delivery.",
+        "401(k) statements are generated quarterly.",
+        "Statements are generally posted by the end of the month following each calendar quarter.",
+        "Q1 statements cover January 1 through March 31 and are expected by the end of April.",
+        "Q2 statements cover April 1 through June 30 and are expected by the end of July.",
+        "Q3 statements cover July 1 through September 30 and are expected by the end of October.",
+        "Q4 statements cover October 1 through December 31 and are expected by the end of January of the next year.",
+        "Each quarterly statement shows how the participant's retirement account changed over the past three months.",
+        "A quarterly statement may include Account Summary, Account Balance by Fund and Asset Class, Account Activity by Source, Lifetime Income Estimate, Investment Performance Summary, and Additional Details and Disclosures.",
+        "The Account Summary section may include beginning balance, contributions, transfers, withdrawals and forfeitures if applicable, plan fees, investment gains or losses, and ending balance.",
+        "The Account Balance by Fund and Asset Class section may include fund details, asset class breakdown, and performance by investment.",
+        "The Account Activity by Source section may show where funds came from, such as Roth deferrals or traditional pre-tax contributions, and how each source performed over the quarter.",
+        "The Lifetime Income Estimate is based on the participant's current 401(k) balance.",
+        "Lifetime Income Estimates are estimates for planning and are not guaranteed income amounts.",
+        "The Lifetime Income Estimate may include Single Life and Joint & Survivor estimates.",
+        "Single Life is for the participant only.",
+        "Joint & Survivor is for the participant and the participant's spouse.",
+        "The Investment Performance Summary may show how available plan options performed across time periods such as current quarter, year-to-date, one-year, and five-year performance.",
+        "The final page of the statement may include diversification education and planning reminders, footnotes explaining forfeitures, fees, and expense ratios, and Department of Labor resources for smart investing.",
+        "Participants needing a recent statement for a loan or mortgage before it has posted should contact the Participant Support Team for help generating an on-demand statement.",
+        "Recent statements are available in the dashboard.",
+        "Participants needing archived statements, custom date account summaries, or statements from several years ago should contact support for assistance.",
+        "Participants can add or update beneficiaries from the Beneficiaries option once First contribution posted status shows the first contribution has posted.",
+        "The Beneficiaries option becomes available once First contribution posted status shows the first contribution has posted to the 401(k) account.",
+        "Designating a beneficiary helps ensure that the participant's 401(k) savings are passed on according to their wishes if they pass away.",
+        "A primary beneficiary is the person or people who receive the participant's 401(k) funds upon the participant's death.",
+        "Participants may list one or more primary beneficiaries.",
+        "Multiple primary beneficiary allocations must total 100%.",
+        "Beneficiary percentages must be whole percentages.",
+        "A contingent beneficiary is also known as a secondary beneficiary.",
+        "A contingent beneficiary will inherit the account only if all primary beneficiaries are deceased.",
+        "Adding contingent beneficiaries helps ensure assets are directed properly if circumstances change.",
+        "As a best practice, participants should add at least one primary beneficiary to keep the account current.",
+        "Participants should provide complete identifying details for beneficiaries, such as full name, relationship, and date of birth.",
+        "Participants should review beneficiary designations after major life events such as marriage, divorce, or the birth of a child.",
+        "The plan may require spousal consent if a married participant names someone other than their spouse as primary beneficiary.",
+        "The ForUsAll team can help guide the participant if spousal consent may apply.",
+        "If the participant cannot log in or cannot complete the dashboard self-service steps, they should contact ForUsAll Participant Support.",
+        "Participants can contact ForUsAll Participant Support at help@forusall.com or 844-401-2253.",
+        "ForUsAll Participant Support hours are Monday-Friday, 7:00 AM - 5:00 PM PT."
+      ],
+      "not_allowed_conclusions": [
+        "Do not conclude that every statement section will always appear on every statement.",
+        "Do not guarantee that a statement is available before the expected posting date stated in the article.",
+        "Do not provide statement posting dates beyond the quarterly dates stated in the article.",
+        "Do not claim that Paper Mail has a specific delivery timeline beyond allowing additional time for delivery.",
+        "Do not guarantee that a Lifetime Income Estimate is a guaranteed income amount.",
+        "Do not describe Single Life or Joint & Survivor as guaranteed income amounts.",
+        "Do not provide fee amounts because the article does not provide them.",
+        "Do not treat plan fees or fees mentioned on a statement as service fee amounts for this process.",
+        "Do not guarantee that archived statements, custom date account summaries, or statements from several years ago are available in the dashboard.",
+        "Do not claim that participants can generate on-demand statements directly in the dashboard.",
+        "Do not say the participant can access the Beneficiaries option before First contribution posted status shows the first contribution has posted.",
+        "Do not claim that the first contribution posting date is available from the article.",
+        "Do not guarantee the plan requires spousal consent for every married participant naming someone other than their spouse as primary beneficiary.",
+        "Do not guarantee the plan does not require spousal consent.",
+        "Do not provide plan-specific spousal consent rules beyond saying the plan may require spousal consent.",
+        "Do not guarantee the plan allows any feature or process beyond what is stated in the article.",
+        "Do not say beneficiary percentages can include decimals.",
+        "Do not say multiple beneficiary allocations can total less than or more than 100%.",
+        "Do not add beneficiary identifying requirements beyond the details listed in the article.",
+        "Do not add eligibility requirements, balance thresholds, fees, processing timelines, or portal behaviors not stated in the article.",
+        "Do not provide account setup, password reset, or MFA troubleshooting steps from this article.",
+        "Do not provide loan, withdrawal, investment election, savings rate, or portfolio change instructions from this article.",
+        "Do not treat a loan or mortgage reference as permission to provide loan or mortgage process guidance.",
+        "Do not redirect participants to support before giving the self-service dashboard steps when the article provides self-service instructions and the participant can log in.",
+        "Do not include ticket actions such as closing tickets, tagging, escalation, routing, or internal ticket workflows."
+      ]
+    },
+    "response_frames": {
+      "can_proceed": {
+        "participant_message_components": [
+          "You can log in to your ForUsAll dashboard at forusall.com/login.",
+          "After logging in, click the three dots in the top-right corner of the dashboard.",
+          "Select Statements to view or download available quarterly statement PDFs.",
+          "To download a statement, click the statement and use the download icon on the right panel.",
+          "For best viewing results on a desktop, use a PDF viewer such as Adobe Acrobat Reader.",
+          "For statement delivery preferences, go to Statements and click Delivery Settings.",
+          "You can choose Electronic or Paperless to access statements online, or Paper Mail to receive quarterly statements through USPS.",
+          "If you choose Paper Mail, please allow additional time for delivery.",
+          "Select Beneficiaries to add or update beneficiary information, if your first contribution has posted.",
+          "If you name more than one primary beneficiary, make sure the combined allocations equal 100% and use whole percentages.",
+          "If you are married and name someone other than your spouse as primary beneficiary, your plan may require spousal consent. The ForUsAll team can help guide you if that applies.",
+          "If you need an older, archived, custom date, or on-demand statement, contact ForUsAll Participant Support for assistance."
+        ],
+        "next_steps": [
+          "Identify whether the participant needs help with statement access, statement download, statement delivery preferences, special statement requests, or beneficiary management.",
+          "For statement access, direct the participant to log in, open the three-dot menu, select Statements, and choose the available quarterly statement PDF.",
+          "For statement download, direct the participant to click the statement and use the download icon on the right panel.",
+          "For statement delivery preferences, direct the participant to Statements, then Delivery Settings, then choose Electronic or Paperless, or Paper Mail.",
+          "For a missing recent quarterly statement, provide the expected posting date based on the quarter.",
+          "For on-demand statements needed for loan or mortgage documentation before the statement has posted, direct the participant to contact the Participant Support Team.",
+          "For older, archived, custom date statements, or statements from several years ago, direct the participant to contact support.",
+          "For beneficiary updates, direct the participant to Beneficiaries from the three-dot menu if First contribution posted status shows the first contribution has posted.",
+          "For multiple primary beneficiaries, remind the participant that allocations must total 100% and percentages must be whole percentages.",
+          "For a married participant naming someone other than their spouse as primary beneficiary, explain that the plan may require spousal consent and the ForUsAll team can guide them.",
+          "If the participant cannot log in, cannot access the needed dashboard section, or cannot complete the self-service steps, direct them to ForUsAll Participant Support."
+        ],
+        "warnings": [
+          "Statements are generally posted by the end of the month following each calendar quarter.",
+          "Q1 statements are expected by the end of April, Q2 by the end of July, Q3 by the end of October, and Q4 by the end of January of the next year.",
+          "The article says statements may include certain sections, so do not guarantee that every listed section will appear on every statement.",
+          "Lifetime Income Estimates are planning estimates and are not guaranteed income amounts.",
+          "The article mentions plan fees and fees as statement items but does not provide fee amounts.",
+          "Paper Mail requires additional delivery time, but the article does not provide a specific delivery timeline.",
+          "Recent statements are available in the dashboard, but archived statements, custom date account summaries, and statements from several years ago require support assistance.",
+          "The Beneficiaries option becomes available once First contribution posted status shows the first contribution has posted.",
+          "Beneficiary percentages must be whole percentages and multiple primary beneficiary allocations must total 100%.",
+          "Spousal consent is plan-variable; do not say it is always required or never required."
+        ],
+        "questions_to_ask": [],
+        "what_not_to_say": [
+          "Do not say all statement sections always appear.",
+          "Do not provide fee amounts.",
+          "Do not guarantee a statement is available before the expected posting date.",
+          "Do not provide a specific Paper Mail delivery timeline.",
+          "Do not say archived statements, custom date account summaries, or statements from several years ago are always available in the dashboard.",
+          "Do not claim participants can generate on-demand statements directly in the dashboard.",
+          "Do not guarantee spousal consent is always required.",
+          "Do not guarantee spousal consent is never required.",
+          "Do not say the Beneficiaries option is available before First contribution posted status shows the first contribution has posted.",
+          "Do not say beneficiary percentages can include decimals.",
+          "Do not provide account setup, password reset, MFA, loan, withdrawal, investment election, savings rate, or portfolio change instructions from this article.",
+          "Do not redirect participants to support before giving self-service dashboard steps when the participant can log in and the article provides self-service instructions."
+        ]
+      },
+      "blocked_missing_data": {
+        "participant_message_components": [
+          "I can help with accessing statements, changing delivery preferences, requesting older or on-demand statements, managing beneficiaries, or getting support when you cannot access your online account.",
+          "The exact steps depend on what you are trying to do in the dashboard.",
+          "Some account details may need to be confirmed before participant-specific guidance can be provided."
+        ],
+        "next_steps": [
+          "If the participant's intent is unclear, ask what they want help with before giving a specific workflow.",
+          "If Participant's name, Participant's email, Record Keeper, Participant Status, or MFA status is missing and participant-specific/account-access guidance is needed, retrieve it from admin or portal systems rather than asking the participant.",
+          "If no matching participant profile is found when participant-specific/account-access guidance is needed, do not continue with participant-specific guidance until the correct profile is located.",
+          "If the Primary Email field is empty during account-access review, redirect the participant to support.",
+          "If the Record Keeper is missing or cannot be confirmed, retrieve it from admin or portal systems before applying LT Trust-specific participant/account-access guidance or deciding whether the related setup article applies.",
+          "If MFA status is missing or cannot be confirmed, retrieve it from admin or portal systems before deciding whether to reference the related account setup article or redirect to support. Do not provide MFA troubleshooting from this article.",
+          "If the participant wants to add or update beneficiaries and the First contribution posted status is unclear, retrieve that status from admin or portal systems rather than asking the participant.",
+          "If the participant asks about a specific quarterly statement but does not identify the quarter, ask which quarter they need.",
+          "If the participant asks about statement delivery but does not specify the desired delivery option, ask whether they want Electronic or Paperless delivery, or Paper Mail.",
+          "If the participant asks for a statement but does not specify the request type, ask whether they need an available quarterly statement, an older or archived statement, a custom date account summary, or an on-demand statement for documentation.",
+          "Once the missing information is available, provide only the workflow supported by the article."
+        ],
+        "warnings": [
+          "Do not assume the Beneficiaries option is available unless First contribution posted status shows the first contribution has posted.",
+          "Do not ask the participant to confirm participant-profile data that should be retrieved from admin or portal systems.",
+          "Do not assume the participant needs an older, archived, custom date, or on-demand statement unless they state that need or clarify it.",
+          "Do not assume the participant wants Paper Mail unless they request it or confirm it.",
+          "Do not assume a requested statement is missing until the applicable quarterly posting timeframe is considered.",
+          "Do not use Participant Status by itself to determine whether the participant can create an online account, use general self-service guidance, or access beneficiaries.",
+          "Do not provide account setup or MFA troubleshooting guidance from this article; if account setup appears needed and MFA status is not enrolled, use the referenced article LT: How to Set Up Your ForUsAll 401(k) Account as a related fallback."
+        ],
+        "questions_to_ask": [
+          "What would you like help with: viewing or downloading a statement, changing statement delivery preferences, requesting an older or on-demand statement, adding or updating a beneficiary, or getting help accessing your online account?",
+          "Which quarterly statement are you looking for: Q1, Q2, Q3, or Q4?",
+          "Would you like to switch your statement delivery preference to Paper Mail, or keep Electronic or Paperless delivery?",
+          "Are you looking for an available quarterly statement, an older or archived statement, a custom date account summary, or an on-demand statement for documentation?"
+        ],
+        "what_not_to_say": [
+          "Do not provide a specific workflow before the participant's intent is clear.",
+          "Do not ask the participant to confirm Participant's name, Participant's email, Record Keeper, Participant Status, MFA status, or First contribution posted status when those should be retrieved from admin or portal systems for participant-specific/account-access guidance.",
+          "Do not continue with participant-specific guidance if no matching participant profile is found.",
+          "Do not say the participant can access the Beneficiaries option before First contribution posted status shows the first contribution has posted.",
+          "Do not tell the participant that archived statements, custom date account summaries, or statements from several years ago are available in the dashboard.",
+          "Do not tell the participant that on-demand statements can be generated directly from the dashboard.",
+          "Do not provide a specific Paper Mail delivery timeline.",
+          "Do not invent missing account details, statement availability, fee amounts, or plan rules."
+        ]
+      },
+      "blocked_not_eligible": {
+        "participant_message_components": [
+          "The Beneficiaries option becomes available once your first contribution has posted to your 401(k) account.",
+          "If your first contribution has not posted yet, the Beneficiaries option may not be accessible in the dashboard.",
+          "This does not mean you are permanently unable to add beneficiaries; it means the dashboard option may not be available yet based on the article.",
+          "You can still use the dashboard for other available self-service options, such as viewing available statements or managing statement delivery preferences, if you can log in."
+        ],
+        "next_steps": [
+          "Confirm from admin or portal systems whether the participant's First contribution posted status shows a posted positive contribution before explaining why the Beneficiaries option may not be available.",
+          "If First contribution posted status shows the first contribution has not posted, explain that the Beneficiaries option becomes available once the first contribution has posted.",
+          "Do not ask the participant to confirm First contribution posted status; retrieve it from admin or portal systems.",
+          "For other needs such as viewing statements, downloading available statements, or changing statement delivery preferences, provide the applicable dashboard steps if supported by the participant's request.",
+          "If the participant cannot log in, cannot access the needed dashboard section, or cannot complete the self-service steps, direct them to ForUsAll Participant Support.",
+          "If the participant needs help managing beneficiaries after the option becomes available, direct them to the Beneficiaries option from the dashboard three-dot menu or to ForUsAll Participant Support if they cannot complete the task."
+        ],
+        "warnings": [
+          "Do not tell the participant they can access the Beneficiaries option before First contribution posted status shows the first contribution has posted.",
+          "Do not claim the participant is permanently ineligible to add beneficiaries.",
+          "Do not guarantee timing for when the first contribution will post.",
+          "Do not use Participant Status, Record Keeper, MFA status, login issues, or missing statements as blocked_not_eligible outcomes; this outcome applies only when the Beneficiaries option is unavailable because the first contribution has not posted.",
+          "Do not block statement access or statement delivery preference guidance just because the Beneficiaries option is not yet available."
+        ],
+        "questions_to_ask": [],
+        "what_not_to_say": [
+          "Do not add eligibility requirements not stated in the article.",
+          "Do not claim the participant is permanently ineligible to add beneficiaries.",
+          "Do not guarantee timing for when the first contribution will post.",
+          "Do not say the Beneficiaries option is available before First contribution posted status shows the first contribution has posted.",
+          "Do not ask the participant to confirm whether the first contribution has posted when First contribution posted status should be retrieved from admin or portal systems.",
+          "Do not tell the participant that all dashboard features are unavailable just because the Beneficiaries option is not available.",
+          "Do not redirect the participant to support before explaining the self-service rule when the issue is only that the Beneficiaries option is not visible because First contribution posted status shows the first contribution has not posted."
+        ]
+      },
+      "ambiguous_plan_rules": {
+        "participant_message_components": [
+          "If you are married and name someone other than your spouse as primary beneficiary, your plan may require spousal consent.",
+          "Because this can depend on plan rules, the article does not say that spousal consent is always required or never required.",
+          "The ForUsAll team can help guide you if spousal consent may apply.",
+          "You can still start from the Beneficiaries section in your dashboard once your first contribution has posted."
+        ],
+        "next_steps": [
+          "Use this frame when the participant asks whether spousal consent is required or when the participant is married and wants to name someone other than their spouse as primary beneficiary.",
+          "Explain only that spousal consent may be required, because the article states this as plan-variable.",
+          "Do not make a definitive plan-specific conclusion unless the plan rule is confirmed from a supported source.",
+          "Direct the participant to ForUsAll Participant Support for guidance if spousal consent may apply.",
+          "If the participant can access the dashboard and First contribution posted status shows the first contribution has posted, also provide the self-service step to open the three-dot menu and select Beneficiaries.",
+          "If the Beneficiaries option is not visible, explain that the option becomes available once the first contribution has posted and use First contribution posted status from admin or portal systems when participant-specific guidance is needed."
+        ],
+        "warnings": [
+          "Spousal consent is plan-variable according to the article.",
+          "The article says the plan may require spousal consent; it does not say spousal consent is always required.",
+          "The article does not say spousal consent is never required.",
+          "Do not provide plan-specific spousal consent rules unless confirmed from a supported source."
+        ],
+        "questions_to_ask": [
+          "Are you married and naming someone other than your spouse as your primary beneficiary?"
+        ],
+        "what_not_to_say": [
+          "Do not guarantee that spousal consent is required.",
+          "Do not guarantee that spousal consent is not required.",
+          "Do not provide plan-specific spousal consent rules not stated in the article.",
+          "Do not tell the participant they can avoid spousal consent.",
+          "Do not tell the participant spousal consent will definitely be requested.",
+          "Do not treat spousal consent as a blocker for all beneficiary updates.",
+          "Do not say the Beneficiaries option is available before First contribution posted status shows the first contribution has posted."
+        ]
+      }
+    },
+    "critical_flags": {
+      "portal_required": true,
+      "mfa_relevant": "Conditional",
+      "record_keeper_must_be": "LT Trust"
+    }
+  }
+}

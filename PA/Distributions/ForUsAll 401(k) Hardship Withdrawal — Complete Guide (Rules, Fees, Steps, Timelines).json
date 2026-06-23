@@ -72,6 +72,14 @@
                     "State income taxes may also apply depending on the participant's state of residence and applicable state tax laws.",
                     "If the participant is under age 59.5, a 10% early withdrawal penalty may apply."
                 ]
+            },
+            {
+                "category": "separation_claim_overrides_active_status",
+                "rules": [
+                    "If the participant explicitly states they have separated from employment (resigned, quit, were fired or laid off, no longer work here, or are a former employee), treat this as a separation claim even if the system Eligibility Status still shows 'Active'.",
+                    "When a separation claim conflicts with an 'Active' system status, do NOT offer hardship withdrawal, 401(k) loan, or in-service distribution — these are available only to actively employed participants. An 'Active' status alongside an explicit separation claim most likely means the admin system has not been updated yet.",
+                    "In this conflict: (1) ask the participant for their termination/separation date; (2) tell them we will review this internally because the system still shows them as active; (3) escalate to the team to verify and update the employment status."
+                ]
             }
         ],
         "fees": [
@@ -139,6 +147,10 @@
             {
                 "issue": "Incomplete or inaccurate form information.",
                 "resolution": "Advise the participant to ensure banking and contact information is accurate and the form is fully completed before submitting, as incomplete information may affect timing."
+            },
+            {
+                "issue": "The participant's system status shows Active, but they explicitly state they have already separated from employment (resigned, quit, or were terminated).",
+                "resolution": "Do not proceed with an active-employee-only option (hardship, loan, or in-service distribution). Ask for the participant's termination/separation date, explain that the system still shows them as active and that we will review this internally to update their employment status, and escalate to ForUsAll Support with the stated separation date. Once the termination date is on file, the termination distribution process can proceed."
             }
         ],
         "examples": [
@@ -249,12 +261,14 @@
                 "Do not claim the 10% early withdrawal penalty will apply; it may apply if the participant is under age 59.5.",
                 "Do not guarantee whether state income tax withholding will apply or specify state withholding amounts; state taxes vary by state.",
                 "Do not claim the participant can withdraw more than the documented hardship expense amount or withdraw extra for unrelated expenses.",
-                "Do not invent additional IRS hardship reasons, fees, or timelines not listed in the article."
+                "Do not invent additional IRS hardship reasons, fees, or timelines not listed in the article.",
+                "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead."
             ],
             "must_do_if_unsure": [
                 "If asked whether employer match funds or other sources are eligible, state that it depends on the plan and will be determined by reviewing plan documents. (we as ForUsAll have to review it, participants have no access to plan documents)",
                 "If the participant's hardship reason is unclear, ask the participant to specify which IRS-approved hardship reason applies from the list in this article.",
-                "If the participant asks for outcomes not described in the article, check other articles for a response or escalate to a human agent."
+                "If the participant asks for outcomes not described in the article, check other articles for a response or escalate to a human agent.",
+                "If the participant says they have separated but the system shows Eligibility Status 'Active', request their termination/separation date, explain the system is out of sync and we will review it internally, and escalate to Support before offering any active-employee-only option."
             ]
         },
         "references": {

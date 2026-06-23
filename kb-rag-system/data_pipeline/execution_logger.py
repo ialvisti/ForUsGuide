@@ -85,3 +85,34 @@ class ExecutionLogger:
             await self.collection.add(doc)
         except Exception as e:
             logger.error(f"Failed to log execution to Firestore: {e}")
+
+    async def log_ticket_execution(
+        self,
+        request_id: str,
+        ticket_job_id: Optional[str],
+        mode: str,
+        route_summary: list,
+        total_inquiries: int,
+        forusbots_job_ids: list,
+        duration_ms: float,
+        error: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> None:
+        """Log one end-to-end ticket orchestration to the ``ticket_executions``
+        collection. Like ``log_execution`` it never propagates failures."""
+        doc = {
+            "request_id": request_id,
+            "ticket_job_id": ticket_job_id,
+            "idempotency_key": idempotency_key,
+            "ticket_handler_mode": mode,
+            "timestamp": datetime.now(timezone.utc),
+            "duration_ms": round(duration_ms, 1),
+            "total_inquiries": total_inquiries,
+            "route_summary": route_summary,
+            "forusbots_job_ids": forusbots_job_ids,
+            "error": error,
+        }
+        try:
+            await self.db.collection("ticket_executions").add(doc)
+        except Exception as e:
+            logger.error(f"Failed to log ticket execution to Firestore: {e}")

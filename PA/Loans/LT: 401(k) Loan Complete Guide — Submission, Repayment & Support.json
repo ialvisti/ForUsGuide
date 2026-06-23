@@ -100,6 +100,14 @@
                     "A 10% early withdrawal penalty may apply if the loan is not repaid after employment ends.",
                     "The article advises participants to consider speaking with a qualified tax advisor for tax questions or rollover options."
                 ]
+            },
+            {
+                "category": "separation_claim_overrides_active_status",
+                "rules": [
+                    "If the participant explicitly states they have separated from employment (resigned, quit, were fired or laid off, no longer work here, or are a former employee), treat this as a separation claim even if the system Eligibility Status still shows 'Active'.",
+                    "When a separation claim conflicts with an 'Active' system status, do NOT offer hardship withdrawal, 401(k) loan, or in-service distribution — these are available only to actively employed participants. An 'Active' status alongside an explicit separation claim most likely means the admin system has not been updated yet.",
+                    "In this conflict: (1) ask the participant for their termination/separation date; (2) tell them we will review this internally because the system still shows them as active; (3) escalate to the team to verify and update the employment status."
+                ]
             }
         ],
         "fees": [
@@ -355,6 +363,10 @@
             {
                 "issue": "A defaulted loan appears in the participant's system records.",
                 "resolution": "Direct the participant to contact support before advising on a new loan request. Do not provide new-loan guidance until the defaulted loan status has been reviewed by support."
+            },
+            {
+                "issue": "The participant's system status shows Active, but they explicitly state they have already separated from employment (resigned, quit, or were terminated).",
+                "resolution": "Do not proceed with an active-employee-only option (hardship, loan, or in-service distribution). Ask for the participant's termination/separation date, explain that the system still shows them as active and that we will review this internally to update their employment status, and escalate to ForUsAll Support with the stated separation date. Once the termination date is on file, the termination distribution process can proceed."
             }
         ],
         "examples": [
@@ -693,7 +705,8 @@
                 "Do not present general examples or common plan limits as universal rules for every participant when the article states plan limits may vary by plan.",
                 "Do not provide the RightSignature loan request form before confirming the participant qualifies for a loan. The form is a fallback submission path only for participants who cannot create or access a ForUsAll online account, not the default path or a workaround when portal access is available.",
                 "Do not imply that the RightSignature form bypasses loan eligibility requirements, changes review timelines or approval standards, or guarantees approval, processing, or funding. Inability to access the portal does not automatically make the participant eligible.",
-                "Do not replace the standard portal submission steps with the RightSignature form unless the participant cannot create or access a ForUsAll online account and loan qualification has already been confirmed."
+                "Do not replace the standard portal submission steps with the RightSignature form unless the participant cannot create or access a ForUsAll online account and loan qualification has already been confirmed.",
+                "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead."
             ],
             "must_do_if_unsure": [
                 "Use only the rules, timelines, fees, and contacts stated in the article.",
@@ -704,7 +717,8 @@
                 "If the participant cannot use the online portal for any reason, confirm loan qualification first before offering the RightSignature form. If qualification status is unclear, verify eligibility or redirect to support before sharing the alternate form.",
                 "Use the RightSignature form only as a fallback submission path for participants who cannot create or access a ForUsAll online account and whose loan qualification has been confirmed. Do not offer it as the default route or because the participant prefers not to use the portal.",
                 "If qualification has already been confirmed and portal access is not possible, clearly explain that the RightSignature form is the alternate submission method.",
-                "If a defaulted loan appears in the system, redirect to support before advising on a new loan request."
+                "If a defaulted loan appears in the system, redirect to support before advising on a new loan request.",
+                "If the participant says they have separated but the system shows Eligibility Status 'Active', request their termination/separation date, explain the system is out of sync and we will review it internally, and escalate to Support before offering any active-employee-only option."
             ]
         },
         "references": {
@@ -872,8 +886,8 @@
                         "LT Trust (MA000218)"
                     ],
                     "why_needed": "Required only to actually send an early payoff. Does not block explaining how early payoff works in general.",
-                    "source_note": "Supported by article section: Early Loan Payoff. The plan ID can be found in the participant profile.",
-                    "source_type": "participant_profile",
+                    "source_note": "Supported by article section: Early Loan Payoff. Provided by the system request (the ticket already carries the plan ID) — not scraped.",
+                    "source_type": "agent_input",
                     "blocking_intent": "execution_only"
                 },
                 {
@@ -900,8 +914,8 @@
                         "Monthly"
                     ],
                     "why_needed": "Required only to confirm the repayment schedule setup matches before submitting. Does not block explaining how repayment scheduling works in general.",
-                    "source_note": "Supported by article section: Estimate Loan.",
-                    "source_type": "message_text",
+                    "source_note": "Supported by article section: Estimate Loan. Scrapeable from the participant profile (payroll module: Payroll Frequency).",
+                    "source_type": "participant_profile",
                     "blocking_intent": "execution_only"
                 },
                 {

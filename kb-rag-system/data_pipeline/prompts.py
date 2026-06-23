@@ -22,10 +22,10 @@ RECORDKEEPER CONTEXT:
 - When referencing LT Trust procedures, treat them as ForUsAll procedures.
 
 CRITICAL RULES:
-1. Extract EVERY data field that appears under any `# Required Data — Must Have` heading in the context. Multiple Must Have sections from different articles may be present — include fields from all of them, deduplicating by field name.
-2. The `**Source:**` value on each field (e.g., `participant_profile`, `message_text`, `agent_input`) is INFORMATIONAL ONLY — it tells downstream systems where to fetch the value. It is NOT a filter. A field with `Source: message_text` or `Source: agent_input` is just as required as one with `Source: participant_profile`, and MUST be included.
-3. Do NOT invent or add fields that are not explicitly listed under a Must Have heading.
-4. Do NOT include fields from "Nice to Have" or any other section — those are handled separately.
+1. Extract EVERY data field that appears under any `# Required Data — Must Have` heading in the context, AND every field under any `# Required Data — Nice to Have` heading. Multiple sections from different articles may be present — include fields from all of them, deduplicating by field name (when the same field appears in both tiers, keep it once as must-have).
+2. The `**Source:**` value on each field (e.g., `participant_profile`, `message_text`, `agent_input`) is INFORMATIONAL ONLY — it tells downstream systems where to fetch the value. It is NOT a filter. A field with `Source: message_text` or `Source: agent_input` is just as extractable as one with `Source: participant_profile`, and MUST be included.
+3. Do NOT invent or add fields that are not explicitly listed under a Must Have or Nice to Have heading.
+4. Tier determines the `required` flag: fields from a Must Have section get `required: true`; fields from a Nice to Have section get `required: false`. Do NOT include fields from any other section (If Missing, Disambiguation Notes, etc.).
 5. Categorize each field into `participant_data` or `plan_data` based on WHAT THE FIELD DESCRIBES:
    - participant_data: attributes of the participant or their specific account (name, status, balance, termination date, MFA status, chosen option, requested amount, etc.)
    - plan_data: attributes of the plan configuration itself (maximum number of loans allowed, vesting schedule, plan-level thresholds, record keeper, etc.)
@@ -42,7 +42,7 @@ CRITICAL RULES:
    - description: What this field represents (from the "Description" in context)
    - why_needed: Why we need this specific data (from "Why needed" in context)
    - data_type: Use one of [text, currency, date, boolean, number] for scalar fields. For list fields, specify the element type inside brackets: list[text], list[currency], list[date], list[boolean], list[number]. NEVER use bare "list" — always include the element type.
-   - required: true (all must-have fields are required)
+   - required: true for must-have fields; false for nice-to-have fields
 7. Return empty arrays ONLY IF no `# Required Data — Must Have` heading appears anywhere in the context. If even one Must Have section is present, at least one of `participant_data` / `plan_data` MUST be non-empty.
 8. In the "coverage_gaps" field, list ONLY data points or topics the inquiry asks about that are ENTIRELY ABSENT from the context. Do NOT report as gaps: (a) fine-grained details when the general topic IS covered, (b) tangential topics the inquiry mentions but is not primarily about. If the context addresses the main subject matter, return an empty list.
 
@@ -58,10 +58,17 @@ Context snippet:
   **Why needed:** Needed to explain the correct rules and next steps.
   **Source:** message_text
 
-Correct extraction (both fields included despite different Source values):
+  # Required Data — Nice to Have (Conversation Context)
+  ### Amount needed
+  **Description:** The amount the participant wants to withdraw.
+  **Why needed:** Helps tailor the explanation to the participant's situation.
+  **Source:** message_text
+
+Correct extraction (Must Have fields with required: true, Nice to Have with required: false):
   "participant_data": [
     {"field": "termination_date", "description": "The date the participant terminated their employment.", "why_needed": "To verify eligibility for distribution.", "data_type": "date", "required": true},
-    {"field": "chosen_401k_option", "description": "Which path the participant wants to take with the 401(k).", "why_needed": "Needed to explain the correct rules and next steps.", "data_type": "text", "required": true}
+    {"field": "chosen_401k_option", "description": "Which path the participant wants to take with the 401(k).", "why_needed": "Needed to explain the correct rules and next steps.", "data_type": "text", "required": true},
+    {"field": "amount_needed", "description": "The amount the participant wants to withdraw.", "why_needed": "Helps tailor the explanation to the participant's situation.", "data_type": "currency", "required": false}
   ]
 
 Output must be valid JSON with this structure:
@@ -147,6 +154,13 @@ INFORMATIONAL OPTIONS / COSTS / TIMELINES:
 - Examples of non-blocking next-step details: wire routing/account information, final delivery choice, physical street address for overnight checks, distribution type, participant name, email, or company name.
 - Put those details in questions_to_ask or data_gaps as next steps. Do not let missing identity lookup fields override a supported informational answer, including when answering without a participant name.
 - Use blocked_missing_data only when a missing core eligibility fact makes eligibility or procedure selection impossible, such as employment status, termination date, vested balance, blackout status, plan type, or recordkeeper.
+
+EMPLOYMENT STATUS CONFLICT (system shows Active but participant says they separated):
+- If the collected participant_data shows employment_status / eligibility_status = "Active" (or status is unavailable) BUT the participant explicitly states they have separated — resigned, quit, were fired or laid off, no longer work there, or are a former employee — treat the participant's claim as authoritative for routing. An "Active" status alongside an explicit separation claim almost always means the admin system has not been updated yet.
+- In this conflict, do NOT offer hardship withdrawal, 401(k) loan, or in-service distribution (these are active-employee-only options). Set outcome = "blocked_missing_data".
+- In questions_to_ask, ask for the participant's termination/separation date (their last day of employment).
+- In the opening / key_points, tell the participant that our records still show them as actively employed, that we will review this internally to update their employment status, and that the termination distribution process can proceed once the termination date is on file.
+- Set escalation.needed = true, with reason noting the participant reports separation while the system shows active, so the team must verify and update the employment status.
 
 ═══════════════════════════════════════════════════════════════════
 STEP 2 — GENERATE THE RESPONSE
@@ -292,6 +306,9 @@ CRITICAL DISTINCTIONS between outcomes:
 "blocked_not_eligible" vs "blocked_missing_data":
 - Use "blocked_not_eligible" when the collected data contains a DEFINITIVE blocking condition — e.g., a process has already been initiated by the custodian and cannot be reversed, the participant does not meet age or employment status requirements, or a hard deadline has passed with no exception path.
 - Use "blocked_missing_data" only when you truly CANNOT determine eligibility due to absent information, NOT when the available data already shows a blocking condition.
+
+EMPLOYMENT STATUS CONFLICT:
+- If employment_status / eligibility_status shows "Active" (or is unavailable) BUT the participant explicitly states they have separated (resigned, quit, fired, laid off, no longer work there, former employee), choose "blocked_missing_data": the termination date is missing and the system status is out of date. Do NOT treat the stale "Active" status as a definitive blocker that makes the participant eligible for active-only options.
 
 Using the eligibility requirements, blocking conditions, and decision guide from the knowledge base context, determine which outcome applies.
 
@@ -498,6 +515,14 @@ def _format_collected_data(collected_data: dict) -> str:
             data_str += "\nPlan Data:\n"
             for key, value in collected_data["plan_data"].items():
                 data_str += f"  - {key}: {value}\n"
+        if collected_data.get("data_collection_notes"):
+            data_str += (
+                "\nData Collection Notes (fields we attempted but could NOT "
+                "collect — if any are required for eligibility, ask the "
+                "participant instead of assuming a value):\n"
+            )
+            for note in collected_data["data_collection_notes"]:
+                data_str += f"  - {note}\n"
     else:
         data_str = "(No data collected yet)"
     return data_str
@@ -962,3 +987,111 @@ def build_classify_inquiry_prompt(
         coverage_block=coverage_block,
     )
     return SYSTEM_PROMPT_CLASSIFY_INQUIRY, user_prompt
+
+
+# ============================================================================
+# Ticket Handler agents (end-to-end) — Stage 3
+# ============================================================================
+# LLM-first: the four n8n agents are kept as internal LLM calls. Their system
+# prompts are the canonical specs, shipped as packaged markdown under
+# data_pipeline/agent_prompts/ so they travel in the container and the domain
+# team keeps tuning them as markdown. Loaded lazily + cached, so a missing file
+# only fails the ticket-handler path — never unrelated endpoints at import time.
+#
+# SOURCE of each .md (parity enforced by tests/test_prompt_parity.py):
+#   extract_inquiries.md      <- External agents/Inquiry Extraction & Required-Data Builder agent .md
+#   kb_question_synthesis.md  <- External agents/Knowledge Question Inquiry Generator.md
+#   forusbots_field_map.md    <- External agents/Forusbots field mapper.md (+ reconciled Rule 10/aliases)
+#   gr_body_build.md          <- External agents/Generate Response Body Builder.md
+
+from functools import lru_cache
+from pathlib import Path
+
+_AGENT_PROMPTS_DIR = Path(__file__).resolve().parent / "agent_prompts"
+
+
+@lru_cache(maxsize=None)
+def _load_agent_prompt(name: str) -> str:
+    """Load a packaged agent system prompt (markdown) by stem name."""
+    return (_AGENT_PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
+
+
+def _input_user_prompt(payload: Any, *, shape_hint: str) -> str:
+    return (
+        "INPUT:\n"
+        f"{json.dumps(payload, ensure_ascii=False, indent=2)}\n\n"
+        f"Return ONLY the {shape_hint} described in the instructions — "
+        "no prose, no markdown fences."
+    )
+
+
+def build_extract_inquiries_prompt(agent_input: Dict[str, Any]) -> Tuple[str, str]:
+    """Agent 1 — Inquiry Extraction & Required-Data Builder.
+
+    ``agent_input`` = {"userData": {...}, "ticketData": {...}, "forusbots": {...}}.
+    Output: JSON array of {inquiry, record_keeper, plan_type, topic, related_inquiries}.
+    """
+    return _load_agent_prompt("extract_inquiries"), _input_user_prompt(
+        agent_input, shape_hint="JSON array"
+    )
+
+
+def build_kb_question_synthesis_prompt(agent_input: Dict[str, Any]) -> Tuple[str, str]:
+    """Agent 2 — Knowledge Question Inquiry Generator.
+
+    ``agent_input`` = {"ticketData": {...}}.
+    Output: {"question": "..."} or {"question": null, "insufficient_inquiry": true}.
+    """
+    return _load_agent_prompt("kb_question_synthesis"), _input_user_prompt(
+        agent_input, shape_hint="JSON object"
+    )
+
+
+def build_forusbots_field_map_prompt(
+    required_fields: list,
+    *,
+    current_year: Optional[int] = None,
+) -> Tuple[str, str]:
+    """Agent 3 — Forusbots field mapper.
+
+    ``required_fields`` = [{field, description?, why_needed?, data_type?, required?}].
+    Output: {"modules": [{key, fields}], "_unmapped": [...]}.
+
+    The runtime current year is injected so the payroll Rule 6c
+    (``years:CURRENT_YEAR``) never relies on the model guessing the date.
+    """
+    from datetime import datetime, timezone
+
+    year = current_year or datetime.now(timezone.utc).year
+    user = _input_user_prompt(required_fields, shape_hint="JSON object")
+    user += (
+        f"\n\nCURRENT YEAR: {year}. When Rule 6c applies (general payroll "
+        f"request with no explicit year), use years:{year}. Never guess the year."
+    )
+    return _load_agent_prompt("forusbots_field_map"), user
+
+
+def build_gr_body_build_prompt(agent_input: Any) -> Tuple[str, str]:
+    """Agent 4 — Generate Response Body Builder.
+
+    ``agent_input`` = [{"pptDataModules": {...}, "caseData": {...}}].
+    Output: the /generate-response request body (JSON object).
+    """
+    return _load_agent_prompt("gr_body_build"), _input_user_prompt(
+        agent_input, shape_hint="JSON object"
+    )
+
+
+def build_ticket_field_extract_prompt(
+    fields: list, ticket_data: Dict[str, Any]
+) -> Tuple[str, str]:
+    """Agent 5 — Ticket Field Extraction (post-mapping layer).
+
+    Extracts, from the participant's own ticket text, the values of fields that
+    are NOT scrapeable from ForusBots (chosen option, amounts, reasons...).
+    Output: {"extracted": {field: {value, evidence}}, "not_found": [field...]}.
+    """
+    agent_input = {"fields": fields, "ticketData": ticket_data}
+    return _load_agent_prompt("ticket_field_extract"), _input_user_prompt(
+        agent_input, shape_hint="JSON object"
+    )

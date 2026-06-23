@@ -418,8 +418,8 @@
                         "termination distribution"
                     ],
                     "why_needed": "Required to actually locate and process the cancel/change for the specific request. Does not block general explanation of cancel/change rules across distribution types.",
-                    "source_note": "Referenced in steps, common_issues, and business_rules as a required detail for locating the request.",
-                    "source_type": "participant_profile",
+                    "source_note": "Referenced in steps, common_issues, and business_rules as a required detail for locating the request. The participant states which kind of request they submitted — not available in the admin portal.",
+                    "source_type": "message_text",
                     "blocking_intent": "execution_only"
                 },
                 {
@@ -474,8 +474,8 @@
                         "Wire, ACH, Check"
                     ],
                     "why_needed": "Options to stop or reissue may depend on the delivery method and the request status.",
-                    "source_note": "Referenced in business_rules and decision_guide; delivery method may affect available options.",
-                    "source_type": "participant_profile"
+                    "source_note": "Referenced in business_rules and decision_guide; delivery method may affect available options. The participant states how they chose to receive the payment — not available in the admin portal.",
+                    "source_type": "message_text"
                 }
             ],
             "if_missing": [

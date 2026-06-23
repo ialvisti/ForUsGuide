@@ -41,6 +41,10 @@ from typing import Optional, List, Dict, Any
 # Agregar parent directory al path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
+# Cargar variables de entorno desde .env (PINECONE_API_KEY, INDEX_NAME, etc.)
+from dotenv import load_dotenv
+load_dotenv(Path(__file__).parent.parent / ".env")
+
 from data_pipeline.pinecone_uploader import PineconeUploader
 
 # Configurar logging
@@ -77,42 +81,45 @@ def list_chunks(
         # Conectar a Pinecone
         uploader = PineconeUploader()
         
-        # Construir filtro
-        filter_dict = {}
-        
+        # Enumeración determinística (list + fetch), NO búsqueda semántica.
+        # query_chunks usa ranking semántico y un tope top_k, por lo que no
+        # cuenta ni enumera todos los chunks de forma fiable. list_and_fetch_chunks
+        # lista los IDs por prefijo y obtiene su metadata, dando un conteo exacto.
         if article_id:
-            filter_dict["article_id"] = {"$eq": article_id}
             logger.info(f"🔍 Filtrando por article_id: {article_id}")
-        
         if tier:
-            filter_dict["chunk_tier"] = {"$eq": tier}
             logger.info(f"🔍 Filtrando por tier: {tier}")
-        
         if chunk_type:
-            filter_dict["chunk_type"] = {"$eq": chunk_type}
             logger.info(f"🔍 Filtrando por tipo: {chunk_type}")
         
-        # Hacer query
-        top_k = limit if limit else 1000
+        # Sin --limit, listar todo (el índice completo cabe holgadamente).
+        effective_limit = limit if limit else 100000
         
-        logger.info(f"📊 Consultando Pinecone (top_k={top_k})...")
+        logger.info(f"📊 Listando chunks de Pinecone (limit={effective_limit})...")
         
-        if filter_dict:
-            chunks = uploader.query_chunks(
-                query_text="all chunks",
-                top_k=top_k,
-                filter_dict=filter_dict
-            )
-        else:
-            # Sin filtros, obtener todos
-            chunks = uploader.query_chunks(
-                query_text="all chunks",
-                top_k=top_k
-            )
+        chunks = uploader.list_and_fetch_chunks(
+            prefix=article_id,
+            limit=effective_limit,
+            tier=tier,
+            chunk_type=chunk_type,
+        )
         
         if not chunks:
             logger.warning("No se encontraron chunks")
             return []
+        
+        # Orden estable por article_id y número de chunk para una salida legible.
+        def _sort_key(c: Dict[str, Any]):
+            cid = c.get("id", "")
+            if "_chunk_" in cid:
+                base, num = cid.rsplit("_chunk_", 1)
+                try:
+                    return (base, int(num))
+                except ValueError:
+                    return (base, 0)
+            return (cid, 0)
+        
+        chunks.sort(key=_sort_key)
         
         logger.info(f"✅ Encontrados {len(chunks)} chunks")
         

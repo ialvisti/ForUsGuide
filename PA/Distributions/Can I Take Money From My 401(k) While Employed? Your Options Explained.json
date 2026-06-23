@@ -141,6 +141,14 @@
                 "rules": [
                     "These internal checks and thresholds are ForUsAll internal procedure rules and must not be presented to the participant as a record keeper-specific rule."
                 ]
+            },
+            {
+                "category": "separation_claim_overrides_active_status",
+                "rules": [
+                    "If the participant explicitly states they have separated from employment (resigned, quit, were fired or laid off, no longer work here, or are a former employee), treat this as a separation claim even if the system Eligibility Status still shows 'Active'.",
+                    "When a separation claim conflicts with an 'Active' system status, do NOT offer hardship withdrawal, 401(k) loan, or in-service distribution — these are available only to actively employed participants. An 'Active' status alongside an explicit separation claim most likely means the admin system has not been updated yet.",
+                    "In this conflict: (1) ask the participant for their termination/separation date; (2) tell them we will review this internally because the system still shows them as active; (3) escalate to the team to verify and update the employment status."
+                ]
             }
         ],
         "steps": [
@@ -311,6 +319,10 @@
             {
                 "issue": "Participant asks whether rollover source withdrawals apply but does not remember if they rolled funds into the plan.",
                 "resolution": "Ask if they remember bringing money into the current employer plan. If YES, say they may qualify; if NO, say they do not qualify but recommend contacting support to double check; if NOT SURE, advise contacting support to confirm."
+            },
+            {
+                "issue": "The participant's system status shows Active, but they explicitly state they have already separated from employment (resigned, quit, or were terminated).",
+                "resolution": "Do not proceed with an active-employee-only option (hardship, loan, or in-service distribution). Ask for the participant's termination/separation date, explain that the system still shows them as active and that we will review this internally to update their employment status, and escalate to ForUsAll Support with the stated separation date. Once the termination date is on file, the termination distribution process can proceed."
             }
         ],
         "examples": [
@@ -586,12 +598,14 @@
                 "Do not present internal ForUsAll procedure rules as record keeper-specific rules.",
                 "Do not provide the participant with the calculated loan contingent amount or the calculated maximum withdrawal amount; direct them to support to confirm.",
                 "Do not conclude a participant qualifies for a loan without confirming Maximum Number of Loans and whether active loans already exist under the plan limit.",
-                "Do not conclude a participant qualifies for a hardship withdrawal or in-service distribution when active loans exist without applying the contingent amount rule and directing to support to confirm."
+                "Do not conclude a participant qualifies for a hardship withdrawal or in-service distribution when active loans exist without applying the contingent amount rule and directing to support to confirm.",
+                "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead."
             ],
             "must_do_if_unsure": [
                 "If plan availability for a withdrawal or loan type is unclear, direct the participant to contact the ForUsAll Participant Support Team for eligibility review and next steps.",
                 "If the participant's hardship reason does not clearly match one of the IRS-defined qualifying reasons listed in the article, do not confirm eligibility; advise the participant to contact the ForUsAll Participant Support Team to review whether the reason qualifies.",
-                "If it is unclear whether the participant has active loans, whether Maximum Number of Loans allows another loan, or whether the Account Balance meets the $2,000 threshold, do not confirm loan availability; direct the participant to contact support or verify internally before proceeding."
+                "If it is unclear whether the participant has active loans, whether Maximum Number of Loans allows another loan, or whether the Account Balance meets the $2,000 threshold, do not confirm loan availability; direct the participant to contact support or verify internally before proceeding.",
+                "If the participant says they have separated but the system shows Eligibility Status 'Active', request their termination/separation date, explain the system is out of sync and we will review it internally, and escalate to Support before offering any active-employee-only option."
             ]
         },
         "references": {

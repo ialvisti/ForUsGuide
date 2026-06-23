@@ -144,6 +144,16 @@ TOPIC_NORMALIZATION_MAP: Dict[str, List[str]] = {
     # RMDs are a distribution sub-type in the KB
     "rmd": ["distribution"],
     "rmds": ["distribution"],
+    # Account access / security blocker (F3 split, eval 2026-06-22): login, MFA,
+    # password-reset, stale-email and portal-access issues. The extractor emits
+    # topic `account_access`; map it to the indexed account/security article
+    # topics so the security inquiry retrieves real KB coverage instead of an
+    # unfiltered text-only search.
+    "account_access": [
+        "account_access_and_management",
+        "multi_factor_authentication",
+        "ForUsAll_online_account_setup",
+    ],
     # No indexed topic exists for these — skip the topic filter
     "investments": [],
     "investment": [],
@@ -163,6 +173,31 @@ def _contains_any(text: str, needles: List[str]) -> bool:
 def _contains_bounded_phrase(text: str, phrase: str) -> bool:
     pattern = rf"(?<![a-z0-9]){re.escape(phrase.lower())}(?![a-z0-9])"
     return re.search(pattern, text) is not None
+
+
+def _hardship_with_context(text: str) -> bool:
+    """Hardship triggers that are too generic on their own (``house``, ``home``,
+    ``rent``, ``emergency``, ``medical``) only count when paired with an explicit
+    hardship context phrase. This prevents non-hardship inquiries — e.g. an
+    incoming rollover that merely mentions a house, or a routine question that
+    says "emergency" — from falsely setting ``hardship_signal`` and injecting a
+    hardship sub-query into retrieval (see eval 2026-06-22, F2)."""
+    housing = (
+        any(_contains_bounded_phrase(text, w) for w in ("house", "home", "rent", "rented"))
+        and _contains_any(text, [
+            "eviction", "foreclosure", "primary residence",
+            "sold", "sale", "lose my", "losing my", "afford", "behind on",
+        ])
+    )
+    medical = (
+        _contains_bounded_phrase(text, "medical")
+        and _contains_any(text, ["bill", "expense", "treatment", "surgery", "care"])
+    )
+    emergency = (
+        _contains_bounded_phrase(text, "emergency")
+        and _contains_any(text, ["financial", "hardship", "family", "medical"])
+    )
+    return housing or medical or emergency
 
 
 def _ordered_unique(values: List[str]) -> List[str]:
@@ -194,6 +229,22 @@ def resolve_topic_filter(topic: Optional[str]) -> Optional[List[str]]:
     if mapped is not None:
         return mapped or None
     return None
+
+
+# F7 (eval 2026-06-22): phrases denoting an EXPLICIT, decided/completed claim that
+# the participant has separated from THIS employer. Tighter than the broad
+# separation list: excludes ambiguous/process tokens ("separation", bare
+# "terminated", "quitting") and the rollover-source phrases "previous/former
+# EMPLOYER" — so it never collides with the incoming-rollover path (F1).
+_EXPLICIT_SEPARATION_PHRASES = [
+    "resigned", "i quit", "quit my job", "was fired", "got fired",
+    "fired me", "was laid off", "laid off", "was let go", "let me go",
+    "no longer work", "no longer works", "no longer employed",
+    "former employee", "left the company", "left my company",
+    "left the job", "left my job", "used to work here", "used to work there",
+    "my employment ended", "my employment was terminated",
+    "i was terminated", "got terminated",
+]
 
 
 def detect_advisory_concepts(
@@ -316,19 +367,23 @@ def detect_advisory_concepts(
     hardship_signal = _contains_any(text, [
         "hardship",
         "financial emergency",
-        "emergency",
         "eviction",
         "foreclosure",
-        "rent",
-        "rented",
-        "house",
-        "home",
         "primary residence",
-        "medical",
         "funeral",
         "tuition",
-    ])
+    ]) or _hardship_with_context(text)
     loan_signal = _contains_any(text, ["loan", "borrow", "401(k) loan", "401k loan"])
+    # F7 (eval 2026-06-22): an EXPLICIT, decided/completed claim that the
+    # participant has separated from THIS employer (resigned, fired, laid off, no
+    # longer works here). Deliberately tighter than separation_signal: it excludes
+    # ambiguous/process tokens ("separation", bare "terminated", "quitting") and —
+    # critically — the rollover-source phrases "previous/former EMPLOYER" (which
+    # describe where an INCOMING rollover's money sits, not a self-separation), so
+    # it never collides with the incoming-rollover path (F1). Used to override a
+    # stale "active" system status: withhold active-only options
+    # (hardship/loan/in-service) and route to ask-termination-date + escalate.
+    explicit_separation_claim = _contains_any(text, _EXPLICIT_SEPARATION_PHRASES)
     while_employed_funds_access = active_participant and wants_funds
 
     resolved_topic = resolve_topic_filter(topic) or ([topic_text] if topic_text else [])
@@ -365,6 +420,7 @@ def detect_advisory_concepts(
         "active_participant": active_participant,
         "wants_funds": wants_funds,
         "separation_signal": separation_signal,
+        "explicit_separation_claim": explicit_separation_claim,
         "hardship_signal": hardship_signal,
         "loan_signal": loan_signal,
         "detected_concepts": detected,
@@ -583,7 +639,21 @@ class RAGEngine:
                 )
 
             logger.info(f"Context construido: {len(selected_chunks)} chunks, {tokens_used} tokens")
-            
+
+            # 3b. Nice-to-have augmentation: append the top article's
+            #     required_data_nice_to_have chunk(s) so the LLM can emit
+            #     required:false fields. Surgical by design — one filtered
+            #     query, never affects the must_have quality gate above.
+            context, selected_chunks, tokens_used = (
+                await self._augment_context_with_nice_to_have(
+                    inquiry=inquiry,
+                    primary_article_id=primary_article_id,
+                    context=context,
+                    selected_chunks=selected_chunks,
+                    tokens_used=tokens_used,
+                )
+            )
+
             # 4. Generate prompts and call LLM
             system_prompt, user_prompt = build_required_data_prompt(
                 context=context,
@@ -1245,6 +1315,7 @@ class RAGEngine:
     IN_SERVICE_ARTICLE_ID = (
         "can_i_take_money_from_my_401k_while_employed_your_options_explained"
     )
+    HARDSHIP_ARTICLE_ID = "forusall_401k_hardship_withdrawal_complete_guide"
     # Fix K (Round 2): the actual KB slug is `lt_trust_401k_…` — the prior
     # constants used `lt_401k_…` and `lt_401_k_…` which never matched live
     # Pinecone data. The legacy variants are kept in LOAN_ARTICLE_IDS as a
@@ -1783,6 +1854,36 @@ class RAGEngine:
         re.IGNORECASE,
     )
 
+    def _infer_incoming_rollover_signal(self, text: str, topic: Optional[str]) -> bool:
+        """F1 (eval 2026-06-22): detect an INCOMING rollover — bringing an external
+        prior-account balance INTO the current ForUsAll plan — so it routes to the
+        incoming procedure instead of the outgoing/termination machinery. Mirrors
+        the direction logic in gr_body_build.md: an external source is named,
+        ForUsAll is the destination, and there is no outgoing payment instruction.
+        Robust to third-person phrasing because the inquiry is paraphrased."""
+        if (topic or "").lower().strip() == "incoming_rollover":
+            return True
+        external_source = self._contains_any(text, [
+            "fidelity", "vanguard", "schwab", "empower", "principal", "merrill",
+            "t. rowe", "tiaa", "calsavers", "ira at", "401k at", "401(k) at",
+            "previous employer", "prior employer", "former employer", "old employer",
+            "old 401", "previous 401", "prior 401", "another provider",
+        ])
+        incoming_destination = self._contains_any(text, [
+            "into my current", "into her current", "into their current",
+            "into your current", "into the current", "current account",
+            "into my forusall", "into this plan", "into my plan", "into the plan",
+            "incoming rollover", "rollover contribution", "roll into", "roll it into",
+            "consolidate", "bring it here", "move it here", "transfer into",
+            "transfer it into",
+        ])
+        outgoing_payment = self._contains_any(text, [
+            "check payable to", "fbo", "send check", "send the check", "wire to",
+            "payable to my", "to my schwab", "to my fidelity", "to my vanguard",
+            "to my ira", "into my ira", "to my external", "rollover out",
+        ])
+        return external_source and incoming_destination and not outgoing_payment
+
     def _infer_retrieval_signals(
         self,
         inquiry: str,
@@ -1970,6 +2071,12 @@ class RAGEngine:
                 "former employee",
             ])
         )
+        # F1 (eval 2026-06-22): detect an incoming rollover (external source ->
+        # current ForUsAll plan). Computed before the named-employer override so an
+        # unambiguous incoming rollover is never forced into termination context.
+        incoming_rollover_signal = self._infer_incoming_rollover_signal(
+            profile_text, topic
+        )
         # Fix 4: required_data callers opt into the named-employer pattern so
         # "rollover process … from <employer> to <destination>" qualifies as
         # termination context. Gated behind the parameter so generate_response
@@ -1978,19 +2085,37 @@ class RAGEngine:
             assume_termination_on_named_employer
             and rollover_intent
             and not termination_distribution
+            and not incoming_rollover_signal
             and self._NAMED_EMPLOYER_ROLLOVER_PATTERN.search(inquiry or "")
         ):
+            termination_distribution = True
+
+        # F7 (eval 2026-06-22): an explicit, decided separation claim overrides a
+        # stale "active" system status. When the participant says they no longer
+        # work here / resigned / were fired, route as a termination case (so
+        # active-only options are excluded and the termination flow asks for the
+        # date) even if the scrape still shows active or status is unknown.
+        explicit_separation_claim = self._contains_any(
+            profile_text, _EXPLICIT_SEPARATION_PHRASES
+        )
+        separation_conflicts_active = (
+            explicit_separation_claim and employment_state == "active"
+        )
+        if explicit_separation_claim:
             termination_distribution = True
 
         return {
             "text": profile_text,
             "employment_state": employment_state,
+            "explicit_separation_claim": explicit_separation_claim,
+            "separation_conflicts_active": separation_conflicts_active,
             "lowest_balance": lowest_balance,
             "rollover_intent": rollover_intent,
             "distribution_intent": distribution_intent,
             "delivery_or_fee_request": delivery_or_fee_request,
             "loan_signal": loan_signal,
             "termination_distribution": termination_distribution,
+            "incoming_rollover": incoming_rollover_signal,
             "split_rollover": split_rollover,
             "indirect_rollover_60_day": indirect_rollover_60_day,
             "force_out": force_out,
@@ -2070,10 +2195,25 @@ class RAGEngine:
             and not signals["rmd"]
             and not signals["indirect_rollover_60_day"]
         )
+        # F1 (eval 2026-06-22): exact-procedure mode for INCOMING rollovers
+        # (external source -> current ForUsAll plan). Routes to the incoming
+        # procedure instead of the outgoing/termination machinery.
+        exact_incoming_rollover = (
+            is_lt_401k
+            and signals["rollover_intent"]
+            and signals.get("incoming_rollover")
+            and not signals["termination_distribution"]
+            and not signals["split_rollover"]
+            and not signals["indirect_rollover_60_day"]
+            and not signals["force_out"]
+            and not signals["rmd"]
+            and not signals["loan_signal"]
+        )
         exact_procedure_routing = (
             exact_termination_procedure
             or exact_indirect_rollover_60_day
             or exact_loan_request
+            or exact_incoming_rollover
         )
 
         excluded_articles: List[str] = []
@@ -2135,12 +2275,42 @@ class RAGEngine:
                 self.IN_SERVICE_ARTICLE_ID,
                 "Participant is terminated; no while-employed access signal.",
             )
+        # F7 (eval 2026-06-22): an explicit separation claim overrides a stale
+        # "active" status — withhold the active-only options (in-service, hardship,
+        # loan). The generate-response prompt then asks for the termination date,
+        # explains the system still shows the participant active and needs internal
+        # review, and escalates. Subsumes the terminated-only in-service exclusion
+        # above for the active/unknown-but-claimed case (ex-F6).
+        if signals.get("explicit_separation_claim"):
+            exclude(
+                self.IN_SERVICE_ARTICLE_ID,
+                "Participant explicitly claims separation; in-service (active-only) not offered.",
+            )
+            exclude(
+                self.HARDSHIP_ARTICLE_ID,
+                "Participant explicitly claims separation; hardship (active-only) not offered.",
+            )
+            for article_id in self.LOAN_ARTICLE_IDS:
+                exclude(
+                    article_id,
+                    "Participant explicitly claims separation; loan (active-only) not offered.",
+                )
+
+        if exact_incoming_rollover:
+            exclude(
+                self.GENERAL_POST_TERMINATION_OPTIONS_ARTICLE_ID,
+                "Incoming rollover; post-termination/outgoing distribution options not applicable.",
+            )
+            for article_id in self.FORCE_OUT_ARTICLE_IDS:
+                exclude(article_id, "Incoming rollover; force-out not applicable.")
 
         rollover_mode = "not_applicable"
         if signals["split_rollover"]:
             rollover_mode = "split"
         elif signals["indirect_rollover_60_day"]:
             rollover_mode = "indirect_60_day"
+        elif exact_incoming_rollover:
+            rollover_mode = "incoming"
         elif signals["rollover_intent"]:
             rollover_mode = "single_destination"
 
@@ -2150,6 +2320,12 @@ class RAGEngine:
         if exact_indirect_rollover_60_day:
             primary_article_id = self.MISSED_60_DAY_ARTICLE_ID
         elif exact_termination_rollover or exact_termination_distribution:
+            primary_article_id = self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID
+        elif exact_incoming_rollover:
+            # TODO F4: the incoming-rollover procedure currently lives inside the LT
+            # termination article (its "Incoming Rollover From Prior Employer"
+            # section). Re-point to a dedicated INCOMING_ROLLOVER article when it
+            # exists in the KB.
             primary_article_id = self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID
         elif exact_loan_request:
             primary_article_id = self.LT_LOAN_ARTICLE_ID
@@ -2165,6 +2341,8 @@ class RAGEngine:
             primary_action = "termination_distribution"
         elif exact_loan_request:
             primary_action = "loan_request"
+        elif exact_incoming_rollover:
+            primary_action = "incoming_rollover"
         elif signals["rollover_intent"]:
             primary_action = "rollover"
         elif signals["distribution_intent"]:
@@ -2191,6 +2369,7 @@ class RAGEngine:
             "primary_action": primary_action,
             "inquiry_intent": signals["inquiry_intent"],
             "employment_state": signals["employment_state"],
+            "separation_status_conflict": signals.get("separation_conflicts_active", False),
             "record_keeper": record_keeper,
             "plan_type": plan_type,
             "rollover_mode": rollover_mode,
@@ -2691,8 +2870,21 @@ class RAGEngine:
         advisory_signal: Dict[str, Any],
     ) -> List[str]:
         """Add bounded, deterministic retrieval queries for advisory options."""
-        del inquiry, topic  # kept in the signature for future richer expansion
+        del inquiry  # kept in the signature for future richer expansion
         expanded = [q for q in sub_queries if isinstance(q, str) and q.strip()]
+
+        # F2 (eval 2026-06-22): gate the hardship sub-query so it only fires for a
+        # hardship/in-service topic or a genuine active-participant funds-access
+        # context — never on rollover/termination inquiries that merely tripped a
+        # generic hardship token.
+        topic_norm = (topic or "").lower().strip()
+        hardship_allowed = topic_norm in {
+            "hardship_withdrawal", "in_service_withdrawal_options"
+        } or (
+            advisory_signal.get("hardship_signal")
+            and advisory_signal.get("active_participant")
+            and advisory_signal.get("wants_funds")
+        )
 
         advisory_queries = {
             "in_service_withdrawal_options": (
@@ -2711,6 +2903,8 @@ class RAGEngine:
 
         additions = []
         for concept in advisory_signal.get("alternative_concepts", []):
+            if concept == "hardship_withdrawal" and not hardship_allowed:
+                continue
             query = advisory_queries.get(concept)
             if query:
                 additions.append(query)
@@ -3427,6 +3621,18 @@ class RAGEngine:
                 primary_article_id=primary_article_id,
                 gap=self.RD_SCORE_GAP_PRUNE_THRESHOLD,
             )
+            # F5 (eval 2026-06-22): when a primary article is routed, the must-have
+            # ENUMERATION must come only from that article — sibling must_have
+            # chunks (e.g. loan/split execution fields on a plain cash-out)
+            # otherwise bloat the required-data ask. Supporting-article
+            # eligibility/business_rules chunks are NOT required_data_must_have, so
+            # they are untouched; topics with must_have=[] have primary_article_id
+            # None and skip this filter entirely.
+            required_data_chunks = [
+                c for c in required_data_chunks
+                if c['metadata'].get('chunk_type') != 'required_data_must_have'
+                or c['metadata'].get('article_id') == primary_article_id
+            ]
         required_data_chunks = self._cap_rdmh_distinct_articles(
             required_data_chunks,
             limit=self.RD_MAX_DISTINCT_ARTICLES,
@@ -5174,6 +5380,67 @@ class RAGEngine:
     # ========================================================================
     # Helper Methods - Fallbacks
     # ========================================================================
+
+    async def _augment_context_with_nice_to_have(
+        self,
+        inquiry: str,
+        primary_article_id: Optional[str],
+        context: str,
+        selected_chunks: List[Dict[str, Any]],
+        tokens_used: int,
+    ) -> tuple:
+        """Append the top article's ``required_data_nice_to_have`` chunk(s) to
+        an already-built required_data context.
+
+        The RD retrieval cascade filters exclusively on
+        ``required_data_must_have``, so nice-to-have sections never reach the
+        context on their own. This runs ONE extra filtered query against the
+        primary (or top-scoring) article and appends the result — it never
+        touches the must-have retrieval, gate, or ordering. Failures are
+        swallowed: nice-to-have is enrichment, not a dependency.
+        """
+        article_id = primary_article_id
+        if not article_id and selected_chunks:
+            article_id = selected_chunks[0].get("metadata", {}).get("article_id")
+        if not article_id:
+            return context, selected_chunks, tokens_used
+
+        try:
+            nice_chunks = await self._cached_query(
+                query_text=inquiry,
+                top_k=2,
+                filter_dict={
+                    "article_id": {"$eq": article_id},
+                    "chunk_type": {"$eq": "required_data_nice_to_have"},
+                },
+            )
+        except Exception as e:
+            logger.warning(f"nice_to_have augmentation query failed: {e}")
+            return context, selected_chunks, tokens_used
+
+        if not nice_chunks:
+            return context, selected_chunks, tokens_used
+
+        selected_ids = {
+            c.get("metadata", {}).get("chunk_id") for c in selected_chunks
+        }
+        section_idx = len(selected_chunks)
+        parts = [context] if context else []
+        for chunk in nice_chunks:
+            md = chunk.get("metadata", {})
+            if md.get("chunk_id") in selected_ids:
+                continue
+            content = md.get("content", "")
+            if not content:
+                continue
+            section_idx += 1
+            parts.append(
+                f"--- Section {section_idx} ({md.get('chunk_type', 'unknown')}) ---\n{content}\n"
+            )
+            selected_chunks.append(chunk)
+            tokens_used += self.token_manager.count_tokens(content)
+
+        return "\n".join(parts), selected_chunks, tokens_used
 
     def _parse_required_data_response(
         self, llm_response: str

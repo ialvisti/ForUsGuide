@@ -360,7 +360,7 @@ class TestLive:
 
     async def test_health_reachable(self):
         client = ForusBotsClient(
-            base_url=os.getenv("FORUSBOTS_BASE_URL", "https://forusbots-6jyh.onrender.com"),
+            base_url=os.getenv("FORUSBOTS_BASE_URL", "http://35.224.156.104:10000"),
             auth_token=os.getenv("FORUSBOTS_AUTH_TOKEN", ""),
         )
         try:

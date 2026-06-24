@@ -72,7 +72,7 @@ class Settings(BaseSettings):
     # ForusBots scraping service (end-to-end ticket handler).
     # Auth is the `x-auth-token` header. All scrape endpoints are async
     # (202 + jobId, then poll). See ticket-handler-planning/stage-1-*.md.
-    FORUSBOTS_BASE_URL: str = "https://forusbots-6jyh.onrender.com"
+    FORUSBOTS_BASE_URL: str = "http://35.224.156.104:10000"
     FORUSBOTS_AUTH_TOKEN: str = ""
     FORUSBOTS_POLL_INTERVAL_S: float = 3.0
     FORUSBOTS_POLL_BACKOFF: float = 1.3

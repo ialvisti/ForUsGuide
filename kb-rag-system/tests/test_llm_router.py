@@ -292,7 +292,7 @@ class TestRoutingTable:
         router.configure_routes({})
         import asyncio
         with pytest.raises(ValueError, match="No route configured"):
-            asyncio.get_event_loop().run_until_complete(
+            asyncio.run(
                 router.call("missing", "sys", "usr", max_tokens=100)
             )
 

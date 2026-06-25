@@ -948,18 +948,6 @@
                     "why_needed": "Clarifies repayment questions. Does not block any guidance; if the agent cannot find this, redirect to support.",
                     "source_note": "Supported by article section: Loan Dashboard Overview.",
                     "source_type": "agent_input"
-                },
-                {
-                    "data_point": "Participant Name",
-                    "meaning": "The participant's full name (first + last). Catalog: census.First Name + census.Last Name. The article notes this must be included with early payoff instructions.",
-                    "example_values": [
-                        "John Doe",
-                        "Jane Doe",
-                        "Oscar Santiago Garcia"
-                    ],
-                    "why_needed": "Helps ensure early payoff funds are handled correctly. Already covered by the must_have Participant Name; listed here as a reminder for the Early Loan Payoff workflow.",
-                    "source_note": "Supported by article section: Early Loan Payoff. Duplicate of the must_have Participant Name; consumers should reuse that value.",
-                    "source_type": "participant_profile"
                 }
             ],
             "if_missing": [

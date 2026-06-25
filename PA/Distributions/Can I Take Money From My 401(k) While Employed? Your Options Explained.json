@@ -671,6 +671,18 @@
                     "source_note": "Internal check only. Catalog field: plan_details.Maximum Number of Loans. If it cannot be confirmed in the participant profile, direct the participant to contact support to double check.",
                     "source_type": "participant_profile",
                     "blocking_intent": "eligibility_confirmation"
+                },
+                {
+                    "data_point": "Birth Date",
+                    "meaning": "The participant's date of birth, used to evaluate the age 59 1/2 threshold for in-service distributions and to state early-withdrawal-penalty consequences definitively rather than conditionally.",
+                    "example_values": [
+                        "1960-04-15",
+                        "1985-09-30"
+                    ],
+                    "why_needed": "Determines whether the participant meets the age 59 1/2 threshold for an in-service distribution and whether the 10% early-withdrawal penalty applies, so the answer is definite instead of hedged. Does not block general explanation of the in-service options.",
+                    "source_note": "Internal check only. Catalog field: census.Birth Date. Do not ask the participant for this; derive age from it internally.",
+                    "source_type": "participant_profile",
+                    "blocking_intent": "personalization_only"
                 }
             ],
             "nice_to_have": [
@@ -684,17 +696,6 @@
                     "why_needed": "The article states these options depend on employer plan rules and may not be available in every plan. When unknown, treat as ambiguous_plan_rules and recommend support confirmation; never block general guidance about the option. No ForUsBots extractor exists for option-by-option plan permission; treat as agent_input or sponsor confirmation.",
                     "source_note": "No admin-panel extractor for option-level plan permission; collected via agent or sponsor confirmation.",
                     "source_type": "agent_input"
-                },
-                {
-                    "data_point": "Birth Date",
-                    "meaning": "The participant's date of birth, used to evaluate the age 59 1/2 threshold for in-service distributions and to contextualize early withdrawal penalty discussions.",
-                    "example_values": [
-                        "1960-04-15",
-                        "1985-09-30"
-                    ],
-                    "why_needed": "In-service distributions are typically available at age 59 1/2+ if the plan allows; penalty considerations are described for those under 59 1/2 for hardship withdrawals.",
-                    "source_note": "Catalog field: census.Birth Date.",
-                    "source_type": "participant_profile"
                 },
                 {
                     "data_point": "Qualifying hardship reason",

@@ -489,6 +489,18 @@
                     "source_note": null,
                     "source_type": "agent_input",
                     "blocking_intent": "always"
+                },
+                {
+                    "data_point": "Birth Date",
+                    "meaning": "The participant's date of birth, used to determine whether the participant is at or above age 59 1/2 and whether the 10% early-withdrawal penalty applies.",
+                    "example_values": [
+                        "1960-04-15",
+                        "1985-09-30"
+                    ],
+                    "why_needed": "Determines whether the 10% early-withdrawal penalty applies to a taxable amount, so age-dependent statements are stated definitely instead of hedged with 'if you are under 59 1/2'. Does not block the general explanation.",
+                    "source_note": "Internal check only. Catalog field: census.Birth Date. Do not ask the participant for this; derive age from it internally.",
+                    "source_type": "participant_profile",
+                    "blocking_intent": "personalization_only"
                 }
             ],
             "nice_to_have": [

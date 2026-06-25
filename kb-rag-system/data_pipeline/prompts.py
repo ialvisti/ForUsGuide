@@ -151,8 +151,8 @@ PRIMARY ACTION VS. ALTERNATIVES:
 
 INFORMATIONAL OPTIONS / COSTS / TIMELINES:
 - Missing execution or identity details do not force blocked_missing_data when the participant asks for options, instructions, costs, fees, or delivery timelines and the collected data supports the core eligibility facts.
-- Examples of non-blocking next-step details: wire routing/account information, final delivery choice, physical street address for overnight checks, distribution type, participant name, email, or company name.
-- Put those details in questions_to_ask or data_gaps as next steps. Do not let missing identity lookup fields override a supported informational answer, including when answering without a participant name.
+- Examples of non-blocking next-step details: wire routing/account information, final delivery choice, physical street address for overnight checks, distribution type, requested amount, repayment term, participant name, email, or company name.
+- Do NOT turn these non-blocking details into questions. The goal is to close the ticket in one reply, so weave them into steps/key_points as forward guidance the participant acts on themselves (e.g., "during the request you'll choose your amount, term, and delivery method"). For can_proceed, questions_to_ask MUST be empty []. Do not let missing identity lookup fields override a supported informational answer, including when answering without a participant name.
 - Use blocked_missing_data only when a missing core eligibility fact makes eligibility or procedure selection impossible, such as employment status, termination date, vested balance, blackout status, plan type, or recordkeeper.
 
 EMPLOYMENT STATUS CONFLICT (system shows Active but participant says they separated):
@@ -161,6 +161,13 @@ EMPLOYMENT STATUS CONFLICT (system shows Active but participant says they separa
 - In questions_to_ask, ask for the participant's termination/separation date (their last day of employment).
 - In the opening / key_points, tell the participant that our records still show them as actively employed, that we will review this internally to update their employment status, and that the termination distribution process can proceed once the termination date is on file.
 - Set escalation.needed = true, with reason noting the participant reports separation while the system shows active, so the team must verify and update the employment status.
+
+AGE / 59½ DETERMINATIONS (use derived age when present):
+- The collected participant data may include `age` and `is_age_59_5_or_older`, derived from the participant's birth date. When present, treat them as authoritative and make age-dependent determinations DEFINITE — do NOT hedge with "if you're under 59½":
+  - `is_age_59_5_or_older` = false (under 59½): a standard in-service distribution is generally NOT available (it requires age 59½+ unless the plan has a specific provision), and the 10% early-withdrawal penalty WOULD apply to a taxable withdrawal unless a specific IRS exception is met. Do not present in-service distribution as an available option on age grounds.
+  - `is_age_59_5_or_older` = true (59½+): an in-service distribution may be available if the plan allows, and the 10% early-withdrawal penalty does NOT apply on the basis of age.
+- Fall back to conditional "if you are under age 59½" phrasing ONLY when age / birth date is unavailable.
+- Never echo the participant's birth date back to them; referencing their age naturally is fine.
 
 ═══════════════════════════════════════════════════════════════════
 STEP 2 — GENERATE THE RESPONSE
@@ -186,7 +193,7 @@ DEDUPLICATION RULES (MANDATORY):
 13. Do NOT add a key_point that merely paraphrases another key_point. However, DO cover every distinct relevant topic from the context (fees, taxes, timelines, eligibility details, delivery methods, etc.) — each as its own key_point or warning.
 
 CONTENT RULES BY OUTCOME:
-• "can_proceed": Include steps the participant must follow. Include applicable fees, taxes, and delivery info as key_points.
+• "can_proceed": Include steps the participant must follow. Include applicable fees, taxes, and delivery info as key_points. Do NOT ask the participant any questions — questions_to_ask MUST be empty []. Any detail the participant will choose later (loan amount, repayment term, delivery method, etc.) is presented as forward guidance inside steps/key_points ("during the request you'll choose ..."), never as a question. A can_proceed answer is a complete first-contact resolution.
 • "blocked_not_eligible": Explain WHY in outcome_reason. Provide the applicable process (e.g., fee-out) in key_points. If relevant alternatives are present in context, describe them as "may be worth reviewing" or "Support can confirm" rather than as guaranteed options. Steps should be minimal or empty. If the participant may dispute or needs plan-specific alternative review, use the escalation field.
 • "blocked_missing_data": List what is missing in questions_to_ask with reasons. key_points should explain what we know so far.
 • "ambiguous_plan_rules": Explain what depends on plan rules. Use escalation to route to Support for plan review.
@@ -246,7 +253,7 @@ FIELD GUIDELINES:
 - "key_points": Include all distinct facts the participant needs to know. Aim for 3-7 points. Each must be self-contained and non-overlapping. Cover fees, taxes, timelines, eligibility nuances, delivery options, and any other relevant details from the context.
 - "steps": Sequential actions the participant must take. Be specific and detailed — include sub-steps, exact UI labels, and what to expect at each stage. Empty array [] if the outcome is blocked and there are no participant actions.
 - "warnings": Critical cautions (taxes, fees, penalties, non-refundable charges, deadlines). Empty array [] if none apply.
-- "questions_to_ask": Populate for "blocked_missing_data" when core eligibility is blocked by missing data. For "can_proceed", you may include non-blocking next-step questions for execution details the participant must provide if they choose a specific option. Empty array [] if no question is useful.
+- "questions_to_ask": Populate ONLY for "blocked_missing_data" (when core eligibility is blocked by missing data, including the active-but-separated conflict). For "can_proceed", "blocked_not_eligible", and "ambiguous_plan_rules", questions_to_ask MUST be empty []. NEVER ask for execution details (requested amount, repayment term, delivery method, wire instructions, etc.) the participant can choose during the process — surface those as forward guidance in steps/key_points instead, so the ticket can close in one reply.
 - "escalation.needed": true when the participant must contact Support to resolve, verify, or proceed. false when the participant can self-serve.
 - "guardrails_applied": List what you deliberately did NOT say based on the "must_not" / "what_not_to_say" rules in context.
 - "data_gaps": List only if the KB context was missing information you expected. Empty array [] if context was sufficient.
@@ -301,7 +308,7 @@ CRITICAL DISTINCTIONS between outcomes:
 - Use "blocked_missing_data" ONLY when a critical data point is missing that makes it IMPOSSIBLE to determine whether the participant is eligible at all. Examples: employment status unknown, vested balance not provided, plan type unclear.
 - Do NOT treat procedural requirements (MFA, notice, payroll timing) as blocking conditions.
 - When a deadline has passed but an exception path exists (e.g., IRS self-certification for missed rollovers), use "can_proceed" if the exception path is actionable, not "blocked_not_eligible".
-- Missing execution or identity details do not force blocked_missing_data for questions about options, instructions, costs, fees, or delivery timelines when core eligibility is supported. Ask for wire instructions, physical street address, distribution type, participant name, email, or company name as non-blocking next steps instead.
+- Missing execution or identity details do not force blocked_missing_data for questions about options, instructions, costs, fees, or delivery timelines when core eligibility is supported. Treat wire instructions, physical street address, distribution type, requested amount, repayment term, participant name, email, or company name as non-blocking next steps the participant handles during the process — they do NOT change the outcome and must NOT be turned into blocking questions.
 
 "blocked_not_eligible" vs "blocked_missing_data":
 - Use "blocked_not_eligible" when the collected data contains a DEFINITIVE blocking condition — e.g., a process has already been initiated by the custodian and cannot be reversed, the participant does not meet age or employment status requirements, or a hard deadline has passed with no exception path.
@@ -309,6 +316,12 @@ CRITICAL DISTINCTIONS between outcomes:
 
 EMPLOYMENT STATUS CONFLICT:
 - If employment_status / eligibility_status shows "Active" (or is unavailable) BUT the participant explicitly states they have separated (resigned, quit, fired, laid off, no longer work there, former employee), choose "blocked_missing_data": the termination date is missing and the system status is out of date. Do NOT treat the stale "Active" status as a definitive blocker that makes the participant eligible for active-only options.
+
+AGE / 59½ DETERMINATIONS (use derived age when present):
+- The collected participant data may include `age` and `is_age_59_5_or_older`, derived from the participant's birth date. When present, treat them as authoritative for age-dependent eligibility — do NOT hedge:
+  - `is_age_59_5_or_older` = false (under 59½): a standard in-service distribution is generally NOT available on age grounds (requires 59½+ unless the plan has a specific provision); the 10% early-withdrawal penalty WOULD apply to a taxable withdrawal unless a specific IRS exception is met.
+  - `is_age_59_5_or_older` = true (59½+): an in-service distribution may be available if the plan allows; the 10% early-withdrawal penalty does NOT apply on the basis of age.
+- Fall back to conditional "if under 59½" reasoning ONLY when age / birth date is unavailable.
 
 Using the eligibility requirements, blocking conditions, and decision guide from the knowledge base context, determine which outcome applies.
 
@@ -358,6 +371,13 @@ DEDUPLICATION RULES:
 9. The "opening" summarizes the situation — do NOT restate its content in key_points.
 10. Do NOT create a key_point that merely paraphrases another.
 
+AGE / 59½ DETERMINATIONS (use derived age when present):
+- The collected participant data may include `age` and `is_age_59_5_or_older`, derived from the participant's birth date. When present, make age-dependent statements DEFINITE — do NOT hedge with "if you're under 59½":
+  - Under 59½ (`is_age_59_5_or_older` = false): state plainly that a standard in-service distribution is generally NOT available on age grounds and that the 10% early-withdrawal penalty WOULD apply to a taxable withdrawal unless a specific IRS exception is met.
+  - 59½+ (`is_age_59_5_or_older` = true): state that an in-service distribution may be available if the plan allows and that the 10% early-withdrawal penalty does NOT apply on the basis of age.
+- Use conditional "if you are under age 59½" phrasing ONLY when age / birth date is unavailable.
+- Never echo the participant's birth date back to them; referencing their age naturally is fine.
+
 {outcome_content_rules}
 
 TONE: Professional, clear, helpful. Avoid legal/financial advice disclaimers unless explicitly in context.
@@ -373,7 +393,7 @@ OUTCOME_SCHEMAS = {
     "steps": [{"step_number": 1, "action": "What to do", "detail": "Sub-instructions or null"}],
     "warnings": ["Critical cautions — taxes, fees, penalties, deadlines. Empty [] if none."]
   },
-  "questions_to_ask": [{"question": "Optional non-blocking next-step question, or [] if none", "why": "Why this may be needed after the informational answer"}],
+  "questions_to_ask": [],
   "escalation": {"needed": false, "reason": null},
   "guardrails_applied": ["What was deliberately omitted based on guardrails in context"],
   "data_gaps": ["Info not in KB but could be relevant. Empty [] if sufficient."],
@@ -425,7 +445,8 @@ OUTCOME_CONTENT_RULES = {
         "CONTENT RULES (outcome: can_proceed):\n"
         "- Include steps the participant must follow. Be specific with sub-steps, UI labels, and expectations.\n"
         "- Include applicable fees, taxes, and delivery info as key_points.\n"
-        "- Missing execution or identity details may appear in questions_to_ask as non-blocking next steps for informational option/cost/timeline answers.\n"
+        "- questions_to_ask MUST be empty []. Do NOT ask the participant anything — a can_proceed answer is a complete first-contact resolution and asking non-blocking questions only reopens the ticket.\n"
+        "- Any detail the participant will choose later (requested amount, repayment term, delivery method, wire instructions, etc.) is presented as forward guidance inside steps/key_points (e.g., 'during the request you'll choose your amount, term, and delivery method — note that wire delivery adds a $35 fee'), never as a question.\n"
         "- Aim for 3-7 key_points covering all distinct relevant facts."
     ),
     "blocked_not_eligible": (
@@ -742,11 +763,12 @@ Your task: Break a complex question into 1-3 focused search queries that each ta
 
 Rules:
 1. Each sub-query should target a DIFFERENT concept, threshold, rule, or process.
-2. Preserve critical details: dollar amounts, ages, time periods, account types, recordkeepers.
-3. Sub-queries should be 10-25 words, specific enough for semantic search in a vector database.
-4. If the question only covers ONE topic, return exactly 1 sub-query.
-5. Focus on the underlying 401(k) concepts and rules, not the participant's personal narrative.
-6. Never return more than 3 sub-queries.
+2. Preserve critical PROCEDURAL details: dollar amounts, ages, time periods, account types, and the recordkeeper TYPE (e.g., "LT Trust", "Vanguard").
+3. NEVER include company/employer names, participant names, plan proper names, or any other identifier specific to one company or person (e.g., "SmartBiz Bank", "Acme Corp", "TechNova LLC"). The knowledge base stores ONLY general procedures — it has NO company- or plan-specific content, so these names carry zero retrieval signal and waste a sub-query slot. Strip them out and search the underlying procedure instead.
+4. Sub-queries should be 10-25 words, specific enough for semantic search in a vector database.
+5. If the question only covers ONE topic, return exactly 1 sub-query.
+6. Focus on the underlying 401(k) concepts and rules, not the participant's personal narrative.
+7. Never return more than 3 sub-queries.
 
 Examples:
 - "I left my job with $900 and got a check. It's been 65 days since I planned to roll it over."
@@ -757,6 +779,10 @@ Examples:
 
 - "I'm 58 with a hardship withdrawal request for tuition and I have an outstanding loan."
   → ["hardship withdrawal tuition education IRS-approved reason eligibility", "active 401k loan effect on hardship withdrawal contingent amount rule"]
+
+- "The participant wants to take a loan against their ForUsAll 401(k) balance at SmartBiz Bank, N.A. or explore a withdrawal while employed."
+  → ["401k loan eligibility active employee plan allows loans vested balance", "in-service withdrawal and hardship withdrawal options while employed eligibility rules"]
+  (note: the company name "SmartBiz Bank, N.A." is dropped entirely — it has no signal in a procedural KB)
 
 Output valid JSON:
 {"sub_queries": ["query 1", "query 2"]}"""

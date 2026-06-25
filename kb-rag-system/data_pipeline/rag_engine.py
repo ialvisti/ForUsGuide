@@ -19,6 +19,7 @@ import logging
 import os
 import re
 import time
+from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from cachetools import TTLCache
@@ -831,6 +832,13 @@ class RAGEngine:
         logger.info(f"generate_response() - Topic: {topic}, Budget: {max_response_tokens} tokens")
 
         try:
+            # 0. Derive participant age from birth_date (deterministically, in
+            # code) so both phases can make age-dependent determinations
+            # (in-service 59½ eligibility, early-withdrawal penalty) DEFINITE
+            # instead of hedging "if you're under 59½". No-op when birth_date is
+            # absent or unparseable.
+            collected_data = self._enrich_collected_data_with_age(collected_data)
+
             # 1. Context budget with minimum floor
             context_budget = max(
                 self.RESPONSE_MIN_CONTEXT_TOKENS,
@@ -1141,6 +1149,25 @@ class RAGEngine:
                 collected_data=collected_data,
                 selected_chunks=selected_chunks,
             )
+
+            # Defense-in-depth: a can_proceed answer is a complete first-contact
+            # resolution. Any items the LLM left in questions_to_ask are
+            # non-blocking execution/next-step details (requested amount,
+            # repayment term, delivery method, ...) the participant handles during
+            # the process. Asking them only reopens the ticket, so they are
+            # dropped here — the prompts already instruct the model to surface
+            # them as forward guidance inside steps/key_points instead.
+            stray_questions = self._suppress_nonblocking_questions_for_can_proceed(parsed)
+            if stray_questions:
+                logger.info(
+                    "Suppressed %d non-blocking question(s) on a can_proceed "
+                    "outcome (kept as in-response guidance, not asked): %s",
+                    len(stray_questions),
+                    [
+                        (q.get("question") if isinstance(q, dict) else str(q))
+                        for q in stray_questions
+                    ],
+                )
 
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
@@ -2711,6 +2738,112 @@ class RAGEngine:
                 if best_intent is None:
                     best_intent = intent
         return best_intent or "always"
+
+    @staticmethod
+    def _compute_age_from_birth_date(raw_dob: Any) -> Optional[int]:
+        """Parse a birth date in the formats ForUsBots emits (and a few common
+        variants) and return completed age in whole years. None when the value
+        is missing or unparseable."""
+        if raw_dob is None:
+            return None
+        text = str(raw_dob).strip()
+        if not text:
+            return None
+        parsed = None
+        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%Y/%m/%d", "%d-%b-%Y"):
+            try:
+                parsed = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            return None
+        today = datetime.now(timezone.utc).date()
+        bd = parsed.date()
+        if bd > today:
+            return None
+        age = today.year - bd.year - (
+            (today.month, today.day) < (bd.month, bd.day)
+        )
+        return age if 0 <= age <= 130 else None
+
+    @staticmethod
+    def _is_age_59_5_or_older(raw_dob: Any) -> Optional[bool]:
+        """Return whether the participant is at least 59½, derived from birth
+        date. None when birth date is missing or unparseable."""
+        if raw_dob is None or not str(raw_dob).strip():
+            return None
+        text = str(raw_dob).strip()
+        parsed = None
+        for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%m-%d-%Y", "%Y/%m/%d", "%d-%b-%Y"):
+            try:
+                parsed = datetime.strptime(text, fmt)
+                break
+            except ValueError:
+                continue
+        if parsed is None:
+            return None
+        today = datetime.now(timezone.utc).date()
+        bd = parsed.date()
+        if bd > today:
+            return None
+        # 59½ = 59 years and 6 months after the birth date.
+        half_year_year = bd.year + 59
+        half_year_month = bd.month + 6
+        if half_year_month > 12:
+            half_year_month -= 12
+            half_year_year += 1
+        # Clamp the day for short months (e.g. born on the 31st).
+        try:
+            threshold = bd.replace(year=half_year_year, month=half_year_month)
+        except ValueError:
+            # Day-of-month overflow (e.g. 31 -> month with 30 days): use day 28.
+            threshold = bd.replace(year=half_year_year, month=half_year_month, day=28)
+        return today >= threshold
+
+    def _enrich_collected_data_with_age(
+        self, collected_data: Optional[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        """Inject derived ``age`` and ``is_age_59_5_or_older`` into
+        ``participant_data`` from ``birth_date`` so the GR phases can make
+        age-dependent determinations definite (in-service 59½ eligibility,
+        early-withdrawal penalty). Returns the input unchanged when there is no
+        parseable birth date. Does not mutate the caller's dict."""
+        if not isinstance(collected_data, dict):
+            return collected_data
+        participant = collected_data.get("participant_data")
+        if not isinstance(participant, dict):
+            return collected_data
+        raw_dob = participant.get("birth_date")
+        age = self._compute_age_from_birth_date(raw_dob)
+        if age is None:
+            return collected_data
+        enriched = dict(collected_data)
+        new_participant = dict(participant)
+        new_participant["age"] = age
+        over = self._is_age_59_5_or_older(raw_dob)
+        if over is not None:
+            new_participant["is_age_59_5_or_older"] = over
+        enriched["participant_data"] = new_participant
+        return enriched
+
+    @staticmethod
+    def _suppress_nonblocking_questions_for_can_proceed(
+        parsed: Dict[str, Any]
+    ) -> List[Any]:
+        """A can_proceed answer is a complete first-contact resolution. Any items
+        in ``questions_to_ask`` are non-blocking next-step details (requested
+        amount, repayment term, delivery method, ...) the participant handles
+        during the process; asking them only reopens the ticket. Drop them in
+        place and return the dropped items (for logging). No-op for any other
+        outcome — there, questions are genuine blockers we must ask."""
+        if not isinstance(parsed, dict) or parsed.get("outcome") != "can_proceed":
+            return []
+        stray = parsed.get("questions_to_ask") or []
+        if not isinstance(stray, list):
+            stray = []
+        parsed["questions_to_ask"] = []
+        return stray
 
     def _apply_informational_outcome_policy(
         self,

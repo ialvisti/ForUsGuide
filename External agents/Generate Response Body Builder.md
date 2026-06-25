@@ -320,16 +320,16 @@ You MUST enrich the inquiry by rewriting it for clarity **without changing the i
 
 1. Reading the raw `ticket_messages` FIRST, then cross-checking against `emailBody` and `emailSubject`.
 2. Applying the "Where does the money live today?" test from the Key Terminology section.
-3. Cross-referencing `caseData.userData.companyName` (the company whose ForUsAll-administered 401(k) is relevant) and `caseData.census.Eligibility Status`.
+3. Using `caseData.census.Eligibility Status` for direction context (active vs terminated). You may read `caseData.userData.companyName` to understand context, but DO NOT write it into the inquiry (see enrichment rules).
 4. Rewriting the inquiry to explicitly state the true source and destination.
 
 #### Direction disambiguation examples
 
 | Original phrasing | Direction | Canonical term | Enriched form |
 |---|---|---|---|
-| "I have a 401k at Fidelity from my old job, want to move it here" | **IN** | Incoming Rollover | "...rolling over his previous employer's Fidelity 401(k) **into his ForUsAll 401(k) plan at {companyName}**" |
-| "rollover from my external IRA into my plan" | **IN** | Incoming Rollover | "...rolling over his external Traditional IRA **into his ForUsAll 401(k) plan at {companyName}**" |
-| "roll my money from my old employer's plan into this plan" (external source named or implied) | **IN** | Incoming Rollover | "...rolling over funds from a previous employer's plan held at an external record keeper **into his ForUsAll 401(k) plan at {companyName}**" |
+| "I have a 401k at Fidelity from my old job, want to move it here" | **IN** | Incoming Rollover | "...rolling over his previous employer's Fidelity 401(k) **into his ForUsAll 401(k) plan**" |
+| "rollover from my external IRA into my plan" | **IN** | Incoming Rollover | "...rolling over his external Traditional IRA **into his ForUsAll 401(k) plan**" |
+| "roll my money from my old employer's plan into this plan" (external source named or implied) | **IN** | Incoming Rollover | "...rolling over funds from a previous employer's plan held at an external record keeper **into his ForUsAll 401(k) plan**" |
 | "**I have a 401k with ForUsAll from my previous employer**, I want to roll it into my current employer's plan" | **OUT** | Rollover Distribution | "...rolling over his ForUsAll 401(k) balance (held from his previous employer) **out to his current employer's plan**" |
 | "my ForUsAll 401k, send the check to Fidelity FBO [name]" | **OUT** | Direct Rollover | "...rolling over his ForUsAll 401(k) balance **out to Fidelity Investments** via a direct rollover check made payable to Fidelity FBO the participant" |
 | "transfer to my Fidelity/Vanguard/Schwab IRA" | **OUT** | Direct Rollover | "...rolling over his ForUsAll 401(k) balance **out to his [named] IRA**" |
@@ -337,12 +337,13 @@ You MUST enrich the inquiry by rewriting it for clarity **without changing the i
 | "cash out my 401k" / "withdraw" | **Distribution OUT (not rollover)** | Cash Distribution | "...wants to **cash out (withdraw)** their ForUsAll 401(k) balance" |
 | "take out a loan" / "borrow against my 401k" | **Loan (not rollover)** | 401(k) Loan | "...take a **loan against** their ForUsAll 401(k) balance" |
 | "change my contribution" / "update deferral" | **Plan change** | Deferral Change | "...change their contribution rate in their ForUsAll 401(k) plan" |
-| "how do I enroll" | **Plan action** | Enrollment | "...enroll in their ForUsAll 401(k) plan at {companyName}" |
+| "how do I enroll" | **Plan action** | Enrollment | "...enroll in their ForUsAll 401(k) plan" |
 
 #### Enrichment rules
 
 - **Preserve the participant's original intent.** Never change what they are asking for. Only clarify direction, source, destination, and plan context.
 - **Always name the plan as "ForUsAll 401(k) plan"** when referring to the current ForUsAll-administered plan.
+- **NEVER write the employer/company name into the inquiry** (e.g., do NOT say "ForUsAll 401(k) plan at SmartBiz Bank"). The company name carries zero retrieval signal — the knowledge base is procedural, with no company- or plan-specific content — and it pollutes downstream search by wasting sub-query slots. It is already captured separately in `plan_data.company_name`. Refer to the plan only as "ForUsAll 401(k) plan".
 - **Reference external accounts explicitly by the name the participant used** ("Fidelity Investments", "Vanguard IRA", "current employer's plan", "new employer's plan").
 - **If the base text is in third person** (e.g., "Ben Svoboda wants to..."), preserve the third-person voice and enrich it. If `ticket_messages` are in first person, you may blend both for clarity.
 - **Do NOT invent** specific dollar amounts, dates, account numbers, or external providers the participant did not mention.
@@ -353,12 +354,12 @@ You MUST enrich the inquiry by rewriting it for clarity **without changing the i
 | Raw source | Enriched `inquiry` | Implied topic |
 |---|---|---|
 | "The customer wants to cash out their 401k." | "The customer wants to cash out (withdraw) their ForUsAll 401(k) account balance." | `termination_distribution_request` |
-| `ticket_messages`: "I have a 401k at Fidelity from my old job, want to consolidate it into my plan here" | "The participant has a 401(k) at Fidelity from a previous employer and wants to roll it over into his ForUsAll 401(k) plan at {companyName}." | `incoming_rollover` |
+| `ticket_messages`: "I have a 401k at Fidelity from my old job, want to consolidate it into my plan here" | "The participant has a 401(k) at Fidelity from a previous employer and wants to roll it over into his ForUsAll 401(k) plan." | `incoming_rollover` |
 | `ticket_messages`: "I have a 401k **with ForUsAll** from my previous employer. I'd like to roll my money into my current employer's plan and have a check sent payable to Fidelity Investments FBO [name]." | "The participant has a ForUsAll 401(k) from a previous employer and wants to roll his balance out of his ForUsAll 401(k) plan to his current employer's plan, requesting a check payable to Fidelity Investments FBO the participant." | `rollover` |
-| "I'd like to consolidate my old IRA into this plan." | "The participant wants to roll over his external Traditional IRA into his ForUsAll 401(k) plan at {companyName}." | `incoming_rollover` |
+| "I'd like to consolidate my old IRA into this plan." | "The participant wants to roll over his external Traditional IRA into his ForUsAll 401(k) plan." | `incoming_rollover` |
 | "I need a loan for home repairs" | "The participant wants to take a loan against their ForUsAll 401(k) balance to cover home repairs." | `loan` |
 | "I left my job and want to move my 401k to Fidelity" | "The participant left their job and wants to roll over their ForUsAll 401(k) balance out to a Fidelity IRA." | `rollover` |
-| "How do I enroll?" | "The participant is asking how to enroll in their ForUsAll 401(k) plan at {companyName}." | `enrollment` |
+| "How do I enroll?" | "The participant is asking how to enroll in their ForUsAll 401(k) plan." | `enrollment` |
 
 **Validation:** Final `inquiry` must be 10–1000 chars. If > 1000, truncate at the last complete sentence.
 
@@ -1025,7 +1026,7 @@ Output:
 
 ```json
 {
-  "inquiry": "The participant wants to take a loan against their ForUsAll 401(k) balance at TechNova LLC to cover some home repairs, and is asking how to apply.",
+  "inquiry": "The participant wants to take a loan against their ForUsAll 401(k) balance to cover some home repairs, and is asking how to apply.",
   "record_keeper": "LT Trust",
   "plan_type": "401(k)",
   "topic": "loan",
@@ -1150,7 +1151,7 @@ Output:
 
 ```json
 {
-  "inquiry": "Ajinkya Joshi has a 401(k) at Fidelity from a previous employer and wants to know the process for rolling it over into his ForUsAll 401(k) plan at Skydio.",
+  "inquiry": "Ajinkya Joshi has a 401(k) at Fidelity from a previous employer and wants to know the process for rolling it over into his ForUsAll 401(k) plan.",
   "record_keeper": "LT Trust",
   "plan_type": "401(k)",
   "topic": "incoming_rollover",
@@ -1368,7 +1369,7 @@ Output:
 
 ```json
 {
-  "inquiry": "The participant, who is terminated from Skydio, has a ForUsAll 401(k) balance from his previous employer and wants to roll his money out of his ForUsAll 401(k) plan into his current employer's plan. He is requesting a check for the full amount be sent to his address, made payable to Fidelity Investments WISK AERO LLC 401K FBO: Benjamin Svoboda.",
+  "inquiry": "The participant, who is terminated, has a ForUsAll 401(k) balance from his previous employer and wants to roll his money out of his ForUsAll 401(k) plan into his current employer's plan. He is requesting a check for the full amount be sent to his address, made payable to Fidelity Investments FBO: Benjamin Svoboda.",
   "record_keeper": "LT Trust",
   "plan_type": "401(k)",
   "topic": "rollover",

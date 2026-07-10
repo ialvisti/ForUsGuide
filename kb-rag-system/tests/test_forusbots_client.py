@@ -370,3 +370,113 @@ class TestLive:
             assert resp.status_code == 200
         finally:
             await client.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Task 2 regressions — HT-16 (POST 5xx ambiguo) y HT-17 (cancelación compartida)
+# ---------------------------------------------------------------------------
+
+class TestAmbiguousSubmit:
+
+    async def test_post_5xx_is_not_blindly_resubmitted(self):
+        """HT-16: un 5xx tras el POST de submit es AMBIGUO (el job pudo haberse
+        creado upstream). No debe reintentarse el POST; debe marcarse como
+        needs_reconciliation con un error tipado."""
+        from data_pipeline.forusbots_client import ForusBotsAmbiguousSubmit
+
+        client, fake = _client([
+            _resp(500, {"error": "boom"}),
+            # si el cliente reintentara, consumiría estos y duplicaría el job:
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "data": {}}),
+        ])
+        with pytest.raises(ForusBotsAmbiguousSubmit) as exc:
+            await client.scrape_participant("158948", [{"key": "census", "fields": []}])
+        assert fake.count("POST") == 1, (
+            f"{fake.count('POST')} POSTs para un submit no-idempotente tras 5xx"
+        )
+        assert getattr(exc.value, "needs_reconciliation", False) is True
+
+    async def test_get_5xx_still_retries(self):
+        """El poll (GET) sí es idempotente: 5xx transitorio se reintenta."""
+        client, fake = _client([
+            _SUBMIT_OK,
+            _resp(500, {"error": "transient"}),
+            _resp(200, {"state": "succeeded", "data": {"census": {"Name": "x"}}}),
+        ])
+        result = await client.scrape_participant("158948", [{"key": "census", "fields": []}])
+        assert result.job_id == "j1"
+        assert fake.count("POST") == 1
+
+
+class TestWaiterCancellationIsolation:
+
+    async def test_cancelling_one_waiter_preserves_shared_scrape(self):
+        """HT-17: cancelar el waiter originador no debe romper el dedupe ni
+        provocar un submit duplicado para el mismo trabajo en curso."""
+        import asyncio
+        import contextlib
+
+        # asyncio.sleep está mockeado por _no_sleep; forzar iteraciones reales
+        # del loop con futures programados via call_soon.
+        async def _spin(n=10):
+            loop = asyncio.get_running_loop()
+            for _ in range(n):
+                fut = loop.create_future()
+                loop.call_soon(fut.set_result, None)
+                await fut
+
+        gate = asyncio.Event()
+        posted = asyncio.Event()
+        submits = 0
+
+        class GatedHTTP:
+            def __init__(self):
+                self.calls = []
+
+            async def request(self, method, url, headers=None, json=None):
+                nonlocal submits
+                self.calls.append((method, url, json))
+                if method == "POST":
+                    submits += 1
+                    posted.set()
+                    return _resp(202, {"jobId": f"j{submits}", "queuePosition": 1,
+                                       "estimate": {}, "capacitySnapshot": {}})
+                # el poll espera hasta que el test libere el gate
+                await gate.wait()
+                return _resp(200, {"state": "succeeded",
+                                   "data": {"census": {"Name": "x"}}})
+
+            async def aclose(self):
+                pass
+
+        fake = GatedHTTP()
+        client = ForusBotsClient(
+            base_url="https://forusbots.example.com", auth_token="t0ken",
+            poll_interval_s=0.0, poll_max_interval_s=0.0, max_wait_s=60.0,
+            client=fake,
+        )
+        modules = [{"key": "census", "fields": []}]
+
+        waiter_a = asyncio.create_task(client.scrape_participant("158948", modules))
+        await asyncio.wait_for(posted.wait(), timeout=2)   # A ya hizo submit
+        waiter_b = asyncio.create_task(client.scrape_participant("158948", modules))
+        await _spin()                                       # B se une al trabajo
+
+        waiter_a.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await waiter_a                                  # cancelación procesada
+
+        # C llega mientras el scrape sigue en vuelo: debe unirse, no re-submitir
+        waiter_c = asyncio.create_task(client.scrape_participant("158948", modules))
+        await _spin()
+        gate.set()
+
+        result_b = await asyncio.wait_for(waiter_b, timeout=2)
+        result_c = await asyncio.wait_for(waiter_c, timeout=2)
+        assert result_b.job_id == "j1"
+        assert result_c.job_id == "j1", (
+            "una request idéntica tras la cancelación del originador re-submitió "
+            f"({submits} submits): el dedupe se rompió"
+        )
+        assert submits == 1

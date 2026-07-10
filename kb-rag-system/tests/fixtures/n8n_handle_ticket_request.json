@@ -1,0 +1,49 @@
+{
+  "_meta": {
+    "provenance": "RECONSTRUIDO desde el repo (HandleTicketRequest, ticket-handler-planning/stage-5, rag-testing/test_endpoints_stress.py, GCP_SERVICES_GUIDE auth flow) el 2026-07-10. NO es un export sanitizado del workflow real de n8n: el repositorio no contiene uno (limitación registrada en la auditoría). Antes de retirar el fallback legacy, verificar cada campo/casing/null contra el workflow efectivo y reemplazar este fixture por el export sanitizado real.",
+    "sanitization": "IDs, emails, nombres y tokens son valores ficticios que conservan el schema.",
+    "auth": {
+      "authorization": "Bearer <IAM identity token de kb-rag-client@rag-kb-system.iam.gserviceaccount.com>",
+      "x_api_key": "<credencial de cliente en Secret Manager>",
+      "idempotency_key_header": "Idempotency-Key: <devrev-ticket-id>-<intento>"
+    },
+    "http": {
+      "post_timeout_s": 60,
+      "post_retries": 2,
+      "retry_on_status": [429, 500, 502, 503, 504],
+      "note_409": "409 IDEMPOTENCY_PAYLOAD_MISMATCH no se reintenta: indica bug del productor de payloads."
+    },
+    "polling": {
+      "interval_s": 3,
+      "deadline_s": 540,
+      "deadline_rationale": "Debe superar el TICKET_TOTAL_BUDGET_S del servidor (480 s) + margen; el valor histórico de 240 s del harness abandonaba jobs vivos (latencias reales de hasta 365 s).",
+      "terminal_states": ["succeeded", "partial", "failed", "timeout", "cancelled"]
+    }
+  },
+  "request": {
+    "participant_id": "158948",
+    "plan_id": "580",
+    "company_name": "StarWars Inc.",
+    "company_status": "Ongoing",
+    "company_status_detail": null,
+    "record_keeper": "LT Trust",
+    "max_response_tokens": 5500,
+    "ticket": {
+      "username": "Luke Participant",
+      "user_email": "luke.participant@example.com",
+      "email_subject": "401(k) withdrawal question",
+      "email_body": "Hi, I no longer work at StarWars Inc. and I want to cash out my 401(k). What is my current balance and how do I request the withdrawal?",
+      "ticket_id": "TKT-12345",
+      "first_contact": true,
+      "ticket_messages": {
+        "message_1": "Hi, I no longer work at StarWars Inc. and I want to cash out my 401(k)."
+      },
+      "tag": "NOT FOUND"
+    }
+  },
+  "wire_compat_notes": {
+    "ticket.ticket_messages": "n8n puede seguir enviándolo; el runtime lo IGNORA (fuente de verdad: email_subject + email_body).",
+    "ticket.tag": "n8n puede seguir enviándolo; el runtime lo IGNORA.",
+    "idempotency_key": "Preferir el header Idempotency-Key; el campo del body está deprecado y se retirará en v2."
+  }
+}

@@ -627,8 +627,12 @@ class RouteInquiryResponse(BaseModel):
 # ============================================================================
 
 class TicketInput(BaseModel):
-    """Datos del ticket. Hoy la lógica usa solo subject + body; los demás campos
-    son opcionales para forward-compat (no se requieren ni se asumen)."""
+    """Datos del ticket. Fuente de verdad ÚNICA del contenido: ``email_subject``
+    + ``email_body`` (decisión Task 1 del plan de remediación). n8n puede
+    seguir enviando ``ticket_messages``/``tag`` en el wire (``extra="ignore"``
+    los descarta), pero el runtime no los modela ni los pasa a ningún prompt:
+    un hilo histórico sin autoría verificable amplía la superficie de prompt
+    injection y contradecía la documentación."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -638,11 +642,6 @@ class TicketInput(BaseModel):
     email_body: Optional[str] = Field(
         default=None, description="Cuerpo del email/ticket (puede ser null/vacío)"
     )
-    # Forward-compat (no usados por la lógica LLM-first actual):
-    ticket_messages: Optional[Dict[str, str]] = Field(
-        default=None, description="Hilo de mensajes {message_1: ..., ...} (opcional)"
-    )
-    tag: Optional[str] = Field(default=None, description="Tag de DevRev (opcional)")
     ticket_id: Optional[str] = Field(default=None, description="ID del ticket (opcional)")
     first_contact: Optional[bool] = Field(
         default=None, description="Si es el primer contacto (opcional)"

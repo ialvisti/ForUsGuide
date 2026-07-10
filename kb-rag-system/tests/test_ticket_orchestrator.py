@@ -772,15 +772,18 @@ class TestNeedsMoreInfoAndRun:
 
 class TestHelpers:
 
-    def test_form_submission_strips_messages_and_tag(self):
+    def test_ticket_data_never_carries_thread_or_tag(self):
+        """Fuente de verdad única: subject + body. Aunque el wire traiga
+        ticket_messages/tag, el runtime los descarta y los prompts siempre
+        reciben valores neutrales (Task 1 del plan de remediación)."""
         llm = LLMStub({})
         deps, *_ = _deps(llm=llm)
         orch = TicketOrchestrator(deps, _settings())
         req = _req(email_subject="Participant Advisory - Form Submission",
                    email_body="how long to receive funds?")
-        # inject forward-compat fields that must be ignored under the form rule
-        req.ticket.ticket_messages = {"message_1": "noise"}
-        req.ticket.tag = "NOT FOUND"
+        # los extras del wire ya no existen como campos del modelo
+        assert "ticket_messages" not in type(req.ticket).model_fields
+        assert "tag" not in type(req.ticket).model_fields
         td = orch._build_ticket_data(req)
         assert td["ticket_messages"] == {}
         assert td["tag"] is None

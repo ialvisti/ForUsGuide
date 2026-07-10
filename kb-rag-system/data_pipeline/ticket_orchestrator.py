@@ -42,7 +42,6 @@ _TICKET_EXTRACT_MAX_TOKENS = 1500
 
 _DEFAULT_PLAN_TYPE = "401(k)"
 _DEFAULT_GREETING = "Could you share a bit more detail about what you'd like help with?"
-_FORM_SUBMISSION_SUBJECT = "Participant Advisory - Form Submission"
 
 
 # ============================================================================
@@ -759,14 +758,11 @@ class TicketOrchestrator:
     # ------------------------------------------------------------------
 
     def _build_ticket_data(self, req: Any) -> Dict[str, Any]:
+        # Fuente de verdad única: subject + body (Task 1 del plan). El hilo
+        # histórico y el tag ya no existen en runtime; los prompts reciben las
+        # claves con valores neutrales porque su protocolo ya define ese caso
+        # ("empty {} → use emailBody").
         t = req.ticket
-        ticket_messages = t.ticket_messages or {}
-        tag = t.tag
-        # Form-submission rule (defensive): the system-generated subject has no
-        # relation to the question — force the agents to rely on the body only.
-        if (t.email_subject or "").strip() == _FORM_SUBMISSION_SUBJECT:
-            ticket_messages = {}
-            tag = None
         return {
             "userId": None,
             "userName": t.username,
@@ -774,9 +770,9 @@ class TicketOrchestrator:
             "ticketId": t.ticket_id,
             "emailSubject": t.email_subject,
             "emailBody": t.email_body,
-            "tag": tag,
+            "tag": None,
             "firstContact": t.first_contact,
-            "ticket_messages": ticket_messages,
+            "ticket_messages": {},
         }
 
     def _build_case_data(self, req: Any) -> Dict[str, Any]:

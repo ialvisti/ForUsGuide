@@ -195,16 +195,29 @@ def validate_settings():
             f"(se esperaba uno de {sorted(valid_ticket_modes)})"
         )
 
+    # Contención fail-closed del ticket handler: un modo activo no puede
+    # arrancar sin token, y producción nunca habla con ForusBots por HTTP
+    # plano (el token y PII del participante viajan en cada request).
+    if settings.TICKET_HANDLER_MODE in valid_ticket_modes - {"disabled"}:
+        if not settings.FORUSBOTS_AUTH_TOKEN:
+            errors.append(
+                f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} requiere "
+                "FORUSBOTS_AUTH_TOKEN configurado"
+            )
+        is_tls = settings.FORUSBOTS_BASE_URL.lower().startswith("https://")
+        if not is_tls and settings.ENVIRONMENT == "production":
+            errors.append(
+                f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} en producción "
+                f"requiere FORUSBOTS_BASE_URL https:// "
+                f"(actual: {settings.FORUSBOTS_BASE_URL.split('://')[0]}://…)"
+            )
+        elif not is_tls:
+            logger.warning(
+                "FORUSBOTS_BASE_URL no usa https:// — permitido sólo fuera de "
+                "producción. El token y PII viajan sin cifrar."
+            )
+
     if errors:
         raise ValueError(f"Configuración inválida: {', '.join(errors)}")
-
-    # Non-fatal: the ticket handler needs a ForusBots token to scrape, but the
-    # other endpoints must still boot when it's left disabled/unconfigured.
-    if settings.TICKET_HANDLER_MODE != "disabled" and not settings.FORUSBOTS_AUTH_TOKEN:
-        logger.warning(
-            "TICKET_HANDLER_MODE=%s but FORUSBOTS_AUTH_TOKEN is not set — "
-            "the generate_response (data) path will fail until it is configured.",
-            settings.TICKET_HANDLER_MODE,
-        )
 
     return True

@@ -821,3 +821,101 @@ class TestCoveragePackBuilder:
         assert pack.distinct_articles == ["Hardship Article"]
         assert pack.chunk_types_present == ["business_rules", "steps"]
         assert len(pack.chunks) == 2
+
+
+class TestTicketHandlerContainment:
+    """Task 0 (contención HT-02/HT-10): la configuración del ticket handler es
+    fail-closed — producción no arranca con ForusBots sin TLS ni sin token, y
+    el body del request sólo puede restringir el modo del servidor, nunca
+    expandirlo."""
+
+    def _pin_settings(self, monkeypatch, **overrides):
+        """Fija en el singleton una configuración base válida y aplica overrides."""
+        from api.config import settings as app_settings
+        base = dict(
+            API_KEY="k",
+            PINECONE_API_KEY="p",
+            OPENAI_API_KEY="o",
+            GEMINI_API_KEY="g",
+            ENVIRONMENT="production",
+            TICKET_HANDLER_MODE="full",
+            FORUSBOTS_BASE_URL="https://forusbots.internal.example",
+            FORUSBOTS_AUTH_TOKEN="tok",
+        )
+        base.update(overrides)
+        for key, value in base.items():
+            monkeypatch.setattr(app_settings, key, value)
+
+    def test_full_mode_rejects_non_tls_forusbots(self, monkeypatch):
+        """En producción, un modo activo con FORUSBOTS_BASE_URL http:// no arranca."""
+        from api.config import validate_settings
+        self._pin_settings(
+            monkeypatch, FORUSBOTS_BASE_URL="http://35.224.156.104:10000"
+        )
+        with pytest.raises(ValueError, match="https://"):
+            validate_settings()
+
+    def test_full_mode_requires_forusbots_token(self, monkeypatch):
+        """Un modo activo sin FORUSBOTS_AUTH_TOKEN no arranca (antes era warning)."""
+        from api.config import validate_settings
+        self._pin_settings(monkeypatch, FORUSBOTS_AUTH_TOKEN="")
+        with pytest.raises(ValueError, match="FORUSBOTS_AUTH_TOKEN"):
+            validate_settings()
+
+    def test_non_production_http_forusbots_still_boots(self, monkeypatch):
+        """Development conserva el host http actual (con warning, no error)."""
+        from api.config import validate_settings
+        self._pin_settings(
+            monkeypatch,
+            ENVIRONMENT="development",
+            FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
+        )
+        assert validate_settings() is True
+
+    def test_request_cannot_expand_server_mode(self, client, test_api_key, monkeypatch):
+        """Servidor disabled + body ticket_handler_mode=full → sigue 503."""
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "API_KEY", test_api_key)
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        response = client.post(
+            "/api/v1/handle-ticket",
+            json={
+                "participant_id": "158948",
+                "plan_id": "580",
+                "company_name": "StarWars Inc.",
+                "company_status": "Ongoing",
+                "ticket": {
+                    "username": "Ivan",
+                    "user_email": "i@f.com",
+                    "email_subject": "401k",
+                    "email_body": "quiero retirar mi 401k",
+                },
+                "ticket_handler_mode": "full",
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+        assert response.status_code == 503
+
+    def test_request_can_narrow_server_mode(self, client, test_api_key, monkeypatch):
+        """Servidor full + body ticket_handler_mode=disabled → 503 (narrowing sí)."""
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "API_KEY", test_api_key)
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        response = client.post(
+            "/api/v1/handle-ticket",
+            json={
+                "participant_id": "158948",
+                "plan_id": "580",
+                "company_name": "StarWars Inc.",
+                "company_status": "Ongoing",
+                "ticket": {
+                    "username": "Ivan",
+                    "user_email": "i@f.com",
+                    "email_subject": "401k",
+                    "email_body": "quiero retirar mi 401k",
+                },
+                "ticket_handler_mode": "disabled",
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+        assert response.status_code == 503

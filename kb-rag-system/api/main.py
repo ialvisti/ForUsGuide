@@ -995,6 +995,25 @@ def _apply_ticket_handler_mode(route: str, mode: str) -> Tuple[str, Optional[str
     return route, None
 
 
+# Orden de restrictividad del rollout: el body sólo puede movernos hacia la
+# izquierda (más restrictivo), nunca hacia la derecha.
+_TICKET_MODE_RANK = {"disabled": 0, "shadow": 1, "knowledge_only": 2, "full": 3}
+
+
+def _effective_ticket_mode(server_mode: str, requested: Optional[str]) -> str:
+    """El override per-request sólo puede restringir el modo del servidor.
+
+    Un caller nunca puede expandir el rollout (p.ej. servidor=disabled +
+    body=full sigue siendo disabled). Modos desconocidos se tratan como el
+    modo del servidor.
+    """
+    if requested is None or requested not in _TICKET_MODE_RANK:
+        return server_mode
+    if _TICKET_MODE_RANK[requested] < _TICKET_MODE_RANK.get(server_mode, 0):
+        return requested
+    return server_mode
+
+
 def _knowledge_answer_model(r: Any) -> KnowledgeQuestionResponse:
     return KnowledgeQuestionResponse(
         answer=r.answer,
@@ -1169,13 +1188,16 @@ async def handle_ticket_endpoint(
     return inline (``200`` ``TicketHandleResponse``). The slow data path returns
     ``202`` ``TicketJobHandle`` immediately; poll ``GET /api/v1/tickets/{id}``.
 
-    **Rollout:** gated by ``TICKET_HANDLER_MODE`` (or per-request override):
+    **Rollout:** gated by ``TICKET_HANDLER_MODE``. The per-request override
+    can only *restrict* the server mode (never expand it):
     ``disabled`` → 503; ``shadow`` → classify only and tell the caller to use
     the legacy flow; ``knowledge_only`` → only knowledge questions are handled
     end-to-end; ``full`` → full orchestration.
     """
     start = time.monotonic()
-    effective_mode = request.ticket_handler_mode or settings.TICKET_HANDLER_MODE
+    effective_mode = _effective_ticket_mode(
+        settings.TICKET_HANDLER_MODE, request.ticket_handler_mode
+    )
     if effective_mode == "disabled":
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,

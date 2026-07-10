@@ -671,7 +671,11 @@ class HandleTicketRequest(BaseModel):
     )
     ticket_handler_mode: Optional[Literal["disabled", "shadow", "knowledge_only", "full"]] = Field(
         default=None,
-        description="Override per-request de settings.TICKET_HANDLER_MODE.",
+        description=(
+            "Override per-request de settings.TICKET_HANDLER_MODE. Sólo puede "
+            "RESTRINGIR el modo del servidor (disabled < shadow < "
+            "knowledge_only < full); un valor más permisivo se ignora."
+        ),
     )
     idempotency_key: Optional[str] = Field(
         default=None, description="Clave de idempotencia (alternativa al header Idempotency-Key)"

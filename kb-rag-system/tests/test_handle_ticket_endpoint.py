@@ -25,6 +25,11 @@ def client(monkeypatch):
     monkeypatch.setenv("API_KEY", "k")
     monkeypatch.setenv("PINECONE_API_KEY", "p")
     monkeypatch.setenv("OPENAI_API_KEY", "o")
+    # El override del body sólo puede RESTRINGIR el modo del servidor, así que
+    # los tests fijan el server mode en full y cada test usa el body para
+    # narrowear (disabled/knowledge_only/shadow).
+    from api.config import settings as app_settings
+    monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
 
     mock_engine = Mock()
     mock_pinecone = Mock()

@@ -20,6 +20,7 @@
 16. [Code Changes Required](#code-changes-required)
 17. [Environment Variables Reference](#environment-variables-reference)
 18. [Cost Estimates](#cost-estimates)
+19. [Ticket Handler Containment (2026-07)](#ticket-handler-containment-2026-07)
 
 ---
 
@@ -939,3 +940,38 @@ on fallback rate >1% over 15 min.
 | **Grand Total** | | | **$1,500-2,420/month** |
 
 The dominant cost is OpenAI. GCP infrastructure is practically free at this scale. See [HYBRID_LLM_ARCHITECTURE.md](./HYBRID_LLM_ARCHITECTURE.md) for how to reduce LLM costs with the Gemini hybrid approach.
+
+---
+
+## Ticket Handler Containment (2026-07)
+
+Estado de contención del flujo `POST /api/v1/handle-ticket` mientras se
+completa la remediación (ver `HANDLE_TICKET_AUDIT_AND_REMEDIATION_PLAN.md` en
+la raíz del repo).
+
+### Controles fail-closed ya activos en el código
+
+- `validate_settings()` **no arranca** con `TICKET_HANDLER_MODE` activo
+  (`shadow|knowledge_only|full`) si falta `FORUSBOTS_AUTH_TOKEN`.
+- En `ENVIRONMENT=production`, un modo activo **exige** `FORUSBOTS_BASE_URL`
+  con `https://`. Fuera de producción, HTTP plano sólo emite warning.
+- El campo `ticket_handler_mode` del body sólo puede **restringir** el modo
+  del servidor (`disabled < shadow < knowledge_only < full`); un valor más
+  permisivo se ignora. El kill switch del servidor no puede ser bypasseado
+  por el caller.
+
+### Acciones operativas pendientes (fuera del repo)
+
+| Acción | Estado | Notas |
+|---|---|---|
+| Endpoint HTTPS o conectividad privada para ForusBots | **Pendiente** | Hoy `http://35.224.156.104:10000`. Producción no arrancará en modo activo hasta resolverlo. |
+| Rotar `FORUSBOTS_AUTH_TOKEN` | **Pendiente** | Rotar DESPUÉS de retirar HTTP; el token actual debe considerarse expuesto en tránsito. |
+| n8n fail-safe | **Pendiente** | Hasta terminar la remediación: cualquier estado `partial|failed|timeout`, error técnico, JSON inválido o poll `404` → legacy/humano. Nunca publicar automáticamente un fallback interno. |
+| Mantener legacy de n8n para `generate_response` | **Pendiente** | Hasta completar HT-01/02/03/05 del plan. |
+| Captura sanitizada del despliegue real | **Bloqueada** | 2026-07-10: `gcloud` y ADC requieren reautenticación (`invalid_rapt`). Ejecutar `gcloud auth login --update-adc` y luego `gcloud run services describe kb-rag-system --region us-central1 --project rag-kb-system`. Registrar min/max instances, concurrency, CPU billing, timeout, ingress, IAM callers, revisión y variables POR NOMBRE (sin valores de secretos). |
+
+### Reglas de logging durante la contención
+
+- No registrar `FORUSBOTS_AUTH_TOKEN` ni bodies de error upstream (pueden
+  contener PII scrapeada).
+- No copiar valores de secretos a planes, documentación ni logs.

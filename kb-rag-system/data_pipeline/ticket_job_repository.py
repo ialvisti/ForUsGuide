@@ -93,6 +93,15 @@ class InMemoryTicketJobBackend:
         doc = self._data.get(collection, {}).get(doc_id)
         return copy.deepcopy(doc) if doc is not None else None
 
+    async def count_jobs(self, collection: str, principal_id: str,
+                         states: list) -> int:
+        wanted = set(states)
+        return sum(
+            1 for doc in self._data.get(collection, {}).values()
+            if doc.get("principal_id") == principal_id
+            and doc.get("state") in wanted
+        )
+
     async def dump_all(self) -> Dict[str, Dict[str, dict]]:
         return copy.deepcopy(self._data)
 
@@ -153,6 +162,16 @@ class FirestoreTicketJobBackend:
         ref = self._client.collection(self._col(collection)).document(doc_id)
         snap = await ref.get()
         return snap.to_dict() if snap.exists else None
+
+    async def count_jobs(self, collection: str, principal_id: str,
+                         states: list) -> int:  # pragma: no cover - staging
+        query = (
+            self._client.collection(self._col(collection))
+            .where("principal_id", "==", principal_id)
+            .where("state", "in", states)
+        )
+        agg = await query.count().get()
+        return int(agg[0][0].value)
 
     async def dump_all(self):  # pragma: no cover - sólo para tests in-memory
         raise NotImplementedError("dump_all es una utilidad del backend in-memory")
@@ -355,3 +374,10 @@ class TicketJobRepository:
     async def mark_enqueued(self, job_id: str, task_name: str) -> TicketJobRecord:
         return await self.update(job_id, enqueue_state="enqueued",
                                  task_name=task_name)
+
+    async def count_active(self, principal_id: str) -> int:
+        """Jobs no-terminales del principal (cap de outstanding, HT-06)."""
+        return await self.backend.count_jobs(
+            JOBS_COLLECTION, principal_id,
+            [s.value for s in (TicketJobState.QUEUED, TicketJobState.RUNNING)],
+        )

@@ -355,10 +355,14 @@ def _gr_outcome():
 
 class TestIdempotencyRegressions:
 
-    def test_50_concurrent_same_key_create_one_execution(self, client):
+    def test_50_concurrent_same_key_create_one_execution(self, client, monkeypatch):
         """Invariante 2: una key idempotente produce como máximo UNA ejecución
         lógica. La reserva debe ocurrir en transacción ANTES de cualquier LLM."""
         from concurrent.futures import ThreadPoolExecutor
+
+        # el sujeto de este test es la idempotencia, no el rate limit
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "RATE_LIMIT_HANDLE_TICKET", 1000)
 
         orch = CountingOrch([_ext()], _cls("generate_response"), _gr_outcome())
         _use_orch(client, orch)

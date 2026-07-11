@@ -43,6 +43,44 @@ async def authenticate_request(request: Request):
         )
 
 
+async def limit_body_size(request: Request, call_next):
+    """Rechaza bodies gigantes ANTES de materializar JSON (HT-06).
+
+    Dos capas: (1) Content-Length declarado; (2) contador sobre el stream
+    para requests chunked sin Content-Length.
+    """
+    max_bytes = settings.MAX_REQUEST_BODY_BYTES
+    if request.method in ("POST", "PUT", "PATCH") and max_bytes > 0:
+        declared = request.headers.get("content-length")
+        if declared and declared.isdigit() and int(declared) > max_bytes:
+            return JSONResponse(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                content={"error": "http_error",
+                         "detail": {"code": "REQUEST_BODY_TOO_LARGE",
+                                    "max_bytes": max_bytes},
+                         "message": "request body too large"},
+            )
+        if not declared:
+            received = 0
+            original_receive = request.receive
+
+            async def counting_receive():
+                nonlocal received
+                message = await original_receive()
+                if message.get("type") == "http.request":
+                    received += len(message.get("body", b""))
+                    if received > max_bytes:
+                        raise HTTPException(
+                            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                            detail={"code": "REQUEST_BODY_TOO_LARGE",
+                                    "max_bytes": max_bytes},
+                        )
+                return message
+
+            request._receive = counting_receive
+    return await call_next(request)
+
+
 async def add_request_id(request: Request, call_next):
     """
     Agrega un request ID único para tracking.

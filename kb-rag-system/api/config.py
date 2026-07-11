@@ -113,8 +113,14 @@ class Settings(BaseSettings):
     TICKET_V1_INLINE_WAIT_S: float = 3.0
 
     # Identidad de clientes: nombre de principal → API key. La API_KEY legacy
-    # mapea al principal "default". (Task 6 añade rotación/scopes.)
+    # mapea al principal "default". Rotación: agregar la key nueva bajo el
+    # mismo principal con sufijo (p.ej. "n8n" y "n8n_next"), migrar el caller
+    # y retirar la vieja.
     API_CLIENT_KEYS: dict = {}
+
+    # Límites de recursos (Task 6, OWASP API4).
+    MAX_REQUEST_BODY_BYTES: int = 1_048_576          # 1 MiB
+    TICKET_MAX_OUTSTANDING_JOBS: int = 25            # por principal
 
     # Pinecone
     PINECONE_API_KEY: str = ""

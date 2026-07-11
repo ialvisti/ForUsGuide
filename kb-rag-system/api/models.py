@@ -6,6 +6,7 @@ Define la estructura de datos para los endpoints:
 - /api/v1/generate-response
 """
 
+import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -635,31 +636,53 @@ class TicketInput(BaseModel):
     un hilo histórico sin autoría verificable amplía la superficie de prompt
     injection y contradecía la documentación."""
 
-    model_config = ConfigDict(extra="ignore")
+    # extra="ignore" es deliberado (wire-compat con n8n: ticket_messages/tag
+    # se aceptan y descartan); los campos modelados sí tienen bounds duros.
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    username: str = Field(..., description="Nombre del participante/usuario del ticket")
-    user_email: str = Field(..., description="Email del participante/usuario del ticket")
-    email_subject: str = Field(..., description="Asunto del email/ticket")
+    username: str = Field(..., min_length=1, max_length=200,
+                          description="Nombre del participante/usuario del ticket")
+    user_email: str = Field(..., min_length=3, max_length=254,
+                            description="Email del participante/usuario del ticket")
+    email_subject: str = Field(..., max_length=1000,
+                               description="Asunto del email/ticket")
     email_body: Optional[str] = Field(
-        default=None, description="Cuerpo del email/ticket (puede ser null/vacío)"
+        default=None, max_length=100_000,
+        description="Cuerpo del email/ticket (puede ser null/vacío)"
     )
-    ticket_id: Optional[str] = Field(default=None, description="ID del ticket (opcional)")
+    ticket_id: Optional[str] = Field(default=None, max_length=64,
+                                     description="ID del ticket (opcional)")
     first_contact: Optional[bool] = Field(
         default=None, description="Si es el primer contacto (opcional)"
     )
+
+    @field_validator("user_email")
+    @classmethod
+    def _email_shape(cls, v: str) -> str:
+        # Validación ligera de formato (sin dependencia email-validator).
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("user_email no tiene formato de email")
+        return v
 
 
 class HandleTicketRequest(BaseModel):
     """Request para el endpoint end-to-end /api/v1/handle-ticket."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    participant_id: str = Field(..., description="ID del participante")
-    plan_id: str = Field(..., description="ID del plan")
-    company_name: str = Field(..., description="Nombre de la empresa")
-    company_status: str = Field(..., description="Estado de la empresa (e.g. Ongoing)")
+    participant_id: str = Field(..., min_length=1, max_length=32,
+                                pattern=r"^[A-Za-z0-9_-]+$",
+                                description="ID del participante")
+    plan_id: str = Field(..., min_length=1, max_length=32,
+                         pattern=r"^[A-Za-z0-9_-]+$",
+                         description="ID del plan")
+    company_name: str = Field(..., min_length=1, max_length=200,
+                              description="Nombre de la empresa")
+    company_status: str = Field(..., min_length=1, max_length=50,
+                                description="Estado de la empresa (e.g. Ongoing)")
     company_status_detail: Optional[str] = Field(
-        default=None, description="Detalle del estado de la empresa (puede ser null)"
+        default=None, max_length=500,
+        description="Detalle del estado de la empresa (puede ser null)"
     )
     ticket: TicketInput = Field(..., description="Datos del ticket")
     record_keeper: Optional[str] = Field(
@@ -678,7 +701,10 @@ class HandleTicketRequest(BaseModel):
         ),
     )
     idempotency_key: Optional[str] = Field(
-        default=None, description="Clave de idempotencia (alternativa al header Idempotency-Key)"
+        default=None, min_length=1, max_length=128,
+        description=(
+            "DEPRECADO: usar el header Idempotency-Key. v2 rechaza este campo."
+        ),
     )
 
     @field_validator("record_keeper")

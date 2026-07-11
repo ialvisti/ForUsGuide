@@ -16,7 +16,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
-from fastapi import FastAPI, Request, HTTPException, status, Depends
+from fastapi import FastAPI, Request, HTTPException, status, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -95,8 +95,10 @@ from .middleware import (
     authenticate_request,
     add_request_id,
     log_requests,
-    handle_errors
+    handle_errors,
+    limit_body_size,
 )
+from .rate_limit import FixedWindowRateLimiter
 
 # Configurar logging
 logging.basicConfig(
@@ -323,7 +325,12 @@ async def lifespan(app: FastAPI):
         app.state.ticket_repo = TicketJobRepository(_build_ticket_job_backend())
         app.state.ticket_orchestrator_factory = lambda: _build_orchestrator_from_state(app)
         app.state.ticket_queue = _build_ticket_queue(app)
-        app.state.participant_plan_validator = None  # Task 6: fuente canónica
+        app.state.ticket_rate_limiter = FixedWindowRateLimiter()
+        # Autorización de objetos participant-plan: seam para la fuente
+        # canónica (directorio de participantes). Sin fuente configurada el
+        # productor no puede verificar la asociación — pendiente operativo
+        # documentado en GCP_SERVICES_GUIDE/runbook.
+        app.state.participant_plan_validator = None
         logger.info(
             "✅ Ticket handler wired (mode=%s, backend=%s, queue=%s)",
             settings.TICKET_HANDLER_MODE, settings.TICKET_JOB_BACKEND,
@@ -417,6 +424,7 @@ app.add_middleware(
 )
 
 # Custom Middleware
+app.middleware("http")(limit_body_size)
 app.middleware("http")(add_request_id)
 app.middleware("http")(log_requests)
 app.middleware("http")(handle_errors)
@@ -435,7 +443,19 @@ if UI_DIR.exists():
 # Dependency Functions (read from app.state, not globals)
 # ============================================================================
 
-async def verify_api_key(request: Request):
+from fastapi.security import APIKeyHeader
+
+# Declarado como security scheme para que OpenAPI documente la auth (HT-23).
+_API_KEY_SCHEME = APIKeyHeader(
+    name="X-API-Key", auto_error=False,
+    description="Credencial de cliente (principal). Además, Cloud Run IAM "
+                "exige un identity token en Authorization.",
+)
+
+
+async def verify_api_key(
+    request: Request, api_key: Optional[str] = Security(_API_KEY_SCHEME)
+):
     """Dependency de auth: valida X-API-Key y resuelve el principal del
     caller (API_CLIENT_KEYS o la API_KEY legacy → "default"). El principal
     queda en request.state.principal_id para autorización de objetos."""
@@ -1134,6 +1154,27 @@ async def _accept_ticket_job(
 
     principal = _request_principal(http_request)
 
+    # Cuotas por principal (HT-06): rate limit del productor + cap de jobs
+    # outstanding. El límite global de ejecución lo impone la cola.
+    limiter: FixedWindowRateLimiter = http_request.app.state.ticket_rate_limiter
+    allowed, retry_after = limiter.check(
+        ("handle-ticket", principal), settings.RATE_LIMIT_HANDLE_TICKET
+    )
+    if not allowed:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "RATE_LIMITED", "retryable": True},
+            headers={"Retry-After": str(retry_after)},
+        )
+    outstanding = await repo.count_active(principal)
+    if outstanding >= settings.TICKET_MAX_OUTSTANDING_JOBS:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "TOO_MANY_OUTSTANDING_JOBS", "retryable": True,
+                    "outstanding": outstanding},
+            headers={"Retry-After": "30"},
+        )
+
     # Autorización de objetos: la pareja participant-plan se valida contra la
     # fuente canónica configurada ANTES de aceptar el job (invariante 10).
     validator = getattr(http_request.app.state, "participant_plan_validator", None)
@@ -1354,7 +1395,15 @@ async def handle_ticket_v2(
     repo: TicketJobRepository = Depends(get_ticket_repo),
 ):
     """Contrato v2: SIEMPRE ``202 + polling`` sobre el job durable. La
-    Idempotency-Key viaja sólo en el header."""
+    Idempotency-Key viaja sólo en el header y el rollout es exclusivamente
+    server-side (el body no puede tocar el modo)."""
+    if request.ticket_handler_mode is not None:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "TICKET_HANDLER_MODE_NOT_ALLOWED",
+                    "message": "v2 no acepta override de modo; el rollout es "
+                               "server-side (usar el endpoint administrativo)"},
+        )
     record, replayed = await _accept_ticket_job(
         request, http_request, repo, api_version="v2", allow_body_idem=False
     )

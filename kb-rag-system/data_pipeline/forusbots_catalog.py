@@ -471,12 +471,29 @@ def _validate_payroll_field(fld: str) -> Optional[str]:
     return None
 
 
+# Denylist de datos sensibles: variantes de SSN / social security. La única
+# forma permitida es el campo del catálogo "Partial SSN" (últimos 4).
+_SENSITIVE_FIELD_RE = re.compile(
+    r"\b(ssn|social\s+security(\s+number)?|tax\s*payer\s*id|itin)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_sensitive_field(field_name: str) -> bool:
+    normalized = field_name.strip().lower()
+    if normalized == "partial ssn":
+        return False
+    return bool(_SENSITIVE_FIELD_RE.search(normalized))
+
+
 def validate_modules(modules: Any) -> ValidationResult:
     """Catalog gate — ALWAYS applied before anything is sent to ForusBots.
 
-    Hard rejects: unknown/forbidden module keys, "SSN", malformed entries,
-    invalid payroll tokens. Case fix-up to canonical names. Unknown fields in a
-    VALID module are warn-and-pass (service drift; non-strict ignores them)."""
+    Hard rejects: unknown/forbidden module keys, SSN/social-security variants,
+    malformed entries, invalid payroll tokens, and — desde Task 5 — cualquier
+    campo desconocido dentro de un módulo válido (allowlist CERRADA: los
+    outputs de LLM no pueden solicitar campos nuevos; HT-13). Si el servicio
+    real agrega campos, se versiona el catálogo, no se abre el gate."""
     result = ValidationResult()
     if not isinstance(modules, list):
         if modules is not None:
@@ -503,7 +520,7 @@ def validate_modules(modules: Any) -> ValidationResult:
         canon_map = _CANON[key]
         for fld in raw_fields:
             stripped = fld.strip()
-            if stripped.upper() == "SSN":
+            if _is_sensitive_field(stripped):
                 result.rejected.append({"module": key, "field": stripped,
                                         "reason": "full_ssn_not_permitted"})
                 continue
@@ -519,11 +536,10 @@ def validate_modules(modules: Any) -> ValidationResult:
             if canon:
                 entries.append((key, canon))
             else:
-                # Warn-and-pass: deployed service has fields the local repo
-                # doesn't list; non-strict mode ignores truly unknown ones.
-                result.warnings.append({"module": key, "field": stripped,
-                                        "reason": "unverified_field"})
-                entries.append((key, stripped))
+                # Allowlist cerrada (HT-13): un campo fuera del catálogo se
+                # RECHAZA — un LLM no puede pedir campos nuevos/sensibles.
+                result.rejected.append({"module": key, "field": stripped,
+                                        "reason": "unknown_field"})
 
     result.modules = build_modules(entries)
     return result

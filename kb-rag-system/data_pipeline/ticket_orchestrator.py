@@ -23,13 +23,22 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from data_pipeline import forusbots_catalog, prompts
+from pydantic import ValidationError
+
+from data_pipeline import forusbots_catalog, gr_payload_builder, prompts
 from data_pipeline.forusbots_client import (
     ForusBotsError,
     ForusBotsJobFailed,
     ForusBotsTimeout,
 )
 from data_pipeline.json_parsing import parse_json_array, parse_json_object
+from data_pipeline.llm_output_models import (
+    ExtractedInquiryOut,
+    FieldMapOut,
+    GRBodyDraftOut,
+    KBQuestionSynthesisOut,
+    TicketFieldExtractOut,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +51,55 @@ _TICKET_EXTRACT_MAX_TOKENS = 1500
 
 _DEFAULT_PLAN_TYPE = "401(k)"
 _DEFAULT_GREETING = "Could you share a bit more detail about what you'd like help with?"
+
+# ---------------------------------------------------------------------------
+# Validación semántica de evidencia (Task 5 Step 4)
+# ---------------------------------------------------------------------------
+
+_NUM_TOKEN_RE = re.compile(r"-?\$?\d[\d,]*(?:\.\d+)?")
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
+    "december": 12,
+}
+
+
+def _numbers_in(text: str) -> set:
+    values = set()
+    for token in _NUM_TOKEN_RE.findall(text):
+        try:
+            values.add(float(token.replace("$", "").replace(",", "")))
+        except ValueError:
+            continue
+    return values
+
+
+def _evidence_supports_value(value: Any, evidence: str,
+                             data_type: Optional[str]) -> bool:
+    """La presencia literal de una cita no prueba que el VALOR corresponda.
+    Para tipos numéricos/fecha el valor debe derivarse de la evidencia; lo no
+    verificable se trata como no extraído (fail-closed)."""
+    dt = str(data_type or "").lower()
+    if dt in ("currency", "number") or dt.startswith("list[currency]") \
+            or dt.startswith("list[number]"):
+        try:
+            numeric = float(str(value).replace("$", "").replace(",", ""))
+        except (TypeError, ValueError):
+            return False
+        candidates = _numbers_in(evidence)
+        return any(abs(numeric - c) < 0.005 for c in candidates)
+    if dt == "date":
+        value_nums = {int(t) for t in re.findall(r"\d+", str(value))}
+        if not value_nums:
+            return False
+        ev_lower = evidence.lower()
+        ev_nums = {int(t) for t in re.findall(r"\d+", evidence)}
+        ev_nums.update(num for name, num in _MONTHS.items() if name in ev_lower)
+        ev_nums.update(num for name, num in _MONTHS.items()
+                       if name[:3] in re.findall(r"[a-z]{3,}", ev_lower))
+        return value_nums <= ev_nums
+    # boolean/text: la capa literal (cita presente en el ticket) es el gate.
+    return True
 
 
 # ============================================================================
@@ -256,21 +314,36 @@ class TicketOrchestrator:
             return []
 
         extracted: List[ExtractedInquiry] = []
+        dropped = 0
         for it in items:
             if not isinstance(it, dict):
+                dropped += 1
                 continue
-            inquiry = (it.get("inquiry") or "").strip()
-            if not inquiry:
+            # normalización tolerante ANTES del schema estricto: defaults que
+            # el contrato permite omitir
+            normalized = {
+                "inquiry": (it.get("inquiry") or "").strip(),
+                "topic": (str(it.get("topic") or "general").strip() or "general"),
+                "record_keeper": it.get("record_keeper"),
+                "plan_type": it.get("plan_type") or _DEFAULT_PLAN_TYPE,
+                "related_inquiries": it.get("related_inquiries") or [],
+            }
+            try:
+                out = ExtractedInquiryOut.model_validate(normalized)
+            except ValidationError:
+                dropped += 1
                 continue
-            rk = it.get("record_keeper")
+            rk = out.record_keeper
             rk = rk if (rk not in (None, "", "N/A")) else req.record_keeper
             extracted.append(ExtractedInquiry(
-                inquiry=inquiry,
+                inquiry=out.inquiry,
                 record_keeper=rk,
-                plan_type=(it.get("plan_type") or _DEFAULT_PLAN_TYPE),
-                topic=(it.get("topic") or "general").strip() or "general",
-                related_inquiries=it.get("related_inquiries"),
+                plan_type=out.plan_type or _DEFAULT_PLAN_TYPE,
+                topic=out.topic,
+                related_inquiries=out.related_inquiries or None,
             ))
+        if dropped:
+            logger.warning("extract_inquiries: %d items inválidos descartados", dropped)
         return _inject_account_access_guard(extracted, req)
 
     # ------------------------------------------------------------------
@@ -353,8 +426,15 @@ class TicketOrchestrator:
             logger.exception("kb_question_synthesis failed")
             parsed = None
 
-        question = (parsed or {}).get("question")
-        if not parsed or parsed.get("insufficient_inquiry") or not question:
+        synthesis: Optional[KBQuestionSynthesisOut] = None
+        if isinstance(parsed, dict):
+            try:
+                synthesis = KBQuestionSynthesisOut.model_validate(parsed)
+            except ValidationError:
+                diag["kb_synthesis_invalid_output"] = True
+
+        question = synthesis.question if synthesis else None
+        if synthesis is None or synthesis.insufficient_inquiry or not question:
             return InquiryOutcome(
                 inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
                 record_keeper=ext.record_keeper, plan_type=ext.plan_type,
@@ -422,23 +502,31 @@ class TicketOrchestrator:
             if diag.get("unmapped_fields"):
                 diag["unmapped_fields"] = fm["unmapped"]
 
-        # 3) build /generate-response body via the body-builder agent
-        body = await self._build_gr_body(
+        # 3) collected_data DETERMINÍSTICO (Task 5, HT-03): los hechos vienen
+        # del scrape normalizado + extracción evidence-gated; el LLM no puede
+        # aportar ni alterar valores.
+        collected_data = gr_payload_builder.build_collected_data(
+            ppt_modules, plan_modules, extracted,
+            company_name=req.company_name, company_status=req.company_status,
+        )
+
+        # 4) el body-builder queda como agente de REDACCIÓN: enriquece la
+        # inquiry y afina el topic. Nada más de su output se usa.
+        draft = await self._build_gr_body(
             ppt_modules, plan_modules, scrape_meta, scrape_status,
             req, ext, total_inquiries, diag, ticket_extracted=extracted,
         )
 
-        collected_data = body.get("collected_data") if isinstance(body, dict) else None
-        collected_data = collected_data if isinstance(collected_data, dict) else {}
-
+        # 5) campos server-owned SIEMPRE fijados desde fuentes confiables
+        # (invariante 4 / HT-22): el LLM no controla límites ni conteos.
         gr = await self.deps.rag_engine.generate_response(
-            inquiry=(body.get("inquiry") or ext.inquiry),
-            record_keeper=body.get("record_keeper", ext.record_keeper),
-            plan_type=(body.get("plan_type") or ext.plan_type),
-            topic=(body.get("topic") or ext.topic),
+            inquiry=(draft.inquiry or ext.inquiry),
+            record_keeper=ext.record_keeper,
+            plan_type=(draft.plan_type or ext.plan_type),
+            topic=(draft.topic or ext.topic),
             collected_data=collected_data,
-            max_response_tokens=int(body.get("max_response_tokens") or req.max_response_tokens),
-            total_inquiries_in_ticket=int(body.get("total_inquiries_in_ticket") or total_inquiries),
+            max_response_tokens=req.max_response_tokens,
+            total_inquiries_in_ticket=total_inquiries,
         )
         return InquiryOutcome(
             inquiry=ext.inquiry, topic=ext.topic, route="generate_response",
@@ -500,10 +588,20 @@ class TicketOrchestrator:
             except Exception:
                 logger.exception("forusbots_field_map failed")
                 mapping = {}
-            raw_modules = mapping.get("modules")
-            llm_modules = raw_modules if isinstance(raw_modules, list) else []
-            llm_unmapped = mapping.get("_unmapped") or []
-            if not mapping:
+            # Schema estricto (HT-12): output fuera de contrato = mapper failure
+            field_map: Optional[FieldMapOut] = None
+            if mapping:
+                try:
+                    field_map = FieldMapOut.model_validate(mapping)
+                except ValidationError:
+                    logger.warning("forusbots_field_map: output inválido descartado")
+            if field_map is not None:
+                llm_modules = [
+                    {"key": m.key, "fields": list(m.fields)}
+                    for m in field_map.modules
+                ]
+                llm_unmapped = list(field_map.unmapped)
+            else:
                 llm_failed = True
                 llm_unmapped = [
                     {"field": it.get("field"), "reason": "mapper_parse_failure"}
@@ -644,8 +742,11 @@ class TicketOrchestrator:
         where ``extracted`` is keyed by normalized slug →
         ``{"field", "value", "evidence"}``.
 
-        Hard anti-hallucination gate: an extraction whose ``evidence`` quote is
-        not actually present in the ticket text is demoted to not_found."""
+        Hard anti-hallucination gate (dos capas, Task 5):
+        1. literal — la cita de ``evidence`` debe existir en el ticket;
+        2. semántica — para tipos currency/number/date el valor debe poder
+           derivarse de la evidencia (``evidence="$5"`` con ``value=999999999``
+           se demote). Lo no verificable queda como not_found."""
         fields_payload = [
             {"field": it.get("field"), "description": it.get("description"),
              "why_needed": it.get("why_needed"), "required": it.get("required")}
@@ -665,28 +766,41 @@ class TicketOrchestrator:
             logger.exception("ticket_field_extract failed")
             parsed = {}
 
+        extraction: Optional[TicketFieldExtractOut] = None
+        if isinstance(parsed, dict) and parsed:
+            try:
+                extraction = TicketFieldExtractOut.model_validate(parsed)
+            except ValidationError:
+                logger.warning("ticket_field_extract: output inválido descartado")
+
+        data_types = {
+            forusbots_catalog._normalize_slug(str(it.get("field"))): it.get("data_type")
+            for it in candidates
+        }
         ticket_text = " ".join(
             str(t or "") for t in (req.ticket.email_subject, req.ticket.email_body)
         ).lower()
         extracted: Dict[str, Dict[str, Any]] = {}
         demoted: List[str] = []
-        raw_extracted = parsed.get("extracted")
-        if isinstance(raw_extracted, dict):
-            for field_name, entry in raw_extracted.items():
-                if not isinstance(entry, dict):
-                    continue
-                evidence = str(entry.get("evidence") or "").strip()
+        if extraction is not None:
+            for field_name, entry in extraction.extracted.items():
+                evidence = entry.evidence.strip()
                 if not evidence or evidence.lower() not in ticket_text:
                     demoted.append(field_name)
                     continue
-                extracted[forusbots_catalog._normalize_slug(field_name)] = {
+                slug = forusbots_catalog._normalize_slug(field_name)
+                if not _evidence_supports_value(entry.value, evidence,
+                                                data_types.get(slug)):
+                    demoted.append(field_name)
+                    continue
+                extracted[slug] = {
                     "field": field_name,
-                    "value": entry.get("value"),
+                    "value": entry.value,
                     "evidence": evidence,
                 }
 
-        not_found = [str(f) for f in (parsed.get("not_found") or [])] + demoted
-        if not parsed:
+        not_found = ([str(f) for f in extraction.not_found] if extraction else []) + demoted
+        if extraction is None:
             not_found = [str(it.get("field")) for it in candidates]
 
         fm = diag.setdefault("field_mapping", {})
@@ -707,7 +821,11 @@ class TicketOrchestrator:
         total_inquiries: int,
         diag: Dict[str, Any],
         ticket_extracted: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+    ) -> GRBodyDraftOut:
+        """Agente de REDACCIÓN (Task 5): sólo se consumen ``inquiry``/``topic``/
+        ``plan_type`` de su output; collected_data, límites, conteos e IDs los
+        fija el código (gr_payload_builder + request). Un fallo aquí degrada la
+        redacción, nunca los hechos."""
         entry: Dict[str, Any] = {
             "pptDataModules": ppt_modules,
             "caseData": self._build_case_data(req),
@@ -734,24 +852,14 @@ class TicketOrchestrator:
         except Exception:
             logger.exception("gr_body_build failed")
             body = None
-        if not isinstance(body, dict):
-            # degraded fallback: minimal body so generate_response still runs
-            diag["gr_body_build_failed"] = True
-            body = {
-                "inquiry": ext.inquiry, "record_keeper": ext.record_keeper,
-                "plan_type": ext.plan_type, "topic": ext.topic,
-                "collected_data": {}, "total_inquiries_in_ticket": total_inquiries,
-            }
-        # Defensive merge: every ticket-extracted value must survive into
-        # collected_data even if the body-builder dropped it.
-        if ticket_extracted:
-            cd = body.setdefault("collected_data", {})
-            if isinstance(cd, dict):
-                pd = cd.setdefault("participant_data", {})
-                if isinstance(pd, dict):
-                    for v in ticket_extracted.values():
-                        pd.setdefault(v["field"], v["value"])
-        return body
+        if isinstance(body, dict):
+            try:
+                return GRBodyDraftOut.model_validate(body)
+            except ValidationError:
+                diag["gr_body_build_invalid_output"] = True
+        diag["gr_body_build_failed"] = True
+        return GRBodyDraftOut(inquiry=ext.inquiry, topic=ext.topic,
+                              plan_type=ext.plan_type)
 
     # ------------------------------------------------------------------
     # Input shaping

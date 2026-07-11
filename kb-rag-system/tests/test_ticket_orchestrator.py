@@ -407,7 +407,12 @@ class TestGenerateBranch:
         assert '"Account Balance": 123' in gr_user
         assert '"state"' not in gr_user
         kw = rag.generate_response.await_args.kwargs
-        assert kw["collected_data"] == {"participant_data": {"account_balance": 123}}
+        # collected_data ahora es DETERMINÍSTICO (Task 5): scrape + request
+        assert kw["collected_data"] == {
+            "participant_data": {"account_balance": 123},
+            "plan_data": {"company_name": "StarWars Inc.",
+                          "company_status": "Ongoing"},
+        }
         assert kw["inquiry"] == "enriched OUT rollover"
         assert kw["total_inquiries_in_ticket"] == 2
         forusbots.scrape_participant.assert_awaited_once()

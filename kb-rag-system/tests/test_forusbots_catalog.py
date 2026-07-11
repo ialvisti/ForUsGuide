@@ -246,10 +246,22 @@ class TestBuildMergeValidate:
         assert res.modules == [{"key": "census", "fields": ["First Name"]}]
         assert res.rejected[0]["reason"] == "full_ssn_not_permitted"
 
-    def test_validate_unknown_field_warn_and_pass(self):
+    def test_validate_unknown_field_is_rejected(self):
+        """HT-13: allowlist CERRADA — un campo fuera del catálogo (p.ej.
+        inventado por el LLM mapper) se rechaza, nunca se reenvía a ForusBots.
+        Si el servicio real agrega campos, se versiona el catálogo."""
         res = validate_modules([{"key": "savings_rate", "fields": ["Mystery Field"]}])
-        assert res.modules == [{"key": "savings_rate", "fields": ["Mystery Field"]}]
-        assert res.warnings[0]["reason"] == "unverified_field"
+        assert res.modules == []
+        assert res.rejected[0]["reason"] == "unknown_field"
+
+    def test_validate_rejects_ssn_variants(self):
+        """El denylist cubre variantes, no sólo el string exacto 'SSN'."""
+        res = validate_modules([{
+            "key": "census",
+            "fields": ["Social Security Number", "Partial SSN"],
+        }])
+        assert res.modules == [{"key": "census", "fields": ["Partial SSN"]}]
+        assert res.rejected[0]["reason"] == "full_ssn_not_permitted"
 
     def test_validate_payroll_tokens(self):
         res = validate_modules([{"key": "payroll",

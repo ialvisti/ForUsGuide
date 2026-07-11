@@ -95,6 +95,27 @@ class Settings(BaseSettings):
     TICKET_MAX_RELATED: int = 3
     RATE_LIMIT_HANDLE_TICKET: int = 20
 
+    # Durable ticket jobs (Task 3/4 del plan de remediación).
+    #   TICKET_JOB_BACKEND: "memory" (dev/tests) | "firestore" (producción)
+    #   TICKET_TASK_QUEUE:  "inline" (dev/tests) | "cloudtasks" (producción)
+    # Producción con modo activo exige firestore + cloudtasks (fail-closed).
+    TICKET_JOB_BACKEND: str = "memory"
+    TICKET_TASK_QUEUE: str = "inline"
+    TICKET_JOB_RETENTION_S: int = 86400
+    FIRESTORE_TICKET_COLLECTION_PREFIX: str = ""
+    CLOUD_TASKS_QUEUE: str = "ticket-jobs"
+    CLOUD_TASKS_LOCATION: str = "us-central1"
+    TICKET_WORKER_URL: str = ""            # URL pública del worker (Cloud Tasks target)
+    TICKET_WORKER_SERVICE_ACCOUNT: str = ""  # SA que firma el OIDC de Cloud Tasks
+    TICKET_WORKER_REQUIRE_OIDC: bool = True
+    # v1 adapter: espera corta para poder responder 200 inline en rutas rápidas
+    # ya terminadas; si el job sigue vivo al vencer, responde 202 + poll.
+    TICKET_V1_INLINE_WAIT_S: float = 3.0
+
+    # Identidad de clientes: nombre de principal → API key. La API_KEY legacy
+    # mapea al principal "default". (Task 6 añade rotación/scopes.)
+    API_CLIENT_KEYS: dict = {}
+
     # Pinecone
     PINECONE_API_KEY: str = ""
     INDEX_NAME: str = "kb-articles-production"
@@ -216,6 +237,36 @@ def validate_settings():
                 "FORUSBOTS_BASE_URL no usa https:// — permitido sólo fuera de "
                 "producción. El token y PII viajan sin cifrar."
             )
+
+    # Ejecución durable fail-closed: producción con modo activo no puede
+    # depender de memoria de proceso ni de asyncio local (HT-01).
+    if settings.TICKET_JOB_BACKEND not in {"memory", "firestore"}:
+        errors.append(
+            f"TICKET_JOB_BACKEND={settings.TICKET_JOB_BACKEND} inválido "
+            "(se esperaba memory|firestore)"
+        )
+    if settings.TICKET_TASK_QUEUE not in {"inline", "cloudtasks"}:
+        errors.append(
+            f"TICKET_TASK_QUEUE={settings.TICKET_TASK_QUEUE} inválido "
+            "(se esperaba inline|cloudtasks)"
+        )
+    if (
+        settings.TICKET_HANDLER_MODE in valid_ticket_modes - {"disabled"}
+        and settings.ENVIRONMENT == "production"
+    ):
+        if settings.TICKET_JOB_BACKEND != "firestore":
+            errors.append(
+                "producción con ticket handler activo requiere "
+                "TICKET_JOB_BACKEND=firestore (los jobs no pueden vivir en "
+                "memoria de proceso)"
+            )
+        if settings.TICKET_TASK_QUEUE != "cloudtasks":
+            errors.append(
+                "producción con ticket handler activo requiere "
+                "TICKET_TASK_QUEUE=cloudtasks"
+            )
+        if settings.TICKET_TASK_QUEUE == "cloudtasks" and not settings.TICKET_WORKER_URL:
+            errors.append("TICKET_TASK_QUEUE=cloudtasks requiere TICKET_WORKER_URL")
 
     if errors:
         raise ValueError(f"Configuración inválida: {', '.join(errors)}")

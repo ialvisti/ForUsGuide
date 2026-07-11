@@ -20,7 +20,6 @@ from fastapi import FastAPI, Request, HTTPException, status, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
-from cachetools import TTLCache
 import sys
 from pathlib import Path
 
@@ -45,11 +44,24 @@ from data_pipeline.inquiry_router import (
 )
 from data_pipeline.forusbots_client import ForusBotsClient
 from data_pipeline.ticket_orchestrator import (
-    InquiryOutcome,
     OrchestratorDeps,
     TicketOrchestrator,
 )
-from data_pipeline.ticket_jobs import TicketJobStore
+from data_pipeline.ticket_job_models import (
+    TERMINAL_STATES,
+    CreateOrGetOutcome,
+    TicketJobRecord,
+    TicketJobState,
+    fingerprint_request,
+    new_job_record,
+    utcnow,
+)
+from data_pipeline.ticket_job_repository import (
+    FirestoreTicketJobBackend,
+    InMemoryTicketJobBackend,
+    TicketJobRepository,
+)
+from data_pipeline.ticket_task_queue import CloudTasksTicketQueue, InlineTicketQueue
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -72,6 +84,9 @@ from .models import (
     TicketHandleResponse,
     TicketJobHandle,
     TicketStatusResponse,
+    TicketJobAcceptedV2,
+    TicketJobStatusV2,
+    InquiryStatusV2,
     InquiryResult,
     RouteDecision,
 )
@@ -301,15 +316,18 @@ async def lifespan(app: FastAPI):
         else:
             app.state.execution_logger = None
 
-        # End-to-end ticket handler wiring: ForusBots client + in-process job
-        # store + idempotency cache + background-task registry. The orchestrator
-        # itself is built per-request (cheap) from these on app.state.
+        # End-to-end ticket handler wiring (Tasks 3/4): ForusBots client +
+        # repositorio DURABLE de jobs (compartido entre instancias) + cola de
+        # ejecución. El orchestrator se construye on-demand desde app.state.
         app.state.forusbots_client = ForusBotsClient.from_settings(settings)
-        app.state.ticket_jobs = TicketJobStore(ttl_s=settings.TICKET_JOB_TTL_S)
-        app.state.ticket_idem = TTLCache(maxsize=2048, ttl=settings.TICKET_JOB_TTL_S)
-        app.state.bg_tasks = set()
+        app.state.ticket_repo = TicketJobRepository(_build_ticket_job_backend())
+        app.state.ticket_orchestrator_factory = lambda: _build_orchestrator_from_state(app)
+        app.state.ticket_queue = _build_ticket_queue(app)
+        app.state.participant_plan_validator = None  # Task 6: fuente canónica
         logger.info(
-            "✅ Ticket handler wired (mode=%s)", settings.TICKET_HANDLER_MODE
+            "✅ Ticket handler wired (mode=%s, backend=%s, queue=%s)",
+            settings.TICKET_HANDLER_MODE, settings.TICKET_JOB_BACKEND,
+            settings.TICKET_TASK_QUEUE,
         )
 
         logger.info("=" * 80)
@@ -324,12 +342,56 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     logger.info("Shutting down API...")
+    queue = getattr(app.state, "ticket_queue", None)
+    if queue is not None:
+        try:
+            await queue.aclose()
+        except Exception:
+            logger.exception("Error closing ticket queue")
     forusbots = getattr(app.state, "forusbots_client", None)
     if forusbots is not None:
         try:
             await forusbots.aclose()
         except Exception:
             logger.exception("Error closing ForusBots client")
+
+
+def _build_ticket_job_backend():
+    """memory (dev/tests) | firestore (producción; validate_settings lo exige
+    con el handler activo)."""
+    if settings.TICKET_JOB_BACKEND == "firestore":
+        return FirestoreTicketJobBackend(
+            project=settings.GCP_PROJECT or None,
+            collection_prefix=settings.FIRESTORE_TICKET_COLLECTION_PREFIX,
+        )
+    return InMemoryTicketJobBackend()
+
+
+def _build_orchestrator_from_state(app: FastAPI) -> TicketOrchestrator:
+    st = app.state
+    deps = OrchestratorDeps(
+        rag_engine=st.rag_engine,
+        inquiry_router=st.inquiry_router,
+        llm_router=st.llm_router,
+        forusbots=st.forusbots_client,
+        execution_logger=getattr(st, "execution_logger", None),
+    )
+    return TicketOrchestrator(deps, settings)
+
+
+def _build_ticket_queue(app: FastAPI):
+    """cloudtasks (producción) | inline (dev/tests, mismo worker durable)."""
+    if settings.TICKET_TASK_QUEUE == "cloudtasks":
+        return CloudTasksTicketQueue(
+            project=settings.GCP_PROJECT,
+            location=settings.CLOUD_TASKS_LOCATION,
+            queue=settings.CLOUD_TASKS_QUEUE,
+            worker_url=settings.TICKET_WORKER_URL,
+            service_account=settings.TICKET_WORKER_SERVICE_ACCOUNT,
+        )
+    from api.ticket_worker import run_ticket_job
+
+    return InlineTicketQueue(lambda job_id: run_ticket_job(app, job_id))
 
 
 # ============================================================================
@@ -359,6 +421,10 @@ app.middleware("http")(add_request_id)
 app.middleware("http")(log_requests)
 app.middleware("http")(handle_errors)
 
+# Worker interno de ticket jobs (Cloud Tasks target; OIDC-protected)
+from api.ticket_worker import router as _ticket_worker_router  # noqa: E402
+app.include_router(_ticket_worker_router)
+
 # Mount UI static files
 UI_DIR = Path(__file__).parent.parent / "ui"
 if UI_DIR.exists():
@@ -370,8 +436,11 @@ if UI_DIR.exists():
 # ============================================================================
 
 async def verify_api_key(request: Request):
-    """Dependency para verificar API key."""
-    await authenticate_request(request)
+    """Dependency de auth: valida X-API-Key y resuelve el principal del
+    caller (API_CLIENT_KEYS o la API_KEY legacy → "default"). El principal
+    queda en request.state.principal_id para autorización de objetos."""
+    from api.auth import authenticate_principal
+    await authenticate_principal(request)
 
 
 def get_rag_engine(request: Request) -> RAGEngine:
@@ -978,21 +1047,14 @@ def get_ticket_orchestrator(request: Request) -> TicketOrchestrator:
     return TicketOrchestrator(deps, settings)
 
 
-def get_ticket_jobs(request: Request) -> TicketJobStore:
-    jobs = getattr(request.app.state, "ticket_jobs", None)
-    if jobs is None:
+def get_ticket_repo(request: Request) -> TicketJobRepository:
+    repo = getattr(request.app.state, "ticket_repo", None)
+    if repo is None:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ticket jobs store not initialized",
+            detail="Ticket job repository not initialized",
         )
-    return jobs
-
-
-def _apply_ticket_handler_mode(route: str, mode: str) -> Tuple[str, Optional[str]]:
-    """Gating mirror of ``_apply_router_mode`` for the ticket handler."""
-    if mode == "knowledge_only" and route == "generate_response":
-        return "needs_more_info", "ticket_handler_mode=knowledge_only coerced generate_response"
-    return route, None
+    return repo
 
 
 # Orden de restrictividad del rollout: el body sólo puede movernos hacia la
@@ -1014,156 +1076,173 @@ def _effective_ticket_mode(server_mode: str, requested: Optional[str]) -> str:
     return server_mode
 
 
-def _knowledge_answer_model(r: Any) -> KnowledgeQuestionResponse:
-    return KnowledgeQuestionResponse(
-        answer=r.answer,
-        key_points=r.key_points,
-        source_articles=[SourceArticle(**sa) for sa in r.source_articles],
-        used_chunks=[UsedChunk(**uc) for uc in r.used_chunks],
-        confidence_note=r.confidence_note,
-        metadata=r.metadata,
-    )
+def _request_principal(http_request: Request) -> str:
+    return getattr(http_request.state, "principal_id", None) or "default"
 
 
-def _generate_result_model(r: Any) -> GenerateResponseResult:
-    return GenerateResponseResult(
-        decision=r.decision,
-        confidence=r.confidence,
-        response=r.response,
-        source_articles=[SourceArticle(**sa) for sa in r.source_articles],
-        used_chunks=[UsedChunk(**uc) for uc in r.used_chunks],
-        coverage_gaps=r.coverage_gaps,
-        metadata=r.metadata,
-    )
-
-
-def _outcome_to_inquiry_result(o: InquiryOutcome) -> InquiryResult:
-    """Convert the orchestrator's raw-dataclass outcome to the Pydantic model,
-    reusing the exact conversions the per-endpoint handlers use."""
-    return InquiryResult(
-        inquiry=o.inquiry,
-        topic=o.topic,
-        record_keeper=o.record_keeper,
-        plan_type=o.plan_type,
-        route=RouteDecision(o.route),
-        scrape_status=o.scrape_status,
-        knowledge_answer=_knowledge_answer_model(o.knowledge_result) if o.knowledge_result is not None else None,
-        generate_response=_generate_result_model(o.generate_result) if o.generate_result is not None else None,
-        needs_more_info_message=o.needs_more_info_message,
-        diagnostics=o.diagnostics,
-    )
-
-
-def _nmi_outcome(ext: Any, message: str, diagnostics: Optional[Dict[str, Any]] = None) -> InquiryOutcome:
-    return InquiryOutcome(
-        inquiry=ext.inquiry,
-        topic=ext.topic,
-        route="needs_more_info",
-        record_keeper=ext.record_keeper,
-        plan_type=ext.plan_type,
-        needs_more_info_message=message,
-        diagnostics=diagnostics or {},
-    )
-
-
-async def _handle_one_gated(
-    orch: TicketOrchestrator, ext: Any, req: HandleTicketRequest, total: int,
-    classification: Any, override_reason: Optional[str],
-) -> InquiryOutcome:
-    """Run one inquiry, honoring a mode coercion (knowledge_only) without
-    re-classifying."""
-    if override_reason is not None:
-        message = getattr(classification, "user_message", None) or _TICKET_GREETING
-        return _nmi_outcome(ext, message, {
-            "classifier": {"route": getattr(classification, "route", None),
-                           "confidence": getattr(classification, "confidence", None)},
-            "ticket_handler_override": override_reason,
-        })
-    return await orch.handle_inquiry(
-        ext, req, total_inquiries=total, classification=classification
-    )
-
-
-def _aggregate_job_state(outcomes: List[InquiryOutcome]) -> str:
-    degraded = any(
-        o.route == "generate_response" and o.scrape_status in ("failed", "timeout")
-        for o in outcomes
-    )
-    return "partial" if degraded else "succeeded"
-
-
-async def _log_ticket_safe(
-    exec_logger: Optional[ExecutionLogger], http_request: Request,
-    req: HandleTicketRequest, start: float, mode: str,
-    outcomes: List[InquiryOutcome], error: Optional[str],
-    ticket_job_id: Optional[str] = None,
-) -> None:
-    if not exec_logger:
-        return
-    try:
-        duration_ms = (time.monotonic() - start) * 1000
-        route_summary = [
-            {"topic": o.topic, "route": o.route, "scrape_status": o.scrape_status}
-            for o in outcomes
-        ]
-        fb_ids = [
-            o.diagnostics.get("forusbots_job_id")
-            for o in outcomes if o.diagnostics.get("forusbots_job_id")
-        ]
-        await exec_logger.log_ticket_execution(
-            request_id=getattr(http_request.state, "request_id", "unknown"),
-            ticket_job_id=ticket_job_id,
-            mode=mode,
-            route_summary=route_summary,
-            total_inquiries=len(outcomes),
-            forusbots_job_ids=fb_ids,
-            duration_ms=duration_ms,
-            error=error,
-            idempotency_key=req.idempotency_key,
+def _extract_idempotency_key(
+    request: HandleTicketRequest, http_request: Request, *, allow_body: bool = True
+) -> Optional[str]:
+    """Key del header (preferida) o del body (v1 legacy). Conflictos y
+    tamaños fuera de [1, 128] se rechazan (HT-05/HT-06)."""
+    header_key = http_request.headers.get("Idempotency-Key")
+    body_key = request.idempotency_key
+    if body_key and not allow_body:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "IDEMPOTENCY_KEY_IN_BODY",
+                    "message": "v2 sólo acepta el header Idempotency-Key"},
         )
-    except Exception:
-        logger.exception("ticket execution logging failed")
-
-
-async def _run_ticket_job(
-    app: FastAPI, job_id: str, orch: TicketOrchestrator,
-    capped: List[Any], classifications: List[Any], gated: List[Tuple[str, Optional[str]]],
-    req: HandleTicketRequest, total: int,
-    exec_logger: Optional[ExecutionLogger], http_request: Request,
-    mode: str, start: float,
-) -> None:
-    """Background runner for the slow (generate_response) path."""
-    jobs: TicketJobStore = app.state.ticket_jobs
-    jobs.set_state(job_id, state="running")
-    try:
-        async def _process() -> List[InquiryOutcome]:
-            outs: List[InquiryOutcome] = []
-            for ext, c, (_er, reason) in zip(capped, classifications, gated):
-                out = await asyncio.wait_for(
-                    _handle_one_gated(orch, ext, req, total, c, reason),
-                    settings.TICKET_INQUIRY_BUDGET_S,
-                )
-                outs.append(out)
-            return outs
-
-        outcomes = await asyncio.wait_for(_process(), settings.TICKET_TOTAL_BUDGET_S)
-        fb_ids = [
-            o.diagnostics.get("forusbots_job_id")
-            for o in outcomes if o.diagnostics.get("forusbots_job_id")
-        ]
-        jobs.set_state(
-            job_id, state=_aggregate_job_state(outcomes), outcomes=outcomes,
-            forusbots_job_ids=fb_ids, total_inquiries=total,
+    if header_key and body_key and header_key != body_key:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "IDEMPOTENCY_KEY_CONFLICT",
+                    "message": "header y body traen keys distintas"},
         )
-        await _log_ticket_safe(exec_logger, http_request, req, start, mode, outcomes, None, ticket_job_id=job_id)
-    except asyncio.TimeoutError:
-        logger.warning("ticket job %s exceeded total budget", job_id)
-        jobs.set_state(job_id, state="timeout", error="ticket_total_budget_exceeded")
-        await _log_ticket_safe(exec_logger, http_request, req, start, mode, [], "timeout", ticket_job_id=job_id)
-    except Exception as e:  # noqa: BLE001
-        logger.exception("ticket job %s failed", job_id)
-        jobs.set_state(job_id, state="failed", error=str(e))
-        await _log_ticket_safe(exec_logger, http_request, req, start, mode, [], str(e), ticket_job_id=job_id)
+    key = header_key or body_key
+    if key is not None and not (1 <= len(key) <= 128):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={"code": "IDEMPOTENCY_KEY_INVALID",
+                    "message": "Idempotency-Key debe tener entre 1 y 128 caracteres"},
+        )
+    return key
+
+
+async def _accept_ticket_job(
+    request: HandleTicketRequest,
+    http_request: Request,
+    repo: TicketJobRepository,
+    *,
+    api_version: str,
+    allow_body_idem: bool = True,
+) -> Tuple[TicketJobRecord, bool]:
+    """Productor común v1/v2: autoriza, valida, reserva idempotencia en
+    transacción ANTES de cualquier LLM, y confirma record + task encolado.
+
+    Devuelve (record, idempotency_replayed). Un crash entre record y enqueue
+    se cierra reasegurando el enqueue en el retry (task name determinístico).
+    """
+    effective_mode = _effective_ticket_mode(
+        settings.TICKET_HANDLER_MODE, request.ticket_handler_mode
+    )
+    if effective_mode == "disabled":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Ticket handler is disabled.",
+        )
+
+    principal = _request_principal(http_request)
+
+    # Autorización de objetos: la pareja participant-plan se valida contra la
+    # fuente canónica configurada ANTES de aceptar el job (invariante 10).
+    validator = getattr(http_request.app.state, "participant_plan_validator", None)
+    if validator is not None:
+        try:
+            pair_ok = await validator(request.participant_id, request.plan_id)
+        except Exception:
+            logger.exception("participant-plan validator failed")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
+            )
+        if not pair_ok:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail={"code": "PARTICIPANT_PLAN_MISMATCH"},
+            )
+
+    idem_key = _extract_idempotency_key(
+        request, http_request, allow_body=allow_body_idem
+    )
+    payload = request.model_dump(mode="json", exclude={"idempotency_key"})
+    fingerprint = fingerprint_request(payload)
+    candidate = new_job_record(
+        principal_id=principal,
+        request_fingerprint=fingerprint,
+        retention_s=settings.TICKET_JOB_RETENTION_S,
+        mode=effective_mode,
+        api_version=api_version,
+        ticket_id=request.ticket.ticket_id,
+        request_payload=payload,
+        trace_id=getattr(http_request.state, "request_id", None),
+    )
+    record, outcome = await repo.create_or_get(
+        principal_id=principal,
+        idempotency_key=idem_key,
+        request_fingerprint=fingerprint,
+        candidate=candidate,
+    )
+    if outcome == CreateOrGetOutcome.CONFLICT or record is None:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={"code": "IDEMPOTENCY_PAYLOAD_MISMATCH",
+                    "message": "la misma Idempotency-Key ya se usó con otro payload"},
+        )
+    replayed = outcome == CreateOrGetOutcome.REPLAYED
+
+    if record.enqueue_state != "enqueued":
+        queue = http_request.app.state.ticket_queue
+        task_name = await queue.ensure_enqueued(record.job_id)
+        record = await repo.mark_enqueued(record.job_id, task_name)
+
+    return record, replayed
+
+
+async def _wait_for_terminal(
+    repo: TicketJobRepository, job_id: str, budget_s: float
+) -> Optional[TicketJobRecord]:
+    """Espera corta del adapter v1 para responder 200 inline en rutas rápidas
+    ya terminadas. Nunca bloquea más allá del budget."""
+    deadline = time.monotonic() + max(budget_s, 0.0)
+    while True:
+        record = await repo.get(job_id)
+        if record is not None and record.state in TERMINAL_STATES:
+            return record
+        if time.monotonic() >= deadline:
+            return record
+        await asyncio.sleep(0.05)
+
+
+def _record_results(record: TicketJobRecord) -> List[InquiryResult]:
+    return [
+        InquiryResult.model_validate(e["result"])
+        for e in record.per_inquiry_status
+        if e.get("result")
+    ]
+
+
+def _record_has_generate_response(record: TicketJobRecord) -> bool:
+    return any(
+        e.get("route") == "generate_response" for e in record.per_inquiry_status
+    )
+
+
+def _record_elapsed_s(record: TicketJobRecord) -> Optional[float]:
+    """Congelado en terminal (HT-26); en vivo sólo mientras corre."""
+    if record.state in TERMINAL_STATES:
+        return record.elapsed_s
+    if record.created_at is None:
+        return None
+    return round((utcnow() - record.created_at).total_seconds(), 2)
+
+
+def _job_handle_response(record: TicketJobRecord, replayed: bool) -> JSONResponse:
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        headers={
+            "Location": f"/api/v1/tickets/{record.job_id}",
+            "Retry-After": "3",
+            "Cache-Control": "no-store",
+        },
+        content=TicketJobHandle(
+            ticket_job_id=record.job_id,
+            state=record.state.value,
+            poll_url=f"/api/v1/tickets/{record.job_id}",
+            estimate={"avg_seconds": int(settings.FORUSBOTS_MAX_WAIT_S),
+                      "idempotency_replayed": replayed},
+        ).model_dump(),
+    )
 
 
 @app.post(
@@ -1175,135 +1254,47 @@ async def _run_ticket_job(
 async def handle_ticket_endpoint(
     request: HandleTicketRequest,
     http_request: Request,
-    orchestrator: TicketOrchestrator = Depends(get_ticket_orchestrator),
-    jobs: TicketJobStore = Depends(get_ticket_jobs),
-    exec_logger: Optional[ExecutionLogger] = Depends(get_execution_logger),
+    repo: TicketJobRepository = Depends(get_ticket_repo),
 ):
     """
-    Endpoint 5: end-to-end ticket handler. One call runs the whole flow that
-    n8n used to orchestrate (extract → classify → knowledge_question OR
-    required-data → ForusBots scrape → generate-response).
+    Endpoint 5: end-to-end ticket handler (adapter v1 sobre el job durable).
 
-    **Hybrid contract:** fast routes (knowledge_question / needs_more_info)
-    return inline (``200`` ``TicketHandleResponse``). The slow data path returns
-    ``202`` ``TicketJobHandle`` immediately; poll ``GET /api/v1/tickets/{id}``.
+    **Contrato:** todo request aceptado crea un job DURABLE y encola su
+    ejecución. Si el job termina dentro de una espera corta y no contiene
+    rutas ``generate_response``, responde ``200`` inline (compat con el
+    contrato híbrido); en cualquier otro caso responde ``202`` y n8n hace
+    poll de ``GET /api/v1/tickets/{id}``. La idempotencia se reserva en
+    transacción ANTES de cualquier LLM: misma key + mismo payload replaya el
+    job; misma key + otro payload es ``409``.
 
-    **Rollout:** gated by ``TICKET_HANDLER_MODE``. The per-request override
-    can only *restrict* the server mode (never expand it):
-    ``disabled`` → 503; ``shadow`` → classify only and tell the caller to use
-    the legacy flow; ``knowledge_only`` → only knowledge questions are handled
-    end-to-end; ``full`` → full orchestration.
+    **Rollout:** gated por ``TICKET_HANDLER_MODE``; el override del body sólo
+    puede RESTRINGIR el modo del servidor.
     """
-    start = time.monotonic()
-    effective_mode = _effective_ticket_mode(
-        settings.TICKET_HANDLER_MODE, request.ticket_handler_mode
+    record, replayed = await _accept_ticket_job(
+        request, http_request, repo, api_version="v1"
     )
-    if effective_mode == "disabled":
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Ticket handler is disabled.",
-        )
 
-    idem = request.idempotency_key or http_request.headers.get("Idempotency-Key")
-    if idem:
-        existing_id = http_request.app.state.ticket_idem.get(idem)
-        if existing_id:
-            job = jobs.get(existing_id)
-            if job is not None:
-                return JSONResponse(
-                    status_code=status.HTTP_202_ACCEPTED,
-                    content=TicketJobHandle(
-                        ticket_job_id=job.ticket_job_id, state=job.state,
-                        poll_url=f"/api/v1/tickets/{job.ticket_job_id}", estimate={},
-                    ).model_dump(),
-                )
+    record = await _wait_for_terminal(
+        repo, record.job_id, settings.TICKET_V1_INLINE_WAIT_S
+    ) or record
 
-    try:
-        extracted = await orchestrator.extract_inquiries(request)
-        if not extracted:
-            primary = InquiryResult(
-                inquiry=(request.ticket.email_body or request.ticket.email_subject or "(empty)")[:1000],
-                topic="general", plan_type="401(k)",
-                route=RouteDecision.NEEDS_MORE_INFO,
-                needs_more_info_message=_TICKET_GREETING,
-            )
-            await _log_ticket_safe(exec_logger, http_request, request, start, effective_mode, [], None)
+    fast_inline = (
+        record.state in TERMINAL_STATES
+        and record.state == TicketJobState.SUCCEEDED
+        and not _record_has_generate_response(record)
+    )
+    if fast_inline:
+        results = _record_results(record)
+        metadata = (record.public_result or {}).get("metadata", {})
+        if results:
             return TicketHandleResponse(
-                route_taken=RouteDecision.NEEDS_MORE_INFO, primary=primary,
-                total_inquiries_in_ticket=0,
-                metadata={"ticket_handler_mode": effective_mode, "reason": "no_actionable_inquiry"},
+                route_taken=results[0].route,
+                primary=results[0],
+                related=results[1:],
+                total_inquiries_in_ticket=record.total_inquiries or 0,
+                metadata=metadata,
             )
-
-        total = len(extracted)
-        capped = extracted[: 1 + settings.TICKET_MAX_RELATED]
-        classifications = [await orchestrator.classify(e.inquiry) for e in capped]
-
-        # shadow: don't act — classify, report what we WOULD do, defer to legacy.
-        if effective_mode == "shadow":
-            results = [
-                _outcome_to_inquiry_result(_nmi_outcome(
-                    e, getattr(c, "user_message", None) or _TICKET_GREETING,
-                    {"classifier": {"route": getattr(c, "route", None),
-                                    "confidence": getattr(c, "confidence", None)}},
-                ))
-                for e, c in zip(capped, classifications)
-            ]
-            await _log_ticket_safe(exec_logger, http_request, request, start, "shadow", [], None)
-            return TicketHandleResponse(
-                route_taken=RouteDecision.NEEDS_MORE_INFO, primary=results[0],
-                related=results[1:], total_inquiries_in_ticket=total,
-                metadata={"ticket_handler_mode": "shadow", "fallback": True,
-                          "shadow_routes": [getattr(c, "route", None) for c in classifications]},
-            )
-
-        gated = [
-            _apply_ticket_handler_mode(getattr(c, "route", "needs_more_info"), effective_mode)
-            for c in classifications
-        ]
-        slow = any(getattr(c, "route", None) == "generate_response" and reason is None
-                   for c, (_er, reason) in zip(classifications, gated))
-
-        if not slow:
-            outcomes: List[InquiryOutcome] = []
-            for ext, c, (_er, reason) in zip(capped, classifications, gated):
-                outcomes.append(await _handle_one_gated(orchestrator, ext, request, total, c, reason))
-            results = [_outcome_to_inquiry_result(o) for o in outcomes]
-            await _log_ticket_safe(exec_logger, http_request, request, start, effective_mode, outcomes, None)
-            return TicketHandleResponse(
-                route_taken=results[0].route, primary=results[0], related=results[1:],
-                total_inquiries_in_ticket=total,
-                metadata={"ticket_handler_mode": effective_mode},
-            )
-
-        # slow path → background job + 202
-        job = jobs.create()
-        if idem:
-            http_request.app.state.ticket_idem[idem] = job.ticket_job_id
-        task = asyncio.create_task(_run_ticket_job(
-            http_request.app, job.ticket_job_id, orchestrator,
-            capped, classifications, gated, request, total,
-            exec_logger, http_request, effective_mode, start,
-        ))
-        http_request.app.state.bg_tasks.add(task)
-        task.add_done_callback(http_request.app.state.bg_tasks.discard)
-        return JSONResponse(
-            status_code=status.HTTP_202_ACCEPTED,
-            content=TicketJobHandle(
-                ticket_job_id=job.ticket_job_id, state="queued",
-                poll_url=f"/api/v1/tickets/{job.ticket_job_id}",
-                estimate={"avg_seconds": int(settings.FORUSBOTS_MAX_WAIT_S)},
-            ).model_dump(),
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:  # noqa: BLE001
-        logger.exception("Error in handle_ticket endpoint")
-        await _log_ticket_safe(exec_logger, http_request, request, start, effective_mode, [], str(e))
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An error occurred while handling the ticket.",
-        )
+    return _job_handle_response(record, replayed)
 
 
 @app.get(
@@ -1314,27 +1305,126 @@ async def handle_ticket_endpoint(
 )
 async def get_ticket_status(
     ticket_job_id: str,
-    jobs: TicketJobStore = Depends(get_ticket_jobs),
+    http_request: Request,
+    repo: TicketJobRepository = Depends(get_ticket_repo),
 ):
-    """Poll a slow (data-path) ticket job started by ``POST /api/v1/handle-ticket``."""
-    job = jobs.get(ticket_job_id)
-    if job is None:
+    """Poll de un ticket job. ``404`` = ID inexistente/expirado; ``403`` =
+    job de otro principal (invariante 10)."""
+    record = await repo.get(ticket_job_id)
+    if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ticket job not found or expired.",
         )
-    results = [_outcome_to_inquiry_result(o) for o in job.outcomes]
+    if record.principal_id != _request_principal(http_request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "TICKET_JOB_FORBIDDEN",
+                    "message": "el job pertenece a otro principal"},
+        )
+    results = _record_results(record)
     primary = results[0] if results else None
     return TicketStatusResponse(
-        ticket_job_id=job.ticket_job_id,
-        state=job.state,
+        ticket_job_id=record.job_id,
+        state=record.state.value,
         route_taken=primary.route if primary else None,
         primary=primary,
         related=results[1:] if results else [],
-        total_inquiries_in_ticket=job.total_inquiries,
-        forusbots_job_ids=job.forusbots_job_ids,
-        elapsed_s=round(time.monotonic() - job.created_monotonic, 2),
-        error=job.error,
+        total_inquiries_in_ticket=record.total_inquiries,
+        forusbots_job_ids=record.forusbots_job_ids,
+        elapsed_s=_record_elapsed_s(record),
+        error=record.public_error_code,
+    )
+
+
+# ============================================================================
+# v2: contrato uniforme 202 + polling (plan §6)
+# ============================================================================
+
+@app.post(
+    "/api/v2/handle-ticket",
+    dependencies=[Depends(verify_api_key)],
+    tags=["RAG Endpoints"],
+    status_code=status.HTTP_202_ACCEPTED,
+    response_model=TicketJobAcceptedV2,
+)
+async def handle_ticket_v2(
+    request: HandleTicketRequest,
+    http_request: Request,
+    repo: TicketJobRepository = Depends(get_ticket_repo),
+):
+    """Contrato v2: SIEMPRE ``202 + polling`` sobre el job durable. La
+    Idempotency-Key viaja sólo en el header."""
+    record, replayed = await _accept_ticket_job(
+        request, http_request, repo, api_version="v2", allow_body_idem=False
+    )
+    status_url = f"/api/v2/ticket-jobs/{record.job_id}"
+    return JSONResponse(
+        status_code=status.HTTP_202_ACCEPTED,
+        headers={
+            "Location": status_url,
+            "Retry-After": "3",
+            "Cache-Control": "no-store",
+        },
+        content=TicketJobAcceptedV2(
+            ticket_job_id=record.job_id,
+            state=record.state.value,
+            status_url=status_url,
+            retry_after_seconds=3,
+            idempotency_replayed=replayed,
+        ).model_dump(),
+    )
+
+
+@app.get(
+    "/api/v2/ticket-jobs/{ticket_job_id}",
+    dependencies=[Depends(verify_api_key)],
+    tags=["RAG Endpoints"],
+    response_model=TicketJobStatusV2,
+)
+async def get_ticket_job_v2(
+    ticket_job_id: str,
+    http_request: Request,
+    repo: TicketJobRepository = Depends(get_ticket_repo),
+):
+    record = await repo.get(ticket_job_id)
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "TICKET_JOB_NOT_FOUND"},
+        )
+    if record.principal_id != _request_principal(http_request):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "TICKET_JOB_FORBIDDEN"},
+        )
+    inquiries = [
+        InquiryStatusV2(
+            index=e.get("index", i),
+            route=e.get("route"),
+            execution_status=e.get("execution_status", "pending"),
+            participant_reply_safe=bool(e.get("participant_reply_safe")),
+            result=e.get("result"),
+            error=e.get("error"),
+        )
+        for i, e in enumerate(record.per_inquiry_status)
+    ]
+    return TicketJobStatusV2(
+        ticket_job_id=record.job_id,
+        state=record.state.value,
+        created_at=record.created_at,
+        started_at=record.started_at,
+        completed_at=record.completed_at,
+        elapsed_s=_record_elapsed_s(record),
+        total_inquiries=record.total_inquiries,
+        processed_inquiries=record.processed_inquiries,
+        unprocessed_inquiries=record.unprocessed_inquiries,
+        inquiries=inquiries,
+        next_action=record.next_action.value,
+        error={"code": record.public_error_code,
+               "retryable": record.retryable,
+               "trace_id": record.trace_id}
+        if record.public_error_code else None,
     )
 
 
@@ -1458,16 +1548,22 @@ async def index_stats_endpoint(
 
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handler para HTTPException."""
+    """Handler para HTTPException. Los details estructurados (dict con
+    ``code`` machine-readable) se preservan bajo ``detail`` además del shape
+    legacy ``error/message/request_id``."""
     request_id = getattr(request.state, "request_id", "unknown")
-    
+
+    content = {
+        "error": "http_error",
+        "message": exc.detail,
+        "request_id": request_id,
+    }
+    if isinstance(exc.detail, dict):
+        content["detail"] = exc.detail
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "error": "http_error",
-            "message": exc.detail,
-            "request_id": request_id
-        }
+        content=content,
+        headers=getattr(exc, "headers", None),
     )
 
 

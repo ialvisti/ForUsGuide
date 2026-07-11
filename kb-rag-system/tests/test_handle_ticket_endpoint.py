@@ -2,7 +2,7 @@
 Integration tests for the /api/v1/handle-ticket + /api/v1/tickets/{id} endpoints.
 
 The lifespan runs with patched engine constructors (mirrors tests/test_api.py),
-so app.state has the real TicketJobStore / idempotency cache / bg_tasks. The
+so app.state has the real durable ticket repo / inline queue / worker. The
 orchestrator dependency is overridden with a fake that returns canned outcomes;
 ``verify_api_key`` is overridden to a no-op.
 """
@@ -97,6 +97,8 @@ class FakeOrch:
 def _use_orch(client, orch):
     from api.main import app, get_ticket_orchestrator
     app.dependency_overrides[get_ticket_orchestrator] = lambda: orch
+    # el worker durable resuelve el orchestrator vía factory en app.state
+    client.app.state.ticket_orchestrator_factory = lambda: orch
 
 
 def _cls(route, **kw):
@@ -187,8 +189,9 @@ class TestSlowPath:
         data = r.json()
         assert data["ticket_job_id"]
         assert data["poll_url"].endswith(data["ticket_job_id"])
-        # the job exists in the in-process store
-        assert client.app.state.ticket_jobs.get(data["ticket_job_id"]) is not None
+        # el job es durable y recuperable vía GET (no memoria de proceso)
+        poll = client.get(f"/api/v1/tickets/{data['ticket_job_id']}")
+        assert poll.status_code == 200
 
     def test_get_unknown_job_404(self, client):
         r = client.get("/api/v1/tickets/does-not-exist")
@@ -210,13 +213,13 @@ class TestSlowPath:
         outcome = InquiryOutcome(inquiry="cash out 401k", topic="rollover",
                                  route="generate_response", scrape_status="ok",
                                  generate_result=_gr_result(), diagnostics={"forusbots_job_id": "job-9"})
-        store = client.app.state.ticket_jobs
-        job = store.create()
-        store.set_state(job.ticket_job_id, state="succeeded", outcomes=[outcome],
-                        forusbots_job_ids=["job-9"], total_inquiries=1)
-        r = client.get(f"/api/v1/tickets/{job.ticket_job_id}")
-        assert r.status_code == 200
-        data = r.json()
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), outcome))
+        r = client.post("/api/v1/handle-ticket", json=_body())
+        assert r.status_code == 202
+        job_id = r.json()["ticket_job_id"]
+        r2 = client.get(f"/api/v1/tickets/{job_id}")
+        assert r2.status_code == 200
+        data = r2.json()
         assert data["state"] == "succeeded"
         assert data["route_taken"] == "generate_response"
         assert data["primary"]["generate_response"]["decision"] == "can_proceed"
@@ -228,46 +231,94 @@ class TestSlowPath:
 # ---------------------------------------------------------------------------
 
 class TestRunTicketJob:
+    """Worker durable directo (sin HTTP): la ÚNICA implementación de
+    ejecución (api.ticket_worker.run_ticket_job)."""
+
+    @staticmethod
+    def _worker_app(repo, orch):
+        return SimpleNamespace(state=SimpleNamespace(
+            ticket_repo=repo,
+            ticket_orchestrator_factory=lambda: orch,
+            execution_logger=None,
+        ))
+
+    @staticmethod
+    async def _seed_job(repo, mode="full"):
+        from data_pipeline.ticket_job_models import (
+            fingerprint_request, new_job_record,
+        )
+        payload = _body()
+        fp = fingerprint_request(payload)
+        rec, _ = await repo.create_or_get(
+            principal_id="default", idempotency_key=None,
+            request_fingerprint=fp,
+            candidate=new_job_record(principal_id="default",
+                                     request_fingerprint=fp, mode=mode,
+                                     request_payload=payload),
+        )
+        return rec
 
     async def test_run_ticket_job_succeeded(self):
-        from api.main import _run_ticket_job
-        from data_pipeline.ticket_jobs import TicketJobStore
-        from api.models import HandleTicketRequest
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
 
-        store = TicketJobStore()
-        job = store.create()
-        app = SimpleNamespace(state=SimpleNamespace(ticket_jobs=store))
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
         outcome = InquiryOutcome(inquiry="q", topic="rollover", route="generate_response",
                                  scrape_status="ok", generate_result=_gr_result(),
                                  diagnostics={"forusbots_job_id": "j1"})
         orch = FakeOrch([_ext()], _cls("generate_response"), outcome)
-        req = HandleTicketRequest(**_body())
+        rec = await self._seed_job(repo)
 
-        await _run_ticket_job(app, job.ticket_job_id, orch, [_ext()], [_cls("generate_response")],
-                              [("generate_response", None)], req, 1, None, None, "full", 0.0)
+        final = await run_ticket_job(self._worker_app(repo, orch), rec.job_id)
 
-        updated = store.get(job.ticket_job_id)
-        assert updated.state == "succeeded"
-        assert updated.forusbots_job_ids == ["j1"]
-        assert len(updated.outcomes) == 1
+        assert final.state.value == "succeeded"
+        assert final.forusbots_job_ids == ["j1"]
+        assert len(final.per_inquiry_status) == 1
+        assert final.per_inquiry_status[0]["participant_reply_safe"] is True
+        assert final.next_action.value == "send_participant_reply"
+        # duración congelada en terminal (HT-26)
+        assert final.elapsed_s is not None
 
     async def test_run_ticket_job_partial_on_scrape_failure(self):
-        from api.main import _run_ticket_job
-        from data_pipeline.ticket_jobs import TicketJobStore
-        from api.models import HandleTicketRequest
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
 
-        store = TicketJobStore()
-        job = store.create()
-        app = SimpleNamespace(state=SimpleNamespace(ticket_jobs=store))
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
         outcome = InquiryOutcome(inquiry="q", topic="rollover", route="generate_response",
                                  scrape_status="failed", generate_result=_gr_result("uncertain"))
         orch = FakeOrch([_ext()], _cls("generate_response"), outcome)
-        req = HandleTicketRequest(**_body())
+        rec = await self._seed_job(repo)
 
-        await _run_ticket_job(app, job.ticket_job_id, orch, [_ext()], [_cls("generate_response")],
-                              [("generate_response", None)], req, 1, None, None, "full", 0.0)
+        final = await run_ticket_job(self._worker_app(repo, orch), rec.job_id)
 
-        assert store.get(job.ticket_job_id).state == "partial"
+        assert final.state.value == "partial"
+        assert final.per_inquiry_status[0]["participant_reply_safe"] is False
+        assert final.next_action.value == "use_legacy_or_human"
+
+    async def test_duplicate_delivery_executes_once(self):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        orch = CountingOrch([_ext()], _cls("knowledge_question"),
+                            InquiryOutcome(inquiry="q", topic="t",
+                                           route="knowledge_question",
+                                           knowledge_result=_kq_result()))
+        rec = await self._seed_job(repo)
+        app = self._worker_app(repo, orch)
+
+        first = await run_ticket_job(app, rec.job_id, worker_id="t#0")
+        second = await run_ticket_job(app, rec.job_id, worker_id="t#1")
+
+        assert first is not None and first.state.value == "succeeded"
+        assert second is None            # delivery duplicado: claim rechazado
+        assert orch.extract_calls == 1
 
 
 # ---------------------------------------------------------------------------
@@ -371,17 +422,10 @@ class TestIdempotencyRegressions:
 
 def _simulate_new_instance(app):
     """Simula que el poll llega a OTRA instancia de Cloud Run: todo objeto
-    process-local se recrea; sólo el backend durable (si existe) se comparte."""
+    process-local se recrea; sólo el backend durable se comparte."""
     st = app.state
-    if hasattr(st, "ticket_repo"):
-        from data_pipeline.ticket_job_repository import TicketJobRepository
-        st.ticket_repo = TicketJobRepository(st.ticket_repo.backend)
-    if hasattr(st, "ticket_jobs"):
-        from data_pipeline.ticket_jobs import TicketJobStore
-        st.ticket_jobs = TicketJobStore()
-    if hasattr(st, "ticket_idem"):
-        from cachetools import TTLCache
-        st.ticket_idem = TTLCache(maxsize=2048, ttl=1800)
+    from data_pipeline.ticket_job_repository import TicketJobRepository
+    st.ticket_repo = TicketJobRepository(st.ticket_repo.backend)
 
 
 class TestDurabilityRegressions:
@@ -413,8 +457,8 @@ class TestDurabilityRegressions:
 
         # restart: se pierde el proceso entero (stores y tasks locales)
         _simulate_new_instance(client.app)
-        st = client.app.state
-        for t in list(getattr(st, "bg_tasks", [])):
+        queue = client.app.state.ticket_queue
+        for t in list(getattr(queue, "_tasks", [])):
             t.cancel()
 
         r2 = client.get(f"/api/v1/tickets/{job_id}")
@@ -425,73 +469,76 @@ class TestDurabilityRegressions:
 
     def test_partial_scrape_aggregates_to_partial(self):
         """HT-07: scrape_status=partial no puede publicarse como succeeded."""
-        from api.main import _aggregate_job_state
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
         outcome = InquiryOutcome(inquiry="q", topic="rollover",
                                  route="generate_response", scrape_status="partial",
                                  generate_result=_gr_result())
-        assert _aggregate_job_state([outcome]) == "partial"
+        entry = _entry_from_outcome(0, outcome)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+        assert state.value == "partial"
+        assert next_action.value == "use_legacy_or_human"
+        assert entry["participant_reply_safe"] is False
 
     async def test_second_inquiry_timeout_preserves_first_result(self, monkeypatch):
         """HT-08: el timeout de una inquiry no borra los resultados ya
         completados ni se etiqueta como timeout total."""
         import asyncio
-        from api.main import _run_ticket_job
         from api.config import settings as app_settings
-        from data_pipeline.ticket_jobs import TicketJobStore
-        from api.models import HandleTicketRequest
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
 
         monkeypatch.setattr(app_settings, "TICKET_INQUIRY_BUDGET_S", 0.05)
         monkeypatch.setattr(app_settings, "TICKET_TOTAL_BUDGET_S", 5.0)
 
         class TwoSpeedOrch(FakeOrch):
             def __init__(self):
-                super().__init__([_ext(), _ext("second", "hardship")], _cls("generate_response"), None)
+                super().__init__([_ext(), _ext("second", "hardship")],
+                                 _cls("generate_response"), None)
 
             async def handle_inquiry(self, ext, req, *, total_inquiries, classification=None):
                 if ext.inquiry == "second":
                     await asyncio.sleep(1.0)      # excede el budget por inquiry
                 return _gr_outcome()
 
-        store = TicketJobStore()
-        job = store.create()
-        app = SimpleNamespace(state=SimpleNamespace(ticket_jobs=store))
-        req = HandleTicketRequest(**_body())
-        exts = [_ext(), _ext("second", "hardship")]
-        cls_ = [_cls("generate_response")] * 2
-        gated = [("generate_response", None)] * 2
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await TestRunTicketJob._seed_job(repo)
+        app = TestRunTicketJob._worker_app(repo, TwoSpeedOrch())
 
-        await _run_ticket_job(app, job.ticket_job_id, TwoSpeedOrch(), exts, cls_,
-                              gated, req, 2, None, None, "full", 0.0)
+        final = await run_ticket_job(app, rec.job_id)
 
-        updated = store.get(job.ticket_job_id)
-        assert len(updated.outcomes) >= 1, "el resultado de la primera inquiry se perdió"
-        assert updated.state == "partial", (
-            f"estado {updated.state!r}: un timeout por-inquiry con resultados "
+        completed = [e for e in final.per_inquiry_status if e.get("result")]
+        assert len(completed) >= 1, "el resultado de la primera inquiry se perdió"
+        assert final.state.value == "partial", (
+            f"estado {final.state!r}: un timeout por-inquiry con resultados "
             "previos debe agregar a partial, no a timeout total"
         )
-        assert updated.error != "ticket_total_budget_exceeded"
+        timeouts = [e for e in final.per_inquiry_status
+                    if e.get("execution_status") == "timeout"]
+        assert timeouts and timeouts[0]["error"]["code"] == "INQUIRY_TIMEOUT", (
+            "el código debe distinguir INQUIRY_TIMEOUT de TOTAL_JOB_TIMEOUT"
+        )
 
     async def test_cancelled_worker_marks_job_cancelled_or_retryable(self):
         """La cancelación del worker no puede dejar el job en running eterno."""
         import asyncio
-        from api.main import _run_ticket_job
-        from data_pipeline.ticket_jobs import TicketJobStore
-        from api.models import HandleTicketRequest
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
 
         class HangingOrch(FakeOrch):
             async def handle_inquiry(self, ext, req, *, total_inquiries, classification=None):
                 await asyncio.sleep(30)
                 return _gr_outcome()
 
-        store = TicketJobStore()
-        job = store.create()
-        app = SimpleNamespace(state=SimpleNamespace(ticket_jobs=store))
-        req = HandleTicketRequest(**_body())
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await TestRunTicketJob._seed_job(repo)
         orch = HangingOrch([_ext()], _cls("generate_response"), None)
+        app = TestRunTicketJob._worker_app(repo, orch)
 
-        task = asyncio.create_task(_run_ticket_job(
-            app, job.ticket_job_id, orch, [_ext()], [_cls("generate_response")],
-            [("generate_response", None)], req, 1, None, None, "full", 0.0))
+        task = asyncio.create_task(run_ticket_job(app, rec.job_id))
         await asyncio.sleep(0.05)
         task.cancel()
         try:
@@ -499,8 +546,9 @@ class TestDurabilityRegressions:
         except asyncio.CancelledError:
             pass
 
-        state = store.get(job.ticket_job_id).state
-        assert state != "running", (
+        final = await repo.get(rec.job_id)
+        assert final.state.value != "running", (
             "worker cancelado dejó el job en running para siempre; debe quedar "
             "cancelled o retryable (queued/failed)"
         )
+        assert final.state.value == "queued" and final.retryable is True

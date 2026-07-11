@@ -89,7 +89,10 @@ class FakeOrch:
 
 def _use_orch(client):
     from api.main import app, get_ticket_orchestrator
-    app.dependency_overrides[get_ticket_orchestrator] = lambda: FakeOrch()
+    orch = FakeOrch()
+    app.dependency_overrides[get_ticket_orchestrator] = lambda: orch
+    # el worker durable resuelve el orchestrator vía factory en app.state
+    client.app.state.ticket_orchestrator_factory = lambda: orch
 
 
 class TestModeExpansion:

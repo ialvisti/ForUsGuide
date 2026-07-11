@@ -6,6 +6,7 @@ Define la estructura de datos para los endpoints:
 - /api/v1/generate-response
 """
 
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import Enum
@@ -748,3 +749,54 @@ class TicketStatusResponse(BaseModel):
     forusbots_job_ids: List[str] = Field(default_factory=list)
     elapsed_s: Optional[float] = Field(default=None)
     error: Optional[str] = Field(default=None)
+
+
+# ============================================================================
+# Ticket Handler v2 — contrato uniforme 202 + polling sobre el job durable
+# ============================================================================
+
+class TicketJobAcceptedV2(BaseModel):
+    """Respuesta 202 de POST /api/v2/handle-ticket."""
+
+    schema_version: str = Field(default="2.0")
+    ticket_job_id: str = Field(...)
+    state: str = Field(..., description="queued | running | succeeded | ...")
+    status_url: str = Field(..., description="GET /api/v2/ticket-jobs/{id}")
+    retry_after_seconds: int = Field(default=3, ge=1)
+    idempotency_replayed: bool = Field(default=False)
+
+
+class InquiryStatusV2(BaseModel):
+    """Estado por inquiry en el poll v2."""
+
+    index: int = Field(..., ge=0)
+    route: Optional[str] = Field(default=None)
+    execution_status: str = Field(
+        ..., description="pending | succeeded | timeout | failed | unprocessed"
+    )
+    participant_reply_safe: bool = Field(default=False)
+    result: Optional[Dict[str, Any]] = Field(default=None)
+    error: Optional[Dict[str, Any]] = Field(
+        default=None, description="{code, retryable, trace_id} machine-readable"
+    )
+
+
+class TicketJobStatusV2(BaseModel):
+    """Respuesta de GET /api/v2/ticket-jobs/{ticket_job_id}."""
+
+    schema_version: str = Field(default="2.0")
+    ticket_job_id: str = Field(...)
+    state: str = Field(...)
+    created_at: Optional[datetime] = Field(default=None)
+    started_at: Optional[datetime] = Field(default=None)
+    completed_at: Optional[datetime] = Field(default=None)
+    elapsed_s: Optional[float] = Field(default=None)
+    total_inquiries: Optional[int] = Field(default=None)
+    processed_inquiries: int = Field(default=0)
+    unprocessed_inquiries: int = Field(default=0)
+    inquiries: List[InquiryStatusV2] = Field(default_factory=list)
+    next_action: str = Field(
+        ..., description="send_participant_reply | poll | use_legacy | "
+                         "use_legacy_or_human | human_review | retry"
+    )
+    error: Optional[Dict[str, Any]] = Field(default=None)

@@ -258,6 +258,53 @@ def _map_plan_modules(plan_modules: Mapping[str, Any],
         )
 
 
+# Columnas de payroll que representan dinero POSTEADO a la cuenta.
+_CONTRIBUTION_COLUMNS = ("Pre-tax", "Roth", "After-tax", "Employer Match")
+
+
+def _money(value: Any) -> float:
+    try:
+        return float(str(value).replace("$", "").replace(",", ""))
+    except (TypeError, ValueError):
+        return 0.0
+
+
+def derive_first_contribution_posted_status(
+    participant: Mapping[str, Any],
+) -> Optional[bool]:
+    """Resolver del CONCEPTO ``first_contribution_posted_status`` (Task 9).
+
+    Regla del artículo (Managing Your 401(k) Statements and Beneficiaries):
+    debe existir una contribución POSITIVA posteada; una entrada de $0.00 no
+    es evidencia; un refund/negativo no cuenta. Sin datos de payroll el
+    estatus es DESCONOCIDO (None) — nunca False por ausencia de datos.
+
+    Limitación documentada: evalúa los datos scrapeados (Latest Payroll +
+    año corriente); contribuciones sólo en años anteriores no scrapeados no
+    son visibles para este resolver.
+    """
+    rows: list = []
+    latest = participant.get("latest_payroll")
+    if isinstance(latest, Mapping):
+        rows.append(latest)
+    years = participant.get("payroll_years")
+    if isinstance(years, Mapping):
+        for year_table in years.values():
+            if not isinstance(year_table, Mapping):
+                continue
+            year_rows = year_table.get("Rows")
+            if isinstance(year_rows, list):
+                rows.extend(r for r in year_rows if isinstance(r, Mapping))
+            else:
+                rows.append(year_table)
+    if not rows:
+        return None
+    for row in rows:
+        if any(_money(row.get(col)) > 0 for col in _CONTRIBUTION_COLUMNS):
+            return True
+    return False
+
+
 def build_collected_data(
     ppt_modules: Optional[Mapping[str, Any]],
     plan_modules: Optional[Mapping[str, Any]],
@@ -297,6 +344,11 @@ def build_collected_data(
 
     if plan_modules:
         _map_plan_modules(plan_modules, plan)
+
+    # Conceptos derivados en código (nunca por el LLM):
+    derived_first_contribution = derive_first_contribution_posted_status(participant)
+    if derived_first_contribution is not None:
+        participant["first_contribution_posted_status"] = derived_first_contribution
 
     for slug, entry in (ticket_extracted or {}).items():
         key = snake_case(slug)

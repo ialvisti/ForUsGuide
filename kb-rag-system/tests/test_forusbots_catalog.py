@@ -413,3 +413,29 @@ class TestNormalizeScrapeResult:
         payload = {"data": {"modules": [{"key": "census", "status": "ok"}]}}
         flat, meta = normalize_scrape_result(payload)
         assert flat == {"census": {}}    # data undefined → {}
+
+
+class TestFirstContributionMapping:
+    """Task 9: el slug se resuelve determinísticamente a payroll — jamás se
+    le pregunta al participante por un hecho del portal."""
+
+    def test_slug_maps_to_payroll(self):
+        from data_pipeline.forusbots_catalog import map_slug
+        entries = map_slug(
+            {"field": "first_contribution_posted_status",
+             "description": "Whether the participant's first positive contribution has posted",
+             "why_needed": "beneficiaries gate"},
+            current_year=2026,
+        )
+        assert entries is not None
+        modules = {m for m, _f in entries}
+        assert modules == {"payroll"}
+
+    def test_beneficiary_flow_never_asks_participant_for_portal_fact(self):
+        from data_pipeline.forusbots_catalog import is_request_provided, map_slug
+        item = {"field": "first_contribution_posted_status",
+                "description": "posted contribution gate", "why_needed": "w"}
+        # se scrapea (map_slug), no viene del request ni queda unmapped para
+        # que la capa de extracción se lo pregunte al participante
+        assert not is_request_provided(item)
+        assert map_slug(item, current_year=2026) is not None

@@ -167,3 +167,49 @@ class TestSnakeCase:
         assert snake_case("Pay Date URL") == "pay_date_url"
         assert snake_case("Force-out Limit") == "force_out_limit"
         assert snake_case("  YTD  contributions ") == "ytd_contributions"
+
+
+class TestFirstContributionPostedStatus:
+    """Task 9 (HT-18): el dato es un CONCEPTO derivado de payroll en código.
+    Regla del artículo: debe existir una contribución positiva posteada;
+    $0.00 no cuenta; refund/negativo no cuenta; sin payroll → unknown."""
+
+    def _collected(self, payroll):
+        return build_collected_data({"payroll": payroll}, None)
+
+    def test_positive_posted_contribution_is_true(self):
+        ppt = self._collected({
+            "Latest Payroll": {"Pay Date": "2026-04-03", "Pre-tax": 99.56,
+                               "Roth": 0, "Pay Date URL": "/x"},
+        })["participant_data"]
+        assert ppt["first_contribution_posted_status"] is True
+
+    def test_zero_contribution_is_not_evidence(self):
+        ppt = self._collected({
+            "Latest Payroll": {"Pay Date": "2026-04-03", "Pre-tax": 0,
+                               "Roth": 0.0, "Employer Match": "0.00"},
+        })["participant_data"]
+        assert ppt["first_contribution_posted_status"] is False
+
+    def test_missing_payroll_is_unknown_not_false(self):
+        collected = build_collected_data(
+            {"census": {"First Name": "Luke"}}, None
+        )
+        assert "first_contribution_posted_status" not in collected["participant_data"]
+
+    def test_refund_or_negative_row_does_not_count(self):
+        ppt = self._collected({
+            "Payroll 2026": {"Total": -50.0,
+                             "Rows": [{"Pay Date": "2026-01-10",
+                                       "Pre-tax": -50.0, "Roth": 0}]},
+        })["participant_data"]
+        assert ppt["first_contribution_posted_status"] is False
+
+    def test_positive_row_in_year_table_counts(self):
+        ppt = self._collected({
+            "Latest Payroll": {"Pay Date": "2026-04-03", "Pre-tax": 0},
+            "Payroll 2026": {"Total": 312.50,
+                             "Rows": [{"Pay Date": "2026-01-10",
+                                       "Roth": 312.50}]},
+        })["participant_data"]
+        assert ppt["first_contribution_posted_status"] is True

@@ -274,6 +274,15 @@ SLUG_MAP: Dict[str, Tuple[Tuple[str, str], ...]] = {
     "all_payroll": (("payroll", "years:all"),),
     "payroll": (("payroll", "years:CURRENT_YEAR"),),
     "payroll_data": (("payroll", "years:CURRENT_YEAR"),),
+    # Concepto DERIVADO (Task 9/HT-18): el valor se resuelve en código
+    # (gr_payload_builder.derive_first_contribution_posted_status) a partir
+    # de los datos de payroll scrapeados; aquí sólo se mapea la FUENTE.
+    "first_contribution_posted_status": (
+        ("payroll", "Latest Payroll"), ("payroll", "years:CURRENT_YEAR"),
+    ),
+    "first_contribution_posted": (
+        ("payroll", "Latest Payroll"), ("payroll", "years:CURRENT_YEAR"),
+    ),
     # --- mfa ---
     "mfa_status": (("mfa", "MFA Status"),),
     # --- plan scrape (config the participant scrape does NOT expose) ---

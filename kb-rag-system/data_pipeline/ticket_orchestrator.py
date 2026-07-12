@@ -372,28 +372,21 @@ class TicketOrchestrator:
         return self._needs_more_info(ext, classification)
 
     async def run_ticket(self, req: Any) -> List[InquiryOutcome]:
-        """Convenience full run: extract → handle each (capped). Returns []
-        when no actionable inquiry was found (caller emits needs_more_info)."""
+        """Conveniencia para tests/harness: extract → handle each (capped).
+
+        NO es un motor de ejecución de producción: la ÚNICA implementación
+        con budgets, checkpoints y agregación es ``api.ticket_worker`` (Task
+        7). Por eso aquí no hay timeouts: un timeout técnico jamás debe
+        disfrazarse de needs_more_info (invariante 6)."""
         extracted = await self.extract_inquiries(req)
         if not extracted:
             return []
         total = len(extracted)
         outcomes: List[InquiryOutcome] = []
         for ext in extracted[: 1 + self._max_related]:
-            try:
-                outcome = await asyncio.wait_for(
-                    self.handle_inquiry(ext, req, total_inquiries=total),
-                    self._inquiry_budget_s,
-                )
-            except asyncio.TimeoutError:
-                logger.warning("inquiry budget exceeded for topic=%s", ext.topic)
-                outcome = InquiryOutcome(
-                    inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
-                    record_keeper=ext.record_keeper, plan_type=ext.plan_type,
-                    needs_more_info_message=_DEFAULT_GREETING,
-                    diagnostics={"error": "inquiry_budget_exceeded"},
-                )
-            outcomes.append(outcome)
+            outcomes.append(
+                await self.handle_inquiry(ext, req, total_inquiries=total)
+            )
         return outcomes
 
     # ------------------------------------------------------------------

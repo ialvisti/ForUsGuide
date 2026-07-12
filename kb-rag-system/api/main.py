@@ -1383,6 +1383,7 @@ async def get_ticket_status(
         # metadata visible también en el poll: un job shadow (fallback=true)
         # nunca debe parecer publicable aunque llegue por 202+poll (HT-11)
         metadata=(record.public_result or {}).get("metadata", {}),
+        next_action=record.next_action.value,
     )
 
 

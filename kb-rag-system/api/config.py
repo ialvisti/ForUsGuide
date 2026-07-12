@@ -122,6 +122,10 @@ class Settings(BaseSettings):
     MAX_REQUEST_BODY_BYTES: int = 1_048_576          # 1 MiB
     TICKET_MAX_OUTSTANDING_JOBS: int = 25            # por principal
 
+    # Shadow real muestreado (Task 10): fracción de jobs shadow que ejecutan
+    # el pipeline completo (sin publicar) para el differential harness.
+    TICKET_SHADOW_SAMPLE_RATE: float = 0.0
+
     # Pinecone
     PINECONE_API_KEY: str = ""
     INDEX_NAME: str = "kb-articles-production"

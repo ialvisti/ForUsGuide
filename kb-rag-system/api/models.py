@@ -791,6 +791,14 @@ class TicketStatusResponse(BaseModel):
             "n8n DEBE tratar fallback=true como no-publicable."
         ),
     )
+    next_action: str = Field(
+        default="poll",
+        description=(
+            "Acción tipada para n8n: send_participant_reply | poll | "
+            "use_legacy | use_legacy_or_human | human_review | retry. "
+            "Fuente de verdad del fallback (no inferir de needs_more_info)."
+        ),
+    )
 
 
 # ============================================================================

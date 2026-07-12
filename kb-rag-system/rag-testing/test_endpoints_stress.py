@@ -177,12 +177,16 @@ def call_route_inquiry(
     return resp.json()
 
 
-def call_handle_ticket(payload: dict, poll_timeout_s: float = 240.0) -> tuple[dict, int, float]:
+def call_handle_ticket(payload: dict, poll_timeout_s: float = 540.0) -> tuple[dict, int, float]:
     """Call the end-to-end /api/v1/handle-ticket and, for the slow (202) path,
     poll /api/v1/tickets/{id} until terminal. Returns (final_body, status, ms).
 
     Use this in the differential harness to compare the consolidated endpoint
     against the legacy required-data → ForusBots → generate-response sequence.
+
+    poll deadline (540 s) > TICKET_TOTAL_BUDGET_S del servidor (480 s): el
+    harness no debe abandonar jobs que el servidor considera vivos (el valor
+    histórico de 240 s perdía ejecuciones reales de hasta 365 s).
     """
     start = time.time()
     resp = httpx.post(
@@ -1930,15 +1934,64 @@ def append_router_section_to_html(payload: dict, html_path: Path) -> None:
 # Main
 # ============================================================================
 
+def run_ticket_differential(payload_file: str | None, *, verbose: bool = False) -> None:
+    """Differential harness del handle-ticket consolidado (Task 10).
+
+    Ejecuta el request sanitizado por el endpoint consolidado y reporta los
+    campos DETERMINÍSTICOS (state, next_action, rutas, scrape_status,
+    forusbots_job_ids) para diff contra la secuencia legacy (required-data →
+    ForusBots → generate-response) capturada en gr31_live_endpoint_capture /
+    stress_test_results_*. No imprime texto del participante."""
+    import json as _json
+
+    default_fixture = (
+        Path(__file__).resolve().parent.parent
+        / "tests" / "fixtures" / "n8n_handle_ticket_request.json"
+    )
+    source = Path(payload_file) if payload_file else default_fixture
+    doc = _json.loads(source.read_text())
+    payload = doc.get("request", doc)   # acepta fixture completo o body pelado
+
+    print(f"\n  handle-ticket differential | payload: {source.name}")
+    body, status_code, ms = call_handle_ticket(payload)
+    routes = []
+    primary = body.get("primary") or {}
+    for item in [primary] + (body.get("related") or []):
+        if item:
+            routes.append({
+                "route": item.get("route"),
+                "scrape_status": item.get("scrape_status"),
+                "decision": (item.get("generate_response") or {}).get("decision"),
+            })
+    print(f"  status={status_code} elapsed={ms:.0f}ms state={body.get('state')}")
+    print(f"  next_action={body.get('next_action')} "
+          f"total_inquiries={body.get('total_inquiries_in_ticket')}")
+    print(f"  routes={routes}")
+    print(f"  forusbots_job_ids={body.get('forusbots_job_ids')}")
+    if verbose:
+        meta = body.get("metadata") or {}
+        print(f"  metadata={meta}")
+
+
 def main():
     parser = argparse.ArgumentParser(description="KB RAG Stress Test Suite")
     parser.add_argument(
         "--endpoint",
-        choices=["knowledge", "generate", "router", "both", "all"],
+        choices=["knowledge", "generate", "router", "ticket", "both", "all"],
         default="both",
         help=(
             "Which endpoint(s) to test. 'router' runs only the inquiry-router "
-            "accuracy suite; 'all' runs knowledge + generate + router."
+            "accuracy suite; 'ticket' runs the consolidated handle-ticket "
+            "differential harness; 'all' runs knowledge + generate + router."
+        ),
+    )
+    parser.add_argument(
+        "--ticket-payload",
+        metavar="FILE",
+        help=(
+            "JSON file with a sanitized handle-ticket request (shape of "
+            "tests/fixtures/n8n_handle_ticket_request.json). Default: that "
+            "fixture. Used with --endpoint ticket."
         ),
     )
     parser.add_argument("--verbose", "-v", action="store_true", help="Show validation notes")
@@ -2003,6 +2056,10 @@ def main():
 
     all_results = print_report(kq_results, gr_results)
     save_results(all_results, Path(__file__).resolve().parent)
+
+    if args.endpoint == "ticket":
+        run_ticket_differential(args.ticket_payload, verbose=args.verbose)
+        sys.exit(0)
 
     router_failed = False
     if args.endpoint in ("router", "all"):

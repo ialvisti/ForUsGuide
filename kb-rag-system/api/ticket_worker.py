@@ -287,15 +287,45 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
 
     classifications = [await orchestrator.classify(e.inquiry) for e in capped]
 
-    # -- shadow: clasificar, no actuar, defer a legacy (HT-11/Task 10) -----
+    # -- shadow REAL y muestreado (HT-11/Task 10): clasifica siempre; cuando
+    # el job cae en la muestra, ejecuta el pipeline completo SIN exponer su
+    # respuesta (sólo un resumen sanitizado para el differential harness).
     if mode == "shadow":
+        sampled = _shadow_sampled(record.job_id)
+        shadow_summary: List[Dict[str, Any]] = []
         for i, (ext, cls) in enumerate(zip(capped, classifications)):
+            if sampled:
+                try:
+                    real = await asyncio.wait_for(
+                        orchestrator.handle_inquiry(
+                            ext, req, total_inquiries=total, classification=cls
+                        ),
+                        timeout=settings.TICKET_INQUIRY_BUDGET_S,
+                    )
+                    shadow_summary.append({
+                        "index": i,
+                        "route": real.route,
+                        "scrape_status": real.scrape_status,
+                        "decision": getattr(real.generate_result, "decision", None),
+                        "confidence": getattr(real.generate_result, "confidence", None),
+                    })
+                except asyncio.CancelledError:
+                    raise
+                except Exception:  # noqa: BLE001
+                    logger.exception("shadow pipeline failed (job %s, inquiry %d)",
+                                     job_id, i)
+                    shadow_summary.append({"index": i,
+                                           "route": getattr(cls, "route", None),
+                                           "error": "shadow_pipeline_failed"})
             outcome = nmi_outcome(
                 ext, getattr(cls, "user_message", None) or _TICKET_GREETING,
                 {"classifier": {"route": getattr(cls, "route", None),
-                                "confidence": getattr(cls, "confidence", None)}},
+                                "confidence": getattr(cls, "confidence", None)},
+                 "shadow": True},
             )
-            await repo.record_inquiry_result(job_id, i, _entry_from_outcome(i, outcome))
+            entry = _entry_from_outcome(i, outcome)
+            entry["participant_reply_safe"] = False   # shadow NUNCA publica
+            await repo.record_inquiry_result(job_id, i, entry)
         return await repo.update(
             job_id,
             state=TicketJobState.SUCCEEDED,
@@ -305,7 +335,10 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "route_taken": "needs_more_info",
                 "metadata": {"ticket_handler_mode": "shadow", "fallback": True,
                              "shadow_routes": [getattr(c, "route", None)
-                                               for c in classifications]},
+                                               for c in classifications],
+                             "shadow_sampled": sampled,
+                             # sanitizado: rutas/estados/decisiones, sin texto
+                             "shadow_summary": shadow_summary},
             },
         )
 
@@ -336,19 +369,27 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
 
         try:
             if override_reason is not None:
+                # Coerción de rollout (knowledge_only): NO es un outcome de
+                # negocio — el NMI resultante es un artefacto de gating y no
+                # debe publicarse; el ticket va a legacy (Task 10/HT-11).
                 message = getattr(cls, "user_message", None) or _TICKET_GREETING
                 outcome = nmi_outcome(ext, message, {
                     "classifier": {"route": getattr(cls, "route", None),
                                    "confidence": getattr(cls, "confidence", None)},
                     "ticket_handler_override": override_reason,
                 })
-            else:
-                outcome = await asyncio.wait_for(
-                    orchestrator.handle_inquiry(
-                        ext, req, total_inquiries=total, classification=cls
-                    ),
-                    timeout=min(settings.TICKET_INQUIRY_BUDGET_S, remaining),
-                )
+                entry = _entry_from_outcome(i, outcome)
+                entry["participant_reply_safe"] = False
+                entry["coerced_by_mode"] = True
+                outcomes.append(outcome)
+                await repo.record_inquiry_result(job_id, i, entry)
+                continue
+            outcome = await asyncio.wait_for(
+                orchestrator.handle_inquiry(
+                    ext, req, total_inquiries=total, classification=cls
+                ),
+                timeout=min(settings.TICKET_INQUIRY_BUDGET_S, remaining),
+            )
             outcomes.append(outcome)
             await repo.record_inquiry_result(job_id, i, _entry_from_outcome(i, outcome))
         except asyncio.TimeoutError:
@@ -379,6 +420,11 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
     current = await repo.get(job_id)
     entries = current.per_inquiry_status if current else []
     state, next_action = aggregate_states(entries, unprocessed)
+    # Un ticket con alguna inquiry coercida por el modo se resuelve por
+    # legacy: el gating no es un resultado de negocio publicable.
+    if (state == TicketJobState.SUCCEEDED
+            and any(e.get("coerced_by_mode") for e in entries)):
+        next_action = NextAction.USE_LEGACY
     error_code = None
     if state != TicketJobState.SUCCEEDED:
         codes = [e.get("error", {}).get("code") for e in entries
@@ -403,6 +449,17 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
     )
     await _log_execution_safe(app, record, final)
     return final
+
+
+def _shadow_sampled(job_id: str) -> bool:
+    """Muestreo determinístico por job (reproducible, sin RNG): controla el
+    costo del shadow real vía TICKET_SHADOW_SAMPLE_RATE (0.0 = sólo
+    clasificación, 1.0 = pipeline completo en todos los jobs shadow)."""
+    rate = max(0.0, min(1.0, settings.TICKET_SHADOW_SAMPLE_RATE))
+    if rate <= 0.0:
+        return False
+    bucket = int(job_id[:8], 16) / 0xFFFFFFFF
+    return bucket < rate
 
 
 def _entry_from_outcome(index: int, outcome: InquiryOutcome) -> Dict[str, Any]:

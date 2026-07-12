@@ -1,6 +1,38 @@
+# Cloud Build — gates ANTES de deploy (Task 12 del plan de remediacion).
+# Orden: deps + suite completa -> pip-audit -> pip check + lock artifact ->
+# build -> push -> deploy. Una suite roja o una CVE conocida NO llega a prod.
+# Image scanning/SBOM: Artifact Registry scanning automatico (ver
+# GCP_SERVICES_GUIDE). Secret scanning: activar en GitHub (push protection).
 steps:
+  # Gate 1: suite completa dentro del runtime real (python:3.12)
+  - name: 'python:3.12-slim'
+    id: 'test'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        cd kb-rag-system
+        pip install --no-cache-dir --upgrade pip
+        pip install --no-cache-dir -r requirements.txt
+        python -m pytest -q
+        python -m pip check
+        pip freeze > requirements.lock
+    # requirements.lock queda como artifact del build (reproducibilidad)
+
+  # Gate 2: auditoria de CVEs conocidas en dependencias
+  - name: 'python:3.12-slim'
+    id: 'audit'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        cd kb-rag-system
+        pip install --no-cache-dir pip-audit
+        pip-audit -r requirements.txt
+
   # Build the Docker image
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'build'
     args:
       - 'build'
       - '-t'
@@ -12,13 +44,18 @@ steps:
 
   # Push to Artifact Registry
   - name: 'gcr.io/cloud-builders/docker'
+    id: 'push'
     args:
       - 'push'
       - '--all-tags'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system'
 
-  # Deploy to Cloud Run
+  # Deploy to Cloud Run. Con el ticket handler activo, el deploy DEBE llevar
+  # TICKET_JOB_BACKEND=firestore y TICKET_TASK_QUEUE=cloudtasks (el boot es
+  # fail-closed y se niega a arrancar sin ellos en produccion). Promocion
+  # canary: gestionar traffic splitting fuera de este build (ver guia).
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'deploy'
     entrypoint: gcloud
     args:
       - 'run'
@@ -30,6 +67,12 @@ steps:
       - 'us-central1'
       - '--platform'
       - 'managed'
+
+artifacts:
+  objects:
+    location: 'gs://$PROJECT_ID-build-artifacts/kb-rag-system/$SHORT_SHA/'
+    paths:
+      - 'kb-rag-system/requirements.lock'
 
 options:
   logging: CLOUD_LOGGING_ONLY

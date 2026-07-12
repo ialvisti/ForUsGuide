@@ -975,3 +975,44 @@ la raíz del repo).
 - No registrar `FORUSBOTS_AUTH_TOKEN` ni bodies de error upstream (pueden
   contener PII scrapeada).
 - No copiar valores de secretos a planes, documentación ni logs.
+
+### Infraestructura del ticket handler durable (declarar en IaC)
+
+`cloudbuild.yaml` ya corre suite completa + `pip-audit` + `pip check` antes
+de build/deploy y publica `requirements.lock` (generado dentro de
+python:3.12) como artifact. Lo siguiente debe versionarse con el mecanismo
+IaC del equipo (no depender de drift de consola):
+
+```bash
+# Cola de ejecución (límites GLOBALES según capacidad ForusBots/cuotas LLM)
+gcloud tasks queues create ticket-jobs \
+  --location us-central1 \
+  --max-dispatches-per-second=2 \
+  --max-concurrent-dispatches=4 \
+  --max-attempts=5 --min-backoff=30s --max-backoff=300s
+
+# SA que firma el OIDC de los tasks hacia el worker
+gcloud iam service-accounts create ticket-tasks-invoker
+gcloud run services add-iam-policy-binding kb-rag-system \
+  --region us-central1 \
+  --member serviceAccount:ticket-tasks-invoker@rag-kb-system.iam.gserviceaccount.com \
+  --role roles/run.invoker
+
+# TTL de Firestore (retención de PII gobernada por expires_at)
+gcloud firestore fields ttls update expires_at \
+  --collection-group=ticket_jobs --enable-ttl
+gcloud firestore fields ttls update expires_at \
+  --collection-group=ticket_idempotency --enable-ttl
+```
+
+Variables nuevas del servicio (por NOMBRE; valores via Secret Manager/env):
+`TICKET_JOB_BACKEND=firestore`, `TICKET_TASK_QUEUE=cloudtasks`,
+`CLOUD_TASKS_QUEUE`, `CLOUD_TASKS_LOCATION`, `TICKET_WORKER_URL`,
+`TICKET_WORKER_SERVICE_ACCOUNT`, `TICKET_WORKER_REQUIRE_OIDC=true`,
+`TICKET_JOB_RETENTION_S`, `TICKET_SHADOW_SAMPLE_RATE`, `API_CLIENT_KEYS`
+(secret), `WEB_CONCURRENCY`, `MAX_REQUEST_BODY_BYTES`,
+`TICKET_MAX_OUTSTANDING_JOBS`.
+
+Promoción: deploy → staging/revision sin tráfico → smoke + contract tests →
+`gcloud run services update-traffic` canary → 100 %. Mantener la revisión
+anterior para rollback inmediato (los jobs durables sobreviven el cambio).

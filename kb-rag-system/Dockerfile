@@ -41,8 +41,8 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Run application — uses ${PORT} so Cloud Run can set it dynamically.
-# NOTE: single worker. The /handle-ticket hybrid contract keeps slow (data-path)
-# jobs in an in-process store that the GET /tickets/{id} poll must see; the work
-# is I/O-bound (ForusBots + LLM awaits) so one async worker is sufficient. Move
-# to a Firestore-backed job store before raising the worker count.
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]
+# Workers: los ticket jobs viven en Firestore + Cloud Tasks (nada
+# process-local), asi que multiples workers/instancias son seguros. Unica
+# configuracion soportada: WEB_CONCURRENCY (default 1: el trabajo es
+# I/O-bound y Cloud Run escala por instancias).
+CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY:-1}"]

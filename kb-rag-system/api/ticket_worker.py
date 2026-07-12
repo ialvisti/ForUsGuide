@@ -295,13 +295,15 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         sampled = _shadow_sampled(record.job_id)
         shadow_summary: List[Dict[str, Any]] = []
         for i, (ext, cls) in enumerate(zip(capped, classifications)):
-            if sampled:
+            shadow_remaining = deadline - time.monotonic()
+            if sampled and shadow_remaining > 0:
                 try:
                     real = await asyncio.wait_for(
                         orchestrator.handle_inquiry(
                             ext, req, total_inquiries=total, classification=cls
                         ),
-                        timeout=settings.TICKET_INQUIRY_BUDGET_S,
+                        timeout=min(settings.TICKET_INQUIRY_BUDGET_S,
+                                    shadow_remaining),
                     )
                     shadow_summary.append({
                         "index": i,

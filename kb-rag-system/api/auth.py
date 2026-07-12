@@ -30,8 +30,10 @@ def resolve_principal(api_key: Optional[str]) -> Optional[str]:
         return None
     client_keys = settings.API_CLIENT_KEYS or {}
     for principal, key in client_keys.items():
-        if key and hmac.compare_digest(api_key, key):
-            return principal
+        # str(): el dict viene de env JSON; un valor no-string no debe tirar
+        # TypeError en el path de auth.
+        if key and hmac.compare_digest(api_key, str(key)):
+            return str(principal)
     if settings.API_KEY and hmac.compare_digest(api_key, settings.API_KEY):
         return LEGACY_PRINCIPAL
     return None

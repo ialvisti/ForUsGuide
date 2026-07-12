@@ -1270,7 +1270,10 @@ async def _accept_ticket_job(
         "ticket_jobs_replayed" if replayed else "ticket_jobs_accepted"
     )
 
-    if record.enqueue_state != "enqueued":
+    # Cerrar la ventana record/task: un crash entre create_or_get y enqueue se
+    # repara en el retry (task name determinístico). Un job ya terminal no se
+    # re-encola (el claim lo rechazaría igualmente, pero no gastamos el task).
+    if record.enqueue_state != "enqueued" and record.state not in TERMINAL_STATES:
         queue = http_request.app.state.ticket_queue
         task_name = await queue.ensure_enqueued(record.job_id)
         record = await repo.mark_enqueued(record.job_id, task_name)

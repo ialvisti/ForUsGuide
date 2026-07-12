@@ -539,7 +539,8 @@ class RAGEngine:
             if inquiry not in sub_queries:
                 enriched_queries.append(f"{inquiry} {topic}")
 
-            logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+            logger.info(f"Decomposed into {len(sub_queries)} sub-queries "
+                        f"(text redacted, {sum(len(s) for s in sub_queries)} chars)")
 
             # Fix 4: Build the deterministic retrieval profile so required_data
             # can use the same primary_article_id / excluded_articles signals
@@ -867,7 +868,8 @@ class RAGEngine:
                 topic=topic,
                 advisory_signal=advisory_signal,
             )
-            logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+            logger.info(f"Decomposed into {len(sub_queries)} sub-queries "
+                        f"(text redacted, {sum(len(s) for s in sub_queries)} chars)")
             
             enriched_queries = []
             for sq in sub_queries:
@@ -1115,13 +1117,16 @@ class RAGEngine:
                 parsed = json.loads(llm_response)
             except json.JSONDecodeError as e:
                 logger.error(f"Unified LLM JSON parse error: {e}")
-                logger.error(f"Raw response: {llm_response[:500]}")
+                logger.error(f"Raw response redacted ({len(llm_response or '')} chars); parse failure")
                 parsed = {
                     "outcome": "ambiguous_plan_rules",
                     "outcome_reason": "Response parsing failed — raw LLM output could not be parsed as JSON.",
                     "response_to_participant": {
                         "opening": "We were unable to generate a structured response for your inquiry.",
-                        "key_points": [llm_response[:1000]] if llm_response else [],
+                        # HT-09/HT-15: nunca incrustar output LLM raw en una estructura
+                        # participant-facing; solo un marcador tecnico
+                        # (la escalacion abajo fuerza revision humana).
+                        "key_points": ["[technical_parse_failure]"] if llm_response else [],
                         "steps": [],
                         "warnings": []
                     },
@@ -1477,12 +1482,13 @@ class RAGEngine:
         Returns:
             KnowledgeQuestionResult with answer, key points, and sources
         """
-        logger.info(f"ask_knowledge_question() - Question: {question[:80]}...")
+        logger.info(f"ask_knowledge_question() - question of {len(question)} chars (redacted)")
         
         try:
             # 1. Decompose question into sub-queries
             sub_queries = await self._decompose_question(question)
-            logger.info(f"Decomposed into {len(sub_queries)} sub-queries: {sub_queries}")
+            logger.info(f"Decomposed into {len(sub_queries)} sub-queries "
+                        f"(text redacted, {sum(len(s) for s in sub_queries)} chars)")
             
             # 2. Parallel search: sub-queries + original question
             search_tasks = [
@@ -5591,7 +5597,7 @@ class RAGEngine:
             parsed = json.loads(llm_response)
         except json.JSONDecodeError as e:
             logger.error(f"Error parseando JSON del LLM: {e}")
-            logger.error(f"Respuesta: {llm_response[:500]}")
+            logger.error(f"Respuesta redactada ({len(llm_response or '')} chars); parse failure")
             parsed = {"participant_data": [], "plan_data": [], "coverage_gaps": []}
 
         coverage_gaps = parsed.get("coverage_gaps", [])

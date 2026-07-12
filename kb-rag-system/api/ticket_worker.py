@@ -29,6 +29,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel
 
+from api import metrics as ticket_metrics
 from api.config import settings
 from api.models import (
     GenerateResponseResult,
@@ -433,6 +434,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             codes.append(PublicErrorCode.UNPROCESSED_INQUIRIES.value)
         error_code = codes[0] if codes else None
 
+    ticket_metrics.increment("ticket_jobs_terminal", state=state.value)
     final = await repo.update(
         job_id,
         state=state,

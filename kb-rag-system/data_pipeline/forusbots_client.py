@@ -35,6 +35,13 @@ from cachetools import TTLCache
 logger = logging.getLogger(__name__)
 
 
+def _pseudo(entity_id: str) -> str:
+    """Pseudonimiza IDs de participante/plan en labels de log (Task 11):
+    hash corto estable para correlacionar sin exponer el ID real."""
+    return hashlib.sha256(str(entity_id).encode("utf-8")).hexdigest()[:10]
+
+
+
 # ============================================================================
 # Public types
 # ============================================================================
@@ -184,7 +191,7 @@ class ForusBotsClient:
         }
         idem = self._idem_key("participant", participant_id, modules)
         return await self._deduped(
-            idem, "/forusbot/scrape-participant", payload, label=f"participant:{participant_id}"
+            idem, "/forusbot/scrape-participant", payload, label=f"participant:{_pseudo(participant_id)}"
         )
 
     async def scrape_plan(
@@ -204,7 +211,7 @@ class ForusBotsClient:
         }
         idem = self._idem_key("plan", plan_id, modules)
         return await self._deduped(
-            idem, "/forusbot/scrape-plan", payload, label=f"plan:{plan_id}"
+            idem, "/forusbot/scrape-plan", payload, label=f"plan:{_pseudo(plan_id)}"
         )
 
     # ------------------------------------------------------------------

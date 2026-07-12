@@ -83,15 +83,22 @@ async def limit_body_size(request: Request, call_next):
 
 async def add_request_id(request: Request, call_next):
     """
-    Agrega un request ID único para tracking.
+    Agrega un request ID único para tracking y conserva el correlation ID
+    del caller (n8n) cuando llega en X-Correlation-ID: ambos IDs viajan en
+    la respuesta y en los logs (Task 11).
     """
     request_id = str(uuid.uuid4())
     request.state.request_id = request_id
-    
+    inbound = request.headers.get("X-Correlation-ID")
+    if inbound:
+        request.state.correlation_id = inbound[:128]
+
     # Agregar a response headers
     response = await call_next(request)
     response.headers["X-Request-ID"] = request_id
-    
+    if inbound:
+        response.headers["X-Correlation-ID"] = inbound[:128]
+
     return response
 
 

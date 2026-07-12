@@ -98,6 +98,7 @@ from .middleware import (
     limit_body_size,
 )
 from .rate_limit import FixedWindowRateLimiter
+from . import metrics as ticket_metrics
 
 # Configurar logging
 logging.basicConfig(
@@ -423,9 +424,13 @@ app.add_middleware(
 )
 
 # Custom Middleware
+# Starlette ejecuta el ÚLTIMO registrado como el más externo. Orden efectivo
+# de ejecución: handle_errors → add_request_id → log_requests →
+# limit_body_size → route. Así el request ID existe cuando log_requests
+# escribe la línea de inicio (fix HT: logs con ID unknown).
 app.middleware("http")(limit_body_size)
-app.middleware("http")(add_request_id)
 app.middleware("http")(log_requests)
+app.middleware("http")(add_request_id)
 app.middleware("http")(handle_errors)
 
 # Worker interno de ticket jobs (Cloud Tasks target; OIDC-protected)
@@ -603,6 +608,38 @@ async def health_check(
         router_mode=settings.ROUTER_MODE,
         ticket_handler_mode=settings.TICKET_HANDLER_MODE,
     )
+
+
+@app.get("/livez", include_in_schema=False)
+async def livez():
+    """Liveness: proceso vivo. SIN I/O externo (Task 11)."""
+    return {"status": "ok"}
+
+
+@app.get("/readyz", include_in_schema=False)
+async def readyz(request: Request):
+    """Readiness: configuración crítica y clientes inicializados; 503 si la
+    instancia no puede aceptar trabajo. Sin I/O externo (eso es /health)."""
+    st = request.app.state
+    missing = [
+        name for name, attr in (
+            ("rag_engine", "rag_engine"),
+            ("pinecone_uploader", "pinecone_uploader"),
+            ("inquiry_router", "inquiry_router"),
+            ("ticket_repo", "ticket_repo"),
+            ("ticket_queue", "ticket_queue"),
+        )
+        if getattr(st, attr, None) is None
+    ]
+    provider_ok = bool(settings.OPENAI_API_KEY) or bool(settings.GEMINI_API_KEY) \
+        or (settings.USE_VERTEX_AI and bool(settings.GCP_PROJECT))
+    if missing or not provider_ok:
+        return JSONResponse(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            content={"status": "unavailable", "missing": missing,
+                     "llm_provider_configured": provider_ok},
+        )
+    return {"status": "ready"}
 
 
 @app.post(
@@ -1166,6 +1203,7 @@ async def _accept_ticket_job(
         ("handle-ticket", principal), settings.RATE_LIMIT_HANDLE_TICKET
     )
     if not allowed:
+        ticket_metrics.increment("ticket_rate_limited")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"code": "RATE_LIMITED", "retryable": True},
@@ -1173,6 +1211,7 @@ async def _accept_ticket_job(
         )
     outstanding = await repo.count_active(principal)
     if outstanding >= settings.TICKET_MAX_OUTSTANDING_JOBS:
+        ticket_metrics.increment("ticket_outstanding_capped")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"code": "TOO_MANY_OUTSTANDING_JOBS", "retryable": True,
@@ -1220,12 +1259,16 @@ async def _accept_ticket_job(
         candidate=candidate,
     )
     if outcome == CreateOrGetOutcome.CONFLICT or record is None:
+        ticket_metrics.increment("ticket_jobs_conflicted")
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail={"code": "IDEMPOTENCY_PAYLOAD_MISMATCH",
                     "message": "la misma Idempotency-Key ya se usó con otro payload"},
         )
     replayed = outcome == CreateOrGetOutcome.REPLAYED
+    ticket_metrics.increment(
+        "ticket_jobs_replayed" if replayed else "ticket_jobs_accepted"
+    )
 
     if record.enqueue_state != "enqueued":
         queue = http_request.app.state.ticket_queue
@@ -1358,11 +1401,13 @@ async def get_ticket_status(
     job de otro principal (invariante 10)."""
     record = await repo.get(ticket_job_id)
     if record is None:
+        ticket_metrics.increment("ticket_poll_not_found")
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ticket job not found or expired.",
         )
     if record.principal_id != _request_principal(http_request):
+        ticket_metrics.increment("ticket_poll_forbidden")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "TICKET_JOB_FORBIDDEN",

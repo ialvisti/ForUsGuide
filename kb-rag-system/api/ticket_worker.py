@@ -503,7 +503,20 @@ async def ticket_job_task(body: _TaskBody, request: Request) -> Dict[str, Any]:
                             detail="unknown ticket job")
 
     final = await run_ticket_job(request.app, body.job_id, worker_id=worker_id)
-    return {
-        "job_id": body.job_id,
-        "state": final.state.value if final else "duplicate_delivery",
-    }
+    if final is not None:
+        return {"job_id": body.job_id, "state": final.state.value}
+
+    # Claim rechazado. Terminal → delivery duplicado benigno (200, no retry).
+    # No-terminal → otro attempt tiene el lease: pedir retry DESPUÉS del
+    # lease para que un attempt crasheado no deje el job en running eterno.
+    current = await repo.get(body.job_id)
+    if current is not None and current.state not in (
+        TicketJobState.SUCCEEDED, TicketJobState.PARTIAL, TicketJobState.FAILED,
+        TicketJobState.TIMEOUT, TicketJobState.CANCELLED,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "JOB_CLAIMED_ELSEWHERE", "retryable": True},
+            headers={"Retry-After": "60"},
+        )
+    return {"job_id": body.job_id, "state": "duplicate_delivery"}

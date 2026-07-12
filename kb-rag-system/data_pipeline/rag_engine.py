@@ -872,9 +872,12 @@ class RAGEngine:
             enriched_queries = []
             for sq in sub_queries:
                 parts = [sq, topic]
+                # Task 8 (HT-14): sólo NOMBRES de campo (conceptos) enriquecen
+                # la query; los VALORES del participante (balances, fechas,
+                # emails...) nunca viajan a embeddings/Pinecone.
                 if collected_data and "participant_data" in collected_data:
-                    for key, value in list(collected_data["participant_data"].items())[:3]:
-                        parts.append(f"{key}: {value}")
+                    field_names = list(collected_data["participant_data"].keys())[:3]
+                    parts.extend(str(name).replace("_", " ") for name in field_names)
                 enriched_queries.append(" ".join(parts))
             
             if inquiry not in sub_queries:

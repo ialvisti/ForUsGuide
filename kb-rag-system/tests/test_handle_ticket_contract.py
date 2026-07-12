@@ -112,6 +112,14 @@ class TestPollingContract:
             assert cfg["publishable"] is False, state
             assert cfg["action"] != "publish_participant_reply", state
 
+    def test_succeeded_publish_is_guarded_against_shadow(self, polling_fixture):
+        """Un job shadow termina succeeded con metadata.fallback=true; n8n
+        debe tener el guard para no publicar el saludo interno (HT-11)."""
+        succeeded = polling_fixture["on_state"]["succeeded"]
+        assert "fallback" in succeeded.get("guard", ""), (
+            "el fixture no declara el guard de shadow/fallback para succeeded"
+        )
+
     def test_error_http_statuses_have_fail_safe_actions(self, polling_fixture):
         on_http = polling_fixture["on_http_status"]
         for code in ("404", "410", "invalid_json"):

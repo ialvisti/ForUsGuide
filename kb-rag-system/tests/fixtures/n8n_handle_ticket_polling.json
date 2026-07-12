@@ -21,7 +21,11 @@
   "on_state": {
     "queued": { "action": "continue_polling", "publishable": false },
     "running": { "action": "continue_polling", "publishable": false },
-    "succeeded": { "action": "publish_participant_reply", "publishable": true },
+    "succeeded": {
+      "action": "publish_participant_reply",
+      "publishable": true,
+      "guard": "SOLO si metadata.fallback != true (un job shadow devuelve succeeded + fallback=true y NUNCA se publica; usar legacy)"
+    },
     "partial": { "action": "use_legacy_or_human", "publishable": false },
     "failed": { "action": "use_legacy_or_human", "publishable": false },
     "timeout": { "action": "use_legacy_or_human", "publishable": false },

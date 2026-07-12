@@ -323,15 +323,30 @@ class TestHTTPErrors:
             await client.scrape_participant("x", [{"key": "census", "fields": []}])
         assert fake.count("POST") == 1  # no retry on a client error
 
-    async def test_submit_5xx_is_retried_then_succeeds(self):
+    async def test_submit_5xx_is_ambiguous_never_retried(self):
+        """HT-16 (Task 8): un 5xx tras el POST de submit es ambiguo — el job
+        upstream pudo haberse creado. La política anterior (retry) duplicaba
+        jobs RPA; ahora se levanta ForusBotsAmbiguousSubmit sin reintento."""
+        from data_pipeline.forusbots_client import ForusBotsAmbiguousSubmit
+
         client, fake = _client([
             _resp(503, {"ok": False}),
+            _SUBMIT_OK,   # un retry consumiría esto y duplicaría el job
+        ])
+        with pytest.raises(ForusBotsAmbiguousSubmit):
+            await client.scrape_participant("x", [{"key": "census", "fields": []}])
+        assert fake.count("POST") == 1
+
+    async def test_submit_429_is_retried_then_succeeds(self):
+        """429 = rechazado antes de procesar; el retry de POST sí es seguro."""
+        client, fake = _client([
+            _resp(429, {"ok": False}),
             _SUBMIT_OK,
             _resp(200, {"state": "succeeded", "result": {}}),
         ])
         result = await client.scrape_participant("x", [{"key": "census", "fields": []}])
         assert result.state == "succeeded"
-        assert fake.count("POST") == 2  # 503 then 202
+        assert fake.count("POST") == 2  # 429 then 202
 
     async def test_submit_not_retried_on_read_timeout(self):
         client, fake = _client([httpx.ReadTimeout("ambiguous timeout")])

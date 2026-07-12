@@ -767,14 +767,30 @@ class TicketStatusResponse(BaseModel):
     """Respuesta de GET /api/v1/tickets/{ticket_job_id}."""
 
     ticket_job_id: str = Field(...)
-    state: str = Field(..., description="running | succeeded | partial | failed | timeout")
+    state: str = Field(
+        ...,
+        description=(
+            "queued | running | succeeded | partial | failed | timeout | "
+            "cancelled (set CERRADO; n8n debe tener rama para todos)"
+        ),
+    )
     route_taken: Optional[RouteDecision] = Field(default=None)
     primary: Optional[InquiryResult] = Field(default=None)
     related: List[InquiryResult] = Field(default_factory=list)
     total_inquiries_in_ticket: Optional[int] = Field(default=None)
     forusbots_job_ids: List[str] = Field(default_factory=list)
     elapsed_s: Optional[float] = Field(default=None)
-    error: Optional[str] = Field(default=None)
+    error: Optional[str] = Field(
+        default=None,
+        description="Código machine-readable (PublicErrorCode), nunca texto raw",
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Metadata del job (ticket_handler_mode, fallback/shadow_routes). "
+            "n8n DEBE tratar fallback=true como no-publicable."
+        ),
+    )
 
 
 # ============================================================================

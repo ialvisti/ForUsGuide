@@ -92,7 +92,6 @@ from .models import (
 )
 from .config import settings, validate_settings
 from .middleware import (
-    authenticate_request,
     add_request_id,
     log_requests,
     handle_errors,
@@ -579,17 +578,21 @@ async def health_check(
     Verifica el estado del servicio y sus dependencias.
     """
     try:
-        # Check Pinecone connection
+        # Check Pinecone connection. get_index_stats() ya no traga errores:
+        # {"error": ...} significa dependencia caída, no índice vacío (HT-24).
         stats = pinecone.get_index_stats()
-        pinecone_connected = True
+        pinecone_connected = "error" not in stats and "total_vectors" in stats
         total_vectors = stats.get('total_vectors', 0)
     except Exception as e:
         logger.error(f"Pinecone health check failed: {e}")
         pinecone_connected = False
         total_vectors = 0
-    
-    # Check OpenAI configuration
-    openai_configured = bool(settings.OPENAI_API_KEY)
+
+    # Un proveedor LLM utilizable, no sólo OpenAI (HT-24): las rutas pueden
+    # correr enteramente sobre Gemini/Vertex.
+    openai_configured = bool(settings.OPENAI_API_KEY) or bool(
+        settings.GEMINI_API_KEY
+    ) or (settings.USE_VERTEX_AI and bool(settings.GCP_PROJECT))
     
     return HealthResponse(
         status="healthy" if (pinecone_connected and openai_configured) else "degraded",
@@ -938,7 +941,9 @@ async def route_inquiry_endpoint(
     **Autenticación:** Requiere header ``X-API-Key``.
     """
     start = time.monotonic()
-    effective_mode = request.router_mode or settings.ROUTER_MODE
+    # El override del body sólo puede RESTRINGIR el modo del servidor (mismo
+    # clamp que el ticket handler; hallazgo adyacente a HT-10).
+    effective_mode = _effective_ticket_mode(settings.ROUTER_MODE, request.router_mode)
 
     if effective_mode == "disabled":
         raise HTTPException(
@@ -1375,6 +1380,9 @@ async def get_ticket_status(
         forusbots_job_ids=record.forusbots_job_ids,
         elapsed_s=_record_elapsed_s(record),
         error=record.public_error_code,
+        # metadata visible también en el poll: un job shadow (fallback=true)
+        # nunca debe parecer publicable aunque llegue por 202+poll (HT-11)
+        metadata=(record.public_result or {}).get("metadata", {}),
     )
 
 

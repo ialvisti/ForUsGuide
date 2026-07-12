@@ -64,6 +64,24 @@ class ForusBotsJobFailed(ForusBotsError):
         super().__init__(f"ForusBots job {job_id} {state}: {error}")
 
 
+class ForusBotsAmbiguousSubmit(ForusBotsError):
+    """Un POST de submit devolvió 5xx: el job upstream PUDO haberse creado.
+
+    Reintentar a ciegas duplicaría trabajo RPA (HT-16). Sin un contrato de
+    idempotencia/reconciliación por request ID en el servicio upstream, el
+    caller debe marcar ``needs_reconciliation`` y derivar a legacy/humano.
+    """
+
+    needs_reconciliation = True
+
+    def __init__(self, method: str, path: str, status_code: int):
+        self.status_code = status_code
+        super().__init__(
+            f"{method} {path}: HTTP {status_code} tras el submit — resultado "
+            "ambiguo (el job pudo crearse); no se reintenta"
+        )
+
+
 @dataclass
 class ScrapeResult:
     """Outcome of a successful scrape (submit + poll to ``succeeded``)."""
@@ -209,21 +227,29 @@ class ForusBotsClient:
         existing = self._inflight.get(idem)
         if existing is not None:
             logger.info("[forusbots] %s joined in-flight job (dedupe)", label)
-            return await existing
+            # shield: cancelar a UN waiter no cancela el scrape compartido
+            # que otros waiters siguen esperando (HT-17).
+            return await asyncio.shield(existing)
 
-        # Wrap the work in a single task that BOTH the originating caller and any
-        # concurrent duplicate callers await. This guarantees the task's result
-        # (or exception) is always retrieved — no orphaned futures.
+        # La vida del trabajo se separa de la vida de cada waiter: el task es
+        # dueño de su entrada en _inflight (se limpia al TERMINAR el task, no
+        # cuando un waiter se cancela) y cachea su propio resultado. Un waiter
+        # cancelado deja el scrape corriendo para los demás/futuros callers.
         task: "asyncio.Task[ScrapeResult]" = asyncio.ensure_future(
             self._submit_and_poll(path, payload, label=label)
         )
         self._inflight[idem] = task
-        try:
-            result = await task
-        finally:
+
+        def _on_done(t: "asyncio.Task[ScrapeResult]") -> None:
             self._inflight.pop(idem, None)
-        self._result_cache[idem] = result
-        return result
+            if t.cancelled():
+                return
+            exc = t.exception()   # recuperada: sin warnings de futuro huérfano
+            if exc is None:
+                self._result_cache[idem] = t.result()
+
+        task.add_done_callback(_on_done)
+        return await asyncio.shield(task)
 
     # ------------------------------------------------------------------
     # Submit + poll
@@ -356,12 +382,29 @@ class ForusBotsClient:
                     f"{method} {url}: transport error {type(exc).__name__}: {exc}"
                 ) from exc
 
-            if resp.status_code >= 500 or resp.status_code == 429:
+            if resp.status_code >= 500:
+                # HT-16: un 5xx tras un POST no-idempotente es AMBIGUO — el
+                # job upstream pudo crearse antes del error. Nunca re-enviar.
+                if not idempotent:
+                    raise ForusBotsAmbiguousSubmit(method, url, resp.status_code)
                 last_exc = ForusBotsError(f"{method} {url}: HTTP {resp.status_code}")
                 if attempt < self._http_retries:
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 2.0)
                     continue
+            elif resp.status_code == 429:
+                # 429 = rechazado antes de procesar; retry seguro también en POST.
+                last_exc = ForusBotsError(f"{method} {url}: HTTP {resp.status_code}")
+                if attempt < self._http_retries:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 2.0)
+                    continue
+            elif 300 <= resp.status_code < 400:
+                # No se siguen redirects para requests autenticados: un 3xx a
+                # otro host/esquema podría filtrar el token (Task 8 Step 3).
+                raise ForusBotsError(
+                    f"{method} {url}: unexpected redirect HTTP {resp.status_code}"
+                )
             return resp
 
         # Loop only exits via return or raise; this guards exhausted 5xx retries.
@@ -369,11 +412,11 @@ class ForusBotsClient:
 
     @staticmethod
     def _raise_for_status(resp: httpx.Response, *, context: str) -> None:
+        """Errores sanitizados: nunca se incluye el body upstream (puede
+        contener PII scrapeada); sólo status + tamaño (Task 8/HT-15)."""
         if resp.status_code < 400:
             return
-        detail: Any
-        try:
-            detail = resp.json()
-        except Exception:  # noqa: BLE001
-            detail = resp.text
-        raise ForusBotsError(f"{context}: HTTP {resp.status_code}: {detail}")
+        raise ForusBotsError(
+            f"{context}: HTTP {resp.status_code} "
+            f"(body de {len(resp.content or b'')} bytes suprimido)"
+        )

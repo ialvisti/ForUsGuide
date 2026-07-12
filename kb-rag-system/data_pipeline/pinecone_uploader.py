@@ -591,7 +591,9 @@ class PineconeUploader:
             }
         except Exception as e:
             logger.error(f"Error obteniendo stats: {e}")
-            return {}
+            # Señal explícita de error: un fallo no puede ser indistinguible
+            # de un índice sano-pero-vacío (HT-24; /health la consume).
+            return {"error": type(e).__name__}
 
 
 def main():

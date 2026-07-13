@@ -213,3 +213,18 @@ class TestFirstContributionPostedStatus:
                                        "Roth": 312.50}]},
         })["participant_data"]
         assert ppt["first_contribution_posted_status"] is True
+
+
+class TestCodeDerivedConceptsAreLLMProof:
+    """Review final (P1): la extracción de ticket NUNCA puede fijar un
+    concepto derivado en código; sin payroll el estatus queda UNKNOWN."""
+
+    def test_extraction_cannot_fabricate_first_contribution(self):
+        collected = build_collected_data(
+            {"census": {"First Name": "Luke"}},  # sin payroll → derive=None
+            None,
+            {"first_contribution_posted_status": {
+                "field": "first_contribution_posted_status",
+                "value": True, "evidence": "my first contribution posted"}},
+        )
+        assert "first_contribution_posted_status" not in collected["participant_data"]

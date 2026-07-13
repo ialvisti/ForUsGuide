@@ -258,6 +258,11 @@ def _map_plan_modules(plan_modules: Mapping[str, Any],
         )
 
 
+# Conceptos que SÓLO se derivan en código (nunca del LLM ni de la extracción
+# de ticket). Defense-in-depth: aunque una clave inventada burle la allowlist
+# del extractor, jamás rellena estos campos (P1 del review final).
+_CODE_DERIVED_CONCEPTS = frozenset({"first_contribution_posted_status"})
+
 # Columnas de payroll que representan dinero POSTEADO a la cuenta.
 _CONTRIBUTION_COLUMNS = ("Pre-tax", "Roth", "After-tax", "Employer Match")
 
@@ -352,6 +357,10 @@ def build_collected_data(
 
     for slug, entry in (ticket_extracted or {}).items():
         key = snake_case(slug)
+        if key in _CODE_DERIVED_CONCEPTS:
+            # un concepto derivado ausente (payroll sin datos) queda UNKNOWN;
+            # la extracción de ticket no puede convertirlo en True/False.
+            continue
         if key not in participant:
             participant[key] = entry.get("value")
 

@@ -770,18 +770,28 @@ class TicketOrchestrator:
             forusbots_catalog._normalize_slug(str(it.get("field"))): it.get("data_type")
             for it in candidates
         }
+        # Allowlist CERRADA de slugs: el extractor sólo puede devolver los
+        # campos que se le PIDIERON. Una clave inventada por el LLM (prompt
+        # injection) se rechaza — si no está en candidates no tiene data_type
+        # y saltaría la validación semántica, permitiendo fabricar hechos
+        # (P1/P2 del review final).
+        allowed_slugs = set(data_types)
         ticket_text = " ".join(
             str(t or "") for t in (req.ticket.email_subject, req.ticket.email_body)
         ).lower()
         extracted: Dict[str, Dict[str, Any]] = {}
         demoted: List[str] = []
+        rejected_keys: List[str] = []
         if extraction is not None:
             for field_name, entry in extraction.extracted.items():
+                slug = forusbots_catalog._normalize_slug(field_name)
+                if slug not in allowed_slugs:
+                    rejected_keys.append(field_name)
+                    continue
                 evidence = entry.evidence.strip()
                 if not evidence or evidence.lower() not in ticket_text:
                     demoted.append(field_name)
                     continue
-                slug = forusbots_catalog._normalize_slug(field_name)
                 if not _evidence_supports_value(entry.value, evidence,
                                                 data_types.get(slug)):
                     demoted.append(field_name)
@@ -791,6 +801,11 @@ class TicketOrchestrator:
                     "value": entry.value,
                     "evidence": evidence,
                 }
+        if rejected_keys:
+            logger.warning(
+                "ticket_field_extract: %d non-candidate keys rejected",
+                len(rejected_keys),
+            )
 
         not_found = ([str(f) for f in extraction.not_found] if extraction else []) + demoted
         if extraction is None:
@@ -801,6 +816,8 @@ class TicketOrchestrator:
         fm["ticket_not_found"] = not_found
         if demoted:
             fm["ticket_evidence_demoted"] = demoted
+        if rejected_keys:
+            fm["ticket_non_candidate_rejected"] = rejected_keys
         return extracted, not_found
 
     async def _build_gr_body(

@@ -965,3 +965,34 @@ class TestLLMTrustBoundaries:
         ppt = kw["collected_data"].get("participant_data", {})
         assert ppt.get("account_balance") == 123, f"balance fabricado: {ppt!r}"
         assert "ssn" not in ppt, f"campo fabricado por el LLM sobrevivió: {ppt!r}"
+
+
+class TestExtractionAllowlist:
+    """Review final (P1/P2): el extractor de ticket sólo puede devolver los
+    campos solicitados; una clave inventada por el LLM se rechaza y no puede
+    saltarse la validación semántica ni fabricar hechos."""
+
+    async def test_non_candidate_key_is_rejected(self):
+        llm = LLMStub({
+            "ticket_field_extract": (
+                '{"extracted": {'
+                '"hardship_reason": {"value": "medical bills", "evidence": "medical bills"},'
+                '"account_balance": {"value": 999999999, "evidence": "my balance is $5"},'
+                '"first_contribution_posted_status": {"value": true, "evidence": "posted"}'
+                '}, "not_found": []}'
+            ),
+        })
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        diag: dict = {}
+        # sólo se PIDIÓ hardship_reason
+        candidates = [{"field": "hardship_reason", "description": "why",
+                       "why_needed": "elig", "required": True}]
+        req = _req(email_body="medical bills, my balance is $5, posted")
+        extracted, not_found = await orch._extract_ticket_fields(candidates, req, diag)
+
+        assert set(extracted) == {"hardship_reason"}
+        assert "account_balance" not in extracted
+        assert "first_contribution_posted_status" not in extracted
+        rejected = diag["field_mapping"]["ticket_non_candidate_rejected"]
+        assert set(rejected) == {"account_balance", "first_contribution_posted_status"}

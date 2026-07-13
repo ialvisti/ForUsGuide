@@ -969,7 +969,7 @@ la raíz del repo).
 | n8n fail-safe | **Pendiente** | Hasta terminar la remediación: cualquier estado `partial|failed|timeout`, error técnico, JSON inválido o poll `404` → legacy/humano. Nunca publicar automáticamente un fallback interno. |
 | Mantener legacy de n8n para `generate_response` | **Pendiente** | Hasta completar HT-01/02/03/05 del plan. |
 | Captura sanitizada del despliegue real | **Hecha 2026-07-12** | Ver "Snapshot sanitizado del despliegue real" abajo. |
-| **Apagar `TICKET_HANDLER_MODE=full` en prod** | **URGENTE — pendiente** | 2026-07-12: producción corre la imagen PRE-remediación (`:66f8350`) con `TICKET_HANDLER_MODE=full` y `FORUSBOTS_BASE_URL` http:// — el camino de alto riesgo del audit está ACTIVO. Recomendación: `gcloud run services update kb-rag-system --region us-central1 --update-env-vars TICKET_HANDLER_MODE=disabled` hasta desplegar la rama remediada con su checklist. |
+| **Apagar `TICKET_HANDLER_MODE=full` en prod** | **HECHO 2026-07-13** | Aplicado `gcloud run services update kb-rag-system --update-env-vars TICKET_HANDLER_MODE=disabled`. Revisión `kb-rag-system-00048-bkc` sirve 100 %; `/health` autenticado confirma `ticket_handler_mode=disabled`. El camino de alto riesgo (LLM sobre datos financieros, PII por HTTP, jobs efímeros) queda cortado. n8n recibe 503 en `/api/v1/handle-ticket` → debe usar legacy. Reactivar SÓLO tras desplegar la rama remediada con el checklist de abajo. |
 
 ### Snapshot sanitizado del despliegue real (2026-07-12)
 
@@ -1012,6 +1012,9 @@ fail-closed y se negará a arrancar si falta algo):
 de build/deploy y publica `requirements.lock` (generado dentro de
 python:3.12) como artifact. Lo siguiente debe versionarse con el mecanismo
 IaC del equipo (no depender de drift de consola):
+
+> Verificado 2026-07-12: `cloudtasks.googleapis.com` NO está habilitada en
+> `rag-kb-system` — paso 0: `gcloud services enable cloudtasks.googleapis.com`.
 
 ```bash
 # Cola de ejecución (límites GLOBALES según capacidad ForusBots/cuotas LLM)

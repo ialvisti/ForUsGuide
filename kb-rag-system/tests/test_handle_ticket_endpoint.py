@@ -150,12 +150,16 @@ class TestInlineRoutes:
         assert data["route_taken"] == "needs_more_info"
         assert data["primary"]["needs_more_info_message"] == "¿Más detalle?"
 
-    def test_empty_extraction_200_needs_more_info(self, client):
+    def test_empty_extraction_routes_to_legacy_or_human(self, client):
+        """Una extracción VÁLIDA y vacía ya no sintetiza un saludo publicable
+        (Tarea 6 Paso 1): el ticket va a legacy/humano vía 202 + poll."""
         _use_orch(client, FakeOrch([], _cls("needs_more_info"), None))
         r = client.post("/api/v1/handle-ticket", json=_body())
-        assert r.status_code == 200
-        data = r.json()
-        assert data["route_taken"] == "needs_more_info"
+        assert r.status_code == 202
+        poll = client.get(f"/api/v1/tickets/{r.json()['ticket_job_id']}")
+        data = poll.json()
+        assert data["state"] == "succeeded"
+        assert data["next_action"] == "use_legacy_or_human"
         assert data["total_inquiries_in_ticket"] == 0
         assert data["metadata"]["reason"] == "no_actionable_inquiry"
 

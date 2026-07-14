@@ -104,6 +104,18 @@ class Settings(BaseSettings):
     TICKET_MAX_RELATED: int = 3
     RATE_LIMIT_HANDLE_TICKET: int = 20
 
+    # Presupuestos y relojes durables (plan Tarea 7 Paso 1). Relaciones:
+    # heartbeat*3 <= lease; intento(480) < Cloud Run worker timeout(520) <
+    # dispatch deadline(540); job deadline(2400) + poll(<=30) <= n8n
+    # watch(2700) con margen. El retry config de Cloud Tasks NO es el reloj
+    # autoritativo: job_deadline_at da la garantía.
+    TICKET_ATTEMPT_BUDGET_S: float = 480.0
+    TICKET_JOB_DEADLINE_S: int = 2400
+    TICKET_WORKER_LEASE_S: float = 90.0
+    TICKET_WORKER_HEARTBEAT_S: float = 30.0
+    TICKET_TASK_DISPATCH_DEADLINE_S: int = 540
+    TICKET_ADMISSION_QUEUE_DELAY_CEILING_S: int = 300
+
     # Durable ticket jobs (Task 3/4 del plan de remediación).
     #   TICKET_JOB_BACKEND: "memory" (dev/tests) | "firestore" (producción)
     #   TICKET_TASK_QUEUE:  "inline" (dev/tests) | "cloudtasks" (producción)

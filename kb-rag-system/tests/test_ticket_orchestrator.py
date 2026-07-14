@@ -121,11 +121,15 @@ class TestExtraction:
         orch = TicketOrchestrator(deps, _settings())
         assert await orch.extract_inquiries(_req()) == []
 
-    async def test_extract_unparseable_is_empty(self):
+    async def test_extract_unparseable_raises_typed_error(self):
+        """Un output no-JSON ya NO se degrada a [] (Tarea 6 Paso 1): es un
+        fallo técnico tipificado que el worker convierte en failed."""
+        from data_pipeline.ticket_orchestrator import ExtractionInvalidOutput
         llm = LLMStub({"extract_inquiries": "sorry, I cannot"})
         deps, *_ = _deps(llm=llm)
         orch = TicketOrchestrator(deps, _settings())
-        assert await orch.extract_inquiries(_req()) == []
+        with pytest.raises(ExtractionInvalidOutput):
+            await orch.extract_inquiries(_req())
 
 
 # ---------------------------------------------------------------------------

@@ -1371,6 +1371,7 @@ async def _accept_ticket_job(
             headers={"Retry-After": "30"},
         )
 
+    from datetime import timedelta as _timedelta
     candidate = new_job_record(
         principal_id=principal,
         request_fingerprint=fingerprint,
@@ -1381,6 +1382,10 @@ async def _accept_ticket_job(
         ticket_id=request.ticket.ticket_id,
         request_payload=payload,
         trace_id=getattr(http_request.state, "request_id", None),
+        # deadline ABSOLUTO del job (Tarea 7 Paso 1): worker/reconciliador/
+        # GET terminalizan después de vencido; Cloud Tasks no es el reloj.
+        job_deadline_at=utcnow() + _timedelta(
+            seconds=settings.TICKET_JOB_DEADLINE_S),
     )
     try:
         record, outcome = await repo.create_or_get(

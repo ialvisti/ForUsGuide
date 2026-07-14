@@ -46,8 +46,15 @@ from data_pipeline.ticket_job_models import (
     TicketJobRecord,
     TicketJobState,
 )
-from data_pipeline.ticket_job_repository import TicketJobRepository
-from data_pipeline.ticket_orchestrator import InquiryOutcome
+from data_pipeline.ticket_job_repository import (
+    StaleLeaseEpoch,
+    TicketJobRepository,
+)
+from data_pipeline.ticket_orchestrator import (
+    ExtractionInvalidOutput,
+    ExtractionUnavailable,
+    InquiryOutcome,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +157,9 @@ def outcome_is_degraded(o: InquiryOutcome) -> Tuple[bool, Optional[str]]:
                 else PublicErrorCode.PLAN_SCRAPE_FAILED)
         return True, code.value
     diag = o.diagnostics or {}
+    if diag.get("kq_synthesis_failed"):
+        # fallo técnico de síntesis KQ (Tarea 6 Paso 2): nunca publicable
+        return True, PublicErrorCode.LLM_FAILURE.value
     if diag.get("gr_body_build_failed"):
         return True, PublicErrorCode.LLM_FAILURE.value
     if diag.get("error"):
@@ -189,15 +199,33 @@ def _collect_forusbots_ids(outcomes: List[InquiryOutcome]) -> List[str]:
     return ids
 
 
+def _collect_forusbots_ids_from_entries(entries: List[Dict[str, Any]]) -> List[str]:
+    """IDs de ForusBots desde TODOS los checkpoints persistidos (Tarea 6
+    Paso 4): la agregación final no puede descartar los efectos de attempts
+    anteriores — perderlos rompe la trazabilidad y la reconciliación."""
+    ids: List[str] = []
+    for entry in entries:
+        diag = ((entry.get("result") or {}).get("diagnostics")) or {}
+        for key in ("forusbots_participant_job_id", "forusbots_plan_job_id",
+                    "forusbots_job_id"):
+            value = diag.get(key)
+            if value and value not in ids:
+                ids.append(value)
+    return ids
+
+
 # ---------------------------------------------------------------------------
 # Ejecución durable (única implementación)
 # ---------------------------------------------------------------------------
 
 async def run_ticket_job(app: Any, job_id: str,
                          *, worker_id: Optional[str] = None) -> Optional[TicketJobRecord]:
-    """Ejecuta un job aceptado. Idempotente frente a re-entregas (claim).
+    """Ejecuta un job aceptado. Idempotente frente a re-entregas (claim) y
+    fenced por lease_epoch (Tarea 6 Paso 4a): un intento viejo que despierta
+    después de perder su lease no puede enviar, guardar ni publicar.
 
-    Devuelve el record final, o None si el claim no procede (duplicado)."""
+    Devuelve el record final, o None si el claim no procede (duplicado) o si
+    este intento quedó fenced."""
     repo: TicketJobRepository = app.state.ticket_repo
     worker_id = worker_id or f"worker-{uuid.uuid4().hex[:12]}"
 
@@ -205,24 +233,40 @@ async def run_ticket_job(app: Any, job_id: str,
     if record is None:
         logger.warning("ticket job %s no existe (¿expirado?)", job_id)
         return None
-    if not await repo.claim(job_id, worker_id=worker_id):
+    lease_epoch = await repo.claim(
+        job_id, worker_id=worker_id, lease_s=settings.TICKET_WORKER_LEASE_S)
+    if lease_epoch is None:
         logger.info("ticket job %s ya reclamado/terminal — delivery duplicado", job_id)
         return None
 
+    heartbeat = asyncio.create_task(
+        _heartbeat_loop(repo, job_id, worker_id, lease_epoch))
     try:
-        return await _execute(app, repo, job_id, worker_id)
+        return await _execute(app, repo, job_id, worker_id, lease_epoch)
+    except StaleLeaseEpoch:
+        # Fenced: otro worker/reconciliador posee ya el job. Este intento no
+        # escribe NADA más; el dueño actual completa o re-encola.
+        logger.info("ticket job %s: intento con epoch %d fenced", job_id,
+                    lease_epoch)
+        return None
     except asyncio.CancelledError:
         # Deadline del task / shutdown: dejar el job retryable, nunca en
-        # running eterno. Cloud Tasks reintentará; attempt/lease acotan.
+        # running eterno. La escritura es condicional al epoch: si otro
+        # worker ya tomó el job, no se pisa su estado.
         try:
             await repo.update(
                 job_id,
                 state=TicketJobState.QUEUED,
+                expected_lease_epoch=lease_epoch,
                 public_error_code=PublicErrorCode.WORKER_CANCELLED.value,
                 retryable=True,
                 claimed_by=None,
                 claimed_at=None,
+                lease_owner=None,
+                lease_expires_at=None,
             )
+        except StaleLeaseEpoch:
+            pass
         except Exception:
             logger.exception("no se pudo re-encolar el job %s tras cancelación", job_id)
         raise
@@ -232,72 +276,217 @@ async def run_ticket_job(app: Any, job_id: str,
             await repo.update(
                 job_id,
                 state=TicketJobState.FAILED,
+                expected_lease_epoch=lease_epoch,
                 next_action=NextAction.USE_LEGACY_OR_HUMAN,
                 public_error_code=PublicErrorCode.INTERNAL_ERROR.value,
                 retryable=False,
                 current_step="failed",
             )
+        except StaleLeaseEpoch:
+            return None
         except Exception:
             logger.exception("no se pudo marcar failed el job %s", job_id)
         return await repo.get(job_id)
+    finally:
+        heartbeat.cancel()
+
+
+async def _heartbeat_loop(repo: TicketJobRepository, job_id: str,
+                          worker_id: str, lease_epoch: int) -> None:
+    """Renueva el lease cada TICKET_WORKER_HEARTBEAT_S mientras el intento
+    ejecuta. Si la renovación falla (fenced), no interrumpe: la próxima
+    escritura condicional del intento lanzará StaleLeaseEpoch."""
+    try:
+        while True:
+            await asyncio.sleep(settings.TICKET_WORKER_HEARTBEAT_S)
+            renewed = await repo.renew_lease(
+                job_id, worker_id=worker_id, lease_epoch=lease_epoch,
+                lease_s=settings.TICKET_WORKER_LEASE_S)
+            if not renewed:
+                logger.warning("ticket job %s: heartbeat perdió el lease "
+                               "(epoch %d)", job_id, lease_epoch)
+                return
+    except asyncio.CancelledError:
+        return
+    except Exception:
+        logger.exception("heartbeat del job %s falló", job_id)
+
+
+async def _ensure_lease(repo: TicketJobRepository, job_id: str,
+                        lease_epoch: int) -> None:
+    """Verificación previa a cada efecto externo: owner+epoch vigentes."""
+    control = await repo.get(job_id)
+    if control is None or control.lease_epoch != lease_epoch:
+        raise StaleLeaseEpoch(
+            f"job {job_id}: epoch actual "
+            f"{getattr(control, 'lease_epoch', None)} != {lease_epoch}")
+
+
+class _PlanClassification:
+    """Clasificación rehidratada desde el execution_plan persistido."""
+
+    def __init__(self, route: Optional[str] = None,
+                 confidence: Optional[float] = None,
+                 reasoning: Optional[str] = None,
+                 user_message: Optional[str] = None):
+        self.route = route
+        self.confidence = confidence
+        self.reasoning = reasoning
+        self.user_message = user_message
+
+
+def _build_execution_plan(capped: List[Any], classifications: List[Any],
+                          gated: List[Tuple[str, Optional[str]]],
+                          total: int, unprocessed: int) -> Dict[str, Any]:
+    return {
+        "version": 1,
+        "total_inquiries": total,
+        "unprocessed_inquiries": unprocessed,
+        "inquiries": [
+            {"inquiry": e.inquiry, "record_keeper": e.record_keeper,
+             "plan_type": e.plan_type, "topic": e.topic,
+             "related_inquiries": e.related_inquiries}
+            for e in capped
+        ],
+        "classifications": [
+            {"route": getattr(c, "route", None),
+             "confidence": getattr(c, "confidence", None),
+             "reasoning": getattr(c, "reasoning", None),
+             "user_message": getattr(c, "user_message", None)}
+            for c in classifications
+        ],
+        "gating": [
+            {"route": route, "override_reason": reason}
+            for route, reason in gated
+        ],
+    }
+
+
+def _rehydrate_plan(plan: Dict[str, Any]):
+    from data_pipeline.ticket_orchestrator import ExtractedInquiry
+    capped = [ExtractedInquiry(**item) for item in plan["inquiries"]]
+    classifications = [_PlanClassification(**c) for c in plan["classifications"]]
+    gated = [(g.get("route"), g.get("override_reason"))
+             for g in plan["gating"]]
+    return capped, classifications, gated
 
 
 async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
-                   worker_id: str) -> TicketJobRecord:
+                   worker_id: str, lease_epoch: int) -> TicketJobRecord:
     record = await repo.get(job_id)
     assert record is not None
     req = HandleTicketRequest.model_validate(record.request_payload)
     mode = record.mode or settings.TICKET_HANDLER_MODE
     orchestrator = app.state.ticket_orchestrator_factory()
     started = time.monotonic()
-    deadline = started + settings.TICKET_TOTAL_BUDGET_S
 
-    # -- extracción -------------------------------------------------------
-    await repo.update(job_id, current_step="extracting")
-    extracted = await orchestrator.extract_inquiries(req)
+    # Presupuesto del intento: min(TICKET_ATTEMPT_BUDGET_S, lo que reste del
+    # deadline ABSOLUTO del job). Un intento no inicia un efecto que no cabe.
+    budget = settings.TICKET_ATTEMPT_BUDGET_S
+    if record.job_deadline_at is not None:
+        from data_pipeline.ticket_job_models import utcnow as _utcnow
+        remaining_abs = (record.job_deadline_at - _utcnow()).total_seconds()
+        if remaining_abs <= 0:
+            return await repo.update(
+                job_id,
+                state=TicketJobState.TIMEOUT,
+                expected_lease_epoch=lease_epoch,
+                next_action=NextAction.USE_LEGACY_OR_HUMAN,
+                public_error_code=PublicErrorCode.TOTAL_JOB_TIMEOUT.value,
+                retryable=False,
+                current_step="done",
+            )
+        budget = min(budget, remaining_abs)
+    deadline = started + budget
 
-    if not extracted:
-        entry = _entry_from_outcome(
-            0,
-            nmi_outcome(
-                type("E", (), {"inquiry": (req.ticket.email_body or req.ticket.email_subject or "(empty)")[:1000],
-                               "topic": "general", "record_keeper": req.record_keeper,
-                               "plan_type": "401(k)"})(),
-                _TICKET_GREETING,
-                {"reason": "no_actionable_inquiry"},
-            ),
-        )
-        await repo.record_inquiry_result(job_id, 0, entry)
-        return await repo.update(
+    # -- plan de ejecución: persistir UNA vez, reutilizar en retry ---------
+    if record.execution_plan:
+        capped, classifications, gated = _rehydrate_plan(record.execution_plan)
+        total = record.execution_plan["total_inquiries"]
+        unprocessed = record.execution_plan["unprocessed_inquiries"]
+    else:
+        await repo.update(job_id, current_step="extracting",
+                          expected_lease_epoch=lease_epoch)
+        try:
+            extracted = await orchestrator.extract_inquiries(req)
+        except ExtractionUnavailable:
+            # Fallo TÉCNICO del proveedor: jamás un saludo publicable
+            # (bloqueo 4). n8n resuelve por legacy/humano.
+            return await repo.update(
+                job_id,
+                state=TicketJobState.FAILED,
+                expected_lease_epoch=lease_epoch,
+                next_action=NextAction.USE_LEGACY_OR_HUMAN,
+                public_error_code=PublicErrorCode.LLM_FAILURE.value,
+                retryable=True,
+                current_step="failed",
+                public_result={"metadata": {"ticket_handler_mode": mode,
+                                            "reason": "extract_llm_failure"}},
+            )
+        except ExtractionInvalidOutput:
+            return await repo.update(
+                job_id,
+                state=TicketJobState.FAILED,
+                expected_lease_epoch=lease_epoch,
+                next_action=NextAction.USE_LEGACY_OR_HUMAN,
+                public_error_code=PublicErrorCode.LLM_FAILURE.value,
+                retryable=False,
+                current_step="failed",
+                public_result={"metadata": {"ticket_handler_mode": mode,
+                                            "reason": "extract_invalid_output"}},
+            )
+
+        if not extracted:
+            # Extracción VÁLIDA y vacía: elegible para legacy/humano; nunca
+            # se sintetiza un saludo publicable (Tarea 6 Paso 1).
+            return await repo.update(
+                job_id,
+                state=TicketJobState.SUCCEEDED,
+                expected_lease_epoch=lease_epoch,
+                next_action=NextAction.USE_LEGACY_OR_HUMAN,
+                total_inquiries=0,
+                current_step="done",
+                public_result={"route_taken": "needs_more_info",
+                               "metadata": {"ticket_handler_mode": mode,
+                                            "reason": "no_actionable_inquiry"}},
+            )
+
+        total = len(extracted)
+        capped = extracted[: 1 + settings.TICKET_MAX_RELATED]
+        unprocessed = total - len(capped)
+        classifications = [await orchestrator.classify(e.inquiry) for e in capped]
+        gated = [
+            apply_ticket_handler_mode(getattr(c, "route", "needs_more_info"), mode)
+            for c in classifications
+        ]
+        await repo.update(
             job_id,
-            state=TicketJobState.SUCCEEDED,
-            next_action=NextAction.SEND_PARTICIPANT_REPLY,
-            total_inquiries=0,
-            current_step="done",
-            public_result={"route_taken": "needs_more_info",
-                           "metadata": {"ticket_handler_mode": mode,
-                                        "reason": "no_actionable_inquiry"}},
+            expected_lease_epoch=lease_epoch,
+            execution_plan=_build_execution_plan(
+                capped, classifications, gated, total, unprocessed),
+            total_inquiries=total,
+            unprocessed_inquiries=unprocessed,
+            current_step="processing",
         )
 
-    total = len(extracted)
-    capped = extracted[: 1 + settings.TICKET_MAX_RELATED]
-    unprocessed = total - len(capped)
-    await repo.update(job_id, total_inquiries=total,
-                      unprocessed_inquiries=unprocessed,
-                      current_step="classifying")
+    # checkpoints terminales de attempts anteriores: NO se repiten efectos
+    current = await repo.get(job_id)
+    done_indexes = {
+        e.get("index") for e in (current.per_inquiry_status if current else [])
+        if e.get("execution_status") not in (None, "pending", "running")
+    }
 
-    classifications = [await orchestrator.classify(e.inquiry) for e in capped]
-
-    # -- shadow REAL y muestreado (HT-11/Task 10): clasifica siempre; cuando
-    # el job cae en la muestra, ejecuta el pipeline completo SIN exponer su
-    # respuesta (sólo un resumen sanitizado para el differential harness).
+    # -- shadow REAL y muestreado (HT-11/Task 10) ---------------------------
     if mode == "shadow":
         sampled = _shadow_sampled(record.job_id)
         shadow_summary: List[Dict[str, Any]] = []
         for i, (ext, cls) in enumerate(zip(capped, classifications)):
+            if i in done_indexes:
+                continue
             shadow_remaining = deadline - time.monotonic()
             if sampled and shadow_remaining > 0:
                 try:
+                    await _ensure_lease(repo, job_id, lease_epoch)
                     real = await asyncio.wait_for(
                         orchestrator.handle_inquiry(
                             ext, req, total_inquiries=total, classification=cls
@@ -314,6 +503,8 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     })
                 except asyncio.CancelledError:
                     raise
+                except StaleLeaseEpoch:
+                    raise
                 except Exception:  # noqa: BLE001
                     logger.exception("shadow pipeline failed (job %s, inquiry %d)",
                                      job_id, i)
@@ -328,10 +519,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             )
             entry = _entry_from_outcome(i, outcome)
             entry["participant_reply_safe"] = False   # shadow NUNCA publica
-            await repo.record_inquiry_result(job_id, i, entry)
+            await repo.record_inquiry_result(job_id, i, entry,
+                                             lease_epoch=lease_epoch)
         return await repo.update(
             job_id,
             state=TicketJobState.SUCCEEDED,
+            expected_lease_epoch=lease_epoch,
             next_action=NextAction.USE_LEGACY,
             current_step="done",
             public_result={
@@ -345,20 +538,16 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             },
         )
 
-    gated = [
-        apply_ticket_handler_mode(getattr(c, "route", "needs_more_info"), mode)
-        for c in classifications
-    ]
-
-    # -- ejecución por inquiry con checkpoints ------------------------------
-    await repo.update(job_id, current_step="processing")
+    # -- ejecución por inquiry con checkpoints (reanuda: omite terminales) --
     outcomes: List[InquiryOutcome] = []
     for i, (ext, cls, (_route, override_reason)) in enumerate(
         zip(capped, classifications, gated)
     ):
+        if i in done_indexes:
+            continue
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            # Presupuesto TOTAL agotado: lo que falta queda explícitamente
+            # Presupuesto agotado: lo que falta queda explícitamente
             # sin procesar; lo ya persistido sobrevive (invariante 8).
             await repo.record_inquiry_result(job_id, i, {
                 "route": getattr(cls, "route", None),
@@ -367,7 +556,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "degraded": True,
                 "error": {"code": PublicErrorCode.TOTAL_JOB_TIMEOUT.value,
                           "retryable": True},
-            })
+            }, lease_epoch=lease_epoch)
             continue
 
         try:
@@ -385,8 +574,11 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 entry["participant_reply_safe"] = False
                 entry["coerced_by_mode"] = True
                 outcomes.append(outcome)
-                await repo.record_inquiry_result(job_id, i, entry)
+                await repo.record_inquiry_result(job_id, i, entry,
+                                                 lease_epoch=lease_epoch)
                 continue
+            # verificación de lease ANTES del efecto externo (Paso 4a)
+            await _ensure_lease(repo, job_id, lease_epoch)
             outcome = await asyncio.wait_for(
                 orchestrator.handle_inquiry(
                     ext, req, total_inquiries=total, classification=cls
@@ -394,7 +586,11 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 timeout=min(settings.TICKET_INQUIRY_BUDGET_S, remaining),
             )
             outcomes.append(outcome)
-            await repo.record_inquiry_result(job_id, i, _entry_from_outcome(i, outcome))
+            # el checkpoint es la verificación DESPUÉS del efecto: escritura
+            # condicional al epoch (un intento fenced no puede guardar)
+            await repo.record_inquiry_result(
+                job_id, i, _entry_from_outcome(i, outcome),
+                lease_epoch=lease_epoch)
         except asyncio.TimeoutError:
             timed_out_total = (deadline - time.monotonic()) <= 0
             code = (PublicErrorCode.TOTAL_JOB_TIMEOUT if timed_out_total
@@ -405,8 +601,10 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "participant_reply_safe": False,
                 "degraded": True,
                 "error": {"code": code.value, "retryable": True},
-            })
+            }, lease_epoch=lease_epoch)
         except asyncio.CancelledError:
+            raise
+        except StaleLeaseEpoch:
             raise
         except Exception:  # noqa: BLE001
             logger.exception("inquiry %d del job %s falló", i, job_id)
@@ -417,9 +615,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "degraded": True,
                 "error": {"code": PublicErrorCode.INTERNAL_ERROR.value,
                           "retryable": False},
-            })
+            }, lease_epoch=lease_epoch)
 
-    # -- agregación + cierre ------------------------------------------------
+    # -- agregación + cierre: SIEMPRE desde los checkpoints persistidos ----
     current = await repo.get(job_id)
     entries = current.per_inquiry_status if current else []
     state, next_action = aggregate_states(entries, unprocessed)
@@ -440,9 +638,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
     final = await repo.update(
         job_id,
         state=state,
+        expected_lease_epoch=lease_epoch,
         next_action=next_action,
         current_step="done",
-        forusbots_job_ids=_collect_forusbots_ids(outcomes),
+        # trazabilidad COMPLETA: IDs de ForusBots de TODOS los attempts
+        # persistidos, no sólo de los outcomes de este intento (Paso 4)
+        forusbots_job_ids=_collect_forusbots_ids_from_entries(entries),
         public_error_code=error_code,
         retryable=any(e.get("error", {}).get("retryable") for e in entries) or None,
         public_result={

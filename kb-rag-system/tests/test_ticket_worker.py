@@ -186,10 +186,10 @@ class _FailingRouter:
 
 
 class _GarbageRouter:
-    """Proveedor responde texto que no es JSON."""
+    """Proveedor responde texto que no es JSON (sin ningún array embebido)."""
 
     async def call(self, route, system, user, max_tokens=None):
-        return SimpleNamespace(content="esto no es JSON ni lista []{{")
+        return SimpleNamespace(content="sorry, I cannot help with that request")
 
 
 class _ExtractOkSynthFailRouter:

@@ -42,6 +42,30 @@ from data_pipeline.llm_output_models import (
 
 logger = logging.getLogger(__name__)
 
+
+# ---------------------------------------------------------------------------
+# Errores tipificados de la extracción (plan Tarea 6 Paso 1): un fallo del
+# proveedor o un output fuera de contrato NUNCA se degrada a "[]" — eso
+# convertía un incidente técnico en un saludo publicable (bloqueo 4).
+# ---------------------------------------------------------------------------
+
+class ExtractionError(Exception):
+    """Base de fallos técnicos de extract_inquiries."""
+
+
+class ExtractionUnavailable(ExtractionError):
+    """El proveedor LLM falló o expiró: retryable, jamás publicable."""
+
+
+class ExtractionInvalidOutput(ExtractionError):
+    """El proveedor respondió algo que no es el JSON del contrato."""
+
+
+class KQSynthesisError(Exception):
+    """Fallo técnico (proveedor/parseo/schema) en la síntesis KQ: el
+    resultado debe degradar a legacy/humano, nunca a un NMI publicable."""
+
+
 # Per-agent completion budgets (the router scales these for GPT-5 reasoning).
 _EXTRACT_MAX_TOKENS = 1500
 _KB_SYNTH_MAX_TOKENS = 800
@@ -299,17 +323,26 @@ class TicketOrchestrator:
     # ------------------------------------------------------------------
 
     async def extract_inquiries(self, req: Any) -> List[ExtractedInquiry]:
+        """Extracción con fallos TIPIFICADOS (Tarea 6 Paso 1): un fallo del
+        proveedor lanza ``ExtractionUnavailable``; un output no-JSON lanza
+        ``ExtractionInvalidOutput``. Sólo un array JSON válido y vacío
+        devuelve ``[]`` (extracción legítimamente vacía)."""
         agent_input = self._build_case_data(req)
         system, user = prompts.build_extract_inquiries_prompt(agent_input)
         try:
             resp = await self.deps.llm_router.call(
                 "extract_inquiries", system, user, max_tokens=_EXTRACT_MAX_TOKENS
             )
-        except Exception:
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
             logger.exception("extract_inquiries LLM call failed")
-            return []
+            raise ExtractionUnavailable(str(type(exc).__name__)) from exc
 
         items = parse_json_array(resp.content)
+        if items is None:
+            # None = no parseable (contrato roto); [] = array válido vacío
+            raise ExtractionInvalidOutput("extract_inquiries devolvió no-JSON")
         if not items:
             return []
 
@@ -410,24 +443,46 @@ class TicketOrchestrator:
         agent_input = {"ticketData": focused}
         system, user = prompts.build_kb_question_synthesis_prompt(agent_input)
         diag = self._classifier_diag(classification)
+        synthesis_failed = False
+        parsed = None
         try:
             resp = await self.deps.llm_router.call(
                 "kb_question_synthesis", system, user, max_tokens=_KB_SYNTH_MAX_TOKENS
             )
             parsed = parse_json_object(resp.content)
+            if parsed is None:
+                synthesis_failed = True
+                diag["kb_synthesis_invalid_output"] = True
+        except asyncio.CancelledError:
+            raise
         except Exception:
             logger.exception("kb_question_synthesis failed")
-            parsed = None
+            synthesis_failed = True
+            diag["kb_synthesis_provider_failed"] = True
 
         synthesis: Optional[KBQuestionSynthesisOut] = None
         if isinstance(parsed, dict):
             try:
                 synthesis = KBQuestionSynthesisOut.model_validate(parsed)
             except ValidationError:
+                synthesis_failed = True
                 diag["kb_synthesis_invalid_output"] = True
+
+        if synthesis_failed:
+            # Fallo TÉCNICO (proveedor/parseo/schema): degradado a legacy/
+            # humano, jamás un needs_more_info publicable (Tarea 6 Paso 2).
+            return InquiryOutcome(
+                inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
+                record_keeper=ext.record_keeper, plan_type=ext.plan_type,
+                needs_more_info_message=None,
+                diagnostics={**diag, "kq_synthesis_failed": True,
+                             "error": "KQ_SYNTHESIS_FAILED"},
+            )
 
         question = synthesis.question if synthesis else None
         if synthesis is None or synthesis.insufficient_inquiry or not question:
+            # Resultado de NEGOCIO válido: la síntesis funcionó y declaró la
+            # inquiry insuficiente — un NMI legítimo sí es publicable.
             return InquiryOutcome(
                 inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
                 record_keeper=ext.record_keeper, plan_type=ext.plan_type,

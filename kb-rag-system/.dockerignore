@@ -38,6 +38,10 @@ htmlcov/
 # Documentation
 *.md
 docs/
+# Los prompts de agentes son artefactos de RUNTIME (data_pipeline/prompts.py
+# los carga desde disco): la regla *.md de arriba NO puede excluirlos.
+!data_pipeline/agent_prompts/
+!data_pipeline/agent_prompts/*.md
 
 # Development
 Makefile

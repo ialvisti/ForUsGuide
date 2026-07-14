@@ -1,0 +1,35 @@
+# Dependencias de RUNTIME (producción). Rangos acotados: lower bound = mínimo
+# probado, upper bound = siguiente major. El lock exacto con hashes
+# (requirements.lock) se compila DENTRO de la imagen python:3.12 fijada por
+# digest (ver ci/tool-images.env y cloudbuild.yaml); nunca desde macOS ni otra
+# versión de Python. pytest y tooling viven en requirements-dev.in.
+
+# Core
+pinecone>=7.0.0,<8            # SDK actual (paquete `pinecone`, NO pinecone-client)
+openai>=1.0.0,<3
+google-genai>=1.0.0,<2
+python-dotenv>=1.0.0,<2
+
+# API framework
+fastapi>=0.110.0,<1
+uvicorn[standard]>=0.27.0,<1
+pydantic>=2.0.0,<3
+pydantic-settings>=2.0.0,<3
+
+# HTTP cliente (ForusBots / probes)
+httpx>=0.27.0,<1
+
+# Data processing
+tqdm>=4.66.0,<5
+
+# Utilities
+python-multipart>=0.0.9,<1
+tiktoken>=0.5.0,<1
+cachetools>=5.3.0,<7
+
+# GCP
+google-auth>=2.29.0,<3        # verificación de ID tokens (OIDC de Cloud Tasks + WIF v2)
+google-cloud-firestore>=2.16.0,<3
+google-cloud-tasks>=2.16.0,<3
+google-cloud-storage>=2.16.0,<4
+google-cloud-logging>=3.10.0,<4

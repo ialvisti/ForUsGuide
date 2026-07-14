@@ -1,0 +1,58 @@
+# Configuración de tooling (plan Tarea 3 Paso 2). No es un paquete instalable:
+# el deploy usa requirements.lock; esto sólo gobierna ruff/mypy en CI.
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+# Scope explícito: módulos del flujo de tickets + API. El resto del repo
+# entra por PRs separados para no mezclar el endurecimiento con limpieza.
+include = [
+    "api/**/*.py",
+    "data_pipeline/ticket_*.py",
+    "data_pipeline/forusbots_*.py",
+    "data_pipeline/staging_fault_injection.py",
+    "scripts/container_smoke.py",
+    "scripts/requeue_ticket_job.py",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "S", "ASYNC"]
+ignore = [
+    "E501",   # línea larga: el codebase existente usa 100+ en docstrings
+    "S101",   # assert: permitido fuera de producción (uvicorn no usa -O)
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Los seams de test inyectan credenciales sintéticas.
+"tests/**" = ["S105", "S106", "S311"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+# Scope explícito (mismos módulos que ruff); ignore_errors está PROHIBIDO.
+files = [
+    "api/auth.py",
+    "api/config.py",
+    "api/metrics.py",
+    "api/models.py",
+    "api/participant_plan.py",
+    "api/rate_limit.py",
+    "api/ticket_worker.py",
+    "data_pipeline/ticket_job_models.py",
+    "data_pipeline/ticket_job_repository.py",
+    "data_pipeline/ticket_task_queue.py",
+    "data_pipeline/ticket_reconciler.py",
+    "data_pipeline/staging_fault_injection.py",
+    "scripts/container_smoke.py",
+]
+
+# Sólo SDKs sin stubs publicados; nunca ignore_errors.
+[[tool.mypy.overrides]]
+module = [
+    "google.cloud.*",
+    "google.api_core.*",
+    "google.auth.*",
+    "google.oauth2.*",
+    "pinecone.*",
+]
+ignore_missing_imports = true

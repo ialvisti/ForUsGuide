@@ -406,13 +406,17 @@ def _build_orchestrator_from_state(app: FastAPI) -> TicketOrchestrator:
 def _build_ticket_queue(app: FastAPI):
     """cloudtasks (producción) | inline (dev/tests, mismo worker durable)."""
     if settings.TICKET_TASK_QUEUE == "cloudtasks":
-        return CloudTasksTicketQueue(
+        queue = CloudTasksTicketQueue(
             project=settings.GCP_PROJECT,
             location=settings.CLOUD_TASKS_LOCATION,
             queue=settings.CLOUD_TASKS_QUEUE,
             worker_url=settings.TICKET_WORKER_URL,
             service_account=settings.TICKET_WORKER_SERVICE_ACCOUNT,
+            dispatch_deadline_s=settings.TICKET_TASK_DISPATCH_DEADLINE_S,
         )
+        # el bump de generación ante tombstone es transaccional (repositorio)
+        queue._generation_bumper = app.state.ticket_repo.bump_enqueue_generation
+        return queue
     from api.ticket_worker import run_ticket_job
 
     return InlineTicketQueue(lambda job_id: run_ticket_job(app, job_id))
@@ -1344,7 +1348,8 @@ async def _accept_ticket_job(
             if record.enqueue_state != "enqueued" \
                     and record.state not in TERMINAL_STATES:
                 queue = http_request.app.state.ticket_queue
-                task_name = await queue.ensure_enqueued(record.job_id)
+                task_name = await queue.ensure_enqueued(
+                    record.job_id, record.enqueue_generation)
                 record = await repo.mark_enqueued(record.job_id, task_name)
             return record, True
 
@@ -1428,7 +1433,8 @@ async def _accept_ticket_job(
     # re-encola (el claim lo rechazaría igualmente, pero no gastamos el task).
     if record.enqueue_state != "enqueued" and record.state not in TERMINAL_STATES:
         queue = http_request.app.state.ticket_queue
-        task_name = await queue.ensure_enqueued(record.job_id)
+        task_name = await queue.ensure_enqueued(
+            record.job_id, record.enqueue_generation)
         record = await repo.mark_enqueued(record.job_id, task_name)
 
     return record, replayed

@@ -116,6 +116,12 @@ class Settings(BaseSettings):
     TICKET_TASK_DISPATCH_DEADLINE_S: int = 540
     TICKET_ADMISSION_QUEUE_DELAY_CEILING_S: int = 300
 
+    # Fault injection SÓLO staging (plan Tarea 7 Paso 7a). Producción rechaza
+    # tanto el header de test como el fault_plan. APP_ENV distingue el entorno
+    # de despliegue (independiente de ENVIRONMENT, que gobierna CORS/logging).
+    APP_ENV: str = "development"
+    TICKET_FAULT_SIGNING_SECRET: str = ""
+
     # Durable ticket jobs (Task 3/4 del plan de remediación).
     #   TICKET_JOB_BACKEND: "memory" (dev/tests) | "firestore" (producción)
     #   TICKET_TASK_QUEUE:  "inline" (dev/tests) | "cloudtasks" (producción)

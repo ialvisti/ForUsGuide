@@ -96,13 +96,16 @@ class TestWorkerEndpointAuth:
 
 class TestWorkerEndpointExecution:
 
-    def test_unknown_job_is_404(self, client, monkeypatch):
+    def test_unknown_job_is_204_not_retried(self, client, monkeypatch):
+        """Contrato Tarea 7 Paso 3: un job desconocido devuelve 204 sin
+        efecto. Cloud Tasks reintenta CUALQUIER non-2xx (también 404), así
+        que un job que no debe ejecutarse debe responder 2xx."""
         from api.config import settings as app_settings
         monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", False)
         r = client.post("/internal/tasks/ticket-job", json={"job_id": "nope"})
-        assert r.status_code == 404
+        assert r.status_code == 204
 
-    def test_executes_job_and_duplicate_delivery_is_200(self, client, monkeypatch):
+    def test_executes_job_and_duplicate_delivery_is_2xx(self, client, monkeypatch):
         from api.config import settings as app_settings
         monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", False)
         client.app.state.ticket_orchestrator_factory = lambda: FakeOrch()
@@ -117,13 +120,14 @@ class TestWorkerEndpointExecution:
         assert r1.status_code == 200
         assert r1.json()["state"] == "succeeded"
 
-        # re-entrega del MISMO task: 200 sin re-ejecutar (claim rechaza)
+        # re-entrega del MISMO task sobre un job ya terminal: 204 sin efecto
+        # (Cloud Tasks no reintenta un 2xx; el corto-circuito de terminal
+        # gana antes del claim)
         r2 = client.post("/internal/tasks/ticket-job",
                          json={"job_id": record.job_id},
                          headers={"X-CloudTasks-TaskName": "t1",
                                   "X-CloudTasks-TaskRetryCount": "1"})
-        assert r2.status_code == 200
-        assert r2.json()["state"] == "duplicate_delivery"
+        assert r2.status_code == 204
 
 
 # ---------------------------------------------------------------------------

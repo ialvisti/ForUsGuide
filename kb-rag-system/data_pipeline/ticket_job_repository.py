@@ -159,6 +159,11 @@ class InMemoryTicketJobBackend:
     async def dump_all(self) -> Dict[str, Dict[str, dict]]:
         return copy.deepcopy(self._data)
 
+    async def scan_collection(self, collection: str, limit: int = 100) -> list:
+        docs = self._data.get(collection, {})
+        return [(doc_id, copy.deepcopy(doc))
+                for doc_id, doc in list(docs.items())[:limit]]
+
 
 class FirestoreTicketJobBackend:
     """Backend Firestore. Capa DELGADA: no contiene lógica de negocio.
@@ -249,6 +254,14 @@ class FirestoreTicketJobBackend:
 
     async def dump_all(self):  # pragma: no cover - sólo para tests in-memory
         raise NotImplementedError("dump_all es una utilidad del backend in-memory")
+
+    async def scan_collection(self, collection: str,
+                              limit: int = 100) -> list:  # pragma: no cover
+        query = self._client.collection(self._col(collection)).limit(limit)
+        out = []
+        async for snap in query.stream():
+            out.append((snap.id, snap.to_dict()))
+        return out
 
 
 def _plain(value: Any) -> Any:
@@ -658,6 +671,89 @@ class TicketJobRepository:
     async def mark_enqueued(self, job_id: str, task_name: str) -> TicketJobRecord:
         return await self.update(job_id, enqueue_state="enqueued",
                                  task_name=task_name)
+
+    async def bump_enqueue_generation(self, job_id: str) -> int:
+        """Incremento TRANSACCIONAL de la generación de enqueue (Tarea 7
+        Paso 3): tras una tombstone o un requeue administrativo, el nombre
+        de task anterior queda quemado y sólo la generación nueva ejecuta."""
+
+        async def _txn(view):
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                raise JobNotFound(job_id)
+            record = _doc_to_record(control)
+            if record.state in TERMINAL_STATES:
+                raise TicketJobError(
+                    f"job {job_id} es terminal: no se re-encola")
+            new_generation = record.enqueue_generation + 1
+            control["enqueue_generation"] = new_generation
+            control["enqueue_state"] = "pending"
+            control["updated_at"] = utcnow()
+            view.set(JOBS_COLLECTION, job_id, control)
+            return new_generation
+
+        return await self.backend.transact(_txn)
+
+    async def acquire_recovery_lock(self, job_id: str, *, owner: str,
+                                    lock_s: float = 120.0) -> bool:
+        """Lock del RECONCILIADOR, separado del lease de ejecución del worker
+        (Tarea 7 Paso 5): reparar outbox/leases sin poseer el lease que debe
+        reclamar el worker. Tolera dos reconciliadores concurrentes."""
+
+        async def _txn(view):
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                return False
+            record = _doc_to_record(control)
+            now = utcnow()
+            held = (
+                record.recovery_lock_owner is not None
+                and record.recovery_lock_expires_at is not None
+                and now <= record.recovery_lock_expires_at
+                and record.recovery_lock_owner != owner
+            )
+            if held:
+                return False
+            control["recovery_lock_owner"] = owner
+            control["recovery_lock_expires_at"] = now + timedelta(seconds=lock_s)
+            control["updated_at"] = now
+            view.set(JOBS_COLLECTION, job_id, control)
+            return True
+
+        return await self.backend.transact(_txn)
+
+    async def fence_and_requeue(self, job_id: str) -> Optional[int]:
+        """Repara un lease vencido (Tarea 7 Paso 5.2): incrementa
+        ``lease_epoch`` para fencear al worker viejo, limpia owner/expiry,
+        transiciona running→queued y quema una generación nueva. El
+        reconciliador NO conserva el lease de ejecución."""
+
+        async def _txn(view):
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                return None
+            record = _doc_to_record(control)
+            if record.state in TERMINAL_STATES:
+                return None
+            now = utcnow()
+            control["lease_epoch"] = record.lease_epoch + 1
+            control["lease_owner"] = None
+            control["lease_expires_at"] = None
+            control["claimed_by"] = None
+            control["claimed_at"] = None
+            if record.state == TicketJobState.RUNNING:
+                control["state"] = TicketJobState.QUEUED.value
+            control["enqueue_generation"] = record.enqueue_generation + 1
+            control["enqueue_state"] = "pending"
+            control["updated_at"] = now
+            view.set(JOBS_COLLECTION, job_id, control)
+            return control["enqueue_generation"]
+
+        return await self.backend.transact(_txn)
+
+    async def scan_control_docs(self, limit: int = 100) -> list:
+        """Lote acotado de documentos de control para el reconciliador."""
+        return await self.backend.scan_collection(JOBS_COLLECTION, limit)
 
     async def count_active(self, principal_id: str) -> int:
         """Jobs no-terminales del principal desde el contador transaccional

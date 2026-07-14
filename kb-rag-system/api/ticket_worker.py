@@ -26,7 +26,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, HTTPException, Request, Response, status
 from pydantic import BaseModel
 
 from api import metrics as ticket_metrics
@@ -41,6 +41,7 @@ from api.models import (
     UsedChunk,
 )
 from data_pipeline.ticket_job_models import (
+    TERMINAL_STATES,
     NextAction,
     PublicErrorCode,
     TicketJobRecord,
@@ -719,6 +720,9 @@ async def _log_execution_safe(app: Any, record: TicketJobRecord,
 
 class _TaskBody(BaseModel):
     job_id: str
+    # generación del outbox (Tarea 7 Paso 3); tasks viejas (pre-generación)
+    # llegan sin él → generación 0 por compat.
+    enqueue_generation: int = 0
 
 
 async def verify_task_oidc(request: Request) -> None:
@@ -734,7 +738,7 @@ async def verify_task_oidc(request: Request) -> None:
         from google.auth.transport import requests as garequests
         from google.oauth2 import id_token as gid
 
-        claims = id_token_claims = gid.verify_oauth2_token(
+        claims = gid.verify_oauth2_token(
             token, garequests.Request(), audience=settings.TICKET_WORKER_URL or None
         )
     except Exception as exc:  # noqa: BLE001
@@ -747,22 +751,39 @@ async def verify_task_oidc(request: Request) -> None:
 
 
 @router.post("/internal/tasks/ticket-job", include_in_schema=False)
-async def ticket_job_task(body: _TaskBody, request: Request) -> Dict[str, Any]:
+async def ticket_job_task(body: _TaskBody, request: Request):
     """Handler del task de Cloud Tasks. La request queda abierta durante toda
     la ejecución (Cloud Run mantiene CPU asignada). Respuestas:
 
     - 200: job ejecutado o delivery duplicado (no reintentar)
-    - 404: job desconocido (no reintentar)
-    """
+    - 204: generación stale, job desconocido/terminal o schema permanente —
+      sin efecto (Cloud Tasks NO reintenta un 2xx; un 4xx SÍ se reintentaría)
+    - 503: otro attempt tiene el lease (retry tras el lease)
+
+    Sólo la generación ACTUAL pasa a running; sólo fallos realmente
+    transitorios devuelven non-2xx (Tarea 7 Paso 3)."""
     await verify_task_oidc(request)
     retry_count = request.headers.get("X-CloudTasks-TaskRetryCount", "0")
     task_name = request.headers.get("X-CloudTasks-TaskName", "")
     worker_id = f"{task_name or 'task'}#{retry_count}"
 
     repo: TicketJobRepository = request.app.state.ticket_repo
-    if await repo.get(body.job_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND,
-                            detail="unknown ticket job")
+    current = await repo.get(body.job_id)
+
+    # Generación stale / job desconocido o terminal → 204 sin efecto. Cloud
+    # Tasks reintenta CUALQUIER non-2xx (incluso 4xx), así que un job que no
+    # debe ejecutarse debe devolver 2xx, no 404/409.
+    if current is None:
+        logger.info("ticket job %s desconocido: 204 sin efecto", body.job_id)
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    if current.state in TERMINAL_STATES:
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
+    if body.enqueue_generation != current.enqueue_generation:
+        logger.info(
+            "ticket job %s: generación stale g%d != g%d — 204 sin efecto",
+            body.job_id, body.enqueue_generation, current.enqueue_generation)
+        ticket_metrics.increment("ticket_stale_generation")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     final = await run_ticket_job(request.app, body.job_id, worker_id=worker_id)
     if final is not None:
@@ -772,10 +793,7 @@ async def ticket_job_task(body: _TaskBody, request: Request) -> Dict[str, Any]:
     # No-terminal → otro attempt tiene el lease: pedir retry DESPUÉS del
     # lease para que un attempt crasheado no deje el job en running eterno.
     current = await repo.get(body.job_id)
-    if current is not None and current.state not in (
-        TicketJobState.SUCCEEDED, TicketJobState.PARTIAL, TicketJobState.FAILED,
-        TicketJobState.TIMEOUT, TicketJobState.CANCELLED,
-    ):
+    if current is not None and current.state not in TERMINAL_STATES:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "JOB_CLAIMED_ELSEWHERE", "retryable": True},

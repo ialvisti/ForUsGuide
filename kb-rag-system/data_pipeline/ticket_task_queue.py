@@ -1,20 +1,24 @@
 """
-Cola durable de ejecución de ticket jobs (Task 4 del plan).
+Cola durable de ejecución de ticket jobs (plan de finalización, Tarea 7).
 
-El productor (POST handle-ticket) confirma el par record+task antes de
-responder 202. Firestore y Cloud Tasks no comparten transacción, así que el
-nombre de task es DETERMINÍSTICO (derivado del job_id): un retry del POST o
-un reconciler puede re-invocar ``ensure_enqueued`` sin duplicar ejecución
-(AlreadyExists ⇒ ya encolado).
+El productor confirma el par record+task antes de responder 202. Firestore y
+Cloud Tasks no comparten transacción, así que el nombre de task es
+DETERMINÍSTICO por job y GENERACIÓN: ``ticket-{job_id}-g{generation}``.
 
-Implementaciones:
-- ``CloudTasksTicketQueue`` — producción. La request HTTP del task queda
-  abierta mientras el worker ejecuta (Cloud Run mantiene CPU) y Cloud Tasks
-  reintenta fallos. La cola limita dispatch GLOBAL (configurado en IaC según
-  capacidad de ForusBots/cuotas LLM, no por instancia).
-- ``InlineTicketQueue`` — dev/tests. Ejecuta el MISMO worker durable en un
-  task local. Prohibida en producción (``validate_settings`` fail-closed):
-  no sobrevive a restarts.
+Semántica de ``AlreadyExists`` (bloqueo 7 del plan): el nombre repetido NO
+prueba que la task viva — Cloud Tasks conserva una tombstone tras completar/
+eliminar una task. La cola sonda ``get_task``:
+
+- encontrada  → replay activo, éxito benigno;
+- NotFound    → tombstone: se incrementa la generación (transaccionalmente si
+  hay bumper del repositorio) y se crea el nombre NUEVO;
+- otro error  → se propaga: el productor deja ``enqueue_state=pending`` y
+  responde 503, nunca un 202 falso.
+
+Cada task lleva ``dispatch_deadline`` EXPLÍCITO (540s) y un body autenticado
+por OIDC ``{job_id, enqueue_generation}`` que el worker compara antes del
+lease. El rol IAM queda limitado a tasks.create/tasks.get/queues.get: este
+módulo no usa operaciones admin.
 """
 
 from __future__ import annotations
@@ -30,10 +34,11 @@ class TicketQueueError(Exception):
     pass
 
 
-def task_name_for_job(project: str, location: str, queue: str, job_id: str) -> str:
+def task_name_for_job(project: str, location: str, queue: str, job_id: str,
+                      generation: int = 0) -> str:
     return (
         f"projects/{project}/locations/{location}/queues/{queue}"
-        f"/tasks/ticket-{job_id}"
+        f"/tasks/ticket-{job_id}-g{generation}"
     )
 
 
@@ -49,6 +54,8 @@ class CloudTasksTicketQueue:
         queue: str,
         worker_url: str,
         service_account: str,
+        dispatch_deadline_s: int = 540,
+        generation_bumper: Optional[Callable[[str], Awaitable[int]]] = None,
     ):
         from google.cloud import tasks_v2  # import perezoso
 
@@ -59,33 +66,92 @@ class CloudTasksTicketQueue:
         self._queue = queue
         self._worker_url = worker_url.rstrip("/")
         self._service_account = service_account
+        self._dispatch_deadline_s = dispatch_deadline_s
+        # bump transaccional de la generación en el repositorio; sin bumper
+        # (reconciler/CLI lo inyectan) se usa generation+1 y el caller debe
+        # persistir la nueva generación.
+        self._generation_bumper = generation_bumper
 
-    async def ensure_enqueued(self, job_id: str) -> str:
-        """Idempotente por nombre determinístico. Devuelve el task name."""
-        from google.api_core import exceptions as gexc
+    def _build_task(self, job_id: str, generation: int):
+        from google.protobuf import duration_pb2
 
         tasks_v2 = self._tasks_v2
-        parent = self._client.queue_path(self._project, self._location, self._queue)
-        name = task_name_for_job(self._project, self._location, self._queue, job_id)
-        task = tasks_v2.Task(
+        name = task_name_for_job(self._project, self._location, self._queue,
+                                 job_id, generation)
+        return tasks_v2.Task(
             name=name,
+            # deadline de despacho EXPLÍCITO (Tarea 7 Paso 2): coherente con
+            # lease(90s)/heartbeat(30s)/presupuesto de intento(480s) < 540s
+            dispatch_deadline=duration_pb2.Duration(
+                seconds=self._dispatch_deadline_s),
             http_request=tasks_v2.HttpRequest(
                 http_method=tasks_v2.HttpMethod.POST,
                 url=f"{self._worker_url}/internal/tasks/ticket-job",
                 headers={"Content-Type": "application/json"},
-                body=f'{{"job_id": "{job_id}"}}'.encode("utf-8"),
+                body=(f'{{"job_id": "{job_id}", '
+                      f'"enqueue_generation": {generation}}}').encode("utf-8"),
                 oidc_token=tasks_v2.OidcToken(
                     service_account_email=self._service_account,
                     audience=self._worker_url,
                 ),
             ),
         )
+
+    async def ensure_enqueued(self, job_id: str, generation: int = 0) -> str:
+        """Idempotente por nombre determinístico + generación. Devuelve el
+        task name activo. Ante tombstone crea la generación siguiente."""
+        from google.api_core import exceptions as gexc
+
+        parent = self._client.queue_path(self._project, self._location,
+                                         self._queue)
+        current = generation
+        for _attempt in range(3):
+            task = self._build_task(job_id, current)
+            try:
+                created = await self._client.create_task(parent=parent, task=task)
+                return created.name
+            except gexc.AlreadyExists:
+                # sonda: ¿replay activo o tombstone?
+                try:
+                    await self._client.get_task(name=task.name)
+                    return task.name          # task VIVA: replay benigno
+                except gexc.NotFound:
+                    # tombstone: la generación actual está quemada
+                    if self._generation_bumper is not None:
+                        current = await self._generation_bumper(job_id)
+                    else:
+                        current += 1
+                    logger.warning(
+                        "task tombstoned para job %s: creando generación g%d",
+                        job_id, current,
+                    )
+                    continue
+        raise TicketQueueError(
+            f"no se pudo encolar el job tras {current} generaciones"
+        )
+
+    async def estimated_queue_delay_s(self) -> float:
+        """Estimación best-effort de la demora de admisión (Tarea 7 Paso 1):
+        tasks encoladas / tasa de despacho. Si las stats no están disponibles
+        devuelve 0 (no bloquea); el techo duro lo dan deadline + n8n watch."""
         try:
-            created = await self._client.create_task(parent=parent, task=task)
-            return created.name
-        except gexc.AlreadyExists:
-            # retry del productor / reconciler: el task ya existe — correcto.
-            return name
+            from google.protobuf import field_mask_pb2
+
+            queue = await self._client.get_queue(request={
+                "name": self._client.queue_path(
+                    self._project, self._location, self._queue),
+                "read_mask": field_mask_pb2.FieldMask(paths=["stats"]),
+            })
+            stats = getattr(queue, "stats", None)
+            tasks_count = int(getattr(stats, "tasks_count", 0) or 0)
+            rate = float(getattr(
+                getattr(queue, "rate_limits", None),
+                "max_dispatches_per_second", 0) or 0)
+            if rate <= 0:
+                return 0.0
+            return tasks_count / rate
+        except Exception:  # noqa: BLE001 - stats son best-effort
+            return 0.0
 
     async def aclose(self) -> None:
         try:
@@ -106,15 +172,19 @@ class InlineTicketQueue:
         self._tasks: set = set()
         self._enqueued: set = set()
 
-    async def ensure_enqueued(self, job_id: str) -> str:
-        name = f"inline/ticket-{job_id}"
-        if job_id in self._enqueued:
+    async def ensure_enqueued(self, job_id: str, generation: int = 0) -> str:
+        name = f"inline/ticket-{job_id}-g{generation}"
+        key = (job_id, generation)
+        if key in self._enqueued:
             return name
-        self._enqueued.add(job_id)
+        self._enqueued.add(key)
         task = asyncio.create_task(self._runner(job_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return name
+
+    async def estimated_queue_delay_s(self) -> float:
+        return 0.0
 
     async def aclose(self) -> None:
         for task in list(self._tasks):

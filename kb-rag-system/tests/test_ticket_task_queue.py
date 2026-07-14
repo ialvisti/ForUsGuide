@@ -19,7 +19,8 @@ class TestTaskNaming:
         a = task_name_for_job("proj", "us-central1", "ticket-jobs", "abc123")
         b = task_name_for_job("proj", "us-central1", "ticket-jobs", "abc123")
         assert a == b
-        assert a.endswith("/tasks/ticket-abc123")
+        # los nombres incluyen la generación (Tarea 7 Paso 3)
+        assert a.endswith("/tasks/ticket-abc123-g0")
 
     def test_different_jobs_get_different_tasks(self):
         a = task_name_for_job("proj", "us-central1", "ticket-jobs", "abc")

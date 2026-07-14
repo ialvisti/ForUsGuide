@@ -495,3 +495,49 @@ class TestWaiterCancellationIsolation:
             f"({submits} submits): el dedupe se rompió"
         )
         assert submits == 1
+
+
+# ---------------------------------------------------------------------------
+# TLS / transporte (plan de finalización, Tarea 8 Paso 3)
+# ---------------------------------------------------------------------------
+
+class TestTransportSecurity:
+
+    async def test_health_rejects_non_tls_base_url(self):
+        """El token viaja en x-auth-token: un base_url no-HTTPS debe fallar
+        antes de emitir la request."""
+        client = ForusBotsClient(base_url="http://35.224.156.104:10000",
+                                 auth_token="tok")
+        try:
+            with pytest.raises(ForusBotsError, match="HTTPS"):
+                await client.health()
+        finally:
+            await client.aclose()
+
+    async def test_client_never_follows_redirects(self):
+        """follow_redirects=False explícito: un 3xx a otro host filtraría el
+        token."""
+        client = ForusBotsClient(base_url="https://forusbots.example.com",
+                                 auth_token="tok")
+        try:
+            assert client._client.follow_redirects is False
+        finally:
+            await client.aclose()
+
+    async def test_authenticated_redirect_is_rejected(self):
+        """Un 3xx en una request autenticada se rechaza (no se sigue)."""
+        class RedirectClient:
+            async def request(self, method, url, headers=None, json=None):
+                return httpx.Response(302, headers={"location": "https://evil.example"})
+            async def aclose(self):
+                pass
+
+        client = ForusBotsClient(base_url="https://forusbots.example.com",
+                                 auth_token="tok", client=RedirectClient())
+        try:
+            with pytest.raises(ForusBotsError, match="redirect"):
+                await client._http_request(
+                    "GET", "https://forusbots.example.com/forusbot/health",
+                    idempotent=True)
+        finally:
+            await client.aclose()

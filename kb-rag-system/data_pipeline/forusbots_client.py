@@ -145,7 +145,11 @@ class ForusBotsClient:
         self._client = client or httpx.AsyncClient(
             timeout=httpx.Timeout(
                 connect=5.0, read=http_read_timeout_s, write=10.0, pool=5.0
-            )
+            ),
+            # NUNCA seguir redirects automáticamente: un 3xx a otro host/
+            # esquema filtraría el x-auth-token (Tarea 8 Paso 3). Explícito
+            # para no depender del default de httpx.
+            follow_redirects=False,
         )
         self._semaphore = asyncio.Semaphore(max_inflight)
         self._inflight: Dict[str, "asyncio.Future[ScrapeResult]"] = {}
@@ -169,6 +173,21 @@ class ForusBotsClient:
 
     async def aclose(self) -> None:
         await self._client.aclose()
+
+    def requires_tls(self) -> bool:
+        return self._base.lower().startswith("https://")
+
+    async def health(self) -> Dict[str, Any]:
+        """Probe de salud (plan Tarea 8 Paso 3). Verifica que el transporte
+        sea HTTPS (no downgrade) y que /health responda. NO envía datos de
+        participante. Un base_url no-HTTPS lanza: el token viajaría en claro."""
+        if not self.requires_tls():
+            raise ForusBotsError(
+                "ForusBots base_url no es HTTPS: el token viajaría sin cifrar")
+        resp = await self._http_request(
+            "GET", f"{self._base}/forusbot/health", idempotent=True)
+        self._raise_for_status(resp, context="health")
+        return {"status_code": resp.status_code, "tls": True}
 
     # ------------------------------------------------------------------
     # Public scrape API

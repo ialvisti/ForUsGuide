@@ -12,11 +12,65 @@ import os
 import time
 import logging
 import inspect
+import random
 from typing import List, Dict, Any, Optional
 from pinecone import Pinecone
 from tqdm import tqdm
 
 logger = logging.getLogger(__name__)
+
+
+def _pinecone_status_code(exc: Exception) -> Optional[int]:
+    """Extrae el HTTP status de una excepción del SDK de Pinecone, si lo hay."""
+    for attr in ("status", "status_code", "code"):
+        value = getattr(exc, attr, None)
+        if isinstance(value, int):
+            return value
+    return None
+
+
+def _is_transient_pinecone_error(exc: Exception) -> bool:
+    """Sólo 429 y 5xx son transitorios (guía PINECONE.md §Error Handling):
+    cualquier otro 4xx es un error del request y NUNCA se reintenta."""
+    status = _pinecone_status_code(exc)
+    if status is None:
+        # sin status: tratar errores de transporte como transitorios acotados
+        name = type(exc).__name__.lower()
+        return any(t in name for t in ("timeout", "connection", "unavailable"))
+    return status == 429 or status >= 500
+
+
+class _CircuitBreaker:
+    """Circuit breaker pequeño: tras ``threshold`` fallos consecutivos abre
+    el circuito ``cooldown_s``; en ese lapso las llamadas fallan rápido sin
+    tocar Pinecone. Un éxito cierra el circuito."""
+
+    def __init__(self, threshold: int = 5, cooldown_s: float = 30.0):
+        self._threshold = threshold
+        self._cooldown_s = cooldown_s
+        self._failures = 0
+        self._opened_at: Optional[float] = None
+
+    def is_open(self) -> bool:
+        if self._opened_at is None:
+            return False
+        if time.monotonic() - self._opened_at >= self._cooldown_s:
+            # half-open: permitir un intento de sondeo
+            return False
+        return True
+
+    def record_success(self) -> None:
+        self._failures = 0
+        self._opened_at = None
+
+    def record_failure(self) -> None:
+        self._failures += 1
+        if self._failures >= self._threshold:
+            self._opened_at = time.monotonic()
+
+
+class PineconeCircuitOpen(RuntimeError):
+    """El circuit breaker de Pinecone está abierto: falla rápido."""
 
 
 class PineconeRetrievalError(RuntimeError):
@@ -87,6 +141,12 @@ class PineconeUploader:
         self.batch_size = batch_size
         self.max_retries = max_retries
         self.retry_delay = retry_delay
+        # Resiliencia de query en runtime (plan Tarea 8 Paso 1): retry acotado
+        # sólo 429/5xx + circuit breaker por instancia.
+        self._query_breaker = _CircuitBreaker(threshold=5, cooldown_s=30.0)
+        self._query_max_attempts = 3
+        self._query_backoff_base_s = 0.5
+        self._query_backoff_cap_s = 4.0
 
         if not self.api_key:
             raise ValueError("PINECONE_API_KEY no está configurada")
@@ -299,6 +359,31 @@ class PineconeUploader:
             logger.error(f"Error eliminando chunks: {e}")
             return False
     
+    def verify_readonly(self) -> Dict[str, Any]:
+        """Verificación en vivo SÓLO lectura (plan Tarea 8 Paso 2): stats +
+        una consulta sanitizada. No crea índice ni hace upsert/update/delete.
+        Un fallo de stats debe hacer que readiness reporte no saludable.
+
+        La consulta usa un texto NEUTRO (sin valores de participante/plan): la
+        probe verifica conectividad, no responde una inquiry real."""
+        stats = self.index.describe_index_stats()
+        total = getattr(stats, "total_vector_count", None)
+        if total is None and isinstance(stats, dict):
+            total = stats.get("total_vector_count")
+        probe_hits = 0
+        try:
+            probe = self.query_chunks(
+                query_text="retirement plan overview",  # neutro, sin PII
+                top_k=1,
+            )
+            probe_hits = len(probe)
+        except PineconeCircuitOpen:
+            raise
+        except Exception:  # noqa: BLE001 - la probe de query es best-effort
+            logger.warning("Pinecone probe query falló (stats OK)")
+        return {"namespace": self.namespace, "index": self.index_name,
+                "total_vectors": total, "probe_hits": probe_hits}
+
     def query_chunks(
         self,
         query_text: str,
@@ -327,23 +412,55 @@ class PineconeUploader:
             rerank=rerank,
         )
 
-        try:
-            results = self.index.search(**search_kwargs)
-        except Exception as exc:
+        # Circuit breaker: falla rápido si Pinecone está degradado, sin gastar
+        # el presupuesto del intento del worker (Tarea 8 Paso 1).
+        if self._query_breaker.is_open():
+            raise PineconeCircuitOpen(
+                f"circuito Pinecone abierto (index={self.index_name!r})")
+
+        last_exc: Optional[Exception] = None
+        for attempt in range(self._query_max_attempts):
+            try:
+                results = self.index.search(**search_kwargs)
+                self._query_breaker.record_success()
+                break
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                transient = _is_transient_pinecone_error(exc)
+                if not transient:
+                    # 4xx (salvo 429) u otro error del request: NO reintentar
+                    self._query_breaker.record_success()  # no cuenta al breaker
+                    logger.exception(
+                        "Pinecone query failed (no-retry) | index=%s | "
+                        "namespace=%s | top_k=%s",
+                        self.index_name, self.namespace, top_k,
+                    )
+                    raise PineconeRetrievalError(
+                        index_name=self.index_name, namespace=self.namespace,
+                        top_k=top_k, filter_dict=filter_dict, rerank=rerank,
+                        cause=exc,
+                    ) from exc
+                self._query_breaker.record_failure()
+                if attempt < self._query_max_attempts - 1:
+                    delay = min(self._query_backoff_base_s * (2 ** attempt),
+                                self._query_backoff_cap_s)
+                    delay += random.uniform(0, delay / 2)  # jitter
+                    logger.warning(
+                        "Pinecone query transient error (attempt %d/%d), "
+                        "retrying | index=%s", attempt + 1,
+                        self._query_max_attempts, self.index_name,
+                    )
+                    time.sleep(delay)
+        else:
             logger.exception(
-                "Pinecone query failed | index=%s | namespace=%s | top_k=%s",
-                self.index_name,
-                self.namespace,
-                top_k,
+                "Pinecone query exhausted retries | index=%s | namespace=%s",
+                self.index_name, self.namespace,
             )
             raise PineconeRetrievalError(
-                index_name=self.index_name,
-                namespace=self.namespace,
-                top_k=top_k,
-                filter_dict=filter_dict,
-                rerank=rerank,
-                cause=exc,
-            ) from exc
+                index_name=self.index_name, namespace=self.namespace,
+                top_k=top_k, filter_dict=filter_dict, rerank=rerank,
+                cause=last_exc or RuntimeError("unknown"),
+            ) from last_exc
 
         # Para embeddings integrados, la estructura es diferente:
         # results['result']['hits'] contiene los matches

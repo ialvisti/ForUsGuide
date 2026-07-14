@@ -21,7 +21,74 @@ def _uploader_with_index(index: Mock) -> PineconeUploader:
         uploader.index_name = "test-index"
         uploader.namespace = "test-namespace"
         uploader.index = index
+        # resiliencia de query (Tarea 8): el helper bypasea __init__, así que
+        # se cablean los atributos que query_chunks usa. Backoff a 0 para no
+        # dormir en los tests.
+        uploader._query_breaker = pinecone_uploader._CircuitBreaker(
+            threshold=3, cooldown_s=30.0)
+        uploader._query_max_attempts = 3
+        uploader._query_backoff_base_s = 0.0
+        uploader._query_backoff_cap_s = 0.0
         return uploader
+
+
+class _HTTPErr(RuntimeError):
+    def __init__(self, status):
+        super().__init__(f"http {status}")
+        self.status = status
+
+
+def test_query_retries_only_on_429_and_5xx():
+    """Guía PINECONE.md: sólo 429/5xx son transitorios; un 4xx NO se reintenta."""
+    index = Mock()
+    # 500 dos veces, luego éxito → 3 llamadas
+    index.search.side_effect = [
+        _HTTPErr(503), _HTTPErr(503),
+        {"result": {"hits": [{"_id": "c1", "_score": 0.9, "fields": {}}]}},
+    ]
+    uploader = _uploader_with_index(index)
+    chunks = uploader.query_chunks("neutral text", top_k=1)
+    assert index.search.call_count == 3
+    assert chunks and chunks[0]["id"] == "c1"
+
+
+def test_query_does_not_retry_4xx():
+    index = Mock()
+    index.search.side_effect = _HTTPErr(400)
+    uploader = _uploader_with_index(index)
+    with pytest.raises(pinecone_uploader.PineconeRetrievalError):
+        uploader.query_chunks("neutral text", top_k=1)
+    assert index.search.call_count == 1, "un 4xx no debe reintentarse"
+
+
+def test_circuit_opens_after_consecutive_failures():
+    index = Mock()
+    index.search.side_effect = _HTTPErr(503)
+    uploader = _uploader_with_index(index)
+    # threshold=3, max_attempts=3 → una llamada agota los 3 intentos y abre
+    with pytest.raises(pinecone_uploader.PineconeRetrievalError):
+        uploader.query_chunks("neutral text", top_k=1)
+    calls_after_first = index.search.call_count
+    # circuito abierto: la siguiente llamada falla rápido sin tocar el índice
+    with pytest.raises(pinecone_uploader.PineconeCircuitOpen):
+        uploader.query_chunks("neutral text", top_k=1)
+    assert index.search.call_count == calls_after_first, (
+        "con el circuito abierto no debe llamarse a Pinecone"
+    )
+
+
+def test_verify_readonly_uses_stats_and_neutral_query():
+    index = Mock()
+    index.describe_index_stats.return_value = SimpleNamespace(total_vector_count=42)
+    index.search.return_value = {"result": {"hits": []}}
+    uploader = _uploader_with_index(index)
+    out = uploader.verify_readonly()
+    assert out["total_vectors"] == 42
+    assert out["namespace"] == "test-namespace"
+    index.describe_index_stats.assert_called_once()
+    # verificación read-only: jamás upsert/delete
+    index.upsert.assert_not_called()
+    index.delete.assert_not_called()
 
 
 def test_query_chunks_raises_typed_error_with_safe_context_on_pinecone_exception():

@@ -693,28 +693,54 @@ async def livez():
 
 @app.get("/readyz", include_in_schema=False)
 async def readyz(request: Request):
-    """Readiness: configuración crítica y clientes inicializados; 503 si la
-    instancia no puede aceptar trabajo. Sin I/O externo (eso es /health)."""
+    """Readiness ROLE-AWARE (Tarea 11 Paso 4): sin I/O externo (eso es
+    /health). El producer siempre preserva los checks core existentes; los
+    checks específicos de tickets se añaden sólo cuando el rol/modo los exige.
+
+    - producer disabled: core (rag/pinecone/inquiry_router) + LLM provider;
+      NO depende de validador/cola/ForusBots de tickets.
+    - producer activo: además validador participant-plan, repo, cola.
+    - worker: repo + dependencias de ejecución (LLM/Pinecone).
+    - reconciler: repo + cola (sin LLM/Pinecone/ForusBots)."""
     st = request.app.state
-    missing = [
-        name for name, attr in (
-            ("rag_engine", "rag_engine"),
-            ("pinecone_uploader", "pinecone_uploader"),
-            ("inquiry_router", "inquiry_router"),
-            ("ticket_repo", "ticket_repo"),
-            ("ticket_queue", "ticket_queue"),
-        )
-        if getattr(st, attr, None) is None
-    ]
+    role = settings.APP_ROLE
+    active = settings.TICKET_HANDLER_MODE != "disabled"
+    missing: list = []
+
+    def _need(attr: str) -> None:
+        if getattr(st, attr, None) is None:
+            missing.append(attr)
+
     provider_ok = bool(settings.OPENAI_API_KEY) or bool(settings.GEMINI_API_KEY) \
         or (settings.USE_VERTEX_AI and bool(settings.GCP_PROJECT))
-    if missing or not provider_ok:
+
+    if role == "producer":
+        # core existente: SIEMPRE (Pinecone/Vertex/buckets son core de otras
+        # rutas aunque tickets esté disabled)
+        for attr in ("rag_engine", "pinecone_uploader", "inquiry_router"):
+            _need(attr)
+        if active:
+            _need("ticket_repo")
+            _need("ticket_queue")
+            if getattr(st, "participant_plan_validator", None) is None:
+                missing.append("participant_plan_validator")
+    elif role == "worker":
+        _need("ticket_repo")
+        for attr in ("rag_engine", "pinecone_uploader", "inquiry_router"):
+            _need(attr)
+    elif role == "reconciler":
+        _need("ticket_repo")
+        _need("ticket_queue")
+        provider_ok = True  # el reconciliador no usa LLM/Pinecone
+
+    provider_needed = role in ("producer", "worker")
+    if missing or (provider_needed and not provider_ok):
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "unavailable", "missing": missing,
+            content={"status": "unavailable", "role": role, "missing": missing,
                      "llm_provider_configured": provider_ok},
         )
-    return {"status": "ready"}
+    return {"status": "ready", "role": role}
 
 
 @app.post(

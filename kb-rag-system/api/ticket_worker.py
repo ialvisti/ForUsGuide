@@ -635,7 +635,14 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             codes.append(PublicErrorCode.UNPROCESSED_INQUIRIES.value)
         error_code = codes[0] if codes else None
 
+    import hashlib as _hashlib
+    _job_hash = _hashlib.sha256(job_id.encode()).hexdigest()[:16]
     ticket_metrics.increment("ticket_jobs_terminal", state=state.value)
+    ticket_metrics.emit(
+        "ticket_job_terminal", 1, job_hash=_job_hash,
+        trace_id=record.trace_id, state=state.value,
+        code=error_code or "none",
+    )
     final = await repo.update(
         job_id,
         state=state,

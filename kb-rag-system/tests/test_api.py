@@ -1003,3 +1003,75 @@ class TestAppRoleSeparation:
             f"el worker respondió {r_core.status_code} en una ruta del "
             "producer; los roles no son excluyentes"
         )
+
+
+# ---------------------------------------------------------------------------
+# Producción (Tarea 11) — readiness role-aware y sanitización de métricas
+# ---------------------------------------------------------------------------
+
+class TestRoleAwareReadiness:
+
+    def test_producer_disabled_ready_without_ticket_deps(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        # sin validador de tickets: un producer disabled sigue READY (core ok)
+        client.app.state.participant_plan_validator = None
+        r = client.get("/readyz")
+        assert r.status_code == 200
+        assert r.json()["role"] == "producer"
+
+    def test_producer_active_requires_validator(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.participant_plan_validator = None
+        r = client.get("/readyz")
+        assert r.status_code == 503
+        assert "participant_plan_validator" in r.json()["missing"]
+
+    def test_reconciler_ready_without_llm_provider(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "APP_ROLE", "reconciler")
+        # sin proveedor LLM el reconciliador sigue READY (no lo usa)
+        monkeypatch.setattr(app_settings, "OPENAI_API_KEY", "")
+        monkeypatch.setattr(app_settings, "GEMINI_API_KEY", "")
+        monkeypatch.setattr(app_settings, "USE_VERTEX_AI", False)
+        r = client.get("/readyz")
+        assert r.status_code == 200
+        assert r.json()["role"] == "reconciler"
+
+    def test_livez_has_no_external_io(self, client):
+        assert client.get("/livez").json() == {"status": "ok"}
+
+
+class TestMetricsSanitization:
+
+    def test_emit_drops_non_allowlisted_labels(self):
+        from api import metrics
+        import logging
+
+        records = []
+
+        class _Cap(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+
+        h = _Cap()
+        h.setLevel(logging.INFO)
+        metrics.logger.addHandler(h)
+        prev_level = metrics.logger.level
+        metrics.logger.setLevel(logging.INFO)
+        try:
+            metrics.emit("ticket_job_terminal", 1, job_hash="abc123",
+                         trace_id="t1", state="succeeded",
+                         participant_id="158948",  # PROHIBIDO: debe filtrarse
+                         email="luke@example.com")  # PROHIBIDO
+        finally:
+            metrics.logger.removeHandler(h)
+            metrics.logger.setLevel(prev_level)
+
+        blob = "\n".join(records)
+        assert "158948" not in blob, "un ID de participante llegó a las métricas"
+        assert "luke@example.com" not in blob
+        assert "succeeded" in blob and "abc123" in blob

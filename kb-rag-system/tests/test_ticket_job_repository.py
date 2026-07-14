@@ -155,8 +155,9 @@ class TestStateMachine:
         rec, _ = await _create(repo)
         claim1 = await repo.claim(rec.job_id, worker_id="task-attempt-1")
         claim2 = await repo.claim(rec.job_id, worker_id="task-attempt-2")
-        assert claim1 is True
-        assert claim2 is False, "delivery at-least-once ejecutó el job dos veces"
+        # claim devuelve el lease_epoch nuevo (fencing, Tarea 6) o None
+        assert claim1, "el primer claim debe otorgar un lease_epoch"
+        assert claim2 is None, "delivery at-least-once ejecutó el job dos veces"
 
 
 # ---------------------------------------------------------------------------

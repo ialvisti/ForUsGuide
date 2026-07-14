@@ -146,6 +146,34 @@ class TicketJobRecord(BaseModel):
     claimed_by: Optional[str] = None
     claimed_at: Optional[datetime] = None
 
+    # Fencing de lease (Tarea 6 Paso 4a): cada claim incrementa lease_epoch;
+    # toda escritura condicional incluye el epoch y un intento viejo que
+    # despierta después de perder el lease queda fenced.
+    lease_epoch: int = 0
+    lease_owner: Optional[str] = None
+    lease_expires_at: Optional[datetime] = None
+
+    # Outbox por generaciones (Tarea 7 Paso 3): los nombres de task son
+    # ticket-{job_id}-g{generation}; una tombstone fuerza generación nueva.
+    enqueue_generation: int = 0
+
+    # Deadline ABSOLUTO del job (Tarea 7 Paso 1): accepted+2400s; worker,
+    # reconciliador y GET terminalizan por CAS después de vencido.
+    job_deadline_at: Optional[datetime] = None
+
+    # Liberación exactamente-una-vez del slot de cuota (Tarea 5 Paso 2).
+    active_slot_released: bool = False
+
+    # Lock de recuperación del reconciliador (Tarea 7 Paso 5) — separado del
+    # lease de ejecución del worker.
+    recovery_lock_owner: Optional[str] = None
+    recovery_lock_expires_at: Optional[datetime] = None
+
+    # Plan de ejecución persistido UNA vez antes de efectos externos
+    # (Tarea 6 Paso 3): inquiries extraídas/normalizadas, clasificaciones,
+    # decisiones de gating y conteos. Un retry lo reutiliza; nunca re-extrae.
+    execution_plan: Optional[Dict[str, Any]] = None
+
     # Payload necesario para que el worker ejecute (contiene PII; retención
     # gobernada por expires_at). Nunca incluye la API key ni la idem key raw.
     request_payload: Optional[Dict[str, Any]] = None

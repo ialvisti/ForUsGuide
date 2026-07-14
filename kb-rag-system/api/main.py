@@ -60,6 +60,8 @@ from data_pipeline.ticket_job_models import (
 from data_pipeline.ticket_job_repository import (
     FirestoreTicketJobBackend,
     InMemoryTicketJobBackend,
+    QuotaExceeded,
+    RateWindowExceeded,
     TicketJobRepository,
 )
 from data_pipeline.ticket_task_queue import CloudTasksTicketQueue, InlineTicketQueue
@@ -330,7 +332,12 @@ async def lifespan(app: FastAPI):
         # repositorio DURABLE de jobs (compartido entre instancias) + cola de
         # ejecución. El orchestrator se construye on-demand desde app.state.
         app.state.forusbots_client = ForusBotsClient.from_settings(settings)
-        app.state.ticket_repo = TicketJobRepository(_build_ticket_job_backend())
+        app.state.ticket_repo = TicketJobRepository(
+            _build_ticket_job_backend(),
+            retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
+            max_outstanding=settings.TICKET_MAX_OUTSTANDING_JOBS,
+            rate_limit_per_minute=settings.RATE_LIMIT_HANDLE_TICKET,
+        )
         app.state.ticket_orchestrator_factory = lambda: _build_orchestrator_from_state(app)
         app.state.ticket_queue = _build_ticket_queue(app)
         app.state.ticket_rate_limiter = FixedWindowRateLimiter()
@@ -373,11 +380,13 @@ async def lifespan(app: FastAPI):
 
 def _build_ticket_job_backend():
     """memory (dev/tests) | firestore (producción; validate_settings lo exige
-    con el handler activo)."""
+    con el handler activo). La base NOMBRADA es obligatoria (Tarea 5 Paso 3):
+    (default) en producción, ticket-staging en staging."""
     if settings.TICKET_JOB_BACKEND == "firestore":
         return FirestoreTicketJobBackend(
             project=settings.GCP_PROJECT or None,
             collection_prefix=settings.FIRESTORE_TICKET_COLLECTION_PREFIX,
+            database=settings.FIRESTORE_DATABASE,
         )
     return InMemoryTicketJobBackend()
 
@@ -1373,12 +1382,30 @@ async def _accept_ticket_job(
         request_payload=payload,
         trace_id=getattr(http_request.state, "request_id", None),
     )
-    record, outcome = await repo.create_or_get(
-        principal_id=principal,
-        idempotency_key=idem_key,
-        request_fingerprint=fingerprint,
-        candidate=candidate,
-    )
+    try:
+        record, outcome = await repo.create_or_get(
+            principal_id=principal,
+            idempotency_key=idem_key,
+            request_fingerprint=fingerprint,
+            candidate=candidate,
+        )
+    except RateWindowExceeded as exc:
+        # capa DURABLE de tasa (Tarea 5): autoritativa frente al limiter
+        # in-memory de arriba (que sólo mitiga por instancia)
+        ticket_metrics.increment("ticket_rate_limited")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "RATE_LIMITED", "retryable": True},
+            headers={"Retry-After": str(exc.retry_after_s)},
+        )
+    except QuotaExceeded as exc:
+        ticket_metrics.increment("ticket_outstanding_capped")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "TOO_MANY_OUTSTANDING_JOBS", "retryable": True,
+                    "outstanding": exc.outstanding},
+            headers={"Retry-After": "30"},
+        )
     if outcome == CreateOrGetOutcome.CONFLICT or record is None:
         ticket_metrics.increment("ticket_jobs_conflicted")
         raise HTTPException(
@@ -1531,9 +1558,10 @@ async def get_ticket_status(
     http_request: Request,
     repo: TicketJobRepository = Depends(get_ticket_repo),
 ):
-    """Poll de un ticket job. ``404`` = ID inexistente/expirado; ``403`` =
-    job de otro principal (invariante 10)."""
-    record = await repo.get(ticket_job_id)
+    """Poll de un ticket job. ``404`` = ID inexistente; ``410`` = el
+    control/tombstone sigue vigente pero el payload expiró (no reintentar);
+    ``403`` = job de otro principal (invariante 10)."""
+    record, payload_present = await repo.get_with_payload_state(ticket_job_id)
     if record is None:
         ticket_metrics.increment("ticket_poll_not_found")
         raise HTTPException(
@@ -1546,6 +1574,14 @@ async def get_ticket_status(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "TICKET_JOB_FORBIDDEN",
                     "message": "el job pertenece a otro principal"},
+        )
+    if not payload_present:
+        ticket_metrics.increment("ticket_poll_gone")
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail={"code": "TICKET_JOB_EXPIRED",
+                    "message": "el resultado expiró; el receipt impide "
+                               "recrear el job con la misma key"},
         )
     results = _record_results(record)
     primary = results[0] if results else None
@@ -1666,7 +1702,7 @@ async def get_ticket_job_v2(
     http_request: Request,
     repo: TicketJobRepository = Depends(get_ticket_repo),
 ):
-    record = await repo.get(ticket_job_id)
+    record, payload_present = await repo.get_with_payload_state(ticket_job_id)
     if record is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -1676,6 +1712,13 @@ async def get_ticket_job_v2(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "TICKET_JOB_FORBIDDEN"},
+        )
+    if not payload_present:
+        raise HTTPException(
+            status_code=status.HTTP_410_GONE,
+            detail={"code": "TICKET_JOB_EXPIRED",
+                    "message": "el resultado expiró; el receipt impide "
+                               "recrear el job con la misma key"},
         )
     inquiries = [
         InquiryStatusV2(

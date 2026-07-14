@@ -151,3 +151,20 @@ El gate autoritativo de suite es Cloud Build con Python 3.12 + locks (Tarea 3 en
 `gcloud auth list` → cuenta activa `ivan.alvis@forusall.com`; `gcloud auth print-access-token`
 funcionó el 2026-07-13 (la sesión fue renovada tras el incidente `invalid_rapt` del 2026-07-11).
 Esta sesión autoriza **sólo inspección read-only**; ninguna mutación queda autorizada por ella.
+
+### UPDATE 2026-07-14 — la sesión gcloud EXPIRÓ a mitad de ejecución
+
+Durante la Tarea 3, `gcloud auth print-access-token` empezó a fallar con
+`Reauthentication failed. cannot prompt during non-interactive execution`
+(la política org de reauth). Conforme al STOP del plan (Tarea 0 Paso 4), NO se
+usó otra cuenta ni una key. Consecuencia: todos los pasos GCP read/write
+quedan bloqueados hasta que el usuario ejecute `gcloud auth login
+--update-adc` en una terminal interactiva. La inspección read-only de las
+Tareas 0–1 (tráfico, IAM, env, imagen) se completó ANTES de la expiración y
+sigue siendo válida.
+
+Toolchain confirmado ausente en el host (sin instalar): `terraform`/`tofu`,
+`docker`, `python3.12`, `syft`, `gh`. Por tanto: locks 3.12 + build de imagen
+(Tarea 3b), `terraform fmt/validate` (Tarea 10 Paso 8) y todo `plan/apply` se
+ejecutan en Cloud Build/Cloud Shell con imágenes fijadas por digest — no
+localmente. `gh` no es obligatorio (PR por web).

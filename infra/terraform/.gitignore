@@ -1,0 +1,8 @@
+# Planes binarios y estado local NUNCA se versionan (contienen valores).
+*.tfplan
+*.tfstate
+*.tfstate.*
+.terraform/
+.terraform.tfstate.lock.info
+# Los .terraform.lock.hcl SÍ se versionan (se generan con `init` en Cloud
+# Build); no están en este ignore.

@@ -1,0 +1,21 @@
+# Allowlist específica del runner E2E (Tarea 12 Paso 2). Excluye TODO por
+# defecto y re-incluye SÓLO Dockerfiles/locks/config, los cuatro árboles y
+# fixtures/prompts. NO incluye .git, env files, docs de evidencia ni secretos.
+*
+
+!Dockerfile.e2e
+!requirements.lock
+!requirements-dev.lock
+!pytest.ini
+!pyproject.toml
+!api/**
+!data_pipeline/**
+!scripts/**
+!tests/**
+
+# Re-excluir ruido dentro de los árboles permitidos
+**/__pycache__/
+**/*.pyc
+.venv/
+**/.env
+**/.env.*

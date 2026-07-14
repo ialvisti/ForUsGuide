@@ -1,0 +1,71 @@
+# Trigger *-plan por entorno (plan Tarea 12 Paso 2). Lee el state de su
+# entorno, genera un .tfplan BINARIO desde un commit/digest/fase exactos y
+# sube plan+manifest a un bucket de evidencia write-once. NO puede aplicar.
+#
+# Config INLINE gestionada por live/platform (o release-controller fijado por
+# digest); el SHA candidato es sólo input/source, nunca controla steps/SA.
+substitutions:
+  _ROOT: ""                    # live/platform | live/staging | live/production
+  _RELEASE_PHASE: "infra_only"
+  _IMAGE_DIGEST: ""
+  _SECRET_VERSION_MANIFEST_URI: ""
+  _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+  _TERRAFORM_IMAGE: "hashicorp/terraform:1.9@sha256:PINNED_AT_BOOTSTRAP"
+
+steps:
+  - name: '${_TERRAFORM_IMAGE}'
+    id: 'plan'
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        set -eu
+        cd infra/terraform/live/${_ROOT}
+        terraform init -input=false
+        terraform plan -input=false -lock-timeout=120s \
+          -var="image_digest=${_IMAGE_DIGEST}" \
+          -var="release_phase=${_RELEASE_PHASE}" \
+          -out=plan.tfplan
+        terraform show -no-color plan.tfplan > /workspace/show.txt
+        sha256sum plan.tfplan | cut -d' ' -f1 > /workspace/plan_hash.txt
+
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'manifest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd kb-rag-system
+        python scripts/create_plan_manifest.py \
+          --root "live/${_ROOT}" \
+          --backend-bucket "rag-kb-system-tfstate-${_ROOT##*/}-900340137010" \
+          --state-lineage "$(cat /workspace/state_lineage.txt 2>/dev/null || echo unknown)" \
+          --state-serial "$(cat /workspace/state_serial.txt 2>/dev/null || echo 0)" \
+          --commit "$COMMIT_SHA" \
+          --image-digest "${_IMAGE_DIGEST:-none}" \
+          --release-phase "${_RELEASE_PHASE}" \
+          --provider-lock "../infra/terraform/live/${_ROOT}/.terraform.lock.hcl" \
+          --plan-file /workspace/plan.tfplan \
+          --show-file /workspace/show.txt \
+          --builder-digest "${_TERRAFORM_IMAGE}" \
+          --gcs-generation "pending" \
+          --out /workspace/plan_manifest.json
+
+  # sube plan+manifest a evidencia write-once (create-only, sin sobrescribir)
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'upload'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        gsutil -h "x-goog-if-generation-match:0" cp \
+          infra/terraform/live/${_ROOT}/plan.tfplan \
+          gs://${_EVIDENCE_BUCKET}/plans/${_ROOT}/$BUILD_ID/plan.tfplan
+        gsutil -h "x-goog-if-generation-match:0" cp \
+          /workspace/plan_manifest.json \
+          gs://${_EVIDENCE_BUCKET}/plans/${_ROOT}/$BUILD_ID/plan_manifest.json
+
+options:
+  logging: CLOUD_LOGGING_ONLY

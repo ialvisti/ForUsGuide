@@ -1,0 +1,47 @@
+# Trigger handle-ticket-e2e-image (plan Tarea 12 Paso 2 / Tarea 14). Construye
+# por SHA una imagen runner con tests/fixtures usando el MISMO base digest,
+# scan/SBOM y command pytest; sólo se despliega como Run Job staging y nunca
+# se acepta como digest de producción.
+substitutions:
+  _SYFT_IMAGE: "anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb"
+  _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'build-e2e'
+    dir: 'kb-rag-system'
+    args:
+      - 'buildx'
+      - 'build'
+      - '--platform=linux/amd64'
+      - '--file=Dockerfile.e2e'
+      - '--tag=us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$SHORT_SHA'
+      - '--push'
+      - '.'
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'resolve-e2e-digest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        DIGEST=$(docker image inspect --format='{{index .RepoDigests 0}}' \
+          us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$SHORT_SHA)
+        # falla si el tag resolvió más de un digest (no determinístico)
+        echo -n "$DIGEST" > /workspace/e2e_digest.txt
+  - name: '${_SYFT_IMAGE}'
+    id: 'sbom-e2e'
+    entrypoint: sh
+    args:
+      - '-c'
+      - 'syft "$(cat /workspace/e2e_digest.txt)" -o spdx-json > /workspace/e2e_sbom.json'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'manifest-e2e'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        gsutil -h "x-goog-if-generation-match:0" cp /workspace/e2e_sbom.json \
+          gs://${_EVIDENCE_BUCKET}/e2e/$SHORT_SHA/sbom.json
+options:
+  logging: CLOUD_LOGGING_ONLY

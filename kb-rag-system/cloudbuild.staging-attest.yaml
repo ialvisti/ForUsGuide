@@ -1,0 +1,38 @@
+# Trigger handle-ticket-staging-attest (plan Tarea 12/15 Paso 9). NO muta
+# runtime/state: verifica hashes del staging canónico y escribe una promotion
+# attestation nueva con una SA dedicada SIN permisos de deploy.
+substitutions:
+  _IMAGE_DIGEST: ""
+  _EVIDENCE_MANIFEST_URI: ""
+  _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+steps:
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'attest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd kb-rag-system
+        gsutil cp "${_EVIDENCE_MANIFEST_URI}" /workspace/evidence.json
+        # extraer los hashes E2E/differential/rollback/G2/G4/G5 del evidence
+        # manifest (verificado create-only por el evidence-manifest trigger) y
+        # emitir la promotion attestation canónica.
+        python scripts/create_promotion_manifest.py \
+          --main-sha "$COMMIT_SHA" \
+          --image-digest "${_IMAGE_DIGEST}" \
+          --ci-provenance-hash "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["ci_provenance_hash"])')" \
+          --sbom-hash "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["sbom_hash"])')" \
+          --scan-hash "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["scan_hash"])')" \
+          --staging-revision-hashes "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["staging_revision_hashes"])')" \
+          --e2e-hash "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["e2e_hash"])')" \
+          --differential-hash "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["differential_hash"])')" \
+          --rollback-hash "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["rollback_hash"])')" \
+          --g2-approval "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["g2_approval"])')" \
+          --g4-approval "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["g4_approval"])')" \
+          --g5-approval "$(python -c 'import json;print(json.load(open("/workspace/evidence.json"))["g5_approval"])')" \
+          --out /workspace/promotion.json
+        gsutil -h "x-goog-if-generation-match:0" cp /workspace/promotion.json \
+          gs://${_EVIDENCE_BUCKET}/promotions/$COMMIT_SHA/promotion.json
+options:
+  logging: CLOUD_LOGGING_ONLY

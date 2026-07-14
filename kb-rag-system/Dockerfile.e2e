@@ -1,0 +1,25 @@
+# Imagen del runner E2E de staging (plan de finalización, Tarea 12 Paso 2).
+# MISMO base digest Python 3.12 que el runtime; instala el dev lock con
+# hashes; copia api/data_pipeline/scripts/tests completos + prompts. Sólo se
+# despliega como Run Job de staging; NUNCA se acepta como digest de producción.
+FROM python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce
+
+WORKDIR /app
+
+COPY requirements.lock requirements-dev.lock ./
+RUN python -m pip install --no-cache-dir --require-hashes -r requirements-dev.lock
+
+# Cuatro árboles completos + fixtures/prompts (a diferencia del runtime, que
+# no copia tests/fixtures).
+COPY api/ ./api/
+COPY data_pipeline/ ./data_pipeline/
+COPY scripts/ ./scripts/
+COPY tests/ ./tests/
+COPY pytest.ini pyproject.toml ./
+
+# mismo usuario no-root que el runtime
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+ENTRYPOINT ["python", "-m", "pytest"]
+CMD ["-q", "-m", "staging_e2e", "tests/e2e/test_ticket_staging.py"]

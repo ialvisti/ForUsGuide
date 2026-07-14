@@ -1,0 +1,59 @@
+# Trigger *-apply (plan Tarea 12 Paso 2). Recibe el URI con generation +
+# SHA-256 del plan aprobado, verifica manifest/commit/digest/root/lockfile y
+# state serial ACTUAL, y ejecuta SÓLO `terraform apply saved.tfplan`. No
+# regenera plan. Requiere aprobación manual de Cloud Build DESPUÉS de que el
+# humano registró el gate correspondiente.
+substitutions:
+  _ROOT: ""
+  _PLAN_URI: ""               # gs://.../plan.tfplan#<generation>
+  _PLAN_SHA256: ""            # hash aprobado
+  _MANIFEST_URI: ""
+  _EXPECTED_COMMIT: ""
+  _EXPECTED_IMAGE_DIGEST: ""
+  _TERRAFORM_IMAGE: "hashicorp/terraform:1.9@sha256:PINNED_AT_BOOTSTRAP"
+
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'fetch'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        gsutil cp "${_PLAN_URI}" /workspace/plan.tfplan
+        gsutil cp "${_MANIFEST_URI}" /workspace/plan_manifest.json
+
+  # verificación del manifest ANTES de tocar terraform (aborta si drift)
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'verify-manifest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd kb-rag-system
+        terraform_serial=$(cat /workspace/current_state_serial.txt)
+        python scripts/verify_plan_manifest.py \
+          --manifest /workspace/plan_manifest.json \
+          --plan-file /workspace/plan.tfplan \
+          --expected-plan-sha256 "${_PLAN_SHA256}" \
+          --current-state-serial "$terraform_serial" \
+          --expected-commit "${_EXPECTED_COMMIT}" \
+          --expected-image-digest "${_EXPECTED_IMAGE_DIGEST}" \
+          --expected-root "live/${_ROOT}" \
+          --provider-lock "../infra/terraform/live/${_ROOT}/.terraform.lock.hcl"
+
+  - name: '${_TERRAFORM_IMAGE}'
+    id: 'apply'
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        set -eu
+        cd infra/terraform/live/${_ROOT}
+        terraform init -input=false
+        # aplica EXACTAMENTE el plan aprobado; nunca replanifica
+        terraform apply -input=false -auto-approve /workspace/plan.tfplan
+
+options:
+  logging: CLOUD_LOGGING_ONLY

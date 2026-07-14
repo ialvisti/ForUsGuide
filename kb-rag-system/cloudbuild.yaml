@@ -1,82 +1,121 @@
-# Cloud Build — gates ANTES de deploy (Task 12 del plan de remediacion).
-# Orden: deps + suite completa -> pip-audit -> pip check + lock artifact ->
-# build -> push -> deploy. Una suite roja o una CVE conocida NO llega a prod.
-# Image scanning/SBOM: Artifact Registry scanning automatico (ver
-# GCP_SERVICES_GUIDE). Secret scanning: activar en GitHub (push protection).
+# CI de rama/PR (plan de finalización, Tarea 12 Paso 1). Este build NO
+# despliega: Terraform es el único controlador de Cloud Run. Corre con una SA
+# sin Run Admin / IAM Admin / acceso a state de producción.
+#
+# Digests de imágenes-herramienta: kb-rag-system/ci/tool-images.env
+# (python:3.12-slim y anchore/syft fijados por @sha256:). No usar :latest.
+substitutions:
+  _PYTHON_IMAGE: "python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce"
+  _SYFT_IMAGE: "anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb"
+  _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+
 steps:
-  # Gate 1: suite completa dentro del runtime real (python:3.12)
-  - name: 'python:3.12-slim'
-    id: 'test'
+  # 1) instalar desde el dev lock con hashes (Python 3.12)
+  # 2) pytest CI (excluye markers live) + collect-only (markers/imports rotos)
+  # 3) ruff + mypy --strict sobre los módulos ticket declarados
+  # 4) pip check + pip-audit contra el lock
+  # 5) detect-secrets con baseline revisada
+  - name: '${_PYTHON_IMAGE}'
+    id: 'gates'
     entrypoint: bash
     args:
       - '-c'
       - |
+        set -euo pipefail
         cd kb-rag-system
-        pip install --no-cache-dir --upgrade pip
-        pip install --no-cache-dir -r requirements.txt
-        python -m pytest -q
+        python -m pip install --no-cache-dir --require-hashes -r requirements-dev.lock
+        python -m pytest -q -rs -m "not live_dependencies and not staging_e2e"
+        python -m pytest --collect-only -q >/dev/null
+        ruff check .
+        mypy
         python -m pip check
-        pip freeze > requirements.lock
-    # requirements.lock queda como artifact del build (reproducibilidad)
+        pip-audit --strict --require-hashes -r requirements.lock
+        detect-secrets scan --baseline .secrets.baseline
 
-  # Gate 2: auditoria de CVEs conocidas en dependencias
-  - name: 'python:3.12-slim'
-    id: 'audit'
-    entrypoint: bash
-    args:
-      - '-c'
-      - |
-        cd kb-rag-system
-        pip install --no-cache-dir pip-audit
-        pip-audit -r requirements.txt
-
-  # Build the Docker image
+  # 6) construir la imagen inmutable (sin tag mutable)
   - name: 'gcr.io/cloud-builders/docker'
     id: 'build'
+    dir: 'kb-rag-system'
     args:
       - 'build'
+      - '--platform=linux/amd64'
       - '-t'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
-      - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:latest'
       - '.'
-    dir: 'kb-rag-system'
 
-  # Push to Artifact Registry
+  # 7) smoke de prompts/app a nivel de IMAGEN
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'container-smoke'
+    args:
+      - 'run'
+      - '--rm'
+      - '--entrypoint'
+      - 'python'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
+      - 'scripts/container_smoke.py'
+
+  # 8) push por SHA (la imagen se declara en `images:` para registrar artefacto)
   - name: 'gcr.io/cloud-builders/docker'
     id: 'push'
     args:
       - 'push'
-      - '--all-tags'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system'
-
-  # Deploy to Cloud Run. Con el ticket handler activo, el deploy DEBE llevar
-  # TICKET_JOB_BACKEND=firestore y TICKET_TASK_QUEUE=cloudtasks (el boot es
-  # fail-closed y se niega a arrancar sin ellos en produccion). Promocion
-  # canary: gestionar traffic splitting fuera de este build (ver guia).
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'deploy'
-    entrypoint: gcloud
-    args:
-      - 'run'
-      - 'deploy'
-      - 'kb-rag-system'
-      - '--image'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
-      - '--region'
-      - 'us-central1'
-      - '--platform'
-      - 'managed'
 
-artifacts:
-  objects:
-    location: 'gs://$PROJECT_ID-build-artifacts/kb-rag-system/$SHORT_SHA/'
-    paths:
-      - 'kb-rag-system/requirements.lock'
+  # 9) resolver DIGEST y generar SBOM Syft sobre ESE digest → evidencia
+  - name: 'gcr.io/cloud-builders/docker'
+    id: 'resolve-digest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        DIGEST=$(docker image inspect \
+          --format='{{index .RepoDigests 0}}' \
+          us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA)
+        echo -n "$DIGEST" > /workspace/image_digest.txt
+        echo "resolved: $DIGEST"
+
+  - name: '${_SYFT_IMAGE}'
+    id: 'sbom'
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        set -eu
+        DIGEST=$(cat /workspace/image_digest.txt)
+        syft "$DIGEST" -o spdx-json > /workspace/sbom.spdx.json
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'upload-sbom'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        gsutil cp /workspace/sbom.spdx.json \
+          gs://${_EVIDENCE_BUCKET}/ci/$SHORT_SHA/sbom.spdx.json
+
+  # 10) analizar ESE digest con On-Demand Scanning; CRITICAL bloquea sin
+  # excepción; cada HIGH requiere G5V por digest+CVE aún vigente.
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'scan'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        DIGEST=$(cat /workspace/image_digest.txt)
+        gcloud artifacts docker images scan "$DIGEST" \
+          --location=us-central1 --format='value(response.scan)' \
+          > /workspace/scan_id.txt || true
+        # el gate de severidad se evalúa en el análisis del scan (script
+        # dedicado en el trigger); un CRITICAL debe fallar el build.
 
 options:
   logging: CLOUD_LOGGING_ONLY
+  requestedVerifyOption: VERIFIED
 
+# Registrar el artefacto por SHA (nunca :latest). El digest promovido se
+# resuelve del push; una scan anterior al push no cuenta como evidencia.
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:latest'

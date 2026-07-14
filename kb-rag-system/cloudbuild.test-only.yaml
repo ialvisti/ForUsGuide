@@ -1,0 +1,35 @@
+# Trigger handle-ticket-test-only (plan Tarea 12/18 Paso 5). Checkout del SHA
+# canónico, ejecuta los gates Python 3.12 y revalida un digest existente; NO
+# construye/pushea imagen ni accede a deploy/state.
+substitutions:
+  _IMAGE_DIGEST: ""
+  _PYTHON_IMAGE: "python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce"
+steps:
+  - name: '${_PYTHON_IMAGE}'
+    id: 'gates'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd kb-rag-system
+        python -m pip install --no-cache-dir --require-hashes -r requirements-dev.lock
+        python -m pytest -q -rs -m "not live_dependencies and not staging_e2e"
+        ruff check .
+        mypy
+        python -m pip check
+        pip-audit --strict --require-hashes -r requirements.lock
+        detect-secrets scan --baseline .secrets.baseline
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'revalidate-digest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        # revalida provenance/SBOM/scan del digest de producción SIN reconstruir
+        test -n "${_IMAGE_DIGEST}"
+        gcloud artifacts docker images describe "${_IMAGE_DIGEST}" \
+          --show-provenance --format='value(image_summary.digest)'
+options:
+  logging: CLOUD_LOGGING_ONLY

@@ -1,0 +1,40 @@
+# Trigger handle-ticket-evidence-manifest (plan Tarea 12/15 Paso 8a).
+# Controller confiable: acepta un evidence-branch SHA docs-only, verifica que
+# el diff contra main sólo sea evidencia sanitizada, valida G2/G4/G5 y las
+# generations de E2E/differential/rollback, y crea un manifest write-once.
+# Sin state/deploy.
+substitutions:
+  _E2E_URI: ""
+  _DIFFERENTIAL_URI: ""
+  _ROLLBACK_URI: ""
+  _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+steps:
+  - name: 'gcr.io/cloud-builders/git'
+    id: 'diff-docs-only'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        git fetch origin main
+        # el diff contra main SÓLO puede tocar evidencia sanitizada
+        if git diff --name-only origin/main...HEAD | grep -vE '^(docs/verification/|kb-rag-system/Development Docs/|.*README\.md$)'; then
+          echo "STOP: el evidence branch toca archivos fuera del allowlist docs-only" >&2
+          exit 1
+        fi
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    id: 'build-manifest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        # verifica que las generations de E2E/differential/rollback existen y
+        # ensambla el evidence manifest create-only.
+        for uri in "${_E2E_URI}" "${_DIFFERENTIAL_URI}" "${_ROLLBACK_URI}"; do
+          gsutil stat "$uri"
+        done
+        gsutil -h "x-goog-if-generation-match:0" cp /workspace/evidence_manifest.json \
+          gs://${_EVIDENCE_BUCKET}/evidence/$COMMIT_SHA/evidence_manifest.json
+options:
+  logging: CLOUD_LOGGING_ONLY

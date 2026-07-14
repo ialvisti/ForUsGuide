@@ -556,3 +556,134 @@ class TestDurabilityRegressions:
             "cancelled o retryable (queued/failed)"
         )
         assert final.state.value == "queued" and final.retryable is True
+
+
+# ---------------------------------------------------------------------------
+# Producción (plan de finalización, Tarea 2 Paso 1) — contrato v2 e
+# idempotencia obligatoria. RED hasta cerrar la Tarea 4.
+# ---------------------------------------------------------------------------
+
+def _v2_body(**over):
+    """Body v2: sin ticket_handler_mode (v2 lo rechaza) ni idempotency_key."""
+    base = _body()
+    base.pop("ticket_handler_mode", None)
+    base.pop("idempotency_key", None)
+    base.update(over)
+    return base
+
+
+class SlowOrch(FakeOrch):
+    """Mantiene el job en RUNNING (extract nunca termina) para probar cuotas
+    de jobs pendientes sin carreras."""
+
+    async def extract_inquiries(self, req):
+        import asyncio
+        await asyncio.sleep(30)
+        return list(self._extracted)
+
+
+class TestV2ContractRegressions:
+
+    def test_v2_requires_idempotency_key_header(self, client):
+        """Bloqueo 5 del plan: v2 debe EXIGIR Idempotency-Key; hoy un POST sin
+        header se acepta y el replay es imposible."""
+        _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"),
+                                   InquiryOutcome(inquiry="q", topic="t",
+                                                  route="knowledge_question",
+                                                  knowledge_result=_kq_result())))
+        r = client.post("/api/v2/handle-ticket", json=_v2_body())
+        assert r.status_code in (400, 422), (
+            f"v2 sin Idempotency-Key devolvió {r.status_code}; el header debe "
+            "ser obligatorio (plan Tarea 4 Paso 4)"
+        )
+
+    def test_v2_always_returns_202_and_replays_same_job(self, client):
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), _gr_outcome()))
+        headers = {"Idempotency-Key": "v2-key-1"}
+        r1 = client.post("/api/v2/handle-ticket", json=_v2_body(), headers=headers)
+        r2 = client.post("/api/v2/handle-ticket", json=_v2_body(), headers=headers)
+        assert r1.status_code == 202 and r2.status_code == 202
+        assert r1.json()["ticket_job_id"] == r2.json()["ticket_job_id"]
+        assert r2.json()["idempotency_replayed"] is True
+
+    def test_v2_same_key_different_payload_is_409(self, client):
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), _gr_outcome()))
+        headers = {"Idempotency-Key": "v2-mismatch-1"}
+        r1 = client.post("/api/v2/handle-ticket", json=_v2_body(), headers=headers)
+        assert r1.status_code == 202
+        r2 = client.post("/api/v2/handle-ticket",
+                         json=_v2_body(participant_id="999999"), headers=headers)
+        assert r2.status_code == 409
+
+    def test_replay_pending_job_bypasses_quota_and_reensures_enqueue(self, client, monkeypatch):
+        """Bloqueo 5 del plan: el replay de un job pendiente debe resolverse
+        ANTES de las cuotas de jobs nuevos; hoy el cap de outstanding
+        (count_active) corre primero y bloquea el replay con 429."""
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "TICKET_MAX_OUTSTANDING_JOBS", 1)
+
+        _use_orch(client, SlowOrch([_ext()], _cls("generate_response"), _gr_outcome()))
+        headers = {"Idempotency-Key": "replay-pending-1"}
+        r1 = client.post("/api/v2/handle-ticket", json=_v2_body(), headers=headers)
+        assert r1.status_code == 202
+        # el job sigue no-terminal (SlowOrch): outstanding == cap == 1
+        r2 = client.post("/api/v2/handle-ticket", json=_v2_body(), headers=headers)
+        assert r2.status_code == 202, (
+            f"el replay del MISMO job pendiente devolvió {r2.status_code}; la "
+            "resolución idempotente debe preceder al cap de jobs nuevos"
+        )
+        assert r2.json()["ticket_job_id"] == r1.json()["ticket_job_id"]
+
+    def test_v1_inline_requires_send_participant_reply(self, client):
+        """Bloqueo del plan (Tarea 4 Paso 6): un 200 inline de v1 sólo es
+        válido con next_action=send_participant_reply y sin fallback; hoy un
+        job shadow (use_legacy + fallback=true) se entrega como 200 plano."""
+        _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"), None))
+        r = client.post("/api/v1/handle-ticket",
+                        json=_body(ticket_handler_mode="shadow"))
+        if r.status_code == 200:
+            data = r.json()
+            assert data.get("next_action") in ("use_legacy", "use_legacy_or_human"), (
+                "un job shadow succeeded+use_legacy se publicó como 200 inline "
+                "sin acción legacy explícita (oculta use_legacy en un 200)"
+            )
+        else:
+            assert r.status_code == 202
+
+
+class TestParticipantPlanFailClosed:
+
+    def test_active_mode_without_participant_plan_validator_fails_closed(self, client):
+        """Bloqueo 1 del plan: participant_plan_validator=None en modo activo
+        autoriza TODO hoy (fail-open). Debe fallar cerrado: 503 o rechazo."""
+        assert client.app.state.participant_plan_validator is None  # precondición
+        _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"),
+                                   InquiryOutcome(inquiry="q", topic="t",
+                                                  route="knowledge_question",
+                                                  knowledge_result=_kq_result())))
+        r = client.post("/api/v1/handle-ticket", json=_body())
+        assert r.status_code == 503, (
+            f"modo activo sin validador aceptó el ticket ({r.status_code}); "
+            "una configuración None en modo activo debe ser fail-closed"
+        )
+
+    def test_wrong_participant_plan_or_tenant_is_403(self, client):
+        """El contrato objetivo (Tarea 4 Paso 1) es un validador tenant-aware
+        con .authorize(*, tenant_id, participant_id, plan_id) -> modelo | None.
+        Hoy el call site invoca validator(participant_id, plan_id) posicional,
+        así que un validador conforme al Protocol nuevo rompe con 503."""
+
+        class RejectingValidator:
+            async def authorize(self, *, tenant_id, participant_id, plan_id):
+                return None  # mismatch
+
+        client.app.state.participant_plan_validator = RejectingValidator()
+        _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"),
+                                   InquiryOutcome(inquiry="q", topic="t",
+                                                  route="knowledge_question",
+                                                  knowledge_result=_kq_result())))
+        r = client.post("/api/v1/handle-ticket", json=_body())
+        assert r.status_code == 403, (
+            f"mismatch participant-plan devolvió {r.status_code}; el contrato "
+            "tenant-aware debe producir 403 PARTICIPANT_PLAN_MISMATCH"
+        )

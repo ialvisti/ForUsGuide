@@ -919,3 +919,57 @@ class TestTicketHandlerContainment:
             headers={"X-API-Key": test_api_key},
         )
         assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Producción (plan de finalización, Tarea 2 Pasos 1/4) — contrato de auth de
+# rutas no-ticket y roles de proceso excluyentes. RED hasta Tarea 4 Paso 1a.
+# ---------------------------------------------------------------------------
+
+class TestNonTicketAuthContract:
+    """El endurecimiento de tickets NO puede alterar la autenticación de las
+    rutas core existentes (regresión guard)."""
+
+    def test_non_ticket_routes_keep_existing_auth_contract(self, client, test_api_key, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "API_KEY", test_api_key)
+
+        # /health es público (probe de Cloud Run)
+        assert client.get("/health").status_code == 200
+
+        # rutas core exigen X-API-Key: sin header → 401, key inválida → 403
+        r_missing = client.post("/api/v1/knowledge-question",
+                                json={"question": "what is a 401k?"})
+        assert r_missing.status_code == 401
+        r_wrong = client.post("/api/v1/knowledge-question",
+                              json={"question": "what is a 401k?"},
+                              headers={"X-API-Key": "wrong-key"})
+        assert r_wrong.status_code == 403
+        # con la key válida la ruta NO devuelve error de autenticación
+        client.app.state.rag_engine.ask_knowledge_question = AsyncMock(
+            side_effect=RuntimeError("engine stub"))
+        r_ok = client.post("/api/v1/knowledge-question",
+                           json={"question": "what is a 401k?"},
+                           headers={"X-API-Key": test_api_key})
+        assert r_ok.status_code not in (401, 403)
+
+
+class TestAppRoleSeparation:
+    """APP_ROLE=producer|worker|reconciler con rutas excluyentes (plan
+    Tarea 4 Paso 1a). El producer conserva la API completa no-ticket."""
+
+    def test_producer_role_preserves_non_ticket_routes_and_core_readiness(self, client):
+        from api.config import settings as app_settings
+        assert hasattr(app_settings, "APP_ROLE"), (
+            "RED: settings.APP_ROLE no existe — los roles de proceso "
+            "excluyentes no están implementados (Tarea 4 Paso 1a)"
+        )
+        paths = {r.path for r in client.app.routes}
+        core = {"/health", "/livez", "/readyz", "/api/v1/knowledge-question",
+                "/api/v1/generate-response", "/api/v1/required-data",
+                "/api/v1/route-inquiry", "/api/v1/chunks", "/api/v1/index-stats"}
+        assert core <= paths, f"faltan rutas core: {core - paths}"
+        # el producer NUNCA expone la ruta interna del worker
+        assert app_settings.APP_ROLE != "producer" or (
+            "/internal/tasks/ticket-job" not in paths
+        ), "el producer expone /internal/tasks/ticket-job"

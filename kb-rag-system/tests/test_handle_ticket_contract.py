@@ -150,3 +150,40 @@ class TestPollingContract:
                 f"poll deadline {deadline}s <= server budget "
                 f"{settings.TICKET_TOTAL_BUDGET_S}s"
             )
+
+
+# ---------------------------------------------------------------------------
+# Producción (plan de finalización, Tarea 2) — el consumidor debe declarar
+# ramas para los errores del productor v2. RED hasta reemplazar los fixtures
+# reconstruidos por el export real (Tarea 9).
+# ---------------------------------------------------------------------------
+
+class TestProducerErrorBranches:
+
+    def test_request_fixture_declares_v2_producer_error_handling(self):
+        """El fixture del request debe declarar cómo maneja n8n los errores
+        del POST v2: 409 (conflicto de idempotencia → investigación del
+        operador), 413 (payload demasiado grande) y 429 (Retry-After)."""
+        fixture = _load("n8n_handle_ticket_request.json")
+        on_status = fixture.get("_meta", {}).get("http", {}).get("on_status") or \
+            fixture.get("on_http_status")
+        assert on_status, (
+            "RED: el fixture del request no declara manejo por status HTTP "
+            "del POST (Tarea 9 Paso 1.7)"
+        )
+        for code in ("409", "413", "429"):
+            assert code in on_status, (
+                f"RED: sin rama para {code} en el POST v2 — comportamiento "
+                "indefinido en producción"
+            )
+
+    def test_polling_fixture_routes_410_to_legacy_or_human(self):
+        """El receipt de idempotencia sobrevive al job y GET devuelve 410
+        durante todo el horizonte: n8n debe tratarlo como no-publicable."""
+        fixture = _load("n8n_handle_ticket_polling.json")
+        branch = fixture["on_http_status"].get("410")
+        assert branch, "sin rama para 410"
+        text = json.dumps(branch).lower()
+        assert "legacy" in text or "human" in text, (
+            f"la rama 410 ({branch!r}) no deriva a legacy/humano"
+        )

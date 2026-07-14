@@ -157,3 +157,132 @@ class TestStateMachine:
         claim2 = await repo.claim(rec.job_id, worker_id="task-attempt-2")
         assert claim1 is True
         assert claim2 is False, "delivery at-least-once ejecutó el job dos veces"
+
+
+# ---------------------------------------------------------------------------
+# Producción (plan de finalización, Tarea 2 Paso 3) — timestamps nativos,
+# cuotas atómicas, fencing por lease epoch, deadline absoluto y reconciliador.
+# RED hasta cerrar las Tareas 5/6/7.
+# ---------------------------------------------------------------------------
+
+from datetime import datetime
+
+from data_pipeline.ticket_job_models import TicketJobRecord
+from data_pipeline.ticket_job_repository import _record_to_doc
+
+
+class TestNativeTimestamps:
+
+    def test_firestore_documents_keep_native_timestamps(self):
+        """Bloqueo 2 del plan: los docs se serializan con mode='json' y los
+        timestamps llegan a Firestore como strings — el TTL nunca eliminará
+        la PII. Deben preservarse datetime nativos."""
+        rec = _record()
+        doc = _record_to_doc(rec)
+        for field_name in ("created_at", "updated_at", "expires_at"):
+            value = doc.get(field_name)
+            assert isinstance(value, datetime), (
+                f"{field_name} se serializó como {type(value).__name__} "
+                f"({value!r}); Firestore TTL exige timestamp nativo"
+            )
+
+    async def test_idempotency_document_keeps_native_timestamps(self, repo, backend):
+        await _create(repo, key="native-ts-key")
+        dump = await backend.dump_all()
+        idem_docs = [
+            doc for coll, docs in dump.items()
+            if "idempotency" in coll for doc in docs.values()
+        ]
+        assert idem_docs, "no se creó documento de idempotencia"
+        for doc in idem_docs:
+            for field_name in ("created_at", "expires_at"):
+                value = doc.get(field_name)
+                assert isinstance(value, datetime), (
+                    f"idempotency.{field_name} es {type(value).__name__} "
+                    f"({value!r}); .isoformat() rompe el TTL de Firestore"
+                )
+
+
+class TestAtomicQuotas:
+
+    async def test_50_concurrent_reservations_consume_one_quota_slot(self, repo, backend):
+        """Tarea 5 Paso 2: la cuota de jobs activos debe ser un contador
+        transaccional durable (ticket_active_counters), no un count() no
+        atómico en el endpoint."""
+        results = await asyncio.gather(*[_create(repo) for _ in range(50)])
+        assert len({r.job_id for r, _ in results if r is not None}) == 1
+        dump = await backend.dump_all()
+        counters = {
+            coll: docs for coll, docs in dump.items()
+            if "active_counter" in coll or coll == "ticket_active_counters"
+        }
+        assert counters, (
+            "RED: no existe la colección ticket_active_counters — la reserva "
+            "de cuota no es atómica ni durable (Tarea 5 Paso 2)"
+        )
+        totals = [
+            doc.get("active_jobs") for docs in counters.values()
+            for doc in docs.values()
+        ]
+        assert totals == [1], (
+            f"50 reservas concurrentes de la misma key consumieron {totals!r} "
+            "slots; deben consumir exactamente uno"
+        )
+
+
+class TestLeaseFencing:
+
+    async def test_stale_lease_epoch_cannot_checkpoint_or_publish(self, repo):
+        """Tarea 6 Paso 4a: cada claim incrementa lease_epoch y toda escritura
+        condicional lo incluye; un worker viejo queda fenced."""
+        assert "lease_epoch" in TicketJobRecord.model_fields, (
+            "RED: TicketJobRecord.lease_epoch no existe (Tarea 6 Paso 4a)"
+        )
+        rec, _ = await _create(repo)
+        assert await repo.claim(rec.job_id, worker_id="w-old")
+        old = await repo.get(rec.job_id)
+        old_epoch = old.lease_epoch
+        # el reconciliador/nuevo worker fencea al viejo con otro epoch
+        await repo.update(rec.job_id, state=TicketJobState.QUEUED,
+                          claimed_by=None, claimed_at=None)
+        assert await repo.claim(rec.job_id, worker_id="w-new")
+        fresh = await repo.get(rec.job_id)
+        assert fresh.lease_epoch > old_epoch, "el claim no incrementó el epoch"
+        with pytest.raises(Exception):
+            await repo.record_inquiry_result(
+                rec.job_id, 0,
+                {"execution_status": "succeeded",
+                 "participant_reply_safe": True},
+                lease_epoch=old_epoch,
+            )
+
+    async def test_recovery_lock_requeues_without_owning_worker_lease(self):
+        """Tarea 7 Paso 5: el reconciliador usa un recovery_lock separado y
+        NUNCA conserva el lease de ejecución del worker."""
+        try:
+            from data_pipeline import ticket_reconciler  # noqa: F401
+        except ImportError:
+            pytest.fail(
+                "RED: data_pipeline.ticket_reconciler no existe (Tarea 7 "
+                "Paso 5) — no hay reconciliación automática de outbox/leases"
+            )
+
+
+class TestAbsoluteDeadline:
+
+    async def test_absolute_job_deadline_terminalizes_late_deliveries(self, repo):
+        """Tarea 7 Paso 1: job_deadline_at=accepted_at+2400s; un GET/worker
+        tardío terminaliza por CAS y libera cuota exactamente una vez."""
+        assert "job_deadline_at" in TicketJobRecord.model_fields, (
+            "RED: TicketJobRecord.job_deadline_at no existe (Tarea 7 Paso 1)"
+        )
+
+    async def test_reconciler_repairs_pending_outbox_and_stale_lease(self):
+        try:
+            from data_pipeline.ticket_reconciler import TicketReconciler  # noqa: F401
+        except ImportError:
+            pytest.fail(
+                "RED: data_pipeline.ticket_reconciler.TicketReconciler no "
+                "existe (Tarea 7 Paso 5) — outbox pending y leases vencidos "
+                "no se reparan sin CLI manual"
+            )

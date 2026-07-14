@@ -186,3 +186,105 @@ class TestResourceBounds:
         assert 429 in statuses, f"nunca hubo 429: {statuses}"
         first_429 = next(r for r in responses if r.status_code == 429)
         assert "Retry-After" in first_429.headers
+
+
+# ---------------------------------------------------------------------------
+# Producción (plan de finalización, Tarea 2 Paso 1) — identidad workload WIF
+# en v2. RED hasta cerrar la Tarea 4 Paso 2a.
+# ---------------------------------------------------------------------------
+
+def _v2_body(**over):
+    base = _body()
+    base.pop("ticket_handler_mode", None)
+    base.update(over)
+    return base
+
+
+def _unsigned_jwt(payload: dict) -> str:
+    """JWT alg=none (sin firma): nunca debe aceptarse."""
+    import base64
+    import json as _json
+
+    def _b64(obj):
+        return base64.urlsafe_b64encode(
+            _json.dumps(obj).encode()).rstrip(b"=").decode()
+
+    return f"{_b64({'alg': 'none', 'typ': 'JWT'})}.{_b64(payload)}."
+
+
+class TestWorkloadIdentityV2:
+    """v2 activo exige DOS credenciales independientes: X-API-Key (cliente/
+    tenant) y X-ForUs-Workload-Authorization con un ID token Google-signed de
+    la SA n8n-ticket-invoker-{env}. Cloud Run elimina la firma de
+    X-Serverless-Authorization antes de entregarlo, así que ese header queda
+    prohibido. Parametrizado para el caso privado (Authorization duplicado)
+    y el caso público (header propio como control obligatorio)."""
+
+    @pytest.mark.parametrize("extra_headers", [
+        {},                                                # sin token workload
+        {"X-ForUs-Workload-Authorization": "Bearer garbage-token"},  # basura
+    ])
+    def test_v2_rejects_missing_or_wrong_workload_identity_token_when_public(
+            self, client, extra_headers):
+        _use_orch(client)
+        r = client.post("/api/v2/handle-ticket", json=_v2_body(),
+                        headers={"X-API-Key": KEY_N8N,
+                                 "Idempotency-Key": "wif-red-1",
+                                 **extra_headers})
+        assert r.status_code in (401, 403), (
+            f"v2 sin identidad workload verificable devolvió {r.status_code}; "
+            "X-API-Key solo no autoriza (plan Tarea 4 Paso 2a)"
+        )
+
+    def test_v2_accepts_expected_wif_service_account_and_audience(self, client, monkeypatch):
+        from api import auth as api_auth
+        if not hasattr(api_auth, "verify_workload_identity_token"):
+            pytest.fail(
+                "RED: api.auth.verify_workload_identity_token no existe — la "
+                "verificación WIF de v2 (firma/issuer/audience/SA/exp) no está "
+                "implementada (plan Tarea 4 Paso 2a)"
+            )
+        claims = {
+            "iss": "https://accounts.google.com",
+            "aud": "https://kb-rag-system.example.run.app",
+            "email": "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com",
+            "email_verified": True,
+            "exp": 4102444800,
+        }
+        monkeypatch.setattr(
+            api_auth, "_verify_google_id_token", lambda token, audience: claims,
+            raising=True,
+        )
+        _use_orch(client)
+        r = client.post("/api/v2/handle-ticket", json=_v2_body(),
+                        headers={"X-API-Key": KEY_N8N,
+                                 "Idempotency-Key": "wif-ok-1",
+                                 "X-ForUs-Workload-Authorization": "Bearer valid-token"})
+        assert r.status_code == 202
+
+    @pytest.mark.parametrize("headers", [
+        # Cloud Run despoja la firma de X-Serverless-Authorization: prohibido.
+        {"X-Serverless-Authorization": "Bearer whatever"},
+        # JWT sin firma / alg none: jamás aceptable.
+        {"X-ForUs-Workload-Authorization":
+            "Bearer PLACEHOLDER_UNSIGNED"},
+    ])
+    def test_v2_rejects_x_serverless_authorization_or_unsigned_token(
+            self, client, headers):
+        if "X-ForUs-Workload-Authorization" in headers:
+            headers = {"X-ForUs-Workload-Authorization":
+                       "Bearer " + _unsigned_jwt({
+                           "iss": "https://accounts.google.com",
+                           "aud": "https://kb-rag-system.example.run.app",
+                           "email": "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com",
+                           "email_verified": True,
+                       })}
+        _use_orch(client)
+        r = client.post("/api/v2/handle-ticket", json=_v2_body(),
+                        headers={"X-API-Key": KEY_N8N,
+                                 "Idempotency-Key": "wif-red-2",
+                                 **headers})
+        assert r.status_code in (401, 403), (
+            f"token no verificable aceptado con {r.status_code}: "
+            "X-Serverless-Authorization y JWT sin firma deben rechazarse"
+        )

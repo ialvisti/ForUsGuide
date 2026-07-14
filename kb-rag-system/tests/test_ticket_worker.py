@@ -26,6 +26,10 @@ def client(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "o")
     from api.config import settings as app_settings
     monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+    # Estos tests ejercitan la superficie HTTP del worker: el rol de proceso
+    # debe ser `worker` para que /internal/tasks/ticket-job exista (Tarea 4
+    # Paso 1a; el producer la oculta con 404).
+    monkeypatch.setattr(app_settings, "APP_ROLE", "worker")
 
     mock_engine = Mock()
     mock_pinecone = Mock()

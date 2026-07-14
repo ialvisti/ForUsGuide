@@ -245,6 +245,35 @@ class TicketJobRepository:
         doc, outcome = await self.backend.transact(_txn)
         return (_doc_to_record(doc) if doc is not None else None), outcome
 
+    async def peek_idempotent(
+        self,
+        *,
+        principal_id: str,
+        idempotency_key: str,
+        api_version: str,
+        request_fingerprint: str,
+    ) -> Tuple[str, Optional[TicketJobRecord]]:
+        """Resolución de idempotencia ANTES de las cuotas de jobs nuevos
+        (Tarea 4 Paso 5): un replay del mismo job lógico no consume rate
+        limit ni slots de outstanding.
+
+        Devuelve ``("replay", record)``, ``("conflict", None)`` o
+        ``("new", None)``. La carrera replay-vs-create la cierra la
+        transacción de ``create_or_get``; este peek sólo evita cobrar
+        cuota a un replay."""
+        idem_hash = hash_idempotency_key(principal_id, idempotency_key,
+                                         api_version)
+        existing = await self.backend.get_doc(IDEM_COLLECTION, idem_hash)
+        if existing is None:
+            return "new", None
+        if existing.get("request_fingerprint") != request_fingerprint:
+            return "conflict", None
+        job = await self.backend.get_doc(JOBS_COLLECTION, existing["job_id"])
+        if job is None:
+            # índice huérfano (job expirado): se recrea como job nuevo
+            return "new", None
+        return "replay", _doc_to_record(job)
+
     # ------------------------------------------------------------------
     # Lectura
     # ------------------------------------------------------------------

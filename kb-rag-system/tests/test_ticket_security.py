@@ -48,8 +48,20 @@ def client(monkeypatch):
          patch("api.main.InquiryRouterEngine", return_value=mock_inquiry_router):
         from api.main import app
         with TestClient(app) as c:
+            # Fail-closed (Tarea 4): sin fuente participant-plan no hay
+            # autorización; estos tests usan una fuente sintética allow-all
+            # salvo los que inyectan mismatch/indisponibilidad.
+            c.app.state.participant_plan_validator = _AllowAllPP()
             yield c
         app.dependency_overrides.clear()
+
+
+class _AllowAllPP:
+    async def authorize(self, *, tenant_id, participant_id, plan_id):
+        from api.participant_plan import AuthorizedParticipantPlan
+        return AuthorizedParticipantPlan(
+            tenant_id=tenant_id, participant_id=participant_id, plan_id=plan_id,
+        )
 
 
 def _body(**over):
@@ -137,19 +149,22 @@ class TestObjectAuthorization:
 
     def test_invalid_participant_plan_pair_is_403(self, client):
         """Invariante 10: la asociación participant-plan se verifica contra una
-        fuente canónica ANTES de cualquier scrape."""
+        fuente canónica ANTES de cualquier scrape (contrato tenant-aware de
+        Tarea 4: authorize(*, tenant_id, participant_id, plan_id) → None)."""
         _use_orch(client)
 
-        async def _reject(participant_id, plan_id):
-            return False
+        class _Rejecting:
+            async def authorize(self, *, tenant_id, participant_id, plan_id):
+                return None
 
-        client.app.state.participant_plan_validator = _reject
+        client.app.state.participant_plan_validator = _Rejecting()
         r = client.post("/api/v1/handle-ticket", json=_body(),
                         headers={"X-API-Key": KEY_N8N})
         assert r.status_code == 403, (
             f"pareja participant-plan inválida devolvió {r.status_code}: "
             "no existe verificación de asociación"
         )
+        assert r.json()["detail"]["code"] == "PARTICIPANT_PLAN_MISMATCH"
 
 
 class TestResourceBounds:
@@ -220,12 +235,22 @@ class TestWorkloadIdentityV2:
     prohibido. Parametrizado para el caso privado (Authorization duplicado)
     y el caso público (header propio como control obligatorio)."""
 
+    @staticmethod
+    def _enable_wif(monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "TICKET_WIF_AUDIENCE",
+                            "https://kb-rag-system.example.run.app")
+        monkeypatch.setattr(
+            app_settings, "TICKET_WIF_EXPECTED_EMAIL",
+            "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com")
+
     @pytest.mark.parametrize("extra_headers", [
         {},                                                # sin token workload
         {"X-ForUs-Workload-Authorization": "Bearer garbage-token"},  # basura
     ])
     def test_v2_rejects_missing_or_wrong_workload_identity_token_when_public(
-            self, client, extra_headers):
+            self, client, monkeypatch, extra_headers):
+        self._enable_wif(monkeypatch)
         _use_orch(client)
         r = client.post("/api/v2/handle-ticket", json=_v2_body(),
                         headers={"X-API-Key": KEY_N8N,
@@ -244,6 +269,7 @@ class TestWorkloadIdentityV2:
                 "verificación WIF de v2 (firma/issuer/audience/SA/exp) no está "
                 "implementada (plan Tarea 4 Paso 2a)"
             )
+        self._enable_wif(monkeypatch)
         claims = {
             "iss": "https://accounts.google.com",
             "aud": "https://kb-rag-system.example.run.app",
@@ -256,10 +282,21 @@ class TestWorkloadIdentityV2:
             raising=True,
         )
         _use_orch(client)
+        # token estructuralmente válido (RS256): el pre-parseo local pasa y la
+        # verificación de firma queda en el seam patcheado
+        import base64
+        import json as _json
+
+        def _b64(obj):
+            return base64.urlsafe_b64encode(
+                _json.dumps(obj).encode()).rstrip(b"=").decode()
+
+        token = (f"{_b64({'alg': 'RS256', 'typ': 'JWT', 'kid': 'k1'})}."
+                 f"{_b64(claims)}.c2ln")
         r = client.post("/api/v2/handle-ticket", json=_v2_body(),
                         headers={"X-API-Key": KEY_N8N,
                                  "Idempotency-Key": "wif-ok-1",
-                                 "X-ForUs-Workload-Authorization": "Bearer valid-token"})
+                                 "X-ForUs-Workload-Authorization": f"Bearer {token}"})
         assert r.status_code == 202
 
     @pytest.mark.parametrize("headers", [
@@ -270,7 +307,8 @@ class TestWorkloadIdentityV2:
             "Bearer PLACEHOLDER_UNSIGNED"},
     ])
     def test_v2_rejects_x_serverless_authorization_or_unsigned_token(
-            self, client, headers):
+            self, client, monkeypatch, headers):
+        self._enable_wif(monkeypatch)
         if "X-ForUs-Workload-Authorization" in headers:
             headers = {"X-ForUs-Workload-Authorization":
                        "Bearer " + _unsigned_jwt({

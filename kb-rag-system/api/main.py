@@ -16,7 +16,7 @@ import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
-from fastapi import FastAPI, Request, HTTPException, status, Depends, Security
+from fastapi import FastAPI, Header, Request, HTTPException, status, Depends, Security
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -50,6 +50,7 @@ from data_pipeline.ticket_orchestrator import (
 from data_pipeline.ticket_job_models import (
     TERMINAL_STATES,
     CreateOrGetOutcome,
+    NextAction,
     TicketJobRecord,
     TicketJobState,
     fingerprint_request,
@@ -81,6 +82,7 @@ from .models import (
     SourceArticle,
     UsedChunk,
     HandleTicketRequest,
+    HandleTicketV2Request,
     TicketHandleResponse,
     TicketJobHandle,
     TicketStatusResponse,
@@ -93,11 +95,17 @@ from .models import (
 from .config import settings, validate_settings
 from .middleware import (
     add_request_id,
+    enforce_app_role,
     log_requests,
     handle_errors,
     limit_body_size,
 )
 from .rate_limit import FixedWindowRateLimiter
+from .participant_plan import (
+    ParticipantPlanUnavailable,
+    build_validator_from_settings,
+)
+from .auth import verify_workload_identity_token
 from . import metrics as ticket_metrics
 
 # Configurar logging
@@ -326,11 +334,11 @@ async def lifespan(app: FastAPI):
         app.state.ticket_orchestrator_factory = lambda: _build_orchestrator_from_state(app)
         app.state.ticket_queue = _build_ticket_queue(app)
         app.state.ticket_rate_limiter = FixedWindowRateLimiter()
-        # Autorización de objetos participant-plan: seam para la fuente
-        # canónica (directorio de participantes). Sin fuente configurada el
-        # productor no puede verificar la asociación — pendiente operativo
-        # documentado en GCP_SERVICES_GUIDE/runbook.
-        app.state.participant_plan_validator = None
+        # Autorización de objetos participant-plan (Tarea 4): la factory
+        # construye el adaptador según PARTICIPANT_PLAN_SOURCE. Sin fuente,
+        # devuelve None y todo modo ACTIVO falla cerrado (validate_settings
+        # en arranque + 503 en request); None jamás autoriza.
+        app.state.participant_plan_validator = build_validator_from_settings(settings)
         logger.info(
             "✅ Ticket handler wired (mode=%s, backend=%s, queue=%s)",
             settings.TICKET_HANDLER_MODE, settings.TICKET_JOB_BACKEND,
@@ -428,6 +436,9 @@ app.add_middleware(
 # de ejecución: handle_errors → add_request_id → log_requests →
 # limit_body_size → route. Así el request ID existe cuando log_requests
 # escribe la línea de inicio (fix HT: logs con ID unknown).
+# enforce_app_role se registra PRIMERO (más interno): corre después del
+# request ID/logging, de modo que un 404 por rol queda trazado.
+app.middleware("http")(enforce_app_role)
 app.middleware("http")(limit_body_size)
 app.middleware("http")(log_requests)
 app.middleware("http")(add_request_id)
@@ -436,6 +447,57 @@ app.middleware("http")(handle_errors)
 # Worker interno de ticket jobs (Cloud Tasks target; OIDC-protected)
 from api.ticket_worker import router as _ticket_worker_router  # noqa: E402
 app.include_router(_ticket_worker_router)
+
+
+def _custom_openapi():
+    """OpenAPI con los DOS esquemas de autenticación del flujo de tickets
+    (Tarea 4 Paso 7): X-API-Key (cliente/tenant) y la identidad workload de
+    v2, más el bearer de Cloud Run IAM cuando el servicio es privado."""
+    if app.openapi_schema:
+        return app.openapi_schema
+    from fastapi.openapi.utils import get_openapi
+
+    schema = get_openapi(
+        title=settings.API_TITLE,
+        version=settings.API_VERSION,
+        description=settings.API_DESCRIPTION,
+        routes=app.routes,
+    )
+    schemes = schema.setdefault("components", {}).setdefault("securitySchemes", {})
+    schemes["ApiKeyAuth"] = {
+        "type": "apiKey", "in": "header", "name": "X-API-Key",
+        "description": "Identifica cliente/tenant; NO autoriza v2 por sí sola.",
+    }
+    schemes["WorkloadIdentity"] = {
+        "type": "apiKey", "in": "header",
+        "name": "X-ForUs-Workload-Authorization",
+        "description": "`Bearer <ID token>` Google-signed de la SA "
+                       "n8n-ticket-invoker-{env}, verificado en la app "
+                       "(firma/issuer/audience/email/exp). "
+                       "X-Serverless-Authorization se rechaza siempre.",
+    }
+    schemes["CloudRunIAM"] = {
+        "type": "http", "scheme": "bearer",
+        "description": "El MISMO ID token duplicado en Authorization cuando "
+                       "Cloud Run IAM protege el servicio (invoker privado).",
+    }
+    for path, ops in schema.get("paths", {}).items():
+        for op in ops.values():
+            if not isinstance(op, dict):
+                continue
+            if path.startswith("/api/v2/handle-ticket"):
+                op["security"] = [
+                    {"ApiKeyAuth": [], "WorkloadIdentity": [], "CloudRunIAM": []},
+                    {"ApiKeyAuth": [], "WorkloadIdentity": []},
+                ]
+            elif path.startswith(("/api/v1/handle-ticket", "/api/v1/tickets/",
+                                  "/api/v2/ticket-jobs/")):
+                op["security"] = [{"ApiKeyAuth": []}]
+    app.openapi_schema = schema
+    return schema
+
+
+app.openapi = _custom_openapi
 
 # Mount UI static files
 UI_DIR = Path(__file__).parent.parent / "ui"
@@ -1148,7 +1210,7 @@ def _extract_idempotency_key(
     """Key del header (preferida) o del body (v1 legacy). Conflictos y
     tamaños fuera de [1, 128] se rechazan (HT-05/HT-06)."""
     header_key = http_request.headers.get("Idempotency-Key")
-    body_key = request.idempotency_key
+    body_key = getattr(request, "idempotency_key", None)
     if body_key and not allow_body:
         raise HTTPException(
             status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
@@ -1186,7 +1248,8 @@ async def _accept_ticket_job(
     se cierra reasegurando el enqueue en el retry (task name determinístico).
     """
     effective_mode = _effective_ticket_mode(
-        settings.TICKET_HANDLER_MODE, request.ticket_handler_mode
+        settings.TICKET_HANDLER_MODE,
+        getattr(request, "ticket_handler_mode", None),
     )
     if effective_mode == "disabled":
         raise HTTPException(
@@ -1195,9 +1258,89 @@ async def _accept_ticket_job(
         )
 
     principal = _request_principal(http_request)
+    tenant = getattr(http_request.state, "tenant_id", None) or "default"
 
-    # Cuotas por principal (HT-06): rate limit del productor + cap de jobs
-    # outstanding. El límite global de ejecución lo impone la cola.
+    # Autorización canónica participant-plan-tenant ANTES de cuotas y de
+    # cualquier LLM (invariante 10, Tarea 4). FAIL-CLOSED: un modo activo sin
+    # validador configurado NUNCA autoriza (bloqueo 1 del plan).
+    validator = getattr(http_request.app.state, "participant_plan_validator", None)
+    if validator is None:
+        ticket_metrics.increment("ticket_participant_plan_unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE",
+                    "message": "la fuente canónica participant-plan no está "
+                               "configurada; un modo activo no autoriza sin ella"},
+        )
+    try:
+        authorized = await validator.authorize(
+            tenant_id=tenant,
+            participant_id=request.participant_id,
+            plan_id=request.plan_id,
+        )
+    except ParticipantPlanUnavailable:
+        ticket_metrics.increment("ticket_participant_plan_unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        # Un adaptador roto es indisponibilidad, jamás autorización.
+        logger.exception("participant-plan validator failed")
+        ticket_metrics.increment("ticket_participant_plan_unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
+        )
+    if authorized is None:
+        ticket_metrics.increment("ticket_participant_plan_mismatch")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "PARTICIPANT_PLAN_MISMATCH"},
+        )
+
+    idem_key = _extract_idempotency_key(
+        request, http_request, allow_body=allow_body_idem
+    )
+    payload = request.model_dump(mode="json", exclude={"idempotency_key"})
+    # Campos confiables SERVER-OWNED (Tarea 4 Paso 3): el record keeper de la
+    # fuente canónica prevalece sobre el metadato que aporte el caller.
+    if authorized.record_keeper:
+        payload["record_keeper"] = authorized.record_keeper
+    fingerprint = fingerprint_request(payload)
+
+    # Resolución de idempotencia ANTES de las cuotas de jobs nuevos (Tarea 4
+    # Paso 5): un replay no consume rate limit ni slots y repara un enqueue
+    # pendiente; sólo un job lógico recién creado paga cuota.
+    if idem_key is not None:
+        peek_outcome, peeked = await repo.peek_idempotent(
+            principal_id=principal,
+            idempotency_key=idem_key,
+            api_version=api_version,
+            request_fingerprint=fingerprint,
+        )
+        if peek_outcome == "conflict":
+            ticket_metrics.increment("ticket_jobs_conflicted")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "IDEMPOTENCY_PAYLOAD_MISMATCH",
+                        "message": "la misma Idempotency-Key ya se usó con "
+                                   "otro payload"},
+            )
+        if peek_outcome == "replay" and peeked is not None:
+            ticket_metrics.increment("ticket_jobs_replayed")
+            record = peeked
+            if record.enqueue_state != "enqueued" \
+                    and record.state not in TERMINAL_STATES:
+                queue = http_request.app.state.ticket_queue
+                task_name = await queue.ensure_enqueued(record.job_id)
+                record = await repo.mark_enqueued(record.job_id, task_name)
+            return record, True
+
+    # Cuotas por principal (HT-06) sólo para jobs NUEVOS: rate limit del
+    # productor + cap de outstanding. El límite global lo impone la cola.
     limiter: FixedWindowRateLimiter = http_request.app.state.ticket_rate_limiter
     allowed, retry_after = limiter.check(
         ("handle-ticket", principal), settings.RATE_LIMIT_HANDLE_TICKET
@@ -1219,35 +1362,13 @@ async def _accept_ticket_job(
             headers={"Retry-After": "30"},
         )
 
-    # Autorización de objetos: la pareja participant-plan se valida contra la
-    # fuente canónica configurada ANTES de aceptar el job (invariante 10).
-    validator = getattr(http_request.app.state, "participant_plan_validator", None)
-    if validator is not None:
-        try:
-            pair_ok = await validator(request.participant_id, request.plan_id)
-        except Exception:
-            logger.exception("participant-plan validator failed")
-            raise HTTPException(
-                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
-            )
-        if not pair_ok:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail={"code": "PARTICIPANT_PLAN_MISMATCH"},
-            )
-
-    idem_key = _extract_idempotency_key(
-        request, http_request, allow_body=allow_body_idem
-    )
-    payload = request.model_dump(mode="json", exclude={"idempotency_key"})
-    fingerprint = fingerprint_request(payload)
     candidate = new_job_record(
         principal_id=principal,
         request_fingerprint=fingerprint,
         retention_s=settings.TICKET_JOB_RETENTION_S,
         mode=effective_mode,
         api_version=api_version,
+        tenant_id=authorized.tenant_id,
         ticket_id=request.ticket.ticket_id,
         request_payload=payload,
         trace_id=getattr(http_request.state, "request_id", None),
@@ -1370,14 +1491,24 @@ async def handle_ticket_endpoint(
         repo, record.job_id, settings.TICKET_V1_INLINE_WAIT_S
     ) or record
 
+    # Un 200 inline de v1 SÓLO es válido cuando el resultado es publicable
+    # (Tarea 4 Paso 6): succeeded + send_participant_reply + todas las
+    # inquiries seguras + sin fallback. Cualquier otra cosa (shadow, coerción
+    # de modo, degradación) va por 202/poll para que n8n lea el next_action
+    # explícito; nunca se oculta use_legacy dentro de un 200.
+    metadata = (record.public_result or {}).get("metadata", {})
+    all_safe = bool(record.per_inquiry_status) and all(
+        e.get("participant_reply_safe") for e in record.per_inquiry_status
+    )
     fast_inline = (
-        record.state in TERMINAL_STATES
-        and record.state == TicketJobState.SUCCEEDED
+        record.state == TicketJobState.SUCCEEDED
+        and record.next_action == NextAction.SEND_PARTICIPANT_REPLY
+        and metadata.get("fallback") is not True
+        and all_safe
         and not _record_has_generate_response(record)
     )
     if fast_inline:
         results = _record_results(record)
-        metadata = (record.public_result or {}).get("metadata", {})
         if results:
             return TicketHandleResponse(
                 route_taken=results[0].route,
@@ -1439,28 +1570,59 @@ async def get_ticket_status(
 # v2: contrato uniforme 202 + polling (plan §6)
 # ============================================================================
 
+async def verify_workload_identity(http_request: Request) -> None:
+    """Dependency de v2: identidad workload independiente de X-API-Key
+    (Tarea 4 Paso 2a). La verificación completa vive en api.auth."""
+    verify_workload_identity_token(http_request)
+
+
 @app.post(
     "/api/v2/handle-ticket",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_api_key), Depends(verify_workload_identity)],
     tags=["RAG Endpoints"],
     status_code=status.HTTP_202_ACCEPTED,
     response_model=TicketJobAcceptedV2,
+    responses={
+        401: {"model": ErrorResponse,
+              "description": "Falta X-API-Key o la identidad workload "
+                             "(X-ForUs-Workload-Authorization)"},
+        403: {"model": ErrorResponse,
+              "description": "Credencial inválida, SA workload inesperada o "
+                             "PARTICIPANT_PLAN_MISMATCH"},
+        409: {"model": ErrorResponse,
+              "description": "IDEMPOTENCY_PAYLOAD_MISMATCH: la misma "
+                             "Idempotency-Key con otro payload"},
+        413: {"model": ErrorResponse, "description": "Body > 1 MiB"},
+        422: {"description": "Falta Idempotency-Key o el body contiene campos "
+                             "prohibidos (idempotency_key/ticket_handler_mode)"},
+        429: {"model": ErrorResponse,
+              "description": "RATE_LIMITED o TOO_MANY_OUTSTANDING_JOBS "
+                             "(con Retry-After)"},
+        503: {"model": ErrorResponse,
+              "description": "Handler disabled, validador participant-plan no "
+                             "disponible o verificador workload caído"},
+    },
 )
 async def handle_ticket_v2(
-    request: HandleTicketRequest,
+    request: HandleTicketV2Request,
     http_request: Request,
     repo: TicketJobRepository = Depends(get_ticket_repo),
+    idempotency_key: str = Header(
+        ...,
+        alias="Idempotency-Key",
+        min_length=1,
+        max_length=128,
+        description="OBLIGATORIO: key estable por evento lógico de ticket; "
+                    "el replay devuelve el mismo job.",
+    ),
 ):
-    """Contrato v2: SIEMPRE ``202 + polling`` sobre el job durable. La
-    Idempotency-Key viaja sólo en el header y el rollout es exclusivamente
-    server-side (el body no puede tocar el modo)."""
-    if request.ticket_handler_mode is not None:
-        raise HTTPException(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
-            detail={"code": "TICKET_HANDLER_MODE_NOT_ALLOWED",
-                    "message": "v2 no acepta override de modo; el rollout es "
-                               "server-side (usar el endpoint administrativo)"},
-        )
+    """Contrato v2: SIEMPRE ``202 + polling`` sobre el job durable.
+
+    Auth: ``X-API-Key`` (cliente/tenant) + ``X-ForUs-Workload-Authorization``
+    (ID token WIF verificado en la app; si el servicio es privado, el mismo
+    token viaja además en ``Authorization`` para Cloud Run IAM). El body es
+    estricto: no acepta ``idempotency_key`` ni ``ticket_handler_mode`` — la
+    key viaja SÓLO en el header y el rollout es exclusivamente server-side."""
     record, replayed = await _accept_ticket_job(
         request, http_request, repo, api_version="v2", allow_body_idem=False
     )
@@ -1474,11 +1636,11 @@ async def handle_ticket_v2(
         },
         content=TicketJobAcceptedV2(
             ticket_job_id=record.job_id,
-            state=record.state.value,
+            state=record.state,
             status_url=status_url,
             retry_after_seconds=3,
             idempotency_replayed=replayed,
-        ).model_dump(),
+        ).model_dump(mode="json"),
     )
 
 
@@ -1487,6 +1649,17 @@ async def handle_ticket_v2(
     dependencies=[Depends(verify_api_key)],
     tags=["RAG Endpoints"],
     response_model=TicketJobStatusV2,
+    responses={
+        401: {"model": ErrorResponse, "description": "Falta X-API-Key"},
+        403: {"model": ErrorResponse,
+              "description": "TICKET_JOB_FORBIDDEN: el job es de otro principal"},
+        404: {"model": ErrorResponse,
+              "description": "TICKET_JOB_NOT_FOUND: ID desconocido"},
+        410: {"model": ErrorResponse,
+              "description": "TICKET_JOB_EXPIRED: el receipt/tombstone sigue "
+                             "vigente pero el payload/resultado ya expiró; no "
+                             "reintentar con la misma key"},
+    },
 )
 async def get_ticket_job_v2(
     ticket_job_id: str,

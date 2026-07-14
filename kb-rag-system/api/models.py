@@ -12,6 +12,10 @@ from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import Enum
 
+# Enums CERRADOS del job durable: n8n nunca interpreta strings arbitrarios
+# (Tarea 4 Paso 7 — OpenAPI declara los valores exactos).
+from data_pipeline.ticket_job_models import NextAction, TicketJobState
+
 
 # ============================================================================
 # Enums
@@ -718,6 +722,37 @@ class HandleTicketRequest(BaseModel):
         return v
 
 
+class HandleTicketV2Request(BaseModel):
+    """Request estricto de POST /api/v2/handle-ticket (Tarea 4 Paso 4).
+
+    NO contiene ``idempotency_key`` (viaja SÓLO en el header obligatorio
+    ``Idempotency-Key``) ni ``ticket_handler_mode`` (el rollout es
+    exclusivamente server-side). ``extra="forbid"`` rechaza ambos con 422."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    participant_id: str = Field(..., min_length=1, max_length=32,
+                                pattern=r"^[A-Za-z0-9_-]+$")
+    plan_id: str = Field(..., min_length=1, max_length=32,
+                         pattern=r"^[A-Za-z0-9_-]+$")
+    company_name: str = Field(..., min_length=1, max_length=200)
+    company_status: str = Field(..., min_length=1, max_length=50)
+    company_status_detail: Optional[str] = Field(default=None, max_length=500)
+    ticket: TicketInput = Field(...)
+    record_keeper: Optional[str] = Field(default=None, max_length=100)
+    max_response_tokens: int = Field(default=5500, ge=500, le=5500)
+
+    @field_validator("record_keeper")
+    @classmethod
+    def _normalize_record_keeper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v or v.upper() == "N/A":
+            return None
+        return v
+
+
 class InquiryResult(BaseModel):
     """Resultado de procesar UNA inquiry del ticket."""
 
@@ -810,7 +845,7 @@ class TicketJobAcceptedV2(BaseModel):
 
     schema_version: str = Field(default="2.0")
     ticket_job_id: str = Field(...)
-    state: str = Field(..., description="queued | running | succeeded | ...")
+    state: TicketJobState = Field(..., description="enum cerrado del job durable")
     status_url: str = Field(..., description="GET /api/v2/ticket-jobs/{id}")
     retry_after_seconds: int = Field(default=3, ge=1)
     idempotency_replayed: bool = Field(default=False)
@@ -821,9 +856,9 @@ class InquiryStatusV2(BaseModel):
 
     index: int = Field(..., ge=0)
     route: Optional[str] = Field(default=None)
-    execution_status: str = Field(
-        ..., description="pending | succeeded | timeout | failed | unprocessed"
-    )
+    execution_status: Literal[
+        "pending", "running", "succeeded", "timeout", "failed", "unprocessed"
+    ] = Field(..., description="estado cerrado por inquiry")
     participant_reply_safe: bool = Field(default=False)
     result: Optional[Dict[str, Any]] = Field(default=None)
     error: Optional[Dict[str, Any]] = Field(
@@ -836,7 +871,7 @@ class TicketJobStatusV2(BaseModel):
 
     schema_version: str = Field(default="2.0")
     ticket_job_id: str = Field(...)
-    state: str = Field(...)
+    state: TicketJobState = Field(...)
     created_at: Optional[datetime] = Field(default=None)
     started_at: Optional[datetime] = Field(default=None)
     completed_at: Optional[datetime] = Field(default=None)
@@ -845,8 +880,8 @@ class TicketJobStatusV2(BaseModel):
     processed_inquiries: int = Field(default=0)
     unprocessed_inquiries: int = Field(default=0)
     inquiries: List[InquiryStatusV2] = Field(default_factory=list)
-    next_action: str = Field(
-        ..., description="send_participant_reply | poll | use_legacy | "
-                         "use_legacy_or_human | human_review | retry"
+    next_action: NextAction = Field(
+        ..., description="enum cerrado: send_participant_reply | poll | "
+                         "use_legacy | use_legacy_or_human | human_review | retry"
     )
     error: Optional[Dict[str, Any]] = Field(default=None)

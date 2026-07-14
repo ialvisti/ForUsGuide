@@ -24,6 +24,15 @@ class Settings(BaseSettings):
     API_HOST: str = "0.0.0.0"
     API_PORT: int = 8000
     ENVIRONMENT: str = "development"
+
+    # Rol de proceso (plan de finalización, Tarea 4 Paso 1a). La MISMA imagen
+    # se despliega con roles excluyentes; cada rol sólo sirve sus rutas:
+    #   producer   → API completa existente (v1/v2/status + core no-ticket);
+    #                nunca expone /internal/tasks/ticket-job
+    #   worker     → health/readiness + ruta interna de Cloud Tasks; sin v1/v2
+    #   reconciler → batch (python -m data_pipeline.ticket_reconciler);
+    #                ninguna ruta pública salvo probes
+    APP_ROLE: str = "producer"
     
     # Security
     API_KEY: str = ""
@@ -103,6 +112,14 @@ class Settings(BaseSettings):
     TICKET_TASK_QUEUE: str = "inline"
     TICKET_JOB_RETENTION_S: int = 86400
     FIRESTORE_TICKET_COLLECTION_PREFIX: str = ""
+    # Base Firestore NOMBRADA (Tarea 5 Paso 3): la base —no un prefijo— es el
+    # límite de aislamiento. Staging usa `ticket-staging`; producción usa
+    # `(default)`. Obligatoria cuando TICKET_JOB_BACKEND=firestore.
+    FIRESTORE_DATABASE: str = ""
+    # Retención conjunta de receipts + control/tombstones (Tarea 5 Paso 2):
+    # default 90d; nunca menor al horizonte máximo acordado en Tarea 1
+    # (redelivery de la fuente, dedupe downstream, retención de rollback).
+    TICKET_IDEMPOTENCY_RETENTION_DAYS: int = 90
     CLOUD_TASKS_QUEUE: str = "ticket-jobs"
     CLOUD_TASKS_LOCATION: str = "us-central1"
     TICKET_WORKER_URL: str = ""            # URL pública del worker (Cloud Tasks target)
@@ -117,6 +134,28 @@ class Settings(BaseSettings):
     # mismo principal con sufijo (p.ej. "n8n" y "n8n_next"), migrar el caller
     # y retirar la vieja.
     API_CLIENT_KEYS: dict = {}
+    # Tenant CANÓNICO por principal (Tarea 4 Paso 2): el tenant deriva de la
+    # credencial autenticada, nunca del texto del ticket ni de un header sin
+    # firmar. En producción este mapping vive en Secret Manager junto a
+    # API_CLIENT_KEYS.
+    API_CLIENT_TENANTS: dict = {}
+
+    # Fuente canónica participant-plan (Tarea 4 Paso 1 / contrato Tarea 1).
+    # "" = no configurada: un modo ACTIVO no puede arrancar así (fail-closed);
+    # el adaptador concreto se cablea cuando el equipo owner entregue el
+    # contrato (docs/verification/handle-ticket/01-external-contracts.md §1).
+    PARTICIPANT_PLAN_SOURCE: str = ""
+    PARTICIPANT_PLAN_TIMEOUT_S: float = 5.0
+
+    # Identidad workload de v2 (Tarea 4 Paso 2a). v2 activo exige DOS
+    # credenciales independientes: X-API-Key (cliente/tenant) y un ID token
+    # Google-signed en X-ForUs-Workload-Authorization verificado en la app
+    # (firma/issuer/audience/SA/exp). Cloud Run elimina la firma de
+    # X-Serverless-Authorization antes de entregarlo: ese header se rechaza.
+    # Vacíos = verificación desactivada (SÓLO dev/tests; producción activa
+    # exige ambos configurados — validate_settings falla cerrado).
+    TICKET_WIF_AUDIENCE: str = ""
+    TICKET_WIF_EXPECTED_EMAIL: str = ""
 
     # Límites de recursos (Task 6, OWASP API4).
     MAX_REQUEST_BODY_BYTES: int = 1_048_576          # 1 MiB
@@ -226,6 +265,59 @@ def validate_settings():
             f"(se esperaba uno de {sorted(valid_ticket_modes)})"
         )
 
+    # Rol de proceso cerrado (Tarea 4 Paso 1a). Un rol inválido impide el
+    # arranque; cada rol valida sus dependencias específicas.
+    valid_roles = {"producer", "worker", "reconciler"}
+    if settings.APP_ROLE not in valid_roles:
+        errors.append(
+            f"APP_ROLE={settings.APP_ROLE} inválido "
+            f"(se esperaba uno de {sorted(valid_roles)})"
+        )
+
+    active_mode = settings.TICKET_HANDLER_MODE in valid_ticket_modes - {"disabled"}
+
+    # Autorización participant-plan fail-closed: un producer ACTIVO sin fuente
+    # canónica configurada no puede arrancar. `None` nunca es autorización.
+    if settings.APP_ROLE == "producer" and active_mode \
+            and not settings.PARTICIPANT_PLAN_SOURCE:
+        errors.append(
+            f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} requiere "
+            "PARTICIPANT_PLAN_SOURCE (fuente canónica participant-plan); "
+            "sin validador la autorización queda abierta"
+        )
+
+    # Identidad workload de v2: producción activa exige la verificación
+    # completa configurada (audiencia + SA esperada).
+    if settings.ENVIRONMENT == "production" and active_mode \
+            and settings.APP_ROLE == "producer":
+        if not settings.TICKET_WIF_AUDIENCE or not settings.TICKET_WIF_EXPECTED_EMAIL:
+            errors.append(
+                "producción con ticket handler activo requiere "
+                "TICKET_WIF_AUDIENCE y TICKET_WIF_EXPECTED_EMAIL (verificación "
+                "del ID token workload de n8n en v2)"
+            )
+
+    # Base Firestore nombrada (Tarea 5 Paso 3): la base es el límite de
+    # aislamiento; el rechazo cruzado staging/(default) es fail-closed.
+    if settings.TICKET_JOB_BACKEND == "firestore":
+        if not settings.FIRESTORE_DATABASE:
+            errors.append(
+                "TICKET_JOB_BACKEND=firestore requiere FIRESTORE_DATABASE "
+                "explícita ((default) en producción, ticket-staging en staging)"
+            )
+        elif settings.ENVIRONMENT == "production" \
+                and settings.FIRESTORE_DATABASE != "(default)":
+            errors.append(
+                f"producción sólo puede usar la base (default); "
+                f"FIRESTORE_DATABASE={settings.FIRESTORE_DATABASE} está prohibido"
+            )
+        elif settings.ENVIRONMENT == "staging" \
+                and settings.FIRESTORE_DATABASE != "ticket-staging":
+            errors.append(
+                f"staging sólo puede usar la base ticket-staging; "
+                f"FIRESTORE_DATABASE={settings.FIRESTORE_DATABASE} está prohibido"
+            )
+
     # Contención fail-closed del ticket handler: un modo activo no puede
     # arrancar sin token, y producción nunca habla con ForusBots por HTTP
     # plano (el token y PII del participante viajan en cada request).
@@ -277,6 +369,19 @@ def validate_settings():
             )
         if settings.TICKET_TASK_QUEUE == "cloudtasks" and not settings.TICKET_WORKER_URL:
             errors.append("TICKET_TASK_QUEUE=cloudtasks requiere TICKET_WORKER_URL")
+        if settings.TICKET_TASK_QUEUE == "cloudtasks":
+            # No existe una opción production sin OIDC ni sin SA firmante
+            # (Tarea 7 Paso 6): Cloud Tasks debe firmar y el worker verificar.
+            if not settings.TICKET_WORKER_SERVICE_ACCOUNT:
+                errors.append(
+                    "producción con cloudtasks requiere "
+                    "TICKET_WORKER_SERVICE_ACCOUNT (SA firmante del OIDC)"
+                )
+            if not settings.TICKET_WORKER_REQUIRE_OIDC:
+                errors.append(
+                    "TICKET_WORKER_REQUIRE_OIDC=false está prohibido en "
+                    "producción: el worker sólo acepta tasks OIDC-firmadas"
+                )
 
     if errors:
         raise ValueError(f"Configuración inválida: {', '.join(errors)}")

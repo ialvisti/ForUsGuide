@@ -43,6 +43,34 @@ async def authenticate_request(request: Request):
         )
 
 
+# Rutas servidas por cada rol de proceso (Tarea 4 Paso 1a). La MISMA app
+# registra todas las rutas; este gate decide en runtime cuáles existen para
+# el rol activo. Las demás devuelven 404 (no 403: no se revela su existencia).
+_PROBE_PATHS = frozenset({"/livez", "/readyz", "/health"})
+_WORKER_PATHS = frozenset({"/internal/tasks/ticket-job"}) | _PROBE_PATHS
+_RECONCILER_PATHS = _PROBE_PATHS
+
+
+def _path_allowed_for_role(path: str, role: str) -> bool:
+    if role == "worker":
+        return path in _WORKER_PATHS
+    if role == "reconciler":
+        return path in _RECONCILER_PATHS
+    # producer: la API completa existente, NUNCA la ruta interna del worker
+    return not path.startswith("/internal/")
+
+
+async def enforce_app_role(request: Request, call_next):
+    """Rutas excluyentes por rol: producer nunca sirve /internal/*; worker
+    sólo sirve la ruta de Cloud Tasks + probes; reconciler sólo probes."""
+    if not _path_allowed_for_role(request.url.path, settings.APP_ROLE):
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content={"error": "http_error", "message": "Not Found"},
+        )
+    return await call_next(request)
+
+
 async def limit_body_size(request: Request, call_next):
     """Rechaza bodies gigantes ANTES de materializar JSON (HT-06).
 

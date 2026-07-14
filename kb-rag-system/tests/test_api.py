@@ -28,6 +28,19 @@ def mock_env(test_api_key, monkeypatch):
     # /api/v1/route-inquiry now gates on ROUTER_MODE; default 'disabled' would
     # 503 the whole endpoint suite. Keep tests honoring routes by default.
     monkeypatch.setenv("ROUTER_MODE", "full")
+    # El singleton de settings se crea en el PRIMER import de api.config; si
+    # otro archivo de tests lo importó antes con otro entorno, los setenv de
+    # arriba no lo afectan. Fijar también el singleton hace a esta suite
+    # independiente del orden de ejecución.
+    import sys
+    if "api.config" in sys.modules:
+        from api.config import settings as _settings
+        monkeypatch.setattr(_settings, "API_KEY", test_api_key)
+        monkeypatch.setattr(_settings, "PINECONE_API_KEY", "test-pinecone-key")
+        monkeypatch.setattr(_settings, "OPENAI_API_KEY", "test-openai-key")
+        monkeypatch.setattr(_settings, "INDEX_NAME", "test-index")
+        monkeypatch.setattr(_settings, "NAMESPACE", "test-namespace")
+        monkeypatch.setattr(_settings, "ROUTER_MODE", "full")
 
 
 @pytest.fixture
@@ -841,6 +854,12 @@ class TestTicketHandlerContainment:
             TICKET_HANDLER_MODE="full",
             FORUSBOTS_BASE_URL="https://forusbots.internal.example",
             FORUSBOTS_AUTH_TOKEN="tok",
+            # Tarea 4: un modo activo exige fuente participant-plan e
+            # identidad workload configuradas (fail-closed).
+            PARTICIPANT_PLAN_SOURCE="mock://participant-plan-directory",
+            TICKET_WIF_AUDIENCE="https://kb-rag-system.example.run.app",
+            TICKET_WIF_EXPECTED_EMAIL=(
+                "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com"),
         )
         base.update(overrides)
         for key, value in base.items():
@@ -937,19 +956,19 @@ class TestNonTicketAuthContract:
         # /health es público (probe de Cloud Run)
         assert client.get("/health").status_code == 200
 
-        # rutas core exigen X-API-Key: sin header → 401, key inválida → 403
-        r_missing = client.post("/api/v1/knowledge-question",
-                                json={"question": "what is a 401k?"})
+        # el contrato EXISTENTE: required-data/generate-response/route-inquiry
+        # exigen X-API-Key (sin header → 401, key inválida → 403); el
+        # endurecimiento de tickets no debe alterarlo.
+        body = {"inquiry": "cash out my 401k please", "record_keeper": "LT Trust"}
+        r_missing = client.post("/api/v1/required-data", json=body)
         assert r_missing.status_code == 401
-        r_wrong = client.post("/api/v1/knowledge-question",
-                              json={"question": "what is a 401k?"},
+        r_wrong = client.post("/api/v1/required-data", json=body,
                               headers={"X-API-Key": "wrong-key"})
         assert r_wrong.status_code == 403
         # con la key válida la ruta NO devuelve error de autenticación
-        client.app.state.rag_engine.ask_knowledge_question = AsyncMock(
+        client.app.state.rag_engine.get_required_data = AsyncMock(
             side_effect=RuntimeError("engine stub"))
-        r_ok = client.post("/api/v1/knowledge-question",
-                           json={"question": "what is a 401k?"},
+        r_ok = client.post("/api/v1/required-data", json=body,
                            headers={"X-API-Key": test_api_key})
         assert r_ok.status_code not in (401, 403)
 
@@ -958,18 +977,29 @@ class TestAppRoleSeparation:
     """APP_ROLE=producer|worker|reconciler con rutas excluyentes (plan
     Tarea 4 Paso 1a). El producer conserva la API completa no-ticket."""
 
-    def test_producer_role_preserves_non_ticket_routes_and_core_readiness(self, client):
+    def test_producer_role_preserves_non_ticket_routes_and_core_readiness(self, client, monkeypatch):
         from api.config import settings as app_settings
         assert hasattr(app_settings, "APP_ROLE"), (
             "RED: settings.APP_ROLE no existe — los roles de proceso "
             "excluyentes no están implementados (Tarea 4 Paso 1a)"
         )
-        paths = {r.path for r in client.app.routes}
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        paths = {getattr(r, "path", None) for r in client.app.routes}
         core = {"/health", "/livez", "/readyz", "/api/v1/knowledge-question",
                 "/api/v1/generate-response", "/api/v1/required-data",
                 "/api/v1/route-inquiry", "/api/v1/chunks", "/api/v1/index-stats"}
         assert core <= paths, f"faltan rutas core: {core - paths}"
-        # el producer NUNCA expone la ruta interna del worker
-        assert app_settings.APP_ROLE != "producer" or (
-            "/internal/tasks/ticket-job" not in paths
-        ), "el producer expone /internal/tasks/ticket-job"
+        # el producer NUNCA sirve la ruta interna del worker (404: no revela)
+        r = client.post("/internal/tasks/ticket-job", json={"job_id": "x"})
+        assert r.status_code == 404, (
+            f"el producer respondió {r.status_code} en la ruta interna del "
+            "worker; debe ocultarla con 404"
+        )
+        # el rol worker sólo sirve la ruta interna + probes
+        monkeypatch.setattr(app_settings, "APP_ROLE", "worker")
+        assert client.get("/livez").status_code == 200
+        r_core = client.post("/api/v1/knowledge-question", json={"question": "q"})
+        assert r_core.status_code == 404, (
+            f"el worker respondió {r_core.status_code} en una ruta del "
+            "producer; los roles no son excluyentes"
+        )

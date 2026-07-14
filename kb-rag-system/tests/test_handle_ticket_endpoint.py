@@ -43,8 +43,25 @@ def client(monkeypatch):
         from api.main import app, verify_api_key
         app.dependency_overrides[verify_api_key] = lambda: None
         with TestClient(app) as c:
+            # La autorización participant-plan es FAIL-CLOSED (Tarea 4): los
+            # tests de contrato del endpoint cablean una fuente sintética que
+            # autoriza el par de _body(); los tests de mismatch inyectan la
+            # suya propia.
+            c.app.state.participant_plan_validator = _AllowAllValidator()
             yield c
         app.dependency_overrides.clear()
+
+
+class _AllowAllValidator:
+    """Fuente canónica sintética: autoriza cualquier par y devuelve los
+    campos server-owned (tenant/record keeper) del contrato de Tarea 4."""
+
+    async def authorize(self, *, tenant_id, participant_id, plan_id):
+        from api.participant_plan import AuthorizedParticipantPlan
+        return AuthorizedParticipantPlan(
+            tenant_id=tenant_id, participant_id=participant_id,
+            plan_id=plan_id, record_keeper=None,
+        )
 
 
 def _body(**over):
@@ -155,22 +172,31 @@ class TestGating:
         assert r.status_code == 503
 
     def test_knowledge_only_coerces_generate_response(self, client):
-        # classifier says generate_response, but knowledge_only coerces to NMI inline
+        """La coerción de modo NO es publicable (Tarea 4 Paso 6): ya no se
+        entrega como 200 inline; el ticket va por 202 + poll con acción
+        legacy explícita para que n8n resuelva por el flujo anterior."""
         _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), None))
         r = client.post("/api/v1/handle-ticket", json=_body(ticket_handler_mode="knowledge_only"))
-        assert r.status_code == 200
-        data = r.json()
-        assert data["route_taken"] == "needs_more_info"
+        assert r.status_code == 202
+        poll = client.get(f"/api/v1/tickets/{r.json()['ticket_job_id']}")
+        assert poll.status_code == 200
+        data = poll.json()
+        assert data["next_action"] in ("use_legacy", "use_legacy_or_human")
+        assert data["primary"]["route"] == "needs_more_info"
         assert "ticket_handler_override" in data["primary"]["diagnostics"]
 
     def test_shadow_returns_fallback(self, client):
+        """Shadow nunca es un 200 inline: el resultado viaja por poll con
+        fallback=true y next_action=use_legacy (jamás publicable)."""
         _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"), None))
         r = client.post("/api/v1/handle-ticket", json=_body(ticket_handler_mode="shadow"))
-        assert r.status_code == 200
-        data = r.json()
-        assert data["route_taken"] == "needs_more_info"
+        assert r.status_code == 202
+        poll = client.get(f"/api/v1/tickets/{r.json()['ticket_job_id']}")
+        assert poll.status_code == 200
+        data = poll.json()
         assert data["metadata"]["fallback"] is True
         assert data["metadata"]["shadow_routes"] == ["knowledge_question"]
+        assert data["next_action"] == "use_legacy"
 
 
 # ---------------------------------------------------------------------------
@@ -656,7 +682,7 @@ class TestParticipantPlanFailClosed:
     def test_active_mode_without_participant_plan_validator_fails_closed(self, client):
         """Bloqueo 1 del plan: participant_plan_validator=None en modo activo
         autoriza TODO hoy (fail-open). Debe fallar cerrado: 503 o rechazo."""
-        assert client.app.state.participant_plan_validator is None  # precondición
+        client.app.state.participant_plan_validator = None
         _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"),
                                    InquiryOutcome(inquiry="q", topic="t",
                                                   route="knowledge_question",

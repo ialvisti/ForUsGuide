@@ -3,7 +3,10 @@
 # bindings roles/datastore.user de kb-rag-runner (project-wide y scoped) viven
 # SÓLO en live/platform (G1C), nunca aquí: ningún member/resource en dos states.
 
-# Servicio producer existente (kb-rag-system) con su revisión segura actual.
+# Servicio producer existente. El import sólo es ejecutable junto con el
+# inventario obligatorio de producer_core_env/secret_version_refs y el rollback
+# anchor producer_baseline_revision; así no puede adoptar un desired state
+# parcial que borre configuración core o mande tráfico implícito a latest.
 import {
   to = module.production.google_cloud_run_v2_service.producer[0]
   id = "projects/rag-kb-system/locations/us-central1/services/kb-rag-system"

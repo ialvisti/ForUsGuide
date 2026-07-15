@@ -16,6 +16,73 @@ import pytest
 from unittest.mock import AsyncMock, Mock, patch
 
 
+@pytest.mark.asyncio
+async def test_cached_query_never_sends_raw_participant_or_financial_values():
+    from data_pipeline.rag_engine import RAGEngine
+
+    class _Spy:
+        sent = None
+
+        def query_chunks(self, **kwargs):
+            self.sent = kwargs["query_text"]
+            return []
+
+    engine = RAGEngine.__new__(RAGEngine)
+    engine.pinecone = _Spy()
+    engine._search_cache = {}
+
+    await engine._cached_query(
+        "Participant Jane Doe has balance $40,000; "
+        "email jane.doe@example.com; participant ID 158948",
+        top_k=1,
+    )
+
+    assert engine.pinecone.sent is not None
+    assert "Jane Doe" not in engine.pinecone.sent
+    assert "$40,000" not in engine.pinecone.sent
+    assert "jane.doe@example.com" not in engine.pinecone.sent
+    assert "158948" not in engine.pinecone.sent
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sensitive", "leaked_pieces"),
+    [
+        ("SSN 123 45 6789", ("123", "45", "6789")),
+        (
+            "account number 1234 5678 9012",
+            ("1234", "5678", "9012"),
+        ),
+        ("date of birth July 4, 1980", ("july", "1980")),
+    ],
+)
+async def test_cached_query_sanitizes_obfuscated_values_before_query_chunks(
+    sensitive, leaked_pieces,
+):
+    from data_pipeline.rag_engine import RAGEngine
+
+    class _Spy:
+        sent = None
+
+        def query_chunks(self, **kwargs):
+            self.sent = kwargs["query_text"]
+            return []
+
+    engine = RAGEngine.__new__(RAGEngine)
+    engine.pinecone = _Spy()
+    engine._search_cache = {}
+
+    await engine._cached_query(
+        f"Participant asks about rollover; {sensitive}",
+        top_k=1,
+    )
+
+    assert engine.pinecone.sent is not None
+    for leaked_piece in leaked_pieces:
+        assert leaked_piece.lower() not in engine.pinecone.sent.lower()
+    assert "rollover" in engine.pinecone.sent.lower()
+
+
 @pytest.fixture
 def mock_router():
     """A minimal LLMRouter double with an awaitable `call()` method."""

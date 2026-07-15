@@ -35,13 +35,6 @@ from cachetools import TTLCache
 logger = logging.getLogger(__name__)
 
 
-def _pseudo(entity_id: str) -> str:
-    """Pseudonimiza IDs de participante/plan en labels de log (Task 11):
-    hash corto estable para correlacionar sin exponer el ID real."""
-    return hashlib.sha256(str(entity_id).encode("utf-8")).hexdigest()[:10]
-
-
-
 # ============================================================================
 # Public types
 # ============================================================================
@@ -49,9 +42,14 @@ def _pseudo(entity_id: str) -> str:
 class ForusBotsError(Exception):
     """Base class for all ForusBots client errors."""
 
+    code = "FORUSBOTS_ERROR"
+    needs_reconciliation = False
+
 
 class ForusBotsTimeout(ForusBotsError):
     """A scrape job did not reach a terminal state within ``max_wait_s``."""
+
+    code = "FORUSBOTS_TIMEOUT"
 
     def __init__(self, job_id: str, max_wait_s: float):
         self.job_id = job_id
@@ -64,27 +62,39 @@ class ForusBotsTimeout(ForusBotsError):
 class ForusBotsJobFailed(ForusBotsError):
     """A scrape job reached a terminal ``failed`` / ``canceled`` state."""
 
+    code = "FORUSBOTS_JOB_FAILED"
+
     def __init__(self, job_id: str, state: str, error: Optional[str]):
         self.job_id = job_id
         self.state = state
-        self.error = error
-        super().__init__(f"ForusBots job {job_id} {state}: {error}")
+        # ``error`` is an untrusted upstream body and can contain scraped PII.
+        # Accept it to preserve the wire adapter's signature, but deliberately
+        # neither retain nor interpolate it in the exception.  Every downstream
+        # boundary receives only the closed machine-readable code.
+        self.upstream_error_redacted = error is not None
+        super().__init__(
+            f"ForusBots job {job_id} {state} ({self.code})"
+        )
 
 
 class ForusBotsAmbiguousSubmit(ForusBotsError):
-    """Un POST de submit devolvió 5xx: el job upstream PUDO haberse creado.
+    """Un POST terminó sin confirmación: el job upstream PUDO haberse creado.
 
     Reintentar a ciegas duplicaría trabajo RPA (HT-16). Sin un contrato de
     idempotencia/reconciliación por request ID en el servicio upstream, el
     caller debe marcar ``needs_reconciliation`` y derivar a legacy/humano.
     """
 
+    code = "FORUSBOTS_AMBIGUOUS_SUBMIT"
     needs_reconciliation = True
 
-    def __init__(self, method: str, path: str, status_code: int):
+    def __init__(self, method: str, path: str,
+                 status_code: Optional[int] = None):
         self.status_code = status_code
+        outcome = (f"HTTP {status_code}" if status_code is not None
+                   else "transport completion unknown")
         super().__init__(
-            f"{method} {path}: HTTP {status_code} tras el submit — resultado "
+            f"{method} {path}: {outcome} tras el submit — resultado "
             "ambiguo (el job pudo crearse); no se reintenta"
         )
 
@@ -210,7 +220,8 @@ class ForusBotsClient:
         }
         idem = self._idem_key("participant", participant_id, modules)
         return await self._deduped(
-            idem, "/forusbot/scrape-participant", payload, label=f"participant:{_pseudo(participant_id)}"
+            idem, "/forusbot/scrape-participant", payload,
+            label="participant",
         )
 
     async def scrape_plan(
@@ -230,7 +241,7 @@ class ForusBotsClient:
         }
         idem = self._idem_key("plan", plan_id, modules)
         return await self._deduped(
-            idem, "/forusbot/scrape-plan", payload, label=f"plan:{_pseudo(plan_id)}"
+            idem, "/forusbot/scrape-plan", payload, label="plan",
         )
 
     # ------------------------------------------------------------------
@@ -404,6 +415,8 @@ class ForusBotsClient:
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 2.0)
                     continue
+                if not idempotent and not isinstance(exc, _PRESEND_SAFE):
+                    raise ForusBotsAmbiguousSubmit(method, url) from exc
                 raise ForusBotsError(
                     f"{method} {url}: transport error {type(exc).__name__}: {exc}"
                 ) from exc
@@ -419,7 +432,13 @@ class ForusBotsClient:
                     delay = min(delay * 2, 2.0)
                     continue
             elif resp.status_code == 429:
-                # 429 = rechazado antes de procesar; retry seguro también en POST.
+                # Sin el contrato externo de idempotencia/reconciliación no se
+                # puede asumir que un 429 de proxy ocurrió antes de que el
+                # origin aceptara un POST. Sólo el poll GET se reintenta.
+                if not idempotent:
+                    raise ForusBotsAmbiguousSubmit(
+                        method, url, resp.status_code
+                    )
                 last_exc = ForusBotsError(f"{method} {url}: HTTP {resp.status_code}")
                 if attempt < self._http_retries:
                     await asyncio.sleep(delay)

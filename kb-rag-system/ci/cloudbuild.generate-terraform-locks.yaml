@@ -1,0 +1,33 @@
+# Reproducible provider-lock generation. The build initializes roots with the
+# remote backends disabled and writes only lock artifacts to the existing
+# Cloud Build bucket; it has no Terraform apply/deploy step.
+steps:
+  - name: 'hashicorp/terraform:1.9.8@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd'
+    id: 'generate-provider-locks'
+    entrypoint: '/bin/sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+        for root in platform staging production; do
+          terraform -chdir="infra/terraform/live/${root}" init \
+            -backend=false -input=false
+          terraform -chdir="infra/terraform/live/${root}" providers lock \
+            -platform=linux_amd64
+        done
+        mkdir -p terraform-locks
+        cp "infra/terraform/live/platform/.terraform.lock.hcl" \
+          "terraform-locks/platform.terraform.lock.hcl"
+        cp "infra/terraform/live/staging/.terraform.lock.hcl" \
+          "terraform-locks/staging.terraform.lock.hcl"
+        cp "infra/terraform/live/production/.terraform.lock.hcl" \
+          "terraform-locks/production.terraform.lock.hcl"
+artifacts:
+  objects:
+    location: 'gs://rag-kb-system_cloudbuild/handle-ticket-terraform-locks/$BUILD_ID/'
+    paths:
+      - 'terraform-locks/platform.terraform.lock.hcl'
+      - 'terraform-locks/staging.terraform.lock.hcl'
+      - 'terraform-locks/production.terraform.lock.hcl'
+options:
+  logging: CLOUD_LOGGING_ONLY

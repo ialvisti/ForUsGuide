@@ -155,6 +155,26 @@ class TestOpenAPIContract:
             "RED: OpenAPI no declara la identidad workload de v2 "
             "(X-ForUs-Workload-Authorization / bearer de Cloud Run)"
         )
+        for path, method in (
+            ("/api/v2/handle-ticket", "post"),
+            ("/api/v2/ticket-jobs/{ticket_job_id}", "get"),
+        ):
+            security = openapi_spec["paths"][path][method].get("security", [])
+            flattened = {name for option in security for name in option}
+            assert {"ApiKeyAuth", "WorkloadIdentity"} <= flattened
+
+    def test_openapi_declares_workload_identity_on_v1_post_and_poll(
+            self, openapi_spec):
+        """La documentación no debe anunciar el bypass que runtime rechaza."""
+        for path, method in (
+            ("/api/v1/handle-ticket", "post"),
+            ("/api/v1/tickets/{ticket_job_id}", "get"),
+        ):
+            security = openapi_spec["paths"][path][method].get("security", [])
+            flattened = {name for option in security for name in option}
+            assert {"ApiKeyAuth", "WorkloadIdentity"} <= flattened, (
+                f"{method.upper()} {path} no declara el segundo factor workload"
+            )
 
     def test_openapi_states_and_actions_are_enums(self, openapi_spec):
         schemas = openapi_spec.get("components", {}).get("schemas", {})

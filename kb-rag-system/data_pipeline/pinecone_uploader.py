@@ -17,6 +17,8 @@ from typing import List, Dict, Any, Optional
 from pinecone import Pinecone
 from tqdm import tqdm
 
+from data_pipeline.retrieval_privacy import sanitize_retrieval_query
+
 logger = logging.getLogger(__name__)
 
 
@@ -405,8 +407,9 @@ class PineconeUploader:
         Returns:
             Lista de chunks encontrados
         """
+        safe_query_text = sanitize_retrieval_query(query_text)
         search_kwargs = self._build_search_kwargs(
-            query_text=query_text,
+            query_text=safe_query_text,
             top_k=top_k,
             filter_dict=filter_dict,
             rerank=rerank,

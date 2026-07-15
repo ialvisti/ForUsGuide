@@ -1,5 +1,6 @@
 terraform {
-  required_version = ">= 1.6.0"
+  # import.for_each modela de forma declarativa los imports gateados G1B/G1C.
+  required_version = ">= 1.7.0"
   required_providers {
     google = {
       source  = "hashicorp/google"

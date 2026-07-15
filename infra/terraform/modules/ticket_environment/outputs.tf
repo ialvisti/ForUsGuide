@@ -18,3 +18,12 @@ output "firestore_database" {
 output "custom_queue_role_id" {
   value = google_project_iam_custom_role.ticket_queue_enqueuer.id
 }
+
+output "managed_secret_containers" {
+  description = "IDs de containers gestionados; nunca incluye versiones ni payloads."
+  value       = { for key, secret in google_secret_manager_secret.runtime : key => secret.id }
+}
+
+output "e2e_job_name" {
+  value = var.e2e_job.enabled ? google_cloud_run_v2_job.e2e[0].name : null
+}

@@ -1,0 +1,142 @@
+# Authoritative Python 3.12/Linux verification for the pre-gate checkpoint.
+# This controller may compile and run the candidate container, but it cannot
+# publish it, deploy services, touch Terraform state, or write evidence.
+steps:
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'python-gates'
+    entrypoint: bash
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd /workspace/kb-rag-system
+        python -m pip install --no-cache-dir --require-hashes \
+          -r requirements-dev.lock
+        python -m pytest -q -rs \
+          -m "not live_dependencies and not staging_e2e"
+        python -m pytest --collect-only -q >/dev/null
+        ruff check .
+        mypy
+        python -m pip check
+        pip-audit --strict --require-hashes -r requirements.lock
+
+        cp .secrets.baseline /workspace/scanned-secrets.baseline
+        detect-secrets scan \
+          --baseline /workspace/scanned-secrets.baseline >/dev/null
+        python -m json.tool /workspace/scanned-secrets.baseline \
+          > /workspace/candidate-secrets.baseline
+        python scripts/verify_secrets_baseline.py \
+          --approved .secrets.baseline \
+          --candidate /workspace/candidate-secrets.baseline
+
+  - name: 'hashicorp/terraform:1.9.8@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd'
+    id: 'terraform-gates'
+    entrypoint: '/bin/sh'
+    args:
+      - '-c'
+      - |
+        set -eu
+        terraform fmt -check -recursive /workspace/infra/terraform
+        for root in platform staging production; do
+          terraform -chdir="/workspace/infra/terraform/live/${root}" init \
+            -backend=false -input=false -lockfile=readonly
+          terraform -chdir="/workspace/infra/terraform/live/${root}" validate
+          terraform -chdir="/workspace/infra/terraform/live/${root}" test
+        done
+        cp /workspace/infra/terraform/live/platform/.terraform.lock.hcl \
+          /workspace/infra/terraform/modules/ticket_environment/.terraform.lock.hcl
+        terraform -chdir=/workspace/infra/terraform/modules/ticket_environment \
+          init -backend=false -input=false -lockfile=readonly
+        terraform -chdir=/workspace/infra/terraform/modules/ticket_environment \
+          test
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+    id: 'firestore-emulator-contract'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        installed="$(gcloud components list \
+          --filter='id:cloud-firestore-emulator AND state.name:Installed' \
+          --format='value(state.name)')"
+        test "$installed" = "Installed"
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'firestore-emulator-tests'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        emulator_name='ticket-firestore-verification'
+        network_name='ticket-firestore-network'
+        emulator_image='gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+        python_image='python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+        cleanup() {
+          docker rm -f "$emulator_name" >/dev/null 2>&1 || true
+          docker network rm "$network_name" >/dev/null 2>&1 || true
+        }
+        trap cleanup EXIT INT TERM
+        cleanup
+        docker network create "$network_name" >/dev/null
+        docker run --detach --name "$emulator_name" \
+          --network "$network_name" "$emulator_image" \
+          gcloud emulators firestore start \
+          --host-port=0.0.0.0:8085 --database-mode=firestore-native
+
+        docker run --rm --network "$network_name" \
+          --volume /workspace:/workspace \
+          --workdir /workspace/kb-rag-system \
+          --env FIRESTORE_EMULATOR_HOST="${emulator_name}:8085" \
+          --env FIRESTORE_PROJECT_ID=handle-ticket-emulator \
+          --env GCLOUD_PROJECT=handle-ticket-emulator \
+          "$python_image" bash -c '
+            set -euo pipefail
+            python - <<"PY"
+        import socket
+        import time
+
+        for _ in range(60):
+            try:
+                with socket.create_connection(
+                    ("ticket-firestore-verification", 8085), timeout=1
+                ):
+                    break
+            except OSError:
+                time.sleep(1)
+        else:
+            raise SystemExit("Firestore emulator did not become ready")
+        PY
+            python -m pip install --no-cache-dir --require-hashes \
+              -r requirements-dev.lock
+            python -m pytest -q \
+              tests/integration/test_firestore_ticket_repository.py
+          '
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'container-build'
+    dir: 'kb-rag-system'
+    args:
+      - 'build'
+      - '--platform=linux/amd64'
+      - '-t'
+      - 'handle-ticket-final:verification'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'container-smoke'
+    args:
+      - 'run'
+      - '--rm'
+      - '--entrypoint'
+      - 'python'
+      - 'handle-ticket-final:verification'
+      - 'scripts/container_smoke.py'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+timeout: '3600s'

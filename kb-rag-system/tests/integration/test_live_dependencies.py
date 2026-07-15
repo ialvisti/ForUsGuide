@@ -21,6 +21,8 @@ import pytest
 
 pytestmark = pytest.mark.live_dependencies
 
+_G4_ENV = "FORUSBOTS_G4_APPROVAL"
+
 
 def _require(*env_vars):
     missing = [v for v in env_vars if not os.getenv(v)]
@@ -69,10 +71,14 @@ class TestPineconeReadOnlyLive:
 
 class TestForusBotsEffectfulLive:
     """Submit/poll con efectos: SÓLO tras G4 y con identidades sintéticas
-    (FORUSBOTS_G4_APPROVED=1 lo desbloquea)."""
+    Requiere un texto de gate explícito; valores ambiguos como ``0``,
+    ``false`` o ``1`` nunca habilitan efectos."""
+
+    pytestmark = [pytest.mark.live_dependencies, pytest.mark.effectful_live]
 
     async def test_synthetic_submit_poll_reconciles_on_ambiguous(self):
-        if not os.getenv("FORUSBOTS_G4_APPROVED"):
+        approval = os.getenv(_G4_ENV, "").strip()
+        if not approval.startswith("APROBADO G4 "):
             pytest.skip("submit/poll con efectos requiere G4 aprobado")
         _require("FORUSBOTS_BASE_URL", "FORUSBOTS_AUTH_TOKEN",
                  "FORUSBOTS_SYNTHETIC_PARTICIPANT")
@@ -81,7 +87,9 @@ class TestForusBotsEffectfulLive:
             ForusBotsClient,
         )
 
-        client = ForusBotsClient.from_settings_env()  # pragma: no cover
+        from api.config import settings
+
+        client = ForusBotsClient.from_settings(settings)  # pragma: no cover
         try:
             try:
                 result = await client.scrape_participant(

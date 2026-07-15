@@ -52,6 +52,14 @@ resource "google_firestore_field" "rate_window_ttl" {
   ttl_config {}
 }
 
+resource "google_firestore_field" "ticket_execution_ttl" {
+  project    = var.project_id
+  database   = local.db_name
+  collection = "ticket_executions"
+  field      = "expires_at"
+  ttl_config {}
+}
+
 # Índices compuestos requeridos por las consultas reales.
 resource "google_firestore_index" "jobs_principal_state" {
   project    = var.project_id

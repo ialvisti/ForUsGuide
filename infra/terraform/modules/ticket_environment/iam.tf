@@ -15,12 +15,14 @@ resource "google_project_iam_custom_role" "ticket_queue_enqueuer" {
   ]
 }
 
-# Productor: database propia (resource-scoped) + custom queue role + actAs
-# SÓLO sobre el task signer.
-resource "google_project_iam_member" "producer_queue" {
-  project = var.project_id
-  role    = google_project_iam_custom_role.ticket_queue_enqueuer.id
-  member  = "serviceAccount:${var.producer_sa_email}"
+# Cloud Tasks sí publica IAM sobre Queue en el provider 5.x. El custom role se
+# enlaza al recurso exacto, no al proyecto ni mediante una condición heredada.
+resource "google_cloud_tasks_queue_iam_member" "producer_queue" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_tasks_queue.ticket.name
+  role     = google_project_iam_custom_role.ticket_queue_enqueuer.id
+  member   = "serviceAccount:${var.producer_sa_email}"
 }
 
 resource "google_service_account_iam_member" "producer_actas_signer" {
@@ -49,10 +51,12 @@ resource "google_service_account_iam_member" "tasks_agent_signs_as_signer" {
 
 # Reconciliador: database propia + mismo custom queue role + actAs sobre el
 # signer; SIN LLM/Pinecone/ForusBots.
-resource "google_project_iam_member" "reconciler_queue" {
-  project = var.project_id
-  role    = google_project_iam_custom_role.ticket_queue_enqueuer.id
-  member  = "serviceAccount:${var.reconciler_sa_email}"
+resource "google_cloud_tasks_queue_iam_member" "reconciler_queue" {
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_tasks_queue.ticket.name
+  role     = google_project_iam_custom_role.ticket_queue_enqueuer.id
+  member   = "serviceAccount:${var.reconciler_sa_email}"
 }
 
 resource "google_service_account_iam_member" "reconciler_actas_signer" {
@@ -92,6 +96,67 @@ resource "google_cloud_run_v2_service_iam_member" "producer_preserved_invokers" 
   name     = google_cloud_run_v2_service.producer[0].name
   role     = "roles/run.invoker"
   member   = each.value
+}
+
+# E2E sólo invoca el producer de staging. Nunca se crea un binding hacia el
+# worker ni se acepta una identidad E2E en production.
+resource "google_cloud_run_v2_service_iam_member" "e2e_invokes_producer" {
+  count    = var.e2e_job.enabled && local.create_services ? 1 : 0
+  project  = var.project_id
+  location = var.region
+  name     = google_cloud_run_v2_service.producer[0].name
+  role     = "roles/run.invoker"
+  member   = "serviceAccount:${var.e2e_job.service_account_email}"
+}
+
+# Firestore no expone un recurso IAM específico de database en el provider
+# google/google-beta 5.x. Google documenta el aislamiento per-database como un
+# binding project IAM no autoritativo con una condición sobre el nombre exacto
+# de la database. Igualdad (no startsWith) evita acceso al otro entorno.
+locals {
+  firestore_database_resource = "projects/${var.project_id}/databases/${var.firestore_database}"
+  manage_producer_firestore_iam = (
+    var.manage_producer_firestore_iam != null
+    ? var.manage_producer_firestore_iam
+    : var.env != "production"
+  )
+}
+
+resource "google_project_iam_member" "producer_firestore" {
+  count   = local.manage_producer_firestore_iam ? 1 : 0
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${var.producer_sa_email}"
+
+  condition {
+    title       = "ticket_${var.env}_producer_database"
+    description = "Producer limitado a ${var.firestore_database}."
+    expression  = "resource.name == \"${local.firestore_database_resource}\""
+  }
+}
+
+resource "google_project_iam_member" "worker_firestore" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${var.worker_sa_email}"
+
+  condition {
+    title       = "ticket_${var.env}_worker_database"
+    description = "Worker limitado a ${var.firestore_database}."
+    expression  = "resource.name == \"${local.firestore_database_resource}\""
+  }
+}
+
+resource "google_project_iam_member" "reconciler_firestore" {
+  project = var.project_id
+  role    = "roles/datastore.user"
+  member  = "serviceAccount:${var.reconciler_sa_email}"
+
+  condition {
+    title       = "ticket_${var.env}_reconciler_database"
+    description = "Reconciler limitado a ${var.firestore_database}."
+    expression  = "resource.name == \"${local.firestore_database_resource}\""
+  }
 }
 
 data "google_project" "this" {

@@ -5,9 +5,8 @@
 # Digests de imágenes-herramienta: kb-rag-system/ci/tool-images.env
 # (python:3.12-slim y anchore/syft fijados por @sha256:). No usar :latest.
 substitutions:
-  _PYTHON_IMAGE: "python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce"
-  _SYFT_IMAGE: "anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb"
   _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+  _SCAN_LOCATION: "us"
 
 steps:
   # 1) instalar desde el dev lock con hashes (Python 3.12)
@@ -15,7 +14,7 @@ steps:
   # 3) ruff + mypy --strict sobre los módulos ticket declarados
   # 4) pip check + pip-audit contra el lock
   # 5) detect-secrets con baseline revisada
-  - name: '${_PYTHON_IMAGE}'
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
     id: 'gates'
     entrypoint: bash
     args:
@@ -30,10 +29,19 @@ steps:
         mypy
         python -m pip check
         pip-audit --strict --require-hashes -r requirements.lock
-        detect-secrets scan --baseline .secrets.baseline
+        cp .secrets.baseline /workspace/approved-secrets.baseline
+        cp /workspace/approved-secrets.baseline \
+          /workspace/scanned-secrets.baseline
+        detect-secrets scan \
+          --baseline /workspace/scanned-secrets.baseline >/dev/null
+        python -m json.tool /workspace/scanned-secrets.baseline \
+          > /workspace/candidate-secrets.baseline
+        python scripts/verify_secrets_baseline.py \
+          --approved /workspace/approved-secrets.baseline \
+          --candidate /workspace/candidate-secrets.baseline
 
   # 6) construir la imagen inmutable (sin tag mutable)
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'build'
     dir: 'kb-rag-system'
     args:
@@ -44,7 +52,7 @@ steps:
       - '.'
 
   # 7) smoke de prompts/app a nivel de IMAGEN
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'container-smoke'
     args:
       - 'run'
@@ -55,14 +63,14 @@ steps:
       - 'scripts/container_smoke.py'
 
   # 8) push por SHA (la imagen se declara en `images:` para registrar artefacto)
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'push'
     args:
       - 'push'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
 
   # 9) resolver DIGEST y generar SBOM Syft sobre ESE digest → evidencia
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'resolve-digest'
     entrypoint: bash
     args:
@@ -75,7 +83,7 @@ steps:
         echo -n "$DIGEST" > /workspace/image_digest.txt
         echo "resolved: $DIGEST"
 
-  - name: '${_SYFT_IMAGE}'
+  - name: 'anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb'
     id: 'sbom'
     entrypoint: sh
     args:
@@ -85,19 +93,20 @@ steps:
         DIGEST=$(cat /workspace/image_digest.txt)
         syft "$DIGEST" -o spdx-json > /workspace/sbom.spdx.json
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
     id: 'upload-sbom'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        gsutil cp /workspace/sbom.spdx.json \
+        gsutil -h "x-goog-if-generation-match:0" cp \
+          /workspace/sbom.spdx.json \
           gs://${_EVIDENCE_BUCKET}/ci/$SHORT_SHA/sbom.spdx.json
 
   # 10) analizar ESE digest con On-Demand Scanning; CRITICAL bloquea sin
   # excepción; cada HIGH requiere G5V por digest+CVE aún vigente.
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
     id: 'scan'
     entrypoint: bash
     args:
@@ -105,11 +114,33 @@ steps:
       - |
         set -euo pipefail
         DIGEST=$(cat /workspace/image_digest.txt)
-        gcloud artifacts docker images scan "$DIGEST" \
-          --location=us-central1 --format='value(response.scan)' \
-          > /workspace/scan_id.txt || true
-        # el gate de severidad se evalúa en el análisis del scan (script
-        # dedicado en el trigger); un CRITICAL debe fallar el build.
+        SCAN_NAME=$(gcloud artifacts docker images scan "$DIGEST" \
+          --remote --location="${_SCAN_LOCATION}" \
+          --format='value(response.scan)')
+        test -n "$SCAN_NAME"
+        printf '%s' "$SCAN_NAME" > /workspace/scan_id.txt
+        gcloud artifacts docker images list-vulnerabilities "$SCAN_NAME" \
+          --location="${_SCAN_LOCATION}" --format=json \
+          > /workspace/scan-vulnerabilities.json
+        python3 kb-rag-system/scripts/verify_container_scan.py \
+          --scan-json /workspace/scan-vulnerabilities.json \
+          --image-digest "$DIGEST" \
+          --approvals docs/verification/handle-ticket/approvals.md \
+          --report-out /workspace/scan-policy.json
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
+    id: 'upload-scan-evidence'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        gsutil -h "x-goog-if-generation-match:0" cp \
+          /workspace/scan-vulnerabilities.json \
+          gs://${_EVIDENCE_BUCKET}/ci/$SHORT_SHA/scan-vulnerabilities.json
+        gsutil -h "x-goog-if-generation-match:0" cp \
+          /workspace/scan-policy.json \
+          gs://${_EVIDENCE_BUCKET}/ci/$SHORT_SHA/scan-policy.json
 
 options:
   logging: CLOUD_LOGGING_ONLY

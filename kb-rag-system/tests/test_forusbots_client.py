@@ -196,7 +196,8 @@ class TestTerminalFailures:
         with pytest.raises(ForusBotsJobFailed) as ei:
             await client.scrape_participant("x", [{"key": "census", "fields": []}])
         assert ei.value.state == "failed"
-        assert "participant not found" in str(ei.value)
+        assert ei.value.code == "FORUSBOTS_JOB_FAILED"
+        assert "participant not found" not in str(ei.value)
 
     async def test_canceled_state_raises(self):
         client, _ = _client([
@@ -205,6 +206,27 @@ class TestTerminalFailures:
         ])
         with pytest.raises(ForusBotsJobFailed):
             await client.scrape_participant("x", [{"key": "census", "fields": []}])
+
+    async def test_failed_state_discards_raw_upstream_error_body(self):
+        raw_error = (
+            "participant jane@example.com SSN 123 45 6789 "
+            "account 1234 5678 9012"
+        )
+        client, _ = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "failed", "error": raw_error}),
+        ])
+
+        with pytest.raises(ForusBotsJobFailed) as exc_info:
+            await client.scrape_participant(
+                "x", [{"key": "census", "fields": []}]
+            )
+
+        error = exc_info.value
+        assert error.code == "FORUSBOTS_JOB_FAILED"
+        assert raw_error not in str(error)
+        assert raw_error not in repr(error)
+        assert getattr(error, "error", None) != raw_error
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +251,27 @@ class TestTimeout:
 # ---------------------------------------------------------------------------
 
 class TestDedupe:
+
+    async def test_logs_do_not_emit_raw_or_dictionary_hashable_entity_id(
+            self, caplog):
+        """Los IDs numéricos tienen poca entropía: un SHA truncado sin clave
+        sigue siendo identificable por fuerza bruta y no es anonimización."""
+        import hashlib
+
+        entity_id = "158948"
+        weak_hash = hashlib.sha256(entity_id.encode()).hexdigest()[:10]
+        client, _ = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+
+        with caplog.at_level("INFO"):
+            await client.scrape_participant(
+                entity_id, [{"key": "census", "fields": []}]
+            )
+
+        assert entity_id not in caplog.text
+        assert weak_hash not in caplog.text
 
     async def test_concurrent_identical_scrapes_share_one_job(self):
         import asyncio
@@ -337,21 +380,28 @@ class TestHTTPErrors:
             await client.scrape_participant("x", [{"key": "census", "fields": []}])
         assert fake.count("POST") == 1
 
-    async def test_submit_429_is_retried_then_succeeds(self):
-        """429 = rechazado antes de procesar; el retry de POST sí es seguro."""
+    async def test_submit_429_is_ambiguous_without_upstream_contract(self):
+        """Hasta recibir el contrato externo no se puede asumir que un 429
+        de un proxy ocurrió antes de que el origin aceptara el POST."""
+        from data_pipeline.forusbots_client import ForusBotsAmbiguousSubmit
+
         client, fake = _client([
             _resp(429, {"ok": False}),
             _SUBMIT_OK,
-            _resp(200, {"state": "succeeded", "result": {}}),
         ])
-        result = await client.scrape_participant("x", [{"key": "census", "fields": []}])
-        assert result.state == "succeeded"
-        assert fake.count("POST") == 2  # 429 then 202
+        with pytest.raises(ForusBotsAmbiguousSubmit):
+            await client.scrape_participant(
+                "x", [{"key": "census", "fields": []}]
+            )
+        assert fake.count("POST") == 1
 
     async def test_submit_not_retried_on_read_timeout(self):
+        from data_pipeline.forusbots_client import ForusBotsAmbiguousSubmit
+
         client, fake = _client([httpx.ReadTimeout("ambiguous timeout")])
-        with pytest.raises(ForusBotsError):
+        with pytest.raises(ForusBotsAmbiguousSubmit) as exc:
             await client.scrape_participant("x", [{"key": "census", "fields": []}])
+        assert exc.value.needs_reconciliation is True
         assert fake.count("POST") == 1  # POST may have created a job -> never resubmit
 
     async def test_poll_retried_on_transport_error(self):

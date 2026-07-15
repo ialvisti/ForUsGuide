@@ -19,12 +19,60 @@ from data_pipeline.ticket_job_models import (
     TicketJobState,
     fingerprint_request,
     new_job_record,
+    utcnow,
 )
 from data_pipeline.ticket_job_repository import (
+    JOBS_COLLECTION,
+    PAYLOADS_COLLECTION,
     InMemoryTicketJobBackend,
+    IdempotencyReceiptOrphaned,
     InvalidStateTransition,
+    TicketJobError,
     TicketJobRepository,
+    split_record,
 )
+
+
+def test_idempotency_key_scope_is_shared_across_api_versions():
+    """Fallback/migración v1↔v2 no puede duplicar el mismo evento lógico."""
+    from data_pipeline.ticket_job_models import hash_idempotency_key
+
+    assert hash_idempotency_key("n8n", "event-123", "v1") == \
+        hash_idempotency_key("n8n", "event-123", "v2")
+
+
+def test_request_fingerprint_is_wire_compatible_across_v1_and_v2():
+    """La key compartida no sirve si el fingerprint considera el único
+    campo de rollout que existe sólo en el wire v1."""
+    logical = {
+        "participant_id": "158948",
+        "plan_id": "580",
+        "ticket": {"email_subject": "401k", "email_body": "cash out"},
+    }
+    v1 = {**logical, "ticket_handler_mode": None}
+    v2 = dict(logical)
+
+    assert fingerprint_request(v1) == fingerprint_request(v2)
+
+
+def test_control_document_contains_no_raw_tenant_ticket_or_forusbots_ids():
+    record = _record(
+        tenant_id="customer-tenant-raw",
+        ticket_id="ticket-raw-123",
+        forusbots_job_ids=["forusbots-raw-456"],
+        request_payload=PAYLOAD_A,
+    )
+
+    control, payload = split_record(record)
+
+    control_text = repr(control)
+    assert "customer-tenant-raw" not in control_text
+    assert "ticket-raw-123" not in control_text
+    assert "forusbots-raw-456" not in control_text
+    assert control["tenant_id_hash"]
+    assert payload["tenant_id"] == "customer-tenant-raw"
+    assert payload["ticket_id"] == "ticket-raw-123"
+    assert payload["forusbots_job_ids"] == ["forusbots-raw-456"]
 
 
 PAYLOAD_A = {"participant_id": "158948", "plan_id": "580",
@@ -90,6 +138,34 @@ class TestCreateOrGet:
         )
         assert rec_a.job_id != rec_b.job_id
 
+    async def test_idempotency_replay_is_bound_to_tenant(self, repo):
+        """Un remapeo de principal no puede entregar el job del tenant previo.
+
+        ``create_or_get`` cubre la carrera entre el peek optimista del API y
+        la transacción: incluso ahí el receipt debe quedar tenant-bound.
+        """
+        fingerprint = fingerprint_request(PAYLOAD_A)
+        candidate_a = _record(payload=PAYLOAD_A, tenant_id="tenant-a")
+        created, created_outcome = await repo.create_or_get(
+            principal_id="n8n",
+            idempotency_key="tenant-bound-key",
+            request_fingerprint=fingerprint,
+            candidate=candidate_a,
+        )
+        assert created_outcome == CreateOrGetOutcome.CREATED
+
+        candidate_b = _record(payload=PAYLOAD_A, tenant_id="tenant-b")
+        replay, replay_outcome = await repo.create_or_get(
+            principal_id="n8n",
+            idempotency_key="tenant-bound-key",
+            request_fingerprint=fingerprint,
+            candidate=candidate_b,
+        )
+
+        assert replay_outcome == CreateOrGetOutcome.CONFLICT
+        assert replay is None
+        assert created.tenant_id == "tenant-a"
+
     async def test_concurrent_create_or_get_single_creation(self, repo):
         results = await asyncio.gather(*[_create(repo) for _ in range(50)])
         outcomes = [o for _, o in results]
@@ -101,6 +177,26 @@ class TestCreateOrGet:
         await _create(repo, key="super-secret-idem-key")
         dump = repr(await backend.dump_all())
         assert "super-secret-idem-key" not in dump
+
+    async def test_orphan_receipt_fails_closed_without_creating_another_job(
+            self, repo, backend):
+        original, _ = await _create(repo, key="orphan-key")
+        backend._data[JOBS_COLLECTION].pop(original.job_id)
+
+        with pytest.raises(IdempotencyReceiptOrphaned):
+            await _create(repo, key="orphan-key")
+        with pytest.raises(IdempotencyReceiptOrphaned):
+            await repo.peek_idempotent(
+                principal_id="n8n",
+                idempotency_key="orphan-key",
+                api_version=original.api_version,
+                request_fingerprint=fingerprint_request(PAYLOAD_A),
+                tenant_id=None,
+            )
+
+        dump = await backend.dump_all()
+        assert len(dump[JOBS_COLLECTION]) == 0
+        assert await repo.count_active("n8n") == 1
 
 
 class TestDurabilityAcrossInstances:
@@ -166,10 +262,11 @@ class TestStateMachine:
 # RED hasta cerrar las Tareas 5/6/7.
 # ---------------------------------------------------------------------------
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from data_pipeline.ticket_job_models import TicketJobRecord
 from data_pipeline.ticket_job_repository import _record_to_doc
+from data_pipeline.ticket_job_repository import StaleLeaseEpoch
 
 
 class TestNativeTimestamps:
@@ -233,6 +330,82 @@ class TestAtomicQuotas:
 
 class TestLeaseFencing:
 
+    async def test_forusbots_submit_intent_survives_lease_loss_and_blocks_resubmit(
+            self, repo, backend):
+        """El lease fencea escrituras, pero no puede deshacer un POST que ya
+        salió. El intent durable debe sobrevivir al cambio de epoch y hacer
+        que el nuevo worker prefiera reconciliación manual a otro submit.
+        """
+        from datetime import timedelta
+
+        rec, _ = await _create(repo, key="forusbots-intent-fence")
+        old_epoch = await repo.claim(rec.job_id, worker_id="worker-old")
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-old",
+            lease_epoch=old_epoch,
+            route="generate_response",
+        ) is True
+
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["lease_expires_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+        new_epoch = await repo.claim(rec.job_id, worker_id="worker-new")
+        assert new_epoch > old_epoch
+
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-new",
+            lease_epoch=new_epoch,
+            route="generate_response",
+        ) is False
+        current = await repo.get(rec.job_id)
+        intent = next(e for e in current.per_inquiry_status
+                      if e.get("index") == 0)
+        assert intent["forusbots_submit_intent"] is True
+        assert intent["execution_status"] == "running"
+
+    async def test_heartbeat_cannot_resurrect_an_expired_lease(
+            self, repo, backend):
+        """Un heartbeat tardío debe quedar fenced. Renovar un lease ya
+        vencido abre una ventana donde el worker viejo vuelve a ejecutar
+        efectos externos antes de que el reconciliador lo observe."""
+        rec, _ = await _create(repo, key="expired-heartbeat")
+        epoch = await repo.claim(rec.job_id, worker_id="w-old")
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        expired_at = utcnow() - timedelta(seconds=1)
+        control["lease_expires_at"] = expired_at
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+
+        renewed = await repo.renew_lease(
+            rec.job_id,
+            worker_id="w-old",
+            lease_epoch=epoch,
+        )
+
+        assert renewed is False
+        current = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        assert current["lease_expires_at"] == expired_at
+
+    async def test_stale_task_confirmation_cannot_mark_new_generation_enqueued(
+            self, repo):
+        rec, _ = await _create(repo)
+        assert await repo.bump_enqueue_generation(rec.job_id) == 1
+        assert await repo.bump_enqueue_generation(rec.job_id) == 2
+
+        with pytest.raises(TicketJobError, match="generación"):
+            await repo.mark_enqueued(
+                rec.job_id,
+                f"inline/ticket-{rec.job_id}-g1",
+            )
+
+        current = await repo.get(rec.job_id)
+        assert current.enqueue_generation == 2
+        assert current.enqueue_state == "pending"
+        assert current.task_name is None
+
     async def test_stale_lease_epoch_cannot_checkpoint_or_publish(self, repo):
         """Tarea 6 Paso 4a: cada claim incrementa lease_epoch y toda escritura
         condicional lo incluye; un worker viejo queda fenced."""
@@ -255,6 +428,99 @@ class TestLeaseFencing:
                 {"execution_status": "succeeded",
                  "participant_reply_safe": True},
                 lease_epoch=old_epoch,
+            )
+
+    async def test_matching_epoch_cannot_checkpoint_terminal_job(self, repo):
+        rec, _ = await _create(repo, key="terminal-checkpoint")
+        epoch = await repo.claim(rec.job_id, worker_id="w")
+        await repo.update(
+            rec.job_id,
+            state=TicketJobState.SUCCEEDED,
+            expected_lease_epoch=epoch,
+        )
+
+        with pytest.raises(StaleLeaseEpoch, match="terminal"):
+            await repo.record_inquiry_result(
+                rec.job_id,
+                0,
+                {"execution_status": "succeeded"},
+                lease_epoch=epoch,
+            )
+
+    async def test_matching_epoch_cannot_checkpoint_expired_lease(
+            self, repo, backend):
+        rec, _ = await _create(repo, key="expired-checkpoint")
+        epoch = await repo.claim(rec.job_id, worker_id="w")
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["lease_expires_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+
+        with pytest.raises(StaleLeaseEpoch, match="vencido"):
+            await repo.record_inquiry_result(
+                rec.job_id,
+                0,
+                {"execution_status": "succeeded"},
+                lease_epoch=epoch,
+            )
+
+    async def test_active_lease_assertion_rejects_terminal_and_expired(
+            self, repo, backend):
+        expired, _ = await _create(repo, key="assert-expired")
+        expired_epoch = await repo.claim(expired.job_id, worker_id="w-expired")
+        control = await backend.get_doc(JOBS_COLLECTION, expired.job_id)
+        control["lease_expires_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][expired.job_id] = control
+        with pytest.raises(StaleLeaseEpoch, match="vencido"):
+            await repo.assert_active_lease(
+                expired.job_id,
+                worker_id="w-expired",
+                lease_epoch=expired_epoch,
+            )
+
+        terminal, _ = await _create(repo, key="assert-terminal")
+        terminal_epoch = await repo.claim(
+            terminal.job_id, worker_id="w-terminal",
+        )
+        await repo.update(
+            terminal.job_id,
+            state=TicketJobState.SUCCEEDED,
+            expected_lease_epoch=terminal_epoch,
+        )
+        with pytest.raises(StaleLeaseEpoch, match="terminal"):
+            await repo.assert_active_lease(
+                terminal.job_id,
+                worker_id="w-terminal",
+                lease_epoch=terminal_epoch,
+            )
+
+    async def test_conditional_update_rejects_terminal_or_expired_lease(
+            self, repo, backend):
+        expired, _ = await _create(repo, key="update-expired")
+        expired_epoch = await repo.claim(expired.job_id, worker_id="w-expired")
+        control = await backend.get_doc(JOBS_COLLECTION, expired.job_id)
+        control["lease_expires_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][expired.job_id] = control
+        with pytest.raises(StaleLeaseEpoch, match="vencido"):
+            await repo.update(
+                expired.job_id,
+                expected_lease_epoch=expired_epoch,
+                current_step="publish",
+            )
+
+        terminal, _ = await _create(repo, key="update-terminal")
+        terminal_epoch = await repo.claim(
+            terminal.job_id, worker_id="w-terminal",
+        )
+        await repo.update(
+            terminal.job_id,
+            state=TicketJobState.SUCCEEDED,
+            expected_lease_epoch=terminal_epoch,
+        )
+        with pytest.raises(StaleLeaseEpoch, match="terminal"):
+            await repo.update(
+                terminal.job_id,
+                expected_lease_epoch=terminal_epoch,
+                current_step="publish-again",
             )
 
     async def test_recovery_lock_requeues_without_owning_worker_lease(self):
@@ -287,3 +553,45 @@ class TestAbsoluteDeadline:
                 "existe (Tarea 7 Paso 5) — outbox pending y leases vencidos "
                 "no se reparan sin CLI manual"
             )
+
+
+class TestAtomicLazyTerminalization:
+
+    async def test_deadline_and_missing_payload_terminalize_atomically(
+            self, repo, backend):
+        deadline, _ = await _create(repo, key="lazy-deadline")
+        deadline_epoch = await repo.claim(
+            deadline.job_id, worker_id="w-deadline",
+        )
+        control = await backend.get_doc(JOBS_COLLECTION, deadline.job_id)
+        control["job_deadline_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][deadline.job_id] = control
+
+        timed_out = await repo.terminalize_if_unrecoverable(
+            deadline.job_id, now=utcnow(),
+        )
+        assert timed_out.state == TicketJobState.TIMEOUT
+        assert timed_out.public_error_code == "TOTAL_JOB_TIMEOUT"
+        assert timed_out.lease_epoch > deadline_epoch
+        assert timed_out.lease_owner is None
+
+        missing, _ = await _create(repo, key="lazy-missing")
+        await repo.claim(missing.job_id, worker_id="w-missing")
+        backend._data[PAYLOADS_COLLECTION].pop(missing.job_id)
+
+        failed = await repo.terminalize_if_unrecoverable(
+            missing.job_id, now=utcnow(),
+        )
+        assert failed.state == TicketJobState.FAILED
+        assert failed.public_error_code == "EXPIRED_PAYLOAD"
+        assert failed.lease_owner is None
+        assert await repo.count_active("n8n") == 0
+
+    async def test_healthy_job_is_returned_without_mutation(self, repo):
+        rec, _ = await _create(repo, key="lazy-healthy")
+        current = await repo.terminalize_if_unrecoverable(
+            rec.job_id, now=utcnow(),
+        )
+        assert current.state == TicketJobState.QUEUED
+        assert current.lease_epoch == rec.lease_epoch
+        assert await repo.count_active("n8n") == 1

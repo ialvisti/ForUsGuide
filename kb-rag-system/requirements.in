@@ -5,7 +5,7 @@
 # versión de Python. pytest y tooling viven en requirements-dev.in.
 
 # Core
-pinecone>=7.0.0,<8            # SDK actual (paquete `pinecone`, NO pinecone-client)
+pinecone>=9.1.0,<10           # SDK actual (paquete `pinecone`, NO pinecone-client)
 openai>=1.0.0,<3
 google-genai>=1.0.0,<2
 python-dotenv>=1.0.0,<2

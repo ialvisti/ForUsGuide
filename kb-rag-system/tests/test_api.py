@@ -847,6 +847,8 @@ class TestTicketHandlerContainment:
         from api.config import settings as app_settings
         base = dict(
             API_KEY="k",
+            API_CLIENT_KEYS={"n8n": "mapped-k"},
+            API_CLIENT_TENANTS={"n8n": "tenant-a"},
             PINECONE_API_KEY="p",
             OPENAI_API_KEY="o",
             GEMINI_API_KEY="g",
@@ -872,6 +874,36 @@ class TestTicketHandlerContainment:
             monkeypatch, FORUSBOTS_BASE_URL="http://35.224.156.104:10000"
         )
         with pytest.raises(ValueError, match="https://"):
+            validate_settings()
+
+    def test_reconciler_validation_does_not_require_api_pinecone_or_llm(
+            self, monkeypatch):
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch,
+            APP_ROLE="reconciler",
+            TICKET_HANDLER_MODE="disabled",
+            API_KEY="",
+            API_CLIENT_KEYS={},
+            API_CLIENT_TENANTS={},
+            PINECONE_API_KEY="",
+            OPENAI_API_KEY="",
+            GEMINI_API_KEY="",
+            USE_VERTEX_AI=False,
+        )
+        assert validate_settings() is True
+
+    def test_active_production_requires_complete_v2_tenant_mapping(
+            self, monkeypatch):
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch,
+            API_CLIENT_KEYS={"n8n": "mapped-k"},
+            API_CLIENT_TENANTS={},
+        )
+        with pytest.raises(ValueError, match="API_CLIENT_TENANTS"):
             validate_settings()
 
     def test_full_mode_requires_forusbots_token(self, monkeypatch):
@@ -1029,6 +1061,16 @@ class TestRoleAwareReadiness:
         r = client.get("/readyz")
         assert r.status_code == 503
         assert "participant_plan_validator" in r.json()["missing"]
+
+    def test_producer_active_requires_forusbots_client(self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.forusbots_client = None
+        r = client.get("/readyz")
+        assert r.status_code == 503
+        assert "forusbots_client" in r.json()["missing"]
 
     def test_reconciler_ready_without_llm_provider(self, client, monkeypatch):
         from api.config import settings as app_settings

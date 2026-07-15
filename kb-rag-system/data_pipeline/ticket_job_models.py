@@ -107,6 +107,7 @@ class TicketJobRecord(BaseModel):
     job_id: str
     principal_id: str
     tenant_id: Optional[str] = None
+    tenant_id_hash: Optional[str] = None
     ticket_id: Optional[str] = None
 
     idempotency_key_hash: Optional[str] = None
@@ -174,6 +175,10 @@ class TicketJobRecord(BaseModel):
     # decisiones de gating y conteos. Un retry lo reutiliza; nunca re-extrae.
     execution_plan: Optional[Dict[str, Any]] = None
 
+    # Contrato de fault injection firmado y validado, staging-only. Vive en
+    # payload (TTL), nunca en el documento de control ni en resultados.
+    fault_plan: Optional[Dict[str, Any]] = None
+
     # Payload necesario para que el worker ejecute (contiene PII; retención
     # gobernada por expires_at). Nunca incluye la API key ni la idem key raw.
     request_payload: Optional[Dict[str, Any]] = None
@@ -195,15 +200,32 @@ def fingerprint_request(payload: Dict[str, Any]) -> str:
     el header y en el índice idempotente); incluirla haría imposible detectar
     'misma key, payload distinto'.
     """
-    clean = {k: v for k, v in payload.items() if k != "idempotency_key"}
+    # ``ticket_handler_mode`` is a v1-only rollout hint; v2 deliberately has
+    # no such wire field. It cannot participate in the identity of the
+    # logical ticket event or the same stable key would conflict during the
+    # v1→v2 fallback/cutover. The effective server mode is persisted
+    # separately on the first durable job and every replay returns that job.
+    volatile = {"idempotency_key", "ticket_handler_mode"}
+    clean = {k: v for k, v in payload.items() if k not in volatile}
     return hashlib.sha256(canonical_json(clean).encode("utf-8")).hexdigest()
 
 
 def hash_idempotency_key(principal_id: str, idempotency_key: str,
                          api_version: str = "v1") -> str:
-    """Scope del índice idempotente: (principal, key, api_version). El valor
-    raw de la key nunca se persiste."""
-    raw = f"{principal_id}|{api_version}|{idempotency_key}"
+    """Scope del índice idempotente: (principal, logical key).
+
+    ``api_version`` remains accepted for wire/source compatibility, but is
+    deliberately excluded: a v1 fallback and v2 retry of the same event must
+    resolve to one durable job rather than duplicate external effects.
+    """
+    del api_version
+    raw = f"{principal_id}|{idempotency_key}"
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def hash_tenant_id(tenant_id: str) -> str:
+    """Stable one-way ownership key; raw tenant IDs live only in payload."""
+    raw = f"ticket-tenant|{tenant_id}"
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
@@ -229,4 +251,6 @@ def new_job_record(
         total_inquiries=total_inquiries,
     )
     base.update(overrides)
+    if base.get("tenant_id") and not base.get("tenant_id_hash"):
+        base["tenant_id_hash"] = hash_tenant_id(str(base["tenant_id"]))
     return TicketJobRecord(**base)

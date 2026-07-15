@@ -7,7 +7,7 @@ API response so that a Firestore outage cannot break the service.
 """
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Optional
 
 from google.cloud import firestore
@@ -18,9 +18,17 @@ logger = logging.getLogger(__name__)
 class ExecutionLogger:
     """Logs API execution details to Firestore."""
 
-    def __init__(self, project_id: Optional[str] = None):
+    def __init__(
+        self,
+        project_id: Optional[str] = None,
+        *,
+        retention_days: int = 90,
+    ):
+        if retention_days < 1:
+            raise ValueError("retention_days must be positive")
         self.db = firestore.AsyncClient(project=project_id)
         self.collection = self.db.collection("execution_logs")
+        self.retention_days = retention_days
 
     async def log_execution(
         self,
@@ -84,7 +92,10 @@ class ExecutionLogger:
         try:
             await self.collection.add(doc)
         except Exception as e:
-            logger.error(f"Failed to log execution to Firestore: {e}")
+            logger.error(
+                "Failed to log execution to Firestore; error_type=%s",
+                type(e).__name__,
+            )
 
     async def log_ticket_execution(
         self,
@@ -100,19 +111,25 @@ class ExecutionLogger:
     ) -> None:
         """Log one end-to-end ticket orchestration to the ``ticket_executions``
         collection. Like ``log_execution`` it never propagates failures."""
+        now = datetime.now(timezone.utc)
+        # This collection is operational telemetry, not the durable job or
+        # reconciliation ledger. Keep only bounded aggregates: copying job,
+        # idempotency, or upstream IDs here would create a second unbounded
+        # PII-bearing retention path outside the ticket payload TTL.
         doc = {
-            "request_id": request_id,
-            "ticket_job_id": ticket_job_id,
-            "idempotency_key": idempotency_key,
             "ticket_handler_mode": mode,
-            "timestamp": datetime.now(timezone.utc),
+            "timestamp": now,
+            "expires_at": now + timedelta(days=self.retention_days),
             "duration_ms": round(duration_ms, 1),
             "total_inquiries": total_inquiries,
             "route_summary": route_summary,
-            "forusbots_job_ids": forusbots_job_ids,
-            "error": error,
+            "forusbots_job_count": len(set(forusbots_job_ids)),
+            "failed": error is not None,
         }
         try:
             await self.db.collection("ticket_executions").add(doc)
         except Exception as e:
-            logger.error(f"Failed to log ticket execution to Firestore: {e}")
+            logger.error(
+                "Failed to log ticket execution to Firestore; error_type=%s",
+                type(e).__name__,
+            )

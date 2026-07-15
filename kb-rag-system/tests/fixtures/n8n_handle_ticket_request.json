@@ -5,7 +5,7 @@
     "auth": {
       "authorization": "Bearer <IAM identity token de kb-rag-client@rag-kb-system.iam.gserviceaccount.com>",
       "x_api_key": "<credencial de cliente en Secret Manager>",
-      "idempotency_key_header": "Idempotency-Key: <devrev-ticket-id>-<intento>"
+      "idempotency_key_header": "Idempotency-Key: <stable-logical-ticket-event-id> (idéntica en todos los reintentos v1/v2)"
     },
     "http": {
       "post_timeout_s": 60,
@@ -24,8 +24,9 @@
     },
     "polling": {
       "interval_s": 3,
-      "deadline_s": 540,
-      "deadline_rationale": "Debe superar el TICKET_TOTAL_BUDGET_S del servidor (480 s) + margen; el valor histórico de 240 s del harness abandonaba jobs vivos (latencias reales de hasta 365 s).",
+      "deadline_s": 2700,
+      "workflow_timeout_s": 3000,
+      "deadline_rationale": "Watch durable de 2700 s, mayor que TICKET_JOB_DEADLINE_S=2400 y con timeout de workflow >=3000 s; no abandona jobs que el servidor aún considera vivos.",
       "terminal_states": ["succeeded", "partial", "failed", "timeout", "cancelled"]
     }
   },

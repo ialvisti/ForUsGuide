@@ -224,10 +224,20 @@ def validate_settings():
     """Valida que todas las settings críticas estén configuradas."""
     errors = []
 
-    if not settings.API_KEY:
-        errors.append("API_KEY no está configurada")
+    valid_roles = {"producer", "worker", "reconciler"}
+    role = settings.APP_ROLE
+    if role not in valid_roles:
+        errors.append(
+            f"APP_ROLE={role} inválido (se esperaba uno de "
+            f"{sorted(valid_roles)})"
+        )
+    needs_core_api = role == "producer"
+    needs_rag_runtime = role in {"producer", "worker"}
 
-    if not settings.PINECONE_API_KEY:
+    if needs_core_api and not (settings.API_KEY or settings.API_CLIENT_KEYS):
+        errors.append("API_KEY/API_CLIENT_KEYS no está configurado")
+
+    if needs_rag_runtime and not settings.PINECONE_API_KEY:
         errors.append("PINECONE_API_KEY no está configurada")
 
     has_openai = bool(settings.OPENAI_API_KEY)
@@ -235,7 +245,7 @@ def validate_settings():
         settings.USE_VERTEX_AI and bool(settings.GCP_PROJECT)
     )
 
-    if not has_openai and not has_gemini:
+    if needs_rag_runtime and not has_openai and not has_gemini:
         errors.append(
             "Debe configurarse al menos un proveedor LLM: "
             "OPENAI_API_KEY, o GEMINI_API_KEY, o USE_VERTEX_AI=true + GCP_PROJECT"
@@ -255,7 +265,7 @@ def validate_settings():
         "LLM_ROUTE_GR_BODY_BUILD": settings.LLM_ROUTE_GR_BODY_BUILD,
         "LLM_ROUTE_TICKET_FIELD_EXTRACT": settings.LLM_ROUTE_TICKET_FIELD_EXTRACT,
     }
-    for var_name, model_name in route_models.items():
+    for var_name, model_name in (route_models.items() if needs_rag_runtime else ()):
         model_lower = (model_name or "").strip().lower()
         if not model_lower:
             errors.append(f"{var_name} no puede estar vacío")
@@ -285,13 +295,6 @@ def validate_settings():
 
     # Rol de proceso cerrado (Tarea 4 Paso 1a). Un rol inválido impide el
     # arranque; cada rol valida sus dependencias específicas.
-    valid_roles = {"producer", "worker", "reconciler"}
-    if settings.APP_ROLE not in valid_roles:
-        errors.append(
-            f"APP_ROLE={settings.APP_ROLE} inválido "
-            f"(se esperaba uno de {sorted(valid_roles)})"
-        )
-
     active_mode = settings.TICKET_HANDLER_MODE in valid_ticket_modes - {"disabled"}
 
     # Autorización participant-plan fail-closed: un producer ACTIVO sin fuente
@@ -308,6 +311,22 @@ def validate_settings():
     # completa configurada (audiencia + SA esperada).
     if settings.ENVIRONMENT == "production" and active_mode \
             and settings.APP_ROLE == "producer":
+        client_keys = settings.API_CLIENT_KEYS or {}
+        client_tenants = settings.API_CLIENT_TENANTS or {}
+        if not client_keys:
+            errors.append(
+                "producción activa v2 requiere API_CLIENT_KEYS; API_KEY "
+                "legacy no es una credencial v2"
+            )
+        missing_tenants = sorted(
+            str(principal) for principal in client_keys
+            if not client_tenants.get(principal)
+        )
+        if missing_tenants:
+            errors.append(
+                "API_CLIENT_TENANTS no tiene tenant explícito para: "
+                + ", ".join(missing_tenants)
+            )
         if not settings.TICKET_WIF_AUDIENCE or not settings.TICKET_WIF_EXPECTED_EMAIL:
             errors.append(
                 "producción con ticket handler activo requiere "
@@ -339,7 +358,7 @@ def validate_settings():
     # Contención fail-closed del ticket handler: un modo activo no puede
     # arrancar sin token, y producción nunca habla con ForusBots por HTTP
     # plano (el token y PII del participante viajan en cada request).
-    if settings.TICKET_HANDLER_MODE in valid_ticket_modes - {"disabled"}:
+    if active_mode and role in {"producer", "worker"}:
         if not settings.FORUSBOTS_AUTH_TOKEN:
             errors.append(
                 f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} requiere "

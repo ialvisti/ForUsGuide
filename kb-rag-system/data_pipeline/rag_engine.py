@@ -3363,6 +3363,9 @@ class RAGEngine:
         result). This trade-off enables true parallel execution across
         all search lanes.
         """
+        from data_pipeline.retrieval_privacy import sanitize_retrieval_query
+
+        query_text = sanitize_retrieval_query(query_text)
         key = self._cache_key(query_text, top_k, filter_dict, rerank)
         
         if key in self._search_cache:

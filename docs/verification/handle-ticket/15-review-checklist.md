@@ -1,6 +1,6 @@
 # 15 — Revisión adversarial del diff (Tarea 15 Paso 5)
 
-Ejecutada 2026-07-14/15 con un workflow de 5 revisores por dimensión
+Primera pasada ejecutada 2026-07-14/15 con un workflow de 5 revisores por dimensión
 (boundaries/idempotencia/fencing/tasks-reconciler/publicación) + verificación
 adversarial por hallazgo. 17 hallazgos planteados; 8 verificados como
 CONFIRMED antes de que 9 verificadores agotaran el límite de sesión. Los
@@ -25,20 +25,48 @@ falta de verdict).
 | P2 | Chequeo de lease advisory + efecto-antes-de-checkpoint: un lease perdido tras el efecto externo descarta el checkpoint → posible reproceso | At-least-once INTERNO acotado que el plan reconoce (Tarea 6 Paso 5): LLM repetible con hash/input; ForusBots/delivery quedan `manual_reconciliation_required` y no se reenvían a ciegas. El fencing por epoch impide publicar/guardar dos veces. |
 | P2 | Extracción/clasificación se re-ejecutan ante crash ANTES de persistir el execution_plan | Mismo at-least-once acotado: el plan se persiste una sola vez; un crash previo repite sólo trabajo LLM idempotente, nunca efectos participant-facing ni doble publicación. |
 
-## No confirmados (verificador agotó sesión) — evaluados por análisis
+## Segunda pasada independiente (2026-07-15)
+
+La revisión de cierre volvió a ejecutar contratos reales y añadió carreras
+deterministas. Corrigió RED-first estos falsos verdes de la primera pasada:
+
+| Sev | Hallazgo confirmado | Corrección verificable |
+|---|---|---|
+| **P0** | El admission control construía `GetQueueRequest(read_mask=...)` con Cloud Tasks GA v2, cuyo request no admite `read_mask`; toda creación nueva terminaba 503 | cliente v2beta3 fijado sólo para `stats.tasks_count`/rate limits; v2 GA conserva create/get task |
+| **P0** | El worker validaba configuración RAG/LLM/ForusBots pero Terraform no le entregaba `producer_core_env` | el worker recibe el mismo mapa core y secret refs que valida al arrancar |
+| **P1** | `plan_type` generado por el LLM sobrescribía el valor canónico autorizado | sólo se usa el `plan_type` de la fuente/entrada canónica |
+| **P1** | GET v1 devolvía estado y job IDs con sólo API key | poll v1 exige también workload identity cuando WIF está configurado; OpenAPI declara ambos factores |
+| **P1** | `enqueue_generation` se comprobaba antes, no dentro, del claim | CAS de generación dentro de la misma transacción que adquiere el lease; task stale responde 204 sin efecto |
+| **P1** | Un worker que pierde lease durante un POST ForusBots podía provocar un segundo submit | intent durable por inquiry antes del POST; un worker posterior no reenvía y marca reconciliación manual |
+| **P1** | `body.error` de ForusBots alcanzaba logs, checkpoints y polling | errores cerrados por código; se descarta texto upstream y se conserva sólo señal de reconciliación |
+| **P1** | SSN espaciado, cuentas agrupadas y fechas textuales alcanzaban `query_chunks` | saneamiento adversarial antes de la frontera Pinecone, probado sobre el argumento real |
+| **P2** | Replay idempotente podía cruzar un cambio de tenant bajo el mismo principal | tenant hash validado en receipt/control antes de replay/re-enqueue, incluida la carrera transaccional |
+| **P2** | `ticket_executions` duplicaba IDs sin TTL | telemetría agregada sin IDs externos/raw y `expires_at` nativo con TTL Terraform |
+| **P2** | 429/timeout ambiguo de ForusBots podía reintentarse sin contrato de dedupe | submit ambiguo falla cerrado a reconciliación manual; 429 no se reenvía a ciegas |
+
+También se corrigieron: verificación OIDC de Cloud Tasks con audiencia, SA y
+`email_verified`; heartbeat que no resucita leases expirados; privacidad de
+mensajes de excepción; replay v1/v2 con fingerprint estable; y el gate
+detect-secrets que intentaba capturar stdout vacío en vez del baseline
+actualizado.
+
+## Hallazgos de la primera pasada reevaluados
 
 - **v1-bypass-WIF**: confirmado por su propio verificador (P1, arriba).
-- **stale-generation TOCTOU** (gen-check y claim no atómicos): el `claim` es
-  atómico (un solo epoch gana); un intento stale que pasó el gen-check no
-  puede publicar/guardar dos veces por el fencing. Riesgo acotado; nota para
-  hardening futuro (plegar la generación dentro del claim).
-- **malformed task body → 422 retryable**: FastAPI valida `_TaskBody` antes del
-  handler; sólo ocurre si Cloud Tasks envía un body sin `job_id` (no sucede: el
-  productor/reconciliador construyen el body). Defensa en profundidad menor.
+- **stale-generation TOCTOU** se reclasificó como confirmado y quedó cerrado
+  al plegar `expected_generation` dentro del claim transaccional.
+- **malformed task body → 422 retryable** quedó cerrado: una task autenticada
+  pero malformada se ACKea 204; un request no autenticado sigue fallando
+  cerrado.
 
 ## Estado
 
-Suite CI local tras correcciones: **569 passed, 15 skipped** (Python 3.14
-bootstrap; gate autoritativo Cloud Build 3.12). Todos los P1 confirmados
-cerrados con RED primero. Los gates afectados (G2/G4 en staging) se repiten
-cuando staging esté activo (bloqueado por contratos/aprobaciones).
+Suite completa local tras integrar ambas pasadas: **717 passed, 18 skipped**
+sobre **735 tests** (Python 3.14 bootstrap). Los skips de Firestore se ejecutan
+contra el emulador en el build remoto; live/staging siguen gateados. El gate
+autoritativo Python 3.12/Linux se registra aparte en `03-image-and-locks.md`.
+
+La garantía ForusBots sigue deliberadamente incompleta: el intent durable
+evita duplicar a ciegas, pero sin lookup/idempotencia upstream no puede decidir
+si un POST ambiguo creó un job. El contrato externo de Tarea 1 continúa como
+bloqueo real para `full` y no se marca cerrado por esta mitigación.

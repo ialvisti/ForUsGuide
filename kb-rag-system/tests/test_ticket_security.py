@@ -36,6 +36,11 @@ def client(monkeypatch):
         monkeypatch.setattr(
             app_settings, "API_CLIENT_KEYS", {"n8n": KEY_N8N, "ops": KEY_OPS}
         )
+        monkeypatch.setattr(
+            app_settings,
+            "API_CLIENT_TENANTS",
+            {"n8n": "tenant-n8n", "ops": "tenant-ops"},
+        )
 
     mock_engine = Mock()
     mock_pinecone = Mock()
@@ -165,6 +170,82 @@ class TestObjectAuthorization:
             "no existe verificación de asociación"
         )
         assert r.json()["detail"]["code"] == "PARTICIPANT_PLAN_MISMATCH"
+
+    def test_canonical_validator_cannot_authorize_different_identity(self, client):
+        """Un adaptador defectuoso no puede autorizar A y devolver el registro B."""
+        _use_orch(client)
+
+        class _WrongCanonicalRecord:
+            async def authorize(self, *, tenant_id, participant_id, plan_id):
+                from api.participant_plan import AuthorizedParticipantPlan
+                return AuthorizedParticipantPlan(
+                    tenant_id=tenant_id,
+                    participant_id="different-participant",
+                    plan_id=plan_id,
+                    record_keeper="Canonical RK",
+                )
+
+        client.app.state.participant_plan_validator = _WrongCanonicalRecord()
+        response = client.post(
+            "/api/v1/handle-ticket",
+            json=_body(),
+            headers={"X-API-Key": KEY_N8N},
+        )
+        assert response.status_code == 403
+        assert response.json()["detail"]["code"] == "PARTICIPANT_PLAN_MISMATCH"
+
+    def test_poll_rejects_same_principal_after_tenant_changes(
+            self, client, monkeypatch):
+        """Ownership incluye tenant; principal por sí solo no cruza tenants."""
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "API_CLIENT_TENANTS", {"n8n": "tenant-a"})
+        _use_orch(client)
+        created = client.post(
+            "/api/v1/handle-ticket",
+            json=_body(),
+            headers={"X-API-Key": KEY_N8N},
+        )
+        assert created.status_code == 202
+
+        monkeypatch.setattr(app_settings, "API_CLIENT_TENANTS", {"n8n": "tenant-b"})
+        polled = client.get(
+            f"/api/v1/tickets/{created.json()['ticket_job_id']}",
+            headers={"X-API-Key": KEY_N8N},
+        )
+        assert polled.status_code == 403
+
+    def test_idempotent_post_cannot_replay_job_after_tenant_changes(
+            self, client, monkeypatch):
+        """El replay se autoriza antes de reasegurar Cloud Tasks.
+
+        Si el mismo principal fue remapeado, la key del tenant anterior debe
+        dar conflicto sin devolver ni reencolar aquel job.
+        """
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "API_CLIENT_TENANTS", {"n8n": "tenant-a"})
+        _use_orch(client)
+        headers = {
+            "X-API-Key": KEY_N8N,
+            "Idempotency-Key": "tenant-bound-route-key",
+        }
+        created = client.post(
+            "/api/v1/handle-ticket",
+            json=_body(),
+            headers=headers,
+        )
+        assert created.status_code == 202
+
+        monkeypatch.setattr(app_settings, "API_CLIENT_TENANTS", {"n8n": "tenant-b"})
+        replay = client.post(
+            "/api/v1/handle-ticket",
+            json=_body(),
+            headers=headers,
+        )
+
+        assert replay.status_code == 409
+        assert replay.json()["detail"]["code"] == "IDEMPOTENCY_TENANT_MISMATCH"
 
 
 class TestResourceBounds:
@@ -299,6 +380,24 @@ class TestWorkloadIdentityV2:
                                  "X-ForUs-Workload-Authorization": f"Bearer {token}"})
         assert r.status_code == 202
 
+    def test_v2_rejects_legacy_api_key_without_explicit_tenant_mapping(
+            self, client, monkeypatch):
+        """v2 nunca hereda el principal/tenant ``default`` de API_KEY legacy."""
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "API_CLIENT_KEYS", {})
+        monkeypatch.setattr(app_settings, "API_CLIENT_TENANTS", {})
+        _use_orch(client)
+        response = client.post(
+            "/api/v2/handle-ticket",
+            json=_v2_body(),
+            headers={
+                "X-API-Key": KEY_N8N,
+                "Idempotency-Key": "strict-v2-client",
+            },
+        )
+        assert response.status_code == 403
+
     @pytest.mark.parametrize("headers", [
         # Cloud Run despoja la firma de X-Serverless-Authorization: prohibido.
         {"X-Serverless-Authorization": "Bearer whatever"},
@@ -333,6 +432,68 @@ class TestWorkloadIdentityV2:
 # record_keeper server-owned incluso cuando la fuente devuelve None.
 # ---------------------------------------------------------------------------
 
+
+async def test_workload_token_verification_does_not_block_event_loop(
+        monkeypatch):
+    """google-auth puede hacer I/O síncrono al refrescar certificados. La
+    dependencia async no debe ejecutar ese trabajo en el event loop."""
+    import threading
+    from api import main as api_main
+
+    event_loop_thread = threading.get_ident()
+    verifier_threads = []
+
+    def fake_verify(_request):
+        verifier_threads.append(threading.get_ident())
+
+    monkeypatch.setattr(
+        api_main,
+        "verify_workload_identity_token",
+        fake_verify,
+    )
+
+    await api_main.verify_workload_identity(object())
+
+    assert verifier_threads
+    assert verifier_threads[0] != event_loop_thread
+
+
+async def test_global_error_logging_never_emits_exception_payload(caplog):
+    from starlette.requests import Request
+    from api.middleware import handle_errors, log_requests
+
+    sentinel = "participant-secret-sentinel@example.com"
+    request = Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/api/v2/handle-ticket",
+        "headers": [],
+        "client": ("127.0.0.1", 1234),
+    })
+    request.state.request_id = "safe-request-id"
+
+    async def explode(_request):
+        raise RuntimeError(sentinel)
+
+    with caplog.at_level("ERROR"):
+        response = await handle_errors(
+            request,
+            lambda req: log_requests(req, explode),
+        )
+
+    assert response.status_code == 500
+    assert sentinel not in caplog.text
+
+    caplog.clear()
+    from api.main import general_exception_handler
+
+    with caplog.at_level("ERROR"):
+        response = await general_exception_handler(
+            request, RuntimeError(sentinel)
+        )
+    assert response.status_code == 500
+    assert sentinel not in caplog.text
+
 class TestV1AlsoRequiresWorkloadIdentity:
     """P1 review: v1 alcanza el MISMO pipeline durable que v2, así que la
     identidad workload también lo protege cuando está configurada. Un
@@ -360,6 +521,72 @@ class TestV1AlsoRequiresWorkloadIdentity:
         r = client.post("/api/v1/handle-ticket", json=_body(),
                         headers={"X-API-Key": KEY_N8N})
         assert r.status_code in (200, 202)
+
+    def test_v1_poll_rejects_missing_workload_token_when_wif_enforced(
+            self, client, monkeypatch):
+        """El segundo factor protege también el GET que revela el resultado.
+
+        El job se crea durante la ventana legacy para aislar la política del
+        poll; al activar WIF, una API key filtrada no debe poder leerlo.
+        """
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "TICKET_WIF_AUDIENCE", "")
+        monkeypatch.setattr(app_settings, "TICKET_WIF_EXPECTED_EMAIL", "")
+        _use_orch(client)
+        created = client.post(
+            "/api/v1/handle-ticket",
+            json=_body(),
+            headers={"X-API-Key": KEY_N8N},
+        )
+        assert created.status_code in (200, 202)
+        job_id = created.json().get("ticket_job_id")
+        assert job_id, "el test necesita el contrato durable 202 + poll"
+
+        monkeypatch.setattr(
+            app_settings,
+            "TICKET_WIF_AUDIENCE",
+            "https://kb-rag-system.example.run.app",
+        )
+        monkeypatch.setattr(
+            app_settings,
+            "TICKET_WIF_EXPECTED_EMAIL",
+            "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com",
+        )
+        polled = client.get(
+            f"/api/v1/tickets/{job_id}",
+            headers={"X-API-Key": KEY_N8N},
+        )
+
+        assert polled.status_code in (401, 403), (
+            "GET v1 aceptó sólo X-API-Key con WIF activo; el resultado "
+            "durable evade el segundo factor"
+        )
+
+    def test_v1_poll_remains_available_when_handler_disabled_without_wif(
+            self, client, monkeypatch):
+        """El kill switch no invalida el poll de jobs ya aceptados."""
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "TICKET_WIF_AUDIENCE", "")
+        monkeypatch.setattr(app_settings, "TICKET_WIF_EXPECTED_EMAIL", "")
+        _use_orch(client)
+        created = client.post(
+            "/api/v1/handle-ticket",
+            json=_body(),
+            headers={"X-API-Key": KEY_N8N},
+        )
+        assert created.status_code in (200, 202)
+        job_id = created.json().get("ticket_job_id")
+        assert job_id, "el test necesita el contrato durable 202 + poll"
+
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        polled = client.get(
+            f"/api/v1/tickets/{job_id}",
+            headers={"X-API-Key": KEY_N8N},
+        )
+
+        assert polled.status_code == 200
 
 
 class TestRecordKeeperServerOwned:

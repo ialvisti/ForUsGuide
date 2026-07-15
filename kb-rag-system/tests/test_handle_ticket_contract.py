@@ -112,13 +112,19 @@ class TestPollingContract:
             assert cfg["publishable"] is False, state
             assert cfg["action"] != "publish_participant_reply", state
 
-    def test_succeeded_publish_is_guarded_against_shadow(self, polling_fixture):
+    def test_succeeded_publish_requires_all_three_safety_conditions(
+            self, polling_fixture):
         """Un job shadow termina succeeded con metadata.fallback=true; n8n
         debe tener el guard para no publicar el saludo interno (HT-11)."""
         succeeded = polling_fixture["on_state"]["succeeded"]
-        assert "fallback" in succeeded.get("guard", ""), (
-            "el fixture no declara el guard de shadow/fallback para succeeded"
-        )
+        guard = succeeded.get("guard", "")
+        for required in (
+            "fallback", "send_participant_reply", "participant_reply_safe",
+            "manual_reconciliation_required",
+        ):
+            assert required in guard, (
+                f"el fixture no declara el guard {required} para succeeded"
+            )
 
     def test_error_http_statuses_have_fail_safe_actions(self, polling_fixture):
         on_http = polling_fixture["on_http_status"]
@@ -150,6 +156,7 @@ class TestPollingContract:
                 f"poll deadline {deadline}s <= server budget "
                 f"{settings.TICKET_TOTAL_BUDGET_S}s"
             )
+            assert deadline >= settings.TICKET_JOB_DEADLINE_S + 300
 
 
 # ---------------------------------------------------------------------------

@@ -1,29 +1,127 @@
-# Trigger *-apply (plan Tarea 12 Paso 2). Recibe el URI con generation +
-# SHA-256 del plan aprobado, verifica manifest/commit/digest/root/lockfile y
-# state serial ACTUAL, y ejecuta SÓLO `terraform apply saved.tfplan`. No
-# regenera plan. Requiere aprobación manual de Cloud Build DESPUÉS de que el
-# humano registró el gate correspondiente.
+# Trusted source for the protected *-apply controllers. Every GCS input is a
+# generation-qualified URI (`gs://...#<generation>`). The reviewed binary is
+# checked against live state/backend/show/lock metadata before execution.
 substitutions:
   _ROOT: ""
-  _PLAN_URI: ""               # gs://.../plan.tfplan#<generation>
-  _PLAN_SHA256: ""            # hash aprobado
+  _PLAN_URI: ""
+  _PLAN_SHA256: ""
+  _SHOW_URI: ""
+  _SHOW_SHA256: ""
   _MANIFEST_URI: ""
   _EXPECTED_COMMIT: ""
   _EXPECTED_IMAGE_DIGEST: ""
-  _TERRAFORM_IMAGE: "hashicorp/terraform:1.9@sha256:PINNED_AT_BOOTSTRAP"
+  _EXPECTED_BACKEND_BUCKET: ""
+  _EXPECTED_RELEASE_PHASE: ""
+  _EXPECTED_PROVIDER_LOCK_SHA256: ""
+  _PROMOTION_URI: "none"
+  _PROMOTION_HASH: "none"
+  _EVIDENCE_MANIFEST_URI: "none"
+  _EVIDENCE_MANIFEST_HASH: "none"
+  _SECRET_VERSION_MANIFEST_URI: "none"
+  _SECRET_VERSION_MANIFEST_HASH: "none"
 
 steps:
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'fetch'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+    id: 'fetch-approved-inputs'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        gsutil cp "${_PLAN_URI}" /workspace/plan.tfplan
-        gsutil cp "${_MANIFEST_URI}" /workspace/plan_manifest.json
+        case "${_ROOT}" in
+          platform|staging|production) ;;
+          *) echo "STOP: Terraform root fuera del allowlist" >&2; exit 1 ;;
+        esac
+        trusted_backend="rag-kb-system-tfstate-${_ROOT}-900340137010"
+        [[ "${_EXPECTED_BACKEND_BUCKET}" == "$$trusted_backend" ]] || {
+          echo "STOP: backend esperado no corresponde al root" >&2
+          exit 1
+        }
 
-  # verificación del manifest ANTES de tocar terraform (aborta si drift)
+        require_generation_uri() {
+          [[ "$$1" =~ ^gs://[a-z0-9][a-z0-9._-]*/[^#]+#[1-9][0-9]*$ ]] || {
+            echo "STOP: URI sin generation numérica: $$1" >&2
+            exit 1
+          }
+        }
+        fetch_object() {
+          local uri="$$1" destination="$$2"
+          require_generation_uri "$$uri"
+          gcloud storage cp "$$uri" "$$destination"
+        }
+        fetch_raw_hash() {
+          local uri="$$1" expected="$$2" destination="$$3"
+          [[ "$$expected" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "STOP: SHA-256 externo inválido" >&2
+            exit 1
+          }
+          fetch_object "$$uri" "$$destination"
+          printf '%s  %s\n' "$$expected" "$$destination" | sha256sum -c -
+        }
+
+        fetch_raw_hash "${_PLAN_URI}" "${_PLAN_SHA256}" \
+          /workspace/plan.tfplan
+        fetch_raw_hash "${_SHOW_URI}" "${_SHOW_SHA256}" \
+          /workspace/approved_terraform_show.txt
+        fetch_object "${_MANIFEST_URI}" /workspace/plan_manifest.json
+
+        if [[ "${_ROOT}" == production ]]; then
+          fetch_object "${_PROMOTION_URI}" /workspace/promotion.json
+          fetch_object "${_EVIDENCE_MANIFEST_URI}" \
+            /workspace/evidence_manifest.json
+          fetch_raw_hash "${_SECRET_VERSION_MANIFEST_URI}" \
+            "${_SECRET_VERSION_MANIFEST_HASH}" \
+            /workspace/secret_version_manifest.json
+        else
+          [[ "${_PROMOTION_URI}" == none && "${_PROMOTION_HASH}" == none ]]
+          [[ "${_EVIDENCE_MANIFEST_URI}" == none && \
+             "${_EVIDENCE_MANIFEST_HASH}" == none ]]
+          if [[ "${_SECRET_VERSION_MANIFEST_URI}" != none || \
+                "${_SECRET_VERSION_MANIFEST_HASH}" != none ]]; then
+            fetch_raw_hash "${_SECRET_VERSION_MANIFEST_URI}" \
+              "${_SECRET_VERSION_MANIFEST_HASH}" \
+              /workspace/secret_version_manifest.json
+          fi
+        fi
+
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'verify-promotion'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [[ "${_ROOT}" != production ]]; then
+          exit 0
+        fi
+        cd /workspace/kb-rag-system
+        python scripts/verify_promotion_manifest.py \
+          --attestation /workspace/promotion.json \
+          --evidence-manifest /workspace/evidence_manifest.json \
+          --expected-attestation-hash "${_PROMOTION_HASH}" \
+          --expected-evidence-manifest-uri "${_EVIDENCE_MANIFEST_URI}" \
+          --expected-evidence-manifest-hash "${_EVIDENCE_MANIFEST_HASH}" \
+          --expected-main-sha "${_EXPECTED_COMMIT}" \
+          --expected-image-digest "${_EXPECTED_IMAGE_DIGEST}" \
+          --expected-controller-builder-digest \
+            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce' \
+          --expected-evidence-controller-builder-digest \
+            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+
+  - name: 'hashicorp/terraform:1.9@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd'
+    id: 'inspect-live-state-and-plan'
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        set -eu
+        cd "/workspace/infra/terraform/live/${_ROOT}"
+        terraform init -input=false
+        terraform state pull > /workspace/current_state_serial.txt
+        cp .terraform/terraform.tfstate /workspace/backend_metadata.json
+        terraform show -no-color /workspace/plan.tfplan \
+          > /workspace/recomputed_terraform_show.txt
+
   - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
     id: 'verify-manifest'
     entrypoint: bash
@@ -31,28 +129,44 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        cd kb-rag-system
-        terraform_serial=$(cat /workspace/current_state_serial.txt)
+        cd /workspace/kb-rag-system
         python scripts/verify_plan_manifest.py \
           --manifest /workspace/plan_manifest.json \
           --plan-file /workspace/plan.tfplan \
+          --show-file /workspace/recomputed_terraform_show.txt \
           --expected-plan-sha256 "${_PLAN_SHA256}" \
-          --current-state-serial "$terraform_serial" \
+          --expected-plan-uri "${_PLAN_URI}" \
+          --expected-show-uri "${_SHOW_URI}" \
+          --current-state-file /workspace/current_state_serial.txt \
+          --backend-metadata-file /workspace/backend_metadata.json \
           --expected-commit "${_EXPECTED_COMMIT}" \
           --expected-image-digest "${_EXPECTED_IMAGE_DIGEST}" \
           --expected-root "live/${_ROOT}" \
-          --provider-lock "../infra/terraform/live/${_ROOT}/.terraform.lock.hcl"
+          --expected-backend-bucket "${_EXPECTED_BACKEND_BUCKET}" \
+          --expected-release-phase "${_EXPECTED_RELEASE_PHASE}" \
+          --provider-lock "/workspace/infra/terraform/live/${_ROOT}/.terraform.lock.hcl" \
+          --expected-provider-lock-sha256 \
+            "${_EXPECTED_PROVIDER_LOCK_SHA256}" \
+          --expected-show-sha256 "${_SHOW_SHA256}" \
+          --expected-controller-builder-digest \
+            'hashicorp/terraform:1.9@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd' \
+          --expected-promotion-uri "${_PROMOTION_URI}" \
+          --expected-promotion-hash "${_PROMOTION_HASH}" \
+          --expected-evidence-manifest-uri "${_EVIDENCE_MANIFEST_URI}" \
+          --expected-evidence-manifest-hash "${_EVIDENCE_MANIFEST_HASH}" \
+          --expected-secret-version-manifest-uri \
+            "${_SECRET_VERSION_MANIFEST_URI}" \
+          --expected-secret-version-manifest-hash \
+            "${_SECRET_VERSION_MANIFEST_HASH}"
 
-  - name: '${_TERRAFORM_IMAGE}'
-    id: 'apply'
+  - name: 'hashicorp/terraform:1.9@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd'
+    id: 'apply-approved-binary'
     entrypoint: sh
     args:
       - '-c'
       - |
         set -eu
-        cd infra/terraform/live/${_ROOT}
-        terraform init -input=false
-        # aplica EXACTAMENTE el plan aprobado; nunca replanifica
+        cd "/workspace/infra/terraform/live/${_ROOT}"
         terraform apply -input=false -auto-approve /workspace/plan.tfplan
 
 options:

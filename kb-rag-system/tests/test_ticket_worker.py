@@ -19,6 +19,17 @@ from fastapi.testclient import TestClient
 from data_pipeline.ticket_orchestrator import ExtractedInquiry, InquiryOutcome
 
 
+def _request_with_bearer(token: str = "signed-token"):
+    from starlette.requests import Request
+
+    return Request({
+        "type": "http",
+        "method": "POST",
+        "path": "/internal/tasks/ticket-job",
+        "headers": [(b"authorization", f"Bearer {token}".encode())],
+    })
+
+
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.setenv("API_KEY", "k")
@@ -26,6 +37,14 @@ def client(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "o")
     from api.config import settings as app_settings
     monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+    monkeypatch.setattr(
+        app_settings, "TICKET_WORKER_URL", "https://worker.example.run.app"
+    )
+    monkeypatch.setattr(
+        app_settings,
+        "TICKET_WORKER_SERVICE_ACCOUNT",
+        "task-signer@example.iam.gserviceaccount.com",
+    )
     # Estos tests ejercitan la superficie HTTP del worker: el rol de proceso
     # debe ser `worker` para que /internal/tasks/ticket-job exista (Tarea 4
     # Paso 1a; el producer la oculta con 404).
@@ -79,6 +98,60 @@ async def _seed(client, mode="full"):
 
 
 class TestWorkerEndpointAuth:
+
+    async def test_task_oidc_verification_runs_off_event_loop(
+            self, monkeypatch):
+        import threading
+        from api.config import settings as app_settings
+        from api.ticket_worker import verify_task_oidc
+        from google.oauth2 import id_token as gid
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", True)
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_URL", "https://worker")
+        monkeypatch.setattr(
+            app_settings, "TICKET_WORKER_SERVICE_ACCOUNT",
+            "task-signer@example.iam.gserviceaccount.com",
+        )
+        event_loop_thread = threading.get_ident()
+        verifier_threads = []
+
+        def fake_verify(*_args, **_kwargs):
+            verifier_threads.append(threading.get_ident())
+            return {
+                "email": "task-signer@example.iam.gserviceaccount.com",
+                "email_verified": True,
+            }
+
+        monkeypatch.setattr(gid, "verify_oauth2_token", fake_verify)
+
+        await verify_task_oidc(_request_with_bearer())
+
+        assert verifier_threads[0] != event_loop_thread
+
+    async def test_worker_rejects_unverified_email_claim(self, monkeypatch):
+        from fastapi import HTTPException
+        from api.config import settings as app_settings
+        from api.ticket_worker import verify_task_oidc
+        from google.oauth2 import id_token as gid
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", True)
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_URL", "https://worker")
+        monkeypatch.setattr(
+            app_settings, "TICKET_WORKER_SERVICE_ACCOUNT",
+            "task-signer@example.iam.gserviceaccount.com",
+        )
+        monkeypatch.setattr(
+            gid,
+            "verify_oauth2_token",
+            lambda *_a, **_k: {
+                "email": "task-signer@example.iam.gserviceaccount.com",
+                "email_verified": False,
+            },
+        )
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_task_oidc(_request_with_bearer())
+        assert exc.value.status_code == 403
 
     def test_worker_requires_oidc_when_enabled(self, client, monkeypatch):
         from api.config import settings as app_settings
@@ -410,6 +483,118 @@ class TestRetryResumesWithoutRepeatingEffects:
         assert app_settings.TICKET_JOB_DEADLINE_S + 30 <= 2700 - 240
 
 
+class _ForusBotsLeaseRaceState:
+    def __init__(self):
+        self.submit_started = asyncio.Event()
+        self.release_submit = asyncio.Event()
+        self.submit_calls = 0
+
+
+class _ForusBotsLeaseRaceOrchestrator:
+    """Simula el punto exacto posterior al intent y anterior al checkpoint.
+
+    Cada worker recibe una instancia separada, como dos instancias de Cloud
+    Run; el contador/eventos representan el upstream compartido.
+    """
+
+    def __init__(self, shared):
+        self.shared = shared
+        self._intent_guard = None
+
+    def set_forusbots_intent_guard(self, guard):
+        self._intent_guard = guard
+
+    async def extract_inquiries(self, req):
+        return [ExtractedInquiry("cash out", "LT Trust", "401(k)", "rollover")]
+
+    async def classify(self, inquiry):
+        return SimpleNamespace(route="generate_response", confidence=0.9,
+                               reasoning="r", user_message=None)
+
+    async def handle_inquiry(self, ext, req, *, total_inquiries,
+                             classification=None):
+        assert self._intent_guard is not None
+        await self._intent_guard()
+        self.shared.submit_calls += 1
+        self.shared.submit_started.set()
+        await self.shared.release_submit.wait()
+        return InquiryOutcome(
+            inquiry=ext.inquiry,
+            topic=ext.topic,
+            route="generate_response",
+            record_keeper=ext.record_keeper,
+            plan_type=ext.plan_type,
+            scrape_status="ok",
+            generate_result=SimpleNamespace(
+                decision="can_proceed",
+                confidence=0.9,
+                response="safe",
+                source_articles=[],
+                used_chunks=[],
+                coverage_gaps=[],
+                metadata={},
+            ),
+            diagnostics={"forusbots_job_id": "job-upstream-once"},
+        )
+
+
+class TestForusBotsDurableSubmitIntent:
+
+    async def test_lost_lease_double_worker_never_submits_twice(self):
+        """Worker A reserva intent y entra al POST. Tras perder el lease,
+        worker B debe ver ese intent durable y cerrar para reconciliación sin
+        ejecutar un segundo POST; A queda fenced al intentar checkpointear.
+        """
+        from datetime import timedelta
+
+        from api.config import settings as app_settings
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            JOBS_COLLECTION,
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        backend = InMemoryTicketJobBackend()
+        repo = TicketJobRepository(backend)
+        rec = await _seed_repo_job(repo)
+        shared = _ForusBotsLeaseRaceState()
+        app = SimpleNamespace(state=SimpleNamespace(
+            ticket_repo=repo,
+            ticket_orchestrator_factory=lambda: (
+                _ForusBotsLeaseRaceOrchestrator(shared)
+            ),
+            execution_logger=None,
+        ))
+
+        old_attempt = asyncio.create_task(
+            run_ticket_job(app, rec.job_id, worker_id="worker-old")
+        )
+        await asyncio.wait_for(shared.submit_started.wait(), timeout=2)
+
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["lease_expires_at"] = (
+            control["lease_expires_at"] -
+            timedelta(seconds=app_settings.TICKET_WORKER_LEASE_S + 1)
+        )
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+
+        new_final = await asyncio.wait_for(
+            run_ticket_job(app, rec.job_id, worker_id="worker-new"),
+            timeout=2,
+        )
+        shared.release_submit.set()
+        old_final = await asyncio.wait_for(old_attempt, timeout=2)
+
+        assert shared.submit_calls == 1
+        assert old_final is None
+        assert new_final.public_error_code == "FORUSBOTS_NEEDS_RECONCILIATION"
+        assert new_final.next_action.value == "use_legacy_or_human"
+        assert new_final.per_inquiry_status[0][
+            "manual_reconciliation_required"
+        ] is True
+
+
 class TestStaleTaskGeneration:
 
     def test_stale_task_generation_returns_204_without_claim_or_effect(self, client, monkeypatch):
@@ -446,6 +631,54 @@ class TestStaleTaskGeneration:
         assert current.state.value == "queued", (
             "la task stale ejecutó/claimeó el job"
         )
+
+    def test_generation_bumped_between_read_and_claim_is_204_without_effect(
+            self, client, monkeypatch):
+        """El pre-check HTTP no es el fence: la generación debe volver a
+        comprobarse dentro de la misma transacción que adquiere el lease.
+
+        La barrera reproduce de forma determinista:
+        task g0 lee g0 -> reconciliador quema g1 -> task g0 intenta claim.
+        """
+        import asyncio
+        import threading
+        from concurrent.futures import ThreadPoolExecutor
+
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", False)
+        client.app.state.ticket_orchestrator_factory = lambda: FakeOrch()
+        record = client.portal.call(_seed, client)
+        repo = client.app.state.ticket_repo
+        original_claim = repo.claim
+        claim_entered = threading.Event()
+        allow_claim = threading.Event()
+
+        async def claim_after_generation_bump(*args, **kwargs):
+            claim_entered.set()
+            released = await asyncio.to_thread(allow_claim.wait, 5)
+            assert released, "la barrera del test no liberó el claim"
+            return await original_claim(*args, **kwargs)
+
+        monkeypatch.setattr(repo, "claim", claim_after_generation_bump)
+        with ThreadPoolExecutor(max_workers=1) as pool:
+            response_future = pool.submit(
+                client.post,
+                "/internal/tasks/ticket-job",
+                json={"job_id": record.job_id, "enqueue_generation": 0},
+                headers={"X-CloudTasks-TaskName": "t-racing-g0",
+                         "X-CloudTasks-TaskRetryCount": "0"},
+            )
+            assert claim_entered.wait(5), "la task no llegó al claim"
+            client.portal.call(repo.bump_enqueue_generation, record.job_id)
+            allow_claim.set()
+            response = response_future.result(timeout=5)
+
+        assert response.status_code == 204
+        current = client.portal.call(repo.get, record.job_id)
+        assert current.enqueue_generation == 1
+        assert current.state.value == "queued"
+        assert current.attempt == 0
 
 
 # ---------------------------------------------------------------------------
@@ -506,6 +739,21 @@ class TestForusBotsIdTraceabilityOnDegraded:
         )
 
 
+class TestAggregatePublicationSafety:
+
+    def test_succeeded_but_unsafe_inquiry_is_never_publishable(self):
+        from api.ticket_worker import aggregate_states
+
+        state, next_action = aggregate_states([{
+            "execution_status": "succeeded",
+            "participant_reply_safe": False,
+            "degraded": False,
+        }], unprocessed=0)
+
+        assert state.value != "succeeded"
+        assert next_action.value == "use_legacy_or_human"
+
+
 class TestUnprocessedResumesOnRetry:
 
     async def test_unprocessed_inquiry_reprocessed_on_resume(self):
@@ -532,3 +780,145 @@ class TestUnprocessedResumesOnRetry:
         assert "unprocessed" in src and "done_indexes" in src, (
             "el loop de reanudación debe excluir 'unprocessed' de done_indexes"
         )
+
+
+class TestManualReconciliationMetric:
+
+    def test_emits_one_sanitized_structured_event_for_flagged_entries(
+        self, monkeypatch
+    ):
+        """La alerta declarativa debe apoyarse en una señal emitida de verdad.
+
+        El evento puede llevar el hash irreversible del job y el trace_id,
+        pero nunca IDs crudos ni contenido de los checkpoints.
+        """
+        from api import ticket_worker
+        from data_pipeline.ticket_job_models import new_job_record
+
+        record = new_job_record(
+            job_id="raw-job-id-must-not-leak",
+            principal_id="raw-principal-must-not-leak",
+            request_fingerprint="f" * 64,
+            trace_id="trace-safe",
+        )
+        entries = [
+            {
+                "manual_reconciliation_required": True,
+                "participant_id": "raw-participant-must-not-leak",
+            },
+            {"manual_reconciliation_required": True},
+            {"manual_reconciliation_required": False},
+        ]
+        calls = []
+        monkeypatch.setattr(
+            ticket_worker.ticket_metrics,
+            "emit",
+            lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+
+        ticket_worker._emit_manual_reconciliation_metric(record, entries)
+
+        assert len(calls) == 1
+        args, kwargs = calls[0]
+        assert args == ("ticket_manual_reconciliation_required", 2)
+        assert kwargs["trace_id"] == "trace-safe"
+        assert kwargs["code"] == "manual_reconciliation"
+        assert len(kwargs["job_hash"]) == 16
+        emitted = repr(calls)
+        assert "raw-job-id-must-not-leak" not in emitted
+        assert "raw-principal-must-not-leak" not in emitted
+        assert "raw-participant-must-not-leak" not in emitted
+
+        calls.clear()
+        ticket_worker._emit_manual_reconciliation_metric(
+            record, [{"manual_reconciliation_required": False}]
+        )
+        assert calls == []
+
+
+class TestTerminalMetricPopulation:
+
+    @staticmethod
+    def _capture_terminal_events(monkeypatch, ticket_worker):
+        calls = []
+        monkeypatch.setattr(
+            ticket_worker.ticket_metrics,
+            "emit",
+            lambda *args, **kwargs: calls.append((args, kwargs)),
+        )
+        return calls
+
+    async def test_early_terminal_return_emits_exactly_once(self, monkeypatch):
+        """Los fallos del extractor retornan antes de la agregación normal,
+        pero siguen perteneciendo al numerador y denominador terminales.
+        """
+        from api import ticket_worker
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        calls = self._capture_terminal_events(monkeypatch, ticket_worker)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        final = await ticket_worker.run_ticket_job(
+            _worker_app(repo, _real_orchestrator(_FailingRouter())), rec.job_id
+        )
+
+        terminal = [c for c in calls if c[0][0] == "ticket_job_terminal"]
+        assert len(terminal) == 1
+        args, kwargs = terminal[0]
+        assert args == ("ticket_job_terminal", 1)
+        assert kwargs["state"] == final.state.value == "failed"
+        assert kwargs["code"] == final.public_error_code
+        assert len(kwargs["job_hash"]) == 16
+        assert rec.job_id not in repr(terminal)
+
+    async def test_generic_terminal_failure_emits_exactly_once(self, monkeypatch):
+        """La terminalización defensiva de run_ticket_job también forma
+        parte de la población, aunque `_execute` falle antes de devolver.
+        """
+        from api import ticket_worker
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        calls = self._capture_terminal_events(monkeypatch, ticket_worker)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        app = SimpleNamespace(state=SimpleNamespace(
+            ticket_repo=repo,
+            ticket_orchestrator_factory=lambda: (_ for _ in ()).throw(
+                RuntimeError("synthetic factory failure")
+            ),
+            execution_logger=None,
+        ))
+
+        final = await ticket_worker.run_ticket_job(app, rec.job_id)
+
+        terminal = [c for c in calls if c[0][0] == "ticket_job_terminal"]
+        assert final.state.value == "failed"
+        assert len(terminal) == 1
+
+    async def test_normal_terminal_path_is_not_double_counted(self, monkeypatch):
+        from api import ticket_worker
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        calls = self._capture_terminal_events(monkeypatch, ticket_worker)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        orch = _ResumeOrch([
+            ExtractedInquiry("inquiry", "LT Trust", "401(k)", "rollover")
+        ])
+
+        final = await ticket_worker.run_ticket_job(
+            _worker_app(repo, orch), rec.job_id
+        )
+
+        terminal = [c for c in calls if c[0][0] == "ticket_job_terminal"]
+        assert final.state.value == "succeeded"
+        assert len(terminal) == 1

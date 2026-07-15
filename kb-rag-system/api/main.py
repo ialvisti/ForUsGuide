@@ -13,12 +13,15 @@ Endpoints:
 
 import asyncio
 import logging
+import math
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
 from fastapi import FastAPI, Header, Request, HTTPException, status, Depends, Security
+from fastapi.exception_handlers import request_validation_exception_handler
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 import sys
 from pathlib import Path
@@ -54,17 +57,27 @@ from data_pipeline.ticket_job_models import (
     TicketJobRecord,
     TicketJobState,
     fingerprint_request,
+    hash_tenant_id,
     new_job_record,
     utcnow,
 )
 from data_pipeline.ticket_job_repository import (
     FirestoreTicketJobBackend,
+    IdempotencyTenantMismatch,
     InMemoryTicketJobBackend,
     QuotaExceeded,
     RateWindowExceeded,
     TicketJobRepository,
 )
-from data_pipeline.ticket_task_queue import CloudTasksTicketQueue, InlineTicketQueue
+from data_pipeline.ticket_task_queue import (
+    CloudTasksTicketQueue,
+    InlineTicketQueue,
+)
+from data_pipeline.staging_fault_injection import (
+    FAULT_TEST_HEADER,
+    FaultInjectionRejected,
+    accept_fault_plan_from_request,
+)
 from .models import (
     RequiredDataRequest,
     RequiredDataResponse,
@@ -322,7 +335,8 @@ async def lifespan(app: FastAPI):
         # Inicializar Execution Logger → app.state (Firestore, optional)
         if settings.ENABLE_EXECUTION_LOGGING:
             app.state.execution_logger = ExecutionLogger(
-                project_id=settings.GCP_PROJECT or None
+                project_id=settings.GCP_PROJECT or None,
+                retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
             )
             logger.info("✅ Execution logger initialized (Firestore)")
         else:
@@ -435,6 +449,41 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
+
+@app.exception_handler(RequestValidationError)
+async def _request_validation_error_handler(
+    request: Request,
+    exc: RequestValidationError,
+):
+    """ACK permanent Cloud Tasks schema errors, but only after task auth.
+
+    Cloud Tasks retries every non-2xx, including 4xx.  A malformed body can
+    never become valid on retry, so the authenticated internal task endpoint
+    acknowledges it with 204.  Authentication is deliberately repeated here
+    because FastAPI validates the body before the route handler can call the
+    normal OIDC guard.
+    """
+    if request.url.path != "/internal/tasks/ticket-job":
+        return await request_validation_exception_handler(request, exc)
+
+    from api.ticket_worker import verify_task_oidc
+
+    try:
+        await verify_task_oidc(request)
+    except HTTPException as auth_error:
+        return JSONResponse(
+            status_code=auth_error.status_code,
+            content={"detail": auth_error.detail},
+            headers=auth_error.headers,
+        )
+
+    logger.warning(
+        "authenticated Cloud Task rejected as permanent schema error "
+        "(validation_errors=%d)",
+        len(exc.errors()),
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
 # CORS Middleware — uses environment-aware origins
 app.add_middleware(
     CORSMiddleware,
@@ -498,14 +547,14 @@ def _custom_openapi():
         for op in ops.values():
             if not isinstance(op, dict):
                 continue
-            if path.startswith("/api/v2/handle-ticket"):
+            if path.startswith(("/api/v1/handle-ticket",
+                                "/api/v1/tickets/",
+                                "/api/v2/handle-ticket",
+                                "/api/v2/ticket-jobs/")):
                 op["security"] = [
                     {"ApiKeyAuth": [], "WorkloadIdentity": [], "CloudRunIAM": []},
                     {"ApiKeyAuth": [], "WorkloadIdentity": []},
                 ]
-            elif path.startswith(("/api/v1/handle-ticket", "/api/v1/tickets/",
-                                  "/api/v2/ticket-jobs/")):
-                op["security"] = [{"ApiKeyAuth": []}]
     app.openapi_schema = schema
     return schema
 
@@ -542,12 +591,29 @@ async def verify_api_key(
     await authenticate_principal(request)
 
 
+async def verify_v2_api_key(
+    request: Request, api_key: Optional[str] = Security(_API_KEY_SCHEME)
+):
+    """v2 only accepts an explicitly mapped principal and tenant.
+
+    The legacy ``API_KEY → default/default`` compatibility path is restricted
+    to v1 during migration; it is never a v2 credential.
+    """
+    from api.auth import authenticate_principal
+    await authenticate_principal(
+        request, allow_legacy=False, require_tenant=True
+    )
+
+
 async def verify_workload_identity(http_request: Request) -> None:
     """Dependency de v1/v2: identidad workload independiente de X-API-Key
     (Tarea 4 Paso 2a). No-op mientras WIF no esté configurado (ventana de
     migración); una vez activo, cierra el bypass de v1 (P1 review). La
     verificación completa vive en api.auth."""
-    verify_workload_identity_token(http_request)
+    # google-auth verifica firma/claims de forma síncrona y puede refrescar
+    # los certificados públicos de Google por red. Sacarlo del event loop
+    # evita que una renovación de JWKS bloquee todas las requests del worker.
+    await asyncio.to_thread(verify_workload_identity_token, http_request)
 
 
 def get_rag_engine(request: Request) -> RAGEngine:
@@ -730,11 +796,15 @@ async def readyz(request: Request):
         if active:
             _need("ticket_repo")
             _need("ticket_queue")
+            _need("forusbots_client")
             if getattr(st, "participant_plan_validator", None) is None:
                 missing.append("participant_plan_validator")
     elif role == "worker":
         _need("ticket_repo")
-        for attr in ("rag_engine", "pinecone_uploader", "inquiry_router"):
+        for attr in (
+            "rag_engine", "pinecone_uploader", "inquiry_router",
+            "forusbots_client",
+        ):
             _need(attr)
     elif role == "reconciler":
         _need("ticket_repo")
@@ -1251,6 +1321,41 @@ def _request_principal(http_request: Request) -> str:
     return getattr(http_request.state, "principal_id", None) or "default"
 
 
+def _poll_owner_matches(record: TicketJobRecord, http_request: Request) -> bool:
+    """Authorize from control-only ownership data before any mutation.
+
+    Raw tenant IDs live in the TTL-bound payload.  A missing/expired payload
+    must therefore be authorized using the stable hash retained in control;
+    legacy records without that hash fall back to their raw tenant field.
+    """
+    if record.principal_id != _request_principal(http_request):
+        return False
+    tenant_id = getattr(http_request.state, "tenant_id", None)
+    if tenant_id is None:
+        return False
+    if record.tenant_id_hash is not None:
+        return record.tenant_id_hash == hash_tenant_id(tenant_id)
+    return record.tenant_id == tenant_id
+
+
+async def _lazy_terminalize_poll_record(
+    repo: TicketJobRepository,
+    record: TicketJobRecord,
+    payload_present: bool,
+) -> Tuple[Optional[TicketJobRecord], bool]:
+    """Revalidate deadline/payload and terminalize atomically after auth.
+
+    The repository performs the condition check, lease fence, terminal state,
+    receipt/TTL update, and exactly-once slot release in one transaction.  The
+    endpoint calls this only *after* principal+tenant authorization, so an
+    object probe cannot mutate another tenant's job.
+    """
+    if record.state in TERMINAL_STATES:
+        return record, payload_present
+    await repo.terminalize_if_unrecoverable(record.job_id)
+    return await repo.get_with_payload_state(record.job_id)
+
+
 def _extract_idempotency_key(
     request: HandleTicketRequest, http_request: Request, *, allow_body: bool = True
 ) -> Optional[str]:
@@ -1294,6 +1399,33 @@ async def _accept_ticket_job(
     Devuelve (record, idempotency_replayed). Un crash entre record y enqueue
     se cierra reasegurando el enqueue en el retry (task name determinístico).
     """
+    principal = _request_principal(http_request)
+    fault_header = http_request.headers.get(FAULT_TEST_HEADER)
+    if fault_header is not None \
+            and getattr(http_request.state, "principal_id", None) is None:
+        # The test contract is never accepted through the legacy fallback of
+        # this internal helper: the public route must have authenticated and
+        # attached an explicit principal first.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FAULT_INJECTION_REJECTED"},
+        )
+    try:
+        fault_plan = accept_fault_plan_from_request(
+            app_env=settings.APP_ENV,
+            header_value=fault_header,
+            principal_id=principal,
+            secret=settings.TICKET_FAULT_SIGNING_SECRET,
+        )
+    except FaultInjectionRejected as exc:
+        ticket_metrics.increment("ticket_fault_plan_rejected")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail={"code": "FAULT_INJECTION_REJECTED"},
+        ) from exc
+    if fault_plan is not None:
+        ticket_metrics.increment("ticket_fault_plan_accepted")
+
     effective_mode = _effective_ticket_mode(
         settings.TICKET_HANDLER_MODE,
         getattr(request, "ticket_handler_mode", None),
@@ -1304,7 +1436,6 @@ async def _accept_ticket_job(
             detail="Ticket handler is disabled.",
         )
 
-    principal = _request_principal(http_request)
     tenant = getattr(http_request.state, "tenant_id", None) or "default"
 
     # Autorización canónica participant-plan-tenant ANTES de cuotas y de
@@ -1320,10 +1451,13 @@ async def _accept_ticket_job(
                                "configurada; un modo activo no autoriza sin ella"},
         )
     try:
-        authorized = await validator.authorize(
-            tenant_id=tenant,
-            participant_id=request.participant_id,
-            plan_id=request.plan_id,
+        authorized = await asyncio.wait_for(
+            validator.authorize(
+                tenant_id=tenant,
+                participant_id=request.participant_id,
+                plan_id=request.plan_id,
+            ),
+            timeout=settings.PARTICIPANT_PLAN_TIMEOUT_S,
         )
     except ParticipantPlanUnavailable:
         ticket_metrics.increment("ticket_participant_plan_unavailable")
@@ -1341,7 +1475,11 @@ async def _accept_ticket_job(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
         )
-    if authorized is None:
+    if authorized is None or (
+        authorized.tenant_id != tenant
+        or authorized.participant_id != request.participant_id
+        or authorized.plan_id != request.plan_id
+    ):
         ticket_metrics.increment("ticket_participant_plan_mismatch")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -1357,18 +1495,30 @@ async def _accept_ticket_job(
     # None de la fuente significa "sin record keeper afirmado" y DEBE sustituir
     # cualquier valor del body (no dejarlo sobrevivir).
     payload["record_keeper"] = authorized.record_keeper
+    payload["participant_id"] = authorized.participant_id
+    payload["plan_id"] = authorized.plan_id
     fingerprint = fingerprint_request(payload)
 
     # Resolución de idempotencia ANTES de las cuotas de jobs nuevos (Tarea 4
     # Paso 5): un replay no consume rate limit ni slots y repara un enqueue
     # pendiente; sólo un job lógico recién creado paga cuota.
     if idem_key is not None:
-        peek_outcome, peeked = await repo.peek_idempotent(
-            principal_id=principal,
-            idempotency_key=idem_key,
-            api_version=api_version,
-            request_fingerprint=fingerprint,
-        )
+        try:
+            peek_outcome, peeked = await repo.peek_idempotent(
+                principal_id=principal,
+                idempotency_key=idem_key,
+                api_version=api_version,
+                request_fingerprint=fingerprint,
+                tenant_id=tenant,
+            )
+        except IdempotencyTenantMismatch as exc:
+            ticket_metrics.increment("ticket_jobs_conflicted")
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail={"code": "IDEMPOTENCY_TENANT_MISMATCH",
+                        "message": "la Idempotency-Key pertenece a otro "
+                                   "tenant"},
+            ) from exc
         if peek_outcome == "conflict":
             ticket_metrics.increment("ticket_jobs_conflicted")
             raise HTTPException(
@@ -1387,6 +1537,41 @@ async def _accept_ticket_job(
                     record.job_id, record.enqueue_generation)
                 record = await repo.mark_enqueued(record.job_id, task_name)
             return record, True
+
+    # Admission applies only to a NEW logical job. Replays have already paid
+    # admission and must retain their durable recovery semantics.
+    queue = http_request.app.state.ticket_queue
+    try:
+        estimated_delay_s = float(await queue.estimated_queue_delay_s())
+    except asyncio.CancelledError:
+        raise
+    except Exception as exc:
+        logger.warning(
+            "ticket queue delay estimate unavailable (error_type=%s)",
+            type(exc).__name__,
+        )
+        ticket_metrics.increment("ticket_queue_delay_unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "QUEUE_DELAY_ESTIMATE_UNAVAILABLE",
+                    "retryable": True},
+            headers={"Retry-After": "30"},
+        ) from exc
+    if not math.isfinite(estimated_delay_s) or estimated_delay_s < 0:
+        ticket_metrics.increment("ticket_queue_delay_unavailable")
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail={"code": "QUEUE_DELAY_ESTIMATE_UNAVAILABLE",
+                    "retryable": True},
+            headers={"Retry-After": "30"},
+        )
+    if estimated_delay_s > settings.TICKET_ADMISSION_QUEUE_DELAY_CEILING_S:
+        ticket_metrics.increment("ticket_queue_delay_rejected")
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail={"code": "QUEUE_DELAY_EXCEEDED", "retryable": True},
+            headers={"Retry-After": "30"},
+        )
 
     # Cuotas por principal (HT-06) sólo para jobs NUEVOS: rate limit del
     # productor + cap de outstanding. El límite global lo impone la cola.
@@ -1421,6 +1606,7 @@ async def _accept_ticket_job(
         tenant_id=authorized.tenant_id,
         ticket_id=request.ticket.ticket_id,
         request_payload=payload,
+        fault_plan=fault_plan,
         trace_id=getattr(http_request.state, "request_id", None),
         # deadline ABSOLUTO del job (Tarea 7 Paso 1): worker/reconciliador/
         # GET terminalizan después de vencido; Cloud Tasks no es el reloj.
@@ -1603,7 +1789,7 @@ async def handle_ticket_endpoint(
 @app.get(
     "/api/v1/tickets/{ticket_job_id}",
     response_model=TicketStatusResponse,
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_api_key), Depends(verify_workload_identity)],
     tags=["RAG Endpoints"],
 )
 async def get_ticket_status(
@@ -1621,12 +1807,21 @@ async def get_ticket_status(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Ticket job not found or expired.",
         )
-    if record.principal_id != _request_principal(http_request):
+    if not _poll_owner_matches(record, http_request):
         ticket_metrics.increment("ticket_poll_forbidden")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "TICKET_JOB_FORBIDDEN",
                     "message": "el job pertenece a otro principal"},
+        )
+    record, payload_present = await _lazy_terminalize_poll_record(
+        repo, record, payload_present
+    )
+    if record is None:
+        ticket_metrics.increment("ticket_poll_not_found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ticket job not found or expired.",
         )
     if not payload_present:
         ticket_metrics.increment("ticket_poll_gone")
@@ -1661,7 +1856,7 @@ async def get_ticket_status(
 
 @app.post(
     "/api/v2/handle-ticket",
-    dependencies=[Depends(verify_api_key), Depends(verify_workload_identity)],
+    dependencies=[Depends(verify_v2_api_key), Depends(verify_workload_identity)],
     tags=["RAG Endpoints"],
     status_code=status.HTTP_202_ACCEPTED,
     response_model=TicketJobAcceptedV2,
@@ -1729,7 +1924,7 @@ async def handle_ticket_v2(
 
 @app.get(
     "/api/v2/ticket-jobs/{ticket_job_id}",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_v2_api_key), Depends(verify_workload_identity)],
     tags=["RAG Endpoints"],
     response_model=TicketJobStatusV2,
     responses={
@@ -1755,10 +1950,18 @@ async def get_ticket_job_v2(
             status_code=status.HTTP_404_NOT_FOUND,
             detail={"code": "TICKET_JOB_NOT_FOUND"},
         )
-    if record.principal_id != _request_principal(http_request):
+    if not _poll_owner_matches(record, http_request):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "TICKET_JOB_FORBIDDEN"},
+        )
+    record, payload_present = await _lazy_terminalize_poll_record(
+        repo, record, payload_present
+    )
+    if record is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "TICKET_JOB_NOT_FOUND"},
         )
     if not payload_present:
         raise HTTPException(
@@ -1773,6 +1976,9 @@ async def get_ticket_job_v2(
             route=e.get("route"),
             execution_status=e.get("execution_status", "pending"),
             participant_reply_safe=bool(e.get("participant_reply_safe")),
+            manual_reconciliation_required=bool(
+                e.get("manual_reconciliation_required")
+            ),
             result=e.get("result"),
             error=e.get("error"),
         )
@@ -1788,6 +1994,7 @@ async def get_ticket_job_v2(
         total_inquiries=record.total_inquiries,
         processed_inquiries=record.processed_inquiries,
         unprocessed_inquiries=record.unprocessed_inquiries,
+        forusbots_job_ids=record.forusbots_job_ids,
         inquiries=inquiries,
         next_action=record.next_action.value,
         error={"code": record.public_error_code,

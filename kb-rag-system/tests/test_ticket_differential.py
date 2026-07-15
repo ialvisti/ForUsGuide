@@ -9,6 +9,7 @@ umbral aprobado.
 from __future__ import annotations
 
 import importlib.util
+import json
 import sys
 from pathlib import Path
 
@@ -112,3 +113,39 @@ class TestDifferentialHarness:
         assert t["duplicate_reply_rate_max"] == 0.0
         assert t["unexplained_poll_404_rate_max"] == 0.0
         assert t["semantic_acceptability_min"] >= 0.95
+
+    def test_cli_calls_both_configured_systems_and_writes_report(
+            self, tmp_path, monkeypatch):
+        cases = tmp_path / "cases.json"
+        output = tmp_path / "report.json"
+        cases.write_text(json.dumps({
+            "cases": [{"case_id": "c1", "request": {"safe": True}}]
+        }))
+        calls = []
+
+        class _Client:
+            async def aclose(self):
+                return None
+
+        def _builders(**_kwargs):
+            async def legacy(case):
+                calls.append(("legacy", case["case_id"]))
+                return _matching_result()
+
+            async def v2(case):
+                calls.append(("v2", case["case_id"]))
+                return _matching_result()
+
+            return legacy, v2, _Client()
+
+        monkeypatch.setattr(ticket_differential, "_build_http_runners", _builders)
+        monkeypatch.setenv("TICKET_DIFFERENTIAL_API_KEY", "test-key")
+        code = ticket_differential.main([
+            "--cases", str(cases), "--out", str(output),
+            "--legacy-url", "https://legacy.invalid",
+            "--v2-url", "https://v2.invalid",
+        ])
+
+        assert code == 0
+        assert calls == [("legacy", "c1"), ("v2", "c1")]
+        assert json.loads(output.read_text())["passed"] is True

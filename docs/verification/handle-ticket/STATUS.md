@@ -1,70 +1,98 @@
 # Estado de ejecución del plan de finalización handle-ticket
 
-Actualizado 2026-07-15. Rama `handle-ticket-production-finalization` (worktree
-`ForUsGuide-handle-ticket-finalization`), 15 commits sobre `3d48415`. **NO se
-ha hecho push** (mutación Git sin aprobación). Suite CI local:
-`569 passed, 15 skipped` en Python 3.14 (bootstrap NO autoritativo; el gate
-real es Cloud Build Python 3.12).
+Revisado el 2026-07-15 en el worktree aislado
+`ForUsGuide-handle-ticket-finalization`, rama
+`handle-ticket-production-finalization`. El punto de partida revisado es
+`124b55f` (16 commits sobre `3d48415`); las correcciones de esta segunda
+auditoría todavía están locales hasta cerrar todos los gates de verificación.
+No se hizo push ni PR y el worktree sucio original no se modificó.
 
-Revisión adversarial (Tarea 15 Paso 5) ejecutada: 17 hallazgos, 8 confirmados;
-los 3 P1 y 3 P2 corregidos RED-first en `da1efe4` (ver `15-review-checklist.md`).
-Los P1 eran: v1 evadía el segundo factor WIF, pérdida de ForusBots job IDs en
-checkpoints degradados, y el reconciliador terminalizaba sin fencear al worker.
+## Resultado ejecutivo
 
-## Tareas completadas localmente (0–12)
+La afirmación anterior “Tareas 0–12 completas” era demasiado fuerte. El estado
+correcto es:
 
-| Tarea | Commit | Estado |
-|---|---|---|
-| 0 preflight/worktree/contención | `0d6676f` | ✅ completa |
-| 1 contratos externos | `d574884` | ✅ documentada; **4 contratos PENDIENTES** (ver `01-external-contracts.md`) |
-| 2 pruebas RED | `98d5016` | ✅ 42 RED que codifican los 12 bloqueos |
-| 3 imagen/locks | `687cfc7` | ⚠️ **3a local completa**; 3b (locks 3.12, Dockerfile por digest, smoke real, pip-audit) DIFERIDA a Cloud Build |
-| 4 auth v2/WIF/roles | `a1ed02a` | ✅ completa |
-| 5 Firestore/TTL/cuotas | `2ddf28e` | ✅ código completo; emulador real DIFERIDO (sin docker) |
-| 6 worker resume/fencing | `8e4b468` | ✅ completa |
-| 7 Cloud Tasks/reconciler | `b8d10ff` | ✅ completa |
-| 8 dependencias/probes | `26aa3ee` | ✅ completa; probes live gateadas (skip sin creds) |
-| 9 diferencial/contratos | `3a760e3` | ⚠️ arnés + tests completos; **export n8n real BLOQUEADO (G3/Tarea 1)** |
-| 10 Terraform | `035ca2d` | ⚠️ declaración completa; `fmt/validate`/locks/`apply` DIFERIDOS a Cloud Build |
-| 11 observabilidad | `e7b8c3f` | ✅ métricas/readiness/runbook/drill; entrega de alertas a canales DIFERIDA (staging) |
-| 12 CI/CD | `0630204` | ⚠️ YAML/scripts/tests completos; **bootstrap G1B + push/PR BLOQUEADOS** |
+- código/runtime/IaC ampliamente endurecidos y **717/735 tests locales pasan**;
+- locks Python 3.12 y Terraform generados en Cloud Build por digest;
+- producción sigue intacta en `kb-rag-system-00048-bkc`, 100% de tráfico,
+  `TICKET_HANDLER_MODE=disabled`;
+- ningún apply, deploy, cambio de IAM/tráfico/secrets/n8n ni activación ocurrió;
+- Tarea 12 permanece incompleta porque falta un release-controller ejecutable
+  e inmutable; Tareas 13–18 no comenzaron.
 
-## Tareas 13–18: BLOQUEADAS (ninguna ejecutada)
+El trigger legacy `deploy-kb-rag-system` sigue activo y deploy-capable hasta
+un futuro G1B. Por ello no debe hacerse merge/push a `main` antes de
+neutralizarlo con el plan binario aprobado.
 
-Cada una requiere staging/producción activos y una o más de estas cosas que
-NO están disponibles ni aprobadas en esta sesión:
+## Correcciones de la segunda auditoría
 
-- **Sesión gcloud** para read/write (expiró con `invalid_rapt` el 2026-07-14).
-- **Toolchain** `terraform`/`docker` (ausentes; no se instala sin aprobación).
-- **`git push`** (mutación Git; el usuario exigió aprobación exacta).
-- **Contratos de la Tarea 1** (participant-plan, ForusBots HTTPS+idempotencia,
-  export n8n real, entrega final idempotente): los cuatro pendientes.
-- **Gates de aprobación** G1A/G1B/G1C/G2/G3/G4/G5/G6A/G6B/G7/G8/G9/G10: ninguno
-  registrado (tabla vacía en `approvals.md`).
+Además de las correcciones de Opus, se cerraron RED-first:
 
-| Tarea | Gate(s) | Bloqueo principal |
-|---|---|---|
-| 13 aplicar staging | G2 (+G1A/G1B/G1C/G3) | backend state, platform aplicada, base/cola/SAs, versiones sandbox |
-| 14 E2E/caos staging | G4 | staging activo + contratos live + datos sintéticos |
-| 15 rollback/merge/digest canónico | G5 (+G5V) | CI verde remoto, review, push, merge |
-| 16 baseline prod endurecida disabled | G6A/G6B | attestation staging, secret versions numéricas, plan/apply prod |
-| 17 shadow/knowledge/full | G7/G8/G9 | cohorts n8n, observación ≥24h/≥200 jobs por escalón |
-| 18 retiro legacy + evidencia final | G10 | 7 días/1.000 jobs full verdes |
+- Cloud Tasks admission: uso válido de stats/rate limits sin construir un
+  request GA v2 imposible;
+- worker con configuración core completa de RAG/LLM/ForusBots;
+- `plan_type` canónico no sobrescribible por el LLM;
+- WIF también en poll v1 y OIDC de tasks con audiencia/SA/email verificado;
+- CAS transaccional de `enqueue_generation`;
+- intent ForusBots durable antes del POST, fail-closed a reconciliación manual;
+- errores upstream y excepciones sin payload raw en logs/polls/Firestore;
+- SSN/cuentas/fechas textuales saneados antes de Pinecone;
+- replay idempotente ligado a tenant;
+- telemetría `ticket_executions` agregada y con TTL;
+- heartbeat incapaz de resucitar un lease vencido;
+- detect-secrets de CI leyendo el baseline actualizado real;
+- tres provider locks publicados con nombres únicos y builders E2E fijados.
 
-## Acciones operativas pendientes (para el usuario/owners)
+Detalle y limitaciones en `15-review-checklist.md`.
 
-1. `gcloud auth login --update-adc` en terminal interactiva (desbloquea GCP).
-2. Aprobar y ejecutar `git push` de la rama + abrir PR draft (Tarea 12 Paso 2a).
-3. Obtener los 4 contratos de la Tarea 1 de sus owners (ver
-   `01-external-contracts.md` §Registro de bloqueos).
-4. Registrar cada aprobación en `approvals.md` con el texto exacto
-   `APROBADO <GATE> <ALCANCE>` antes de la mutación correspondiente.
-5. Ejecutar Tareas 3b/10-validate en Cloud Build (imágenes fijadas por digest).
+## Estado por tarea
+
+| Tarea | Estado real |
+|---|---|
+| 0 preflight/contención | completa; snapshot GCP y worktree aislado |
+| 1 contratos externos | inventario completo, pero **4 contratos siguen ausentes** |
+| 2 regresiones RED | completa y ampliada en ambas revisiones |
+| 3 imagen/locks | locks completos; build/smoke/audit autoritativos esperan callback OAuth |
+| 4 auth/roles | código local cerrado; activación bloqueada por contrato participant-plan |
+| 5 Firestore/TTL/cuotas | código/IaC cerrado; 11 tests de emulador pendientes del build remoto |
+| 6 worker/fencing | cerrado localmente, incluida carrera de generación e intent externo |
+| 7 Cloud Tasks/reconciler | cerrado localmente; staging real no ejecutado |
+| 8 dependencias/probes | cerrado localmente; probes live gateadas |
+| 9 diferencial/contratos | arnés real listo; export n8n y entrega final reales ausentes |
+| 10 Terraform | módulo/roots/provider locks/validate tests presentes; ningún backend/apply |
+| 11 observabilidad | métricas/alertas/dashboard/runbook locales; canales reales no aplicados |
+| 12 CI/CD | **incompleta**: YAML/scripts endurecidos, pero falta empaquetar/probar el release-controller y cerrar scan/manifest E2E |
+| 13–18 rollout | no iniciadas; bloqueadas por gates, contratos y Tarea 12 |
+
+## GCP ejecutado en esta revisión
+
+Sólo builds no desplegables y artefactos en el bucket Cloud Build existente:
+
+- `6c5b340d-338e-407d-a81e-a03df2d5eb58`: locks Python, SUCCESS.
+- `5716e603-bee8-4655-8255-0a01cc431864`: resolver Terraform SUCCESS,
+  evidencia descartada por colisión de nombres.
+- `a9ccc924-68a2-48af-87da-53a55ce9fff9`: tres provider locks, SUCCESS.
+
+No se creó backend, API, queue, database, SA, trigger, secret, revisión o
+tráfico. Autenticación no equivale a `APROBADO Gx <ALCANCE>`.
+
+## Bloqueos que requieren intervención/autoridad nueva
+
+1. Completar el callback interactivo de
+   `gcloud auth login --update-adc` para ejecutar el build autoritativo sin
+   deploy.
+2. Implementar y revisar el release-controller, luego producir su digest
+   escaneado antes de pedir G1B.
+3. Obtener los cuatro contratos: participant-plan, ForusBots
+   HTTPS+idempotencia/reconcile, export real n8n + ARN WIF y entrega final
+   idempotente.
+4. Autorizar por separado push/PR si se desea publicar esta rama.
+5. Registrar cada gate en `approvals.md` con
+   `APROBADO <GATE> <ALCANCE>` y la evidencia exacta antes de cualquier
+   mutación.
 
 ## Definition of Done
 
-Abierto. El estado correcto es **"hardening/rollout en progreso"**, no "plan
-completo": producción sigue en `kb-rag-system-00048-bkc` (disabled) y no existe
-aún el rollback anchor `hardened-disabled` (Tarea 16). El trabajo de código,
-IaC, CI y pruebas está listo para pasar por los gates cuando el usuario
-desbloquee sesión, push y contratos.
+**Abierta.** El estado correcto es “hardening/rollout en progreso”. Aún no
+existe staging activo ni el rollback anchor `hardened-disabled` de producción,
+y no hay evidencia para G2–G10.

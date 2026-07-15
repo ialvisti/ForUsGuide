@@ -34,6 +34,10 @@ class TicketQueueError(Exception):
     pass
 
 
+class TicketQueueEstimationError(TicketQueueError):
+    """Queue capacity cannot be read safely, so new admission must stop."""
+
+
 def task_name_for_job(project: str, location: str, queue: str, job_id: str,
                       generation: int = 0) -> str:
     return (
@@ -57,10 +61,17 @@ class CloudTasksTicketQueue:
         dispatch_deadline_s: int = 540,
         generation_bumper: Optional[Callable[[str], Awaitable[int]]] = None,
     ):
-        from google.cloud import tasks_v2  # import perezoso
+        from google.cloud import tasks_v2, tasks_v2beta3  # import perezoso
 
         self._tasks_v2 = tasks_v2
         self._client = tasks_v2.CloudTasksAsyncClient()
+        # La API v2 GA de GetQueue no expone Queue.stats ni acepta read_mask.
+        # v2beta3 sí expone esos dos campos con el mismo permiso
+        # cloudtasks.queues.get. El SDK está fijado por requirements.lock;
+        # cualquier retirada/cambio de esa superficie hace que admisión falle
+        # cerrada en vez de aceptar trabajo con una estimación inventada.
+        self._stats_tasks_v2beta3 = tasks_v2beta3
+        self._stats_client = tasks_v2beta3.CloudTasksAsyncClient()
         self._project = project
         self._location = location
         self._queue = queue
@@ -131,33 +142,44 @@ class CloudTasksTicketQueue:
         )
 
     async def estimated_queue_delay_s(self) -> float:
-        """Estimación best-effort de la demora de admisión (Tarea 7 Paso 1):
-        tasks encoladas / tasa de despacho. Si las stats no están disponibles
-        devuelve 0 (no bloquea); el techo duro lo dan deadline + n8n watch."""
+        """Estimate queued work / dispatch rate, failing closed if unknown."""
         try:
             from google.protobuf import field_mask_pb2
 
-            queue = await self._client.get_queue(request={
-                "name": self._client.queue_path(
+            request = self._stats_tasks_v2beta3.GetQueueRequest(
+                name=self._stats_client.queue_path(
                     self._project, self._location, self._queue),
-                "read_mask": field_mask_pb2.FieldMask(paths=["stats"]),
-            })
+                read_mask=field_mask_pb2.FieldMask(paths=[
+                    "stats.tasks_count",
+                    "rate_limits.max_dispatches_per_second",
+                ]),
+            )
+            queue = await self._stats_client.get_queue(request=request)
             stats = getattr(queue, "stats", None)
             tasks_count = int(getattr(stats, "tasks_count", 0) or 0)
             rate = float(getattr(
                 getattr(queue, "rate_limits", None),
                 "max_dispatches_per_second", 0) or 0)
             if rate <= 0:
-                return 0.0
-            return tasks_count / rate
-        except Exception:  # noqa: BLE001 - stats son best-effort
-            return 0.0
+                raise TicketQueueEstimationError(
+                    "dispatch rate unavailable for queue admission")
+            return max(0, tasks_count) / rate
+        except TicketQueueEstimationError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - admission remains fail-closed
+            logger.warning(
+                "Cloud Tasks queue stats unavailable (error_type=%s)",
+                type(exc).__name__,
+            )
+            raise TicketQueueEstimationError(
+                "queue stats unavailable for admission") from exc
 
     async def aclose(self) -> None:
-        try:
-            await self._client.transport.close()
-        except Exception:  # pragma: no cover
-            logger.exception("error cerrando CloudTasksAsyncClient")
+        for client in (self._client, self._stats_client):
+            try:
+                await client.transport.close()
+            except Exception:  # pragma: no cover
+                logger.exception("error cerrando CloudTasksAsyncClient")
 
 
 class InlineTicketQueue:

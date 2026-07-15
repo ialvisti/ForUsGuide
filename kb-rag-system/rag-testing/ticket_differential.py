@@ -21,11 +21,15 @@ staging; heurística determinística por defecto).
 from __future__ import annotations
 
 import argparse
+import asyncio
 import json
+import os
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Dict, List, Optional
+
+import httpx
 
 THRESHOLDS_PATH = Path(__file__).with_name("ticket_differential_thresholds.json")
 
@@ -214,15 +218,168 @@ def _human_summary(report: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
-def main(argv=None) -> int:  # pragma: no cover - CLI, ejercitado en staging
+def _load_cases(path: Path) -> List[Dict[str, Any]]:
+    document = json.loads(path.read_text())
+    if isinstance(document, list):
+        cases = document
+    elif isinstance(document, dict) and isinstance(document.get("cases"), list):
+        cases = document["cases"]
+    elif isinstance(document, dict) and isinstance(document.get("request"), dict):
+        cases = [{"case_id": document.get("case_id", path.stem),
+                  "request": document["request"]}]
+    else:
+        raise ValueError("--cases debe contener una lista/cases[]/request")
+    if not all(isinstance(case, dict) and case.get("case_id") for case in cases):
+        raise ValueError("cada caso requiere case_id")
+    return cases
+
+
+def _reply_text(document: Dict[str, Any]) -> Optional[str]:
+    primary = document.get("primary") or {}
+    return (
+        primary.get("needs_more_info_message")
+        or ((primary.get("knowledge_answer") or {}).get("answer"))
+        or (((primary.get("generate_response") or {}).get("response") or {})
+            .get("response_to_participant"))
+    )
+
+
+def normalize_http_result(document: Dict[str, Any]) -> Dict[str, Any]:
+    """Normalize public v1/v2 shapes without retaining raw request content."""
+    inquiries = document.get("inquiries") or []
+    if not inquiries and document.get("primary"):
+        inquiries = [document["primary"], *(document.get("related") or [])]
+    all_safe = bool(inquiries) and all(
+        item.get("participant_reply_safe") is True for item in inquiries
+    )
+    metadata = document.get("metadata") or {}
+    ids = list(document.get("forusbots_job_ids") or [])
+    for item in inquiries:
+        result = item.get("result") or item
+        diagnostics = result.get("diagnostics") or {}
+        for key in ("forusbots_job_id", "forusbots_participant_job_id",
+                    "forusbots_plan_job_id"):
+            if diagnostics.get(key) and diagnostics[key] not in ids:
+                ids.append(diagnostics[key])
+    total = document.get("total_inquiries")
+    if total is None:
+        total = document.get("total_inquiries_in_ticket")
+    state = document.get("state") or (
+        "succeeded" if document.get("route_taken") else None
+    )
+    next_action = document.get("next_action") or (
+        "send_participant_reply" if state == "succeeded" else None
+    )
+    return {
+        "state": state,
+        "next_action": next_action,
+        "all_inquiries_safe": all_safe,
+        "published": bool(document.get("published", False)),
+        "fallback": metadata.get("fallback") is True,
+        "total_inquiries": total,
+        "modules": sorted(document.get("modules") or []),
+        "forusbots_job_ids": sorted(ids),
+        "token_limit": document.get("token_limit"),
+        "deterministic_facts": document.get("deterministic_facts") or {},
+        "reply_text": _reply_text(document),
+        "poll_404_unexplained": bool(document.get("poll_404_unexplained")),
+        "duplicate_reply": bool(document.get("duplicate_reply")),
+    }
+
+
+def _build_http_runners(
+    *, legacy_url: str, v2_url: str, api_key: str,
+    workload_token: Optional[str], poll_timeout_s: float,
+    poll_interval_s: float,
+) -> tuple[SystemRunner, SystemRunner, httpx.AsyncClient]:
+    client = httpx.AsyncClient(timeout=httpx.Timeout(60.0))
+
+    def _headers(case: Dict[str, Any], *, v2: bool) -> Dict[str, str]:
+        headers = {"X-API-Key": api_key}
+        idem = case.get("idempotency_key") or case["case_id"]
+        headers["Idempotency-Key"] = str(idem)
+        if v2 and workload_token:
+            headers["X-ForUs-Workload-Authorization"] = \
+                f"Bearer {workload_token}"
+        return headers
+
+    async def legacy(case: Dict[str, Any]) -> Dict[str, Any]:
+        response = await client.post(
+            legacy_url, json=case["request"], headers=_headers(case, v2=False)
+        )
+        response.raise_for_status()
+        return normalize_http_result(response.json())
+
+    async def v2(case: Dict[str, Any]) -> Dict[str, Any]:
+        headers = _headers(case, v2=True)
+        payload = dict(case["request"])
+        payload.pop("idempotency_key", None)
+        payload.pop("ticket_handler_mode", None)
+        response = await client.post(v2_url, json=payload, headers=headers)
+        response.raise_for_status()
+        accepted = response.json()
+        location = response.headers.get("Location") or accepted.get("status_url")
+        if response.status_code != 202 or not location:
+            raise ValueError("v2 no devolvió 202 + status_url")
+        poll_url = str(response.url.join(location))
+        deadline = asyncio.get_running_loop().time() + poll_timeout_s
+        while True:
+            polled = await client.get(poll_url, headers=headers)
+            if polled.status_code == 404:
+                return normalize_http_result({"poll_404_unexplained": True})
+            polled.raise_for_status()
+            document = polled.json()
+            if document.get("state") in {
+                "succeeded", "partial", "failed", "timeout", "cancelled"
+            }:
+                return normalize_http_result(document)
+            if asyncio.get_running_loop().time() >= deadline:
+                raise TimeoutError("v2 poll excedió el timeout diferencial")
+            retry_after = float(polled.headers.get("Retry-After") or poll_interval_s)
+            await asyncio.sleep(min(30.0, max(poll_interval_s, retry_after)))
+
+    return legacy, v2, client
+
+
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description="Arnés diferencial legacy vs v2")
     parser.add_argument("--cases", required=True, help="JSON con casos sanitizados")
     parser.add_argument("--out", required=True, help="ruta del reporte JSON")
+    parser.add_argument("--legacy-url", default=os.getenv("TICKET_LEGACY_URL"))
+    parser.add_argument("--v2-url", default=os.getenv("TICKET_V2_URL"))
+    parser.add_argument("--poll-timeout-s", type=float, default=2700.0)
+    parser.add_argument("--poll-interval-s", type=float, default=3.0)
     args = parser.parse_args(argv)
-    print("ticket_differential requiere runners live cableados en staging; "
-          "no se ejecuta legacy/v2 desde la CLI local (Tarea 14).",
-          file=sys.stderr)
-    return 2
+    api_key = os.getenv("TICKET_DIFFERENTIAL_API_KEY", "")
+    if not args.legacy_url or not args.v2_url or not api_key:
+        parser.error(
+            "requiere --legacy-url/--v2-url y TICKET_DIFFERENTIAL_API_KEY"
+        )
+
+    async def _run() -> Dict[str, Any]:
+        legacy, v2, client = _build_http_runners(
+            legacy_url=args.legacy_url,
+            v2_url=args.v2_url,
+            api_key=api_key,
+            workload_token=os.getenv("TICKET_DIFFERENTIAL_WORKLOAD_TOKEN"),
+            poll_timeout_s=args.poll_timeout_s,
+            poll_interval_s=args.poll_interval_s,
+        )
+        try:
+            return await run_differential(
+                _load_cases(Path(args.cases)), legacy, v2
+            )
+        finally:
+            await client.aclose()
+
+    try:
+        report = asyncio.run(_run())
+        Path(args.out).write_text(json.dumps(report, indent=2, sort_keys=True))
+        print(_human_summary(report))
+        return 0 if report["passed"] else 1
+    except Exception as exc:  # noqa: BLE001 - CLI emits type only, no PII/body
+        print(f"differential error: {type(exc).__name__}", file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":  # pragma: no cover

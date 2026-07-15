@@ -1,15 +1,19 @@
-# Trigger handle-ticket-evidence-manifest (plan Tarea 12/15 Paso 8a).
-# Controller confiable: acepta un evidence-branch SHA docs-only, verifica que
-# el diff contra main sólo sea evidencia sanitizada, valida G2/G4/G5 y las
-# generations de E2E/differential/rollback, y crea un manifest write-once.
-# Sin state/deploy.
+# Trusted evidence controller. It accepts a docs-only evidence SHA, downloads
+# every artifact by immutable GCS generation, hashes the bytes, binds the exact
+# G2/G4/G5 approval rows and only then creates a write-once manifest.
 substitutions:
+  _MAIN_SHA: ""
+  _IMAGE_DIGEST: ""
+  _CI_PROVENANCE_URI: ""
+  _SBOM_URI: ""
+  _SCAN_URI: ""
+  _STAGING_REVISIONS_URI: ""
   _E2E_URI: ""
   _DIFFERENTIAL_URI: ""
   _ROLLBACK_URI: ""
-  _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+
 steps:
-  - name: 'gcr.io/cloud-builders/git'
+  - name: 'gcr.io/cloud-builders/git@sha256:739e7bda8456932210aaf911d44b8ce91eeca84934b851c340a77efc4dd948ec'
     id: 'diff-docs-only'
     entrypoint: bash
     args:
@@ -17,24 +21,99 @@ steps:
       - |
         set -euo pipefail
         git fetch origin main
-        # el diff contra main SÓLO puede tocar evidencia sanitizada
-        if git diff --name-only origin/main...HEAD | grep -vE '^(docs/verification/|kb-rag-system/Development Docs/|.*README\.md$)'; then
-          echo "STOP: el evidence branch toca archivos fuera del allowlist docs-only" >&2
+        if git diff --name-only origin/main...HEAD \
+          | grep -vE '^(docs/verification/|kb-rag-system/Development Docs/|.*README\.md$)'; then
+          echo "STOP: evidence branch fuera del allowlist docs-only" >&2
           exit 1
         fi
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
-    id: 'build-manifest'
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+    id: 'fetch-artifacts'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        # verifica que las generations de E2E/differential/rollback existen y
-        # ensambla el evidence manifest create-only.
-        for uri in "${_E2E_URI}" "${_DIFFERENTIAL_URI}" "${_ROLLBACK_URI}"; do
-          gsutil stat "$uri"
-        done
-        gsutil -h "x-goog-if-generation-match:0" cp /workspace/evidence_manifest.json \
-          gs://${_EVIDENCE_BUCKET}/evidence/$COMMIT_SHA/evidence_manifest.json
+        fetch_artifact() {
+          local name="$$1" uri="$$2"
+          [[ "$$uri" =~ ^gs://[a-z0-9][a-z0-9._-]*/[^#]+#[1-9][0-9]*$ ]] || {
+            echo "STOP: $$name no tiene generation numérica" >&2
+            exit 1
+          }
+          gcloud storage cp "$$uri" "/workspace/$$name.json"
+        }
+        fetch_artifact ci_provenance "${_CI_PROVENANCE_URI}"
+        fetch_artifact sbom "${_SBOM_URI}"
+        fetch_artifact scan "${_SCAN_URI}"
+        fetch_artifact staging_revisions "${_STAGING_REVISIONS_URI}"
+        fetch_artifact e2e "${_E2E_URI}"
+        fetch_artifact differential "${_DIFFERENTIAL_URI}"
+        fetch_artifact rollback "${_ROLLBACK_URI}"
+
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'create-and-verify-manifest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd /workspace/kb-rag-system
+        python scripts/create_evidence_manifest.py \
+          --evidence-sha "$COMMIT_SHA" \
+          --main-sha "${_MAIN_SHA}" \
+          --image-digest "${_IMAGE_DIGEST}" \
+          --controller-builder-digest \
+            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce' \
+          --approvals-file /workspace/docs/verification/handle-ticket/approvals.md \
+          --ci-provenance-uri "${_CI_PROVENANCE_URI}" \
+          --ci-provenance-file /workspace/ci_provenance.json \
+          --sbom-uri "${_SBOM_URI}" \
+          --sbom-file /workspace/sbom.json \
+          --scan-uri "${_SCAN_URI}" \
+          --scan-file /workspace/scan.json \
+          --staging-revisions-uri "${_STAGING_REVISIONS_URI}" \
+          --staging-revisions-file /workspace/staging_revisions.json \
+          --e2e-uri "${_E2E_URI}" \
+          --e2e-file /workspace/e2e.json \
+          --differential-uri "${_DIFFERENTIAL_URI}" \
+          --differential-file /workspace/differential.json \
+          --rollback-uri "${_ROLLBACK_URI}" \
+          --rollback-file /workspace/rollback.json \
+          --out /workspace/evidence_manifest.json \
+          > /workspace/evidence_manifest_hash.txt
+        python scripts/verify_evidence_manifest.py \
+          --manifest /workspace/evidence_manifest.json \
+          --expected-manifest-hash \
+            "$(cat /workspace/evidence_manifest_hash.txt)" \
+          --expected-evidence-sha "$COMMIT_SHA" \
+          --expected-main-sha "${_MAIN_SHA}" \
+          --expected-image-digest "${_IMAGE_DIGEST}" \
+          --expected-controller-builder-digest \
+            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce' \
+          --artifact ci_provenance=/workspace/ci_provenance.json \
+          --artifact sbom=/workspace/sbom.json \
+          --artifact scan=/workspace/scan.json \
+          --artifact staging_revisions=/workspace/staging_revisions.json \
+          --artifact e2e=/workspace/e2e.json \
+          --artifact differential=/workspace/differential.json \
+          --artifact rollback=/workspace/rollback.json
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+    id: 'upload-evidence-manifest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        object="gs://rag-kb-system-ticket-evidence-900340137010/evidence/$COMMIT_SHA/evidence_manifest.json"
+        gcloud storage cp --if-generation-match=0 /workspace/evidence_manifest.json \
+          "$$object"
+        generation="$(gcloud storage objects describe "$$object" \
+          --format='value(generation)')"
+        [[ "$$generation" =~ ^[1-9][0-9]*$ ]]
+        printf 'EVIDENCE_MANIFEST_URI=%s#%s\n' "$$object" "$$generation"
+        printf 'EVIDENCE_MANIFEST_HASH=%s\n' \
+          "$(cat /workspace/evidence_manifest_hash.txt)"
+
 options:
   logging: CLOUD_LOGGING_ONLY

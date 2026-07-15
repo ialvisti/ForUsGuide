@@ -9,8 +9,13 @@ determinísticos e idempotencia de ``ensure_enqueued`` en la cola inline.
 from __future__ import annotations
 
 import asyncio
+from types import SimpleNamespace
 
-from data_pipeline.ticket_task_queue import InlineTicketQueue, task_name_for_job
+from data_pipeline.ticket_task_queue import (
+    InlineTicketQueue,
+    TicketQueueEstimationError,
+    task_name_for_job,
+)
 
 
 class TestTaskNaming:
@@ -104,13 +109,53 @@ class _FakeCloudTasksClient:
         raise self._gexc.NotFound("tombstoned")
 
 
+class _FakeQueueStatsClient(_FakeCloudTasksClient):
+    def __init__(self, *, tasks_count=120, dispatch_rate=2.0, error=None):
+        super().__init__()
+        self.tasks_count = tasks_count
+        self.dispatch_rate = dispatch_rate
+        self.error = error
+        self.get_queue_request = None
+
+    async def get_queue(self, request=None, **kw):
+        self.get_queue_request = request
+        if self.error is not None:
+            raise self.error
+        return SimpleNamespace(
+            stats=SimpleNamespace(tasks_count=self.tasks_count),
+            rate_limits=SimpleNamespace(
+                max_dispatches_per_second=self.dispatch_rate,
+            ),
+        )
+
+
+class _StrictBetaQueueStatsClient(_FakeQueueStatsClient):
+    async def get_queue(self, request=None, **kw):
+        from google.cloud import tasks_v2beta3
+
+        # Reproduce la validación del transport real: GetQueue GA no acepta
+        # read_mask ni expone Queue.stats; la superficie beta3 sí.
+        parsed = tasks_v2beta3.GetQueueRequest(request)
+        self.get_queue_request = parsed
+        return SimpleNamespace(
+            stats=SimpleNamespace(tasks_count=self.tasks_count),
+            rate_limits=SimpleNamespace(
+                max_dispatches_per_second=self.dispatch_rate,
+            ),
+        )
+
+
 async def _noop_async():
     return None
 
 
-def _queue_with(fake):
+def _queue_with(fake, *, stats_fake=None):
+    stats_fake = stats_fake or fake
     with patch("google.cloud.tasks_v2.CloudTasksAsyncClient",
-               return_value=fake):
+               return_value=fake), patch(
+                   "google.cloud.tasks_v2beta3.CloudTasksAsyncClient",
+                   return_value=stats_fake,
+               ):
         return CloudTasksTicketQueue(
             project="rag-kb-system", location="us-central1",
             queue="ticket-jobs-staging",
@@ -120,6 +165,46 @@ def _queue_with(fake):
 
 
 class TestCloudTasksContract:
+
+    async def test_queue_delay_uses_stats_capable_api_surface(self):
+        ga_fake = _FakeCloudTasksClient()
+        stats_fake = _StrictBetaQueueStatsClient(
+            tasks_count=120, dispatch_rate=2,
+        )
+        queue = _queue_with(ga_fake, stats_fake=stats_fake)
+
+        assert await queue.estimated_queue_delay_s() == 60
+        assert stats_fake.get_queue_request is not None
+        assert set(stats_fake.get_queue_request.read_mask.paths) == {
+            "stats.tasks_count",
+            "rate_limits.max_dispatches_per_second",
+        }
+
+    async def test_queue_delay_reads_stats_and_rate_limits(self):
+        fake = _FakeQueueStatsClient(tasks_count=120, dispatch_rate=2)
+        queue = _queue_with(fake)
+
+        delay = await queue.estimated_queue_delay_s()
+
+        assert delay == 60
+        assert set(fake.get_queue_request.read_mask.paths) == {
+            "stats.tasks_count",
+            "rate_limits.max_dispatches_per_second",
+        }
+
+    async def test_queue_delay_estimation_failure_is_not_treated_as_zero(self):
+        fake = _FakeQueueStatsClient(error=RuntimeError("stats unavailable"))
+        queue = _queue_with(fake)
+
+        with pytest.raises(TicketQueueEstimationError, match="stats unavailable"):
+            await queue.estimated_queue_delay_s()
+
+    async def test_queue_delay_rejects_missing_dispatch_capacity(self):
+        fake = _FakeQueueStatsClient(tasks_count=10, dispatch_rate=0)
+        queue = _queue_with(fake)
+
+        with pytest.raises(TicketQueueEstimationError, match="dispatch rate"):
+            await queue.estimated_queue_delay_s()
 
     async def test_task_has_oidc_audience_and_explicit_dispatch_deadline(self):
         """Bloqueo 6 del plan: la task no fija dispatch_deadline; el default

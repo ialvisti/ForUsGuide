@@ -45,13 +45,13 @@ resource "google_storage_bucket" "evidence" {
 # (producer prod) se preserva y se importa; aquí se crean las NUEVAS.
 locals {
   runtime_sas = {
-    "ticket-worker-stg"      = "Worker runtime (staging)"
-    "ticket-reconciler-stg"  = "Reconciler runtime (staging)"
-    "ticket-task-signer-stg" = "Task signer (staging)"
-    "ticket-scheduler-stg"   = "Scheduler (staging)"
-    "ticket-producer-stg"    = "Producer runtime (staging)"
-    "n8n-ticket-invoker-stg" = "n8n WIF invoker (staging)"
-    "ticket-e2e-stg"         = "E2E runner (staging)"
+    "ticket-worker-stg"       = "Worker runtime (staging)"
+    "ticket-reconciler-stg"   = "Reconciler runtime (staging)"
+    "ticket-task-signer-stg"  = "Task signer (staging)"
+    "ticket-scheduler-stg"    = "Scheduler (staging)"
+    "ticket-producer-stg"     = "Producer runtime (staging)"
+    "n8n-ticket-invoker-stg"  = "n8n WIF invoker (staging)"
+    "ticket-e2e-stg"          = "E2E runner (staging)"
     "ticket-worker-prod"      = "Worker runtime (production)"
     "ticket-reconciler-prod"  = "Reconciler runtime (production)"
     "ticket-task-signer-prod" = "Task signer (production)"

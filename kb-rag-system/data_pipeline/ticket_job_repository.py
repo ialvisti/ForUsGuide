@@ -36,9 +36,12 @@ from data_pipeline.ticket_job_models import (
     TERMINAL_STATES,
     VALID_TRANSITIONS,
     CreateOrGetOutcome,
+    NextAction,
+    PublicErrorCode,
     TicketJobRecord,
     TicketJobState,
     hash_idempotency_key,
+    hash_tenant_id,
     utcnow,
 )
 
@@ -55,7 +58,8 @@ IDEM_COLLECTION = RECEIPTS_COLLECTION
 # Campos del record que viven en el documento de PAYLOAD (PII / volumen).
 _PAYLOAD_FIELDS = frozenset({
     "request_payload", "execution_plan", "per_inquiry_status",
-    "public_result", "private_diagnostics_ref",
+    "public_result", "private_diagnostics_ref", "tenant_id", "ticket_id",
+    "forusbots_job_ids", "fault_plan",
 })
 
 _RATE_WINDOW_S = 60
@@ -97,8 +101,56 @@ class StaleLeaseEpoch(TicketJobError):
     """Un worker con un lease_epoch viejo intentó escribir: queda fenced."""
 
 
+class IdempotencyReceiptOrphaned(TicketJobError):
+    """Receipt vigente cuyo control/tombstone falta: nunca se recrea."""
+
+
+class IdempotencyTenantMismatch(TicketJobError):
+    """La key pertenece a otro tenant del mismo principal: no replay."""
+
+
+class StaleEnqueueGeneration(TicketJobError):
+    """Una confirmación de Cloud Tasks corresponde a otra generación."""
+
+
 def principal_hash(principal_id: str) -> str:
     return hashlib.sha256(principal_id.encode("utf-8")).hexdigest()[:32]
+
+
+def _canonical_tenant_hash(
+    *, tenant_id: Optional[str], tenant_id_hash: Optional[str]
+) -> Optional[str]:
+    """Normaliza el binding sin confiar en un hash que contradiga el raw."""
+    if tenant_id is None:
+        return tenant_id_hash
+    canonical = hash_tenant_id(str(tenant_id))
+    if tenant_id_hash is not None and tenant_id_hash != canonical:
+        raise TicketJobError("tenant_id_hash no coincide con tenant_id")
+    return canonical
+
+
+def _assert_idempotency_tenant_binding(
+    *, receipt: dict, control: dict, expected_hash: Optional[str]
+) -> None:
+    """Fail closed para receipts nuevos y legados antes de devolver un job.
+
+    Los receipts previos a este campo se enlazan mediante el hash estable del
+    control/tombstone. Si receipt y control discrepan, tampoco se replaya.
+    """
+    receipt_hash = receipt.get("tenant_id_hash")
+    control_hash = _canonical_tenant_hash(
+        tenant_id=control.get("tenant_id"),
+        tenant_id_hash=control.get("tenant_id_hash"),
+    )
+    if receipt_hash is not None and control_hash != receipt_hash:
+        raise IdempotencyTenantMismatch(
+            "receipt y control tienen bindings de tenant distintos"
+        )
+    observed_hash = receipt_hash if receipt_hash is not None else control_hash
+    if observed_hash != expected_hash:
+        raise IdempotencyTenantMismatch(
+            "la Idempotency-Key pertenece a otro tenant"
+        )
 
 
 class _TxnView:
@@ -159,10 +211,16 @@ class InMemoryTicketJobBackend:
     async def dump_all(self) -> Dict[str, Dict[str, dict]]:
         return copy.deepcopy(self._data)
 
-    async def scan_collection(self, collection: str, limit: int = 100) -> list:
+    async def scan_collection(self, collection: str, limit: int = 100,
+                              *, states: Optional[list[str]] = None) -> list:
         docs = self._data.get(collection, {})
+        wanted = set(states) if states is not None else None
+        eligible = (
+            (doc_id, doc) for doc_id, doc in docs.items()
+            if wanted is None or doc.get("state") in wanted
+        )
         return [(doc_id, copy.deepcopy(doc))
-                for doc_id, doc in list(docs.items())[:limit]]
+                for doc_id, doc in list(eligible)[:limit]]
 
 
 class FirestoreTicketJobBackend:
@@ -255,9 +313,13 @@ class FirestoreTicketJobBackend:
     async def dump_all(self):  # pragma: no cover - sólo para tests in-memory
         raise NotImplementedError("dump_all es una utilidad del backend in-memory")
 
-    async def scan_collection(self, collection: str,
-                              limit: int = 100) -> list:  # pragma: no cover
-        query = self._client.collection(self._col(collection)).limit(limit)
+    async def scan_collection(self, collection: str, limit: int = 100,
+                              *, states: Optional[list[str]] = None
+                              ) -> list:  # pragma: no cover
+        query = self._client.collection(self._col(collection))
+        if states is not None:
+            query = query.where("state", "in", states)
+        query = query.limit(limit)
         out = []
         async for snap in query.stream():
             out.append((snap.id, snap.to_dict()))
@@ -351,6 +413,10 @@ class TicketJobRepository:
         )
         if candidate.principal_id != principal_id:
             raise TicketJobError("candidate.principal_id no coincide con el caller")
+        candidate_tenant_hash = _canonical_tenant_hash(
+            tenant_id=candidate.tenant_id,
+            tenant_id_hash=candidate.tenant_id_hash,
+        )
         candidate = candidate.model_copy(update={"idempotency_key_hash": idem_hash})
         p_hash = principal_hash(principal_id)
         now = utcnow()
@@ -364,11 +430,24 @@ class TicketJobRepository:
                         return None, CreateOrGetOutcome.CONFLICT
                     control = await view.get(JOBS_COLLECTION, receipt["job_id"])
                     if control is not None:
+                        try:
+                            _assert_idempotency_tenant_binding(
+                                receipt=receipt,
+                                control=control,
+                                expected_hash=candidate_tenant_hash,
+                            )
+                        except IdempotencyTenantMismatch:
+                            # Mantiene el contrato transaccional existente:
+                            # cualquier binding incompatible es CONFLICT y no
+                            # consume cuota ni crea/replaya un job.
+                            return None, CreateOrGetOutcome.CONFLICT
                         payload = await view.get(PAYLOADS_COLLECTION,
                                                  receipt["job_id"])
                         return (_record_to_doc(_join(control, payload)),
                                 CreateOrGetOutcome.REPLAYED)
-                    # receipt huérfano (control expirado): recrear
+                    raise IdempotencyReceiptOrphaned(
+                        f"receipt huérfano para job {receipt['job_id']}"
+                    )
 
             # 2) cuotas atómicas SOLO para jobs nuevos
             if self._rate_limit > 0:
@@ -402,6 +481,7 @@ class TicketJobRepository:
                     "job_id": candidate.job_id,
                     "request_fingerprint": request_fingerprint,
                     "principal_hash": p_hash,
+                    "tenant_id_hash": candidate_tenant_hash,
                     "api_version": candidate.api_version,
                     "state": candidate.state.value,
                     "created_at": now,
@@ -423,6 +503,7 @@ class TicketJobRepository:
         idempotency_key: str,
         api_version: str,
         request_fingerprint: str,
+        tenant_id: Optional[str],
     ) -> Tuple[str, Optional[TicketJobRecord]]:
         """Resolución de idempotencia ANTES de las cuotas (Tarea 4 Paso 5).
         Devuelve ("replay", record) | ("conflict", None) | ("new", None)."""
@@ -435,7 +516,17 @@ class TicketJobRepository:
             return "conflict", None
         control = await self.backend.get_doc(JOBS_COLLECTION, receipt["job_id"])
         if control is None:
-            return "new", None
+            raise IdempotencyReceiptOrphaned(
+                f"receipt huérfano para job {receipt['job_id']}"
+            )
+        _assert_idempotency_tenant_binding(
+            receipt=receipt,
+            control=control,
+            expected_hash=_canonical_tenant_hash(
+                tenant_id=tenant_id,
+                tenant_id_hash=None,
+            ),
+        )
         payload = await self.backend.get_doc(PAYLOADS_COLLECTION,
                                              receipt["job_id"])
         return "replay", _join(control, payload)
@@ -482,13 +573,23 @@ class TicketJobRepository:
                 raise JobNotFound(job_id)
             payload = await view.get(PAYLOADS_COLLECTION, job_id)
             record = _join(control, payload)
-            if expected_lease_epoch is not None \
-                    and record.lease_epoch != expected_lease_epoch:
-                raise StaleLeaseEpoch(
-                    f"lease_epoch actual {record.lease_epoch} != "
-                    f"esperado {expected_lease_epoch}"
-                )
             now = utcnow()
+            if expected_lease_epoch is not None:
+                if record.state in TERMINAL_STATES:
+                    raise StaleLeaseEpoch(
+                        f"job {job_id} terminal: escritura rechazada"
+                    )
+                if record.lease_epoch != expected_lease_epoch:
+                    raise StaleLeaseEpoch(
+                        f"lease_epoch actual {record.lease_epoch} != "
+                        f"esperado {expected_lease_epoch}"
+                    )
+                if record.lease_owner is None \
+                        or record.lease_expires_at is None \
+                        or now >= record.lease_expires_at:
+                    raise StaleLeaseEpoch(
+                        f"job {job_id}: lease vencido o sin owner"
+                    )
             updates: Dict[str, Any] = dict(changes)
             terminalizing = False
             if state is not None and state != record.state:
@@ -500,6 +601,10 @@ class TicketJobRepository:
                 if state in TERMINAL_STATES and record.completed_at is None:
                     terminalizing = True
                     updates["completed_at"] = now
+                    updates["lease_owner"] = None
+                    updates["lease_expires_at"] = None
+                    updates["claimed_by"] = None
+                    updates["claimed_at"] = None
                     if record.created_at is not None:
                         updates["elapsed_s"] = round(
                             (now - record.created_at).total_seconds(), 2
@@ -562,11 +667,23 @@ class TicketJobRepository:
                 raise JobNotFound(job_id)
             payload = await view.get(PAYLOADS_COLLECTION, job_id)
             record = _join(control, payload)
-            if lease_epoch is not None and record.lease_epoch != lease_epoch:
+            if record.state in TERMINAL_STATES:
                 raise StaleLeaseEpoch(
-                    f"checkpoint con epoch {lease_epoch}; actual "
-                    f"{record.lease_epoch}"
+                    f"job {job_id} terminal: checkpoint rechazado"
                 )
+            if lease_epoch is not None:
+                if record.lease_epoch != lease_epoch:
+                    raise StaleLeaseEpoch(
+                        f"checkpoint con epoch {lease_epoch}; actual "
+                        f"{record.lease_epoch}"
+                    )
+                now = utcnow()
+                if record.lease_owner is None \
+                        or record.lease_expires_at is None \
+                        or now >= record.lease_expires_at:
+                    raise StaleLeaseEpoch(
+                        f"job {job_id}: lease vencido o sin owner"
+                    )
             statuses = [s for s in record.per_inquiry_status
                         if s.get("index") != index]
             statuses.append({**entry, "index": index})
@@ -589,14 +706,114 @@ class TicketJobRepository:
 
         return _doc_to_record(await self.backend.transact(_txn))
 
+    async def reserve_forusbots_submit_intent(
+        self,
+        job_id: str,
+        index: int,
+        *,
+        worker_id: str,
+        lease_epoch: int,
+        route: str,
+    ) -> bool:
+        """Persiste el intent ANTES del primer POST de una inquiry.
+
+        Devuelve ``True`` sólo al primer owner/epoch que lo reserva. Si un
+        intent ya existe devuelve ``False`` y nunca lo borra: sin contrato de
+        idempotencia/reconciliación upstream no se puede distinguir entre un
+        POST que no salió y uno que creó un job cuya respuesta se perdió.
+
+        La comprobación del lease y la escritura del intent comparten la
+        transacción, tanto en memoria como en Firestore.
+        """
+
+        async def _txn(view):
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                raise JobNotFound(job_id)
+            payload = await view.get(PAYLOADS_COLLECTION, job_id)
+            if payload is None:
+                raise TicketJobError(
+                    f"job {job_id}: payload ausente; submit bloqueado"
+                )
+            record = _join(control, payload)
+            now = utcnow()
+            if record.state in TERMINAL_STATES \
+                    or record.lease_epoch != lease_epoch \
+                    or record.lease_owner != worker_id \
+                    or record.lease_expires_at is None \
+                    or now >= record.lease_expires_at:
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: lease perdido antes del intent ForusBots"
+                )
+
+            existing = next(
+                (entry for entry in record.per_inquiry_status
+                 if entry.get("index") == index),
+                None,
+            )
+            if existing and existing.get("forusbots_submit_intent") is True:
+                return False
+
+            statuses = [
+                entry for entry in record.per_inquiry_status
+                if entry.get("index") != index
+            ]
+            statuses.append({
+                "index": index,
+                "route": route,
+                "execution_status": "running",
+                "participant_reply_safe": False,
+                "forusbots_submit_intent": True,
+                "forusbots_submit_intent_epoch": lease_epoch,
+            })
+            statuses.sort(key=lambda entry: entry.get("index", 0))
+            merged = record.model_copy(update={
+                "per_inquiry_status": statuses,
+                "updated_at": now,
+            })
+            new_control, new_payload = split_record(merged)
+            view.set(JOBS_COLLECTION, job_id, new_control)
+            view.set(PAYLOADS_COLLECTION, job_id, new_payload)
+            return True
+
+        return await self.backend.transact(_txn)
+
     # ------------------------------------------------------------------
     # Claims de worker con fencing por epoch (Tarea 6 Paso 4a)
     # ------------------------------------------------------------------
 
+    async def assert_active_lease(self, job_id: str, *, worker_id: str,
+                                  lease_epoch: int) -> None:
+        """Fail-closed antes de un efecto externo.
+
+        Coincidir sólo por epoch no basta: un job puede haber terminalizado o
+        el lease puede haber vencido sin que otro worker lo haya reclamado.
+        """
+        control = await self.backend.get_doc(JOBS_COLLECTION, job_id)
+        if control is None:
+            raise StaleLeaseEpoch(f"job {job_id}: control ausente")
+        record = _doc_to_record(control)
+        if record.state in TERMINAL_STATES:
+            raise StaleLeaseEpoch(f"job {job_id}: estado terminal")
+        if record.lease_epoch != lease_epoch \
+                or record.lease_owner != worker_id:
+            raise StaleLeaseEpoch(
+                f"job {job_id}: owner/epoch del lease no coincide"
+            )
+        if record.lease_expires_at is None \
+                or utcnow() >= record.lease_expires_at:
+            raise StaleLeaseEpoch(f"job {job_id}: lease vencido")
+
     async def claim(self, job_id: str, *, worker_id: str,
-                    lease_s: float = 90.0) -> Optional[int]:
+                    lease_s: float = 90.0,
+                    expected_generation: Optional[int] = None) -> Optional[int]:
         """Claim transaccional. Devuelve el ``lease_epoch`` nuevo si este
         worker puede ejecutar el job, o None si el claim no procede.
+
+        Cuando el caller es una Cloud Task, ``expected_generation`` fencea
+        dentro de ESTA misma transacción el outbox y el lease. El pre-check
+        HTTP es sólo una optimización: una tombstone/requeue concurrente no
+        puede permitir que una task vieja reclame la generación nueva.
 
         Cada claim INCREMENTA ``lease_epoch``: un intento viejo que despierta
         después de perder su lease queda fenced en cualquier escritura
@@ -610,6 +827,12 @@ class TicketJobRepository:
             now = utcnow()
             if record.state in TERMINAL_STATES:
                 return None
+            if expected_generation is not None \
+                    and record.enqueue_generation != expected_generation:
+                raise StaleEnqueueGeneration(
+                    f"generación de enqueue actual {record.enqueue_generation} "
+                    f"!= esperada {expected_generation}"
+                )
             lease_expired = (
                 record.lease_expires_at is not None
                 and now > record.lease_expires_at
@@ -657,10 +880,13 @@ class TicketJobRepository:
             if control is None:
                 return False
             record = _doc_to_record(control)
-            if record.lease_epoch != lease_epoch \
-                    or record.lease_owner != worker_id:
-                return False
             now = utcnow()
+            if record.state in TERMINAL_STATES \
+                    or record.lease_epoch != lease_epoch \
+                    or record.lease_owner != worker_id \
+                    or record.lease_expires_at is None \
+                    or now >= record.lease_expires_at:
+                return False
             control["lease_expires_at"] = now + timedelta(seconds=lease_s)
             control["updated_at"] = now
             view.set(JOBS_COLLECTION, job_id, control)
@@ -668,9 +894,45 @@ class TicketJobRepository:
 
         return await self.backend.transact(_txn)
 
-    async def mark_enqueued(self, job_id: str, task_name: str) -> TicketJobRecord:
-        return await self.update(job_id, enqueue_state="enqueued",
-                                 task_name=task_name)
+    async def mark_enqueued(
+        self,
+        job_id: str,
+        task_name: str,
+        *,
+        expected_generation: Optional[int] = None,
+    ) -> TicketJobRecord:
+        """Confirma el enqueue sólo para la generación que creó ``task_name``.
+
+        La inferencia mantiene seguros los call sites existentes; aceptar una
+        confirmación sin generación permitiría que una task vieja ocultase un
+        outbox ``pending`` más nuevo.
+        """
+        if expected_generation is None:
+            try:
+                expected_generation = int(task_name.rsplit("-g", 1)[1])
+            except (IndexError, ValueError) as exc:
+                raise TicketJobError(
+                    "task_name no contiene una generación verificable"
+                ) from exc
+
+        async def _txn(view):
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                raise JobNotFound(job_id)
+            record = _doc_to_record(control)
+            if record.enqueue_generation != expected_generation:
+                raise StaleEnqueueGeneration(
+                    f"generación de enqueue actual {record.enqueue_generation} "
+                    f"!= esperada {expected_generation}"
+                )
+            control["enqueue_state"] = "enqueued"
+            control["task_name"] = task_name
+            control["updated_at"] = utcnow()
+            view.set(JOBS_COLLECTION, job_id, control)
+            payload = await view.get(PAYLOADS_COLLECTION, job_id)
+            return _record_to_doc(_join(control, payload))
+
+        return _doc_to_record(await self.backend.transact(_txn))
 
     async def bump_enqueue_generation(self, job_id: str) -> int:
         """Incremento TRANSACCIONAL de la generación de enqueue (Tarea 7
@@ -722,11 +984,24 @@ class TicketJobRepository:
 
         return await self.backend.transact(_txn)
 
-    async def fence_and_requeue(self, job_id: str) -> Optional[int]:
+    async def fence_and_requeue(
+        self,
+        job_id: str,
+        *,
+        recovery_owner: Optional[str] = None,
+        expected_lease_epoch: Optional[int] = None,
+        expected_lease_expires_at: Optional[datetime] = None,
+        observed_at: Optional[datetime] = None,
+    ) -> Optional[int]:
         """Repara un lease vencido (Tarea 7 Paso 5.2): incrementa
         ``lease_epoch`` para fencear al worker viejo, limpia owner/expiry,
         transiciona running→queued y quema una generación nueva. El
-        reconciliador NO conserva el lease de ejecución."""
+        reconciliador NO conserva el lease de ejecución.
+
+        Cuando se pasan precondiciones del snapshot, todas se comprueban en
+        la misma transacción. Un heartbeat posterior al scan invalida el CAS
+        y no puede ser pisado por el reconciliador.
+        """
 
         async def _txn(view):
             control = await view.get(JOBS_COLLECTION, job_id)
@@ -736,6 +1011,30 @@ class TicketJobRepository:
             if record.state in TERMINAL_STATES:
                 return None
             now = utcnow()
+            if recovery_owner is not None and (
+                record.recovery_lock_owner != recovery_owner
+                or record.recovery_lock_expires_at is None
+                or now > record.recovery_lock_expires_at
+            ):
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: recovery lock perdido"
+                )
+            if expected_lease_epoch is not None \
+                    and record.lease_epoch != expected_lease_epoch:
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: lease_epoch cambió desde el scan"
+                )
+            if expected_lease_expires_at is not None:
+                if record.state != TicketJobState.RUNNING \
+                        or record.lease_expires_at != expected_lease_expires_at:
+                    raise StaleLeaseEpoch(
+                        f"job {job_id}: lease cambió desde el scan"
+                    )
+                cutoff = observed_at or now
+                if cutoff <= record.lease_expires_at:
+                    raise StaleLeaseEpoch(
+                        f"job {job_id}: lease aún vigente"
+                    )
             control["lease_epoch"] = record.lease_epoch + 1
             control["lease_owner"] = None
             control["lease_expires_at"] = None
@@ -751,9 +1050,209 @@ class TicketJobRepository:
 
         return await self.backend.transact(_txn)
 
+    async def _stage_terminalization(
+        self,
+        view,
+        job_id: str,
+        record: TicketJobRecord,
+        payload: Optional[dict],
+        *,
+        state: TicketJobState,
+        next_action: Any,
+        public_error_code: str,
+        retryable: bool,
+        current_step: str,
+        now: datetime,
+    ) -> dict:
+        """Escrituras comunes de terminalización dentro de la tx llamante."""
+        updates: Dict[str, Any] = {
+            "state": state,
+            "next_action": next_action,
+            "public_error_code": public_error_code,
+            "retryable": retryable,
+            "current_step": current_step,
+            "lease_epoch": record.lease_epoch + 1,
+            "lease_owner": None,
+            "lease_expires_at": None,
+            "claimed_by": None,
+            "claimed_at": None,
+            "recovery_lock_owner": None,
+            "recovery_lock_expires_at": None,
+            "completed_at": record.completed_at or now,
+            "updated_at": now,
+        }
+        if record.created_at is not None:
+            updates["elapsed_s"] = round(
+                (now - record.created_at).total_seconds(), 2
+            )
+        merged = record.model_copy(update=updates)
+        new_control, new_payload = split_record(merged)
+        new_control["expires_at"] = now + self._retention
+
+        if merged.idempotency_key_hash:
+            receipt = await view.get(
+                RECEIPTS_COLLECTION, merged.idempotency_key_hash,
+            )
+            if receipt is not None:
+                receipt["state"] = state.value
+                receipt["expires_at"] = now + self._retention
+                view.set(
+                    RECEIPTS_COLLECTION,
+                    merged.idempotency_key_hash,
+                    receipt,
+                )
+
+        if not record.active_slot_released:
+            new_control["active_slot_released"] = True
+            p_hash = principal_hash(record.principal_id)
+            counter = await view.get(COUNTERS_COLLECTION, p_hash)
+            if counter is not None:
+                counter["active_jobs"] = max(
+                    0, counter["active_jobs"] - 1,
+                )
+                counter["updated_at"] = now
+                if counter["active_jobs"] == 0:
+                    view.delete(COUNTERS_COLLECTION, p_hash)
+                else:
+                    view.set(COUNTERS_COLLECTION, p_hash, counter)
+
+        view.set(JOBS_COLLECTION, job_id, new_control)
+        if payload is not None:
+            view.set(PAYLOADS_COLLECTION, job_id, new_payload)
+        return _record_to_doc(_join(new_control, new_payload))
+
+    async def terminalize_if_unrecoverable(
+        self,
+        job_id: str,
+        *,
+        now: Optional[datetime] = None,
+    ) -> Optional[TicketJobRecord]:
+        """Lazy terminalization atómica para GET/status.
+
+        Si el job ya es terminal o aún es recuperable, devuelve el record sin
+        mutarlo. Si venció el deadline absoluto o desapareció su payload,
+        revalida la causa dentro de la transacción, fencea y libera la cuota.
+        La autorización del principal/tenant debe hacerse antes de llamarlo.
+        """
+        observed_at = now or utcnow()
+
+        async def _txn(view):
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                return None
+            payload = await view.get(PAYLOADS_COLLECTION, job_id)
+            record = _join(control, payload)
+            if record.state in TERMINAL_STATES:
+                return _record_to_doc(record)
+
+            if record.job_deadline_at is not None \
+                    and record.job_deadline_at <= observed_at:
+                state = TicketJobState.TIMEOUT
+                code = PublicErrorCode.TOTAL_JOB_TIMEOUT.value
+            elif payload is None:
+                state = TicketJobState.FAILED
+                code = "EXPIRED_PAYLOAD"
+            else:
+                return _record_to_doc(record)
+
+            return await self._stage_terminalization(
+                view,
+                job_id,
+                record,
+                payload,
+                state=state,
+                next_action=NextAction.USE_LEGACY_OR_HUMAN,
+                public_error_code=code,
+                retryable=False,
+                current_step="done",
+                now=observed_at,
+            )
+
+        doc = await self.backend.transact(_txn)
+        return _doc_to_record(doc) if doc is not None else None
+
+    async def terminalize_recovery(
+        self,
+        job_id: str,
+        *,
+        state: TicketJobState,
+        recovery_owner: str,
+        expected_state: str,
+        expected_lease_epoch: int,
+        next_action: Any,
+        public_error_code: str,
+        retryable: bool,
+        current_step: str,
+        observed_at: datetime,
+        expected_deadline_at: Optional[datetime] = None,
+        require_payload_missing: bool = False,
+    ) -> TicketJobRecord:
+        """Fencea y terminaliza en UNA transacción con CAS del snapshot.
+
+        No existe estado intermedio QUEUED reclamable entre el fence y el
+        terminal. Las condiciones que justifican la recuperación (deadline o
+        payload ausente) se vuelven a validar dentro de la transacción.
+        """
+        if state not in TERMINAL_STATES:
+            raise TicketJobError(
+                f"terminalize_recovery exige estado terminal, recibió {state}"
+            )
+
+        async def _txn(view):
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                raise JobNotFound(job_id)
+            payload = await view.get(PAYLOADS_COLLECTION, job_id)
+            record = _join(control, payload)
+            now = utcnow()
+            if record.state in TERMINAL_STATES:
+                raise StaleLeaseEpoch(f"job {job_id}: ya terminal")
+            if record.recovery_lock_owner != recovery_owner \
+                    or record.recovery_lock_expires_at is None \
+                    or now > record.recovery_lock_expires_at:
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: recovery lock perdido"
+                )
+            if record.state.value != expected_state \
+                    or record.lease_epoch != expected_lease_epoch:
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: snapshot de estado/epoch obsoleto"
+                )
+            if expected_deadline_at is not None and (
+                record.job_deadline_at != expected_deadline_at
+                or observed_at < expected_deadline_at
+            ):
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: deadline cambió o aún no venció"
+                )
+            if require_payload_missing and payload is not None:
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: payload reapareció desde el scan"
+                )
+
+            return await self._stage_terminalization(
+                view,
+                job_id,
+                record,
+                payload,
+                state=state,
+                next_action=next_action,
+                public_error_code=public_error_code,
+                retryable=retryable,
+                current_step=current_step,
+                now=now,
+            )
+
+        return _doc_to_record(await self.backend.transact(_txn))
+
     async def scan_control_docs(self, limit: int = 100) -> list:
-        """Lote acotado de documentos de control para el reconciliador."""
-        return await self.backend.scan_collection(JOBS_COLLECTION, limit)
+        """Lote activo; los tombstones no consumen el límite ni causan
+        starvation permanente de reparaciones posteriores."""
+        return await self.backend.scan_collection(
+            JOBS_COLLECTION,
+            limit,
+            states=[TicketJobState.QUEUED.value, TicketJobState.RUNNING.value],
+        )
 
     async def count_active(self, principal_id: str) -> int:
         """Jobs no-terminales del principal desde el contador transaccional

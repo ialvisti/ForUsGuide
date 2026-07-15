@@ -164,10 +164,10 @@ async def log_requests(request: Request, call_next):
     except Exception as e:
         duration = time.time() - start_time
         logger.error(
-            f"Request failed | "
-            f"ID: {request_id} | "
-            f"Error: {str(e)} | "
-            f"Duration: {duration:.3f}s"
+            "Request failed | ID: %s | ErrorType: %s | Duration: %.3fs",
+            request_id,
+            type(e).__name__,
+            duration,
         )
         raise
 
@@ -184,9 +184,15 @@ async def handle_errors(request: Request, call_next):
         raise
     
     except Exception as e:
-        # Log unexpected errors
+        # Exception messages can contain ticket text, upstream bodies or
+        # identifiers. Emit only the stable type and request correlation; the
+        # public response is likewise generic.
         request_id = getattr(request.state, "request_id", "unknown")
-        logger.exception(f"Unexpected error | ID: {request_id} | Error: {str(e)}")
+        logger.error(
+            "Unexpected error | ID: %s | ErrorType: %s",
+            request_id,
+            type(e).__name__,
+        )
         
         # Return generic error response
         return JSONResponse(

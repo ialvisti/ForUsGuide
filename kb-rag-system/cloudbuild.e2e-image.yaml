@@ -3,10 +3,9 @@
 # scan/SBOM y command pytest; sólo se despliega como Run Job staging y nunca
 # se acepta como digest de producción.
 substitutions:
-  _SYFT_IMAGE: "anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb"
   _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
 steps:
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'build-e2e'
     dir: 'kb-rag-system'
     args:
@@ -17,7 +16,7 @@ steps:
       - '--tag=us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$SHORT_SHA'
       - '--push'
       - '.'
-  - name: 'gcr.io/cloud-builders/docker'
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'resolve-e2e-digest'
     entrypoint: bash
     args:
@@ -28,13 +27,13 @@ steps:
           us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$SHORT_SHA)
         # falla si el tag resolvió más de un digest (no determinístico)
         echo -n "$DIGEST" > /workspace/e2e_digest.txt
-  - name: '${_SYFT_IMAGE}'
+  - name: 'anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb'
     id: 'sbom-e2e'
     entrypoint: sh
     args:
       - '-c'
       - 'syft "$(cat /workspace/e2e_digest.txt)" -o spdx-json > /workspace/e2e_sbom.json'
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
     id: 'manifest-e2e'
     entrypoint: bash
     args:

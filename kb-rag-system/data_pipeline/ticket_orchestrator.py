@@ -21,11 +21,12 @@ import logging
 import re
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
 from data_pipeline import forusbots_catalog, gr_payload_builder, prompts
+from data_pipeline.retrieval_privacy import sanitize_retrieval_query
 from data_pipeline.forusbots_client import (
     ForusBotsError,
     ForusBotsJobFailed,
@@ -317,6 +318,19 @@ class TicketOrchestrator:
         self.deps = deps
         self._max_related = getattr(settings, "TICKET_MAX_RELATED", 3)
         self._inquiry_budget_s = getattr(settings, "TICKET_INQUIRY_BUDGET_S", 300.0)
+        self._forusbots_intent_guard: Optional[
+            Callable[[], Awaitable[None]]
+        ] = None
+
+    def set_forusbots_intent_guard(
+        self, guard: Callable[[], Awaitable[None]]
+    ) -> None:
+        """Instala el fence durable que el worker liga a job/inquiry/lease.
+
+        El orquestador lo invoca sólo cuando el mapping produjo módulos que
+        realmente pueden disparar ForusBots, inmediatamente antes del submit.
+        """
+        self._forusbots_intent_guard = guard
 
     # ------------------------------------------------------------------
     # Step 1 — extraction
@@ -366,12 +380,14 @@ class TicketOrchestrator:
             except ValidationError:
                 dropped += 1
                 continue
-            rk = out.record_keeper
-            rk = rk if (rk not in (None, "", "N/A")) else req.record_keeper
+            # Identity-adjacent fields are server-owned. The extractor may
+            # paraphrase the inquiry/topic, but cannot replace the canonical
+            # record keeper or invent a plan type from untrusted ticket text.
+            rk = req.record_keeper
             extracted.append(ExtractedInquiry(
                 inquiry=out.inquiry,
                 record_keeper=rk,
-                plan_type=out.plan_type or _DEFAULT_PLAN_TYPE,
+                plan_type=_DEFAULT_PLAN_TYPE,
                 topic=out.topic,
                 related_inquiries=out.related_inquiries or None,
             ))
@@ -490,6 +506,11 @@ class TicketOrchestrator:
                 diagnostics={**diag, "kb_insufficient": True},
             )
 
+        question = sanitize_retrieval_query(
+            question,
+            sensitive_literals=self._participant_sensitive_literals(req),
+        )
+
         kq = await self.deps.rag_engine.ask_knowledge_question(question=question)
         return InquiryOutcome(
             inquiry=ext.inquiry, topic=ext.topic, route="knowledge_question",
@@ -504,8 +525,12 @@ class TicketOrchestrator:
         diag: Dict[str, Any] = self._classifier_diag(classification)
 
         # 1) required data → flatten → field map → modules
+        safe_inquiry = sanitize_retrieval_query(
+            ext.inquiry,
+            sensitive_literals=self._participant_sensitive_literals(req),
+        )
         rd = await self.deps.rag_engine.get_required_data(
-            inquiry=ext.inquiry, record_keeper=ext.record_keeper,
+            inquiry=safe_inquiry, record_keeper=ext.record_keeper,
             plan_type=ext.plan_type, topic=ext.topic,
             related_inquiries=ext.related_inquiries,
         )
@@ -515,6 +540,13 @@ class TicketOrchestrator:
         if flat_fields:
             modules, extraction_candidates = await self._map_fields(flat_fields, diag)
         diag["mapped_modules"] = modules
+
+        # El dedupe in-memory del cliente no cruza instancias ni sobrevive a
+        # un lease perdido. El worker persiste este intent después de saber
+        # que habrá scrape y justo antes del primer POST. Sin contrato
+        # upstream idempotente, un intent previo bloquea cualquier resubmit.
+        if modules and self._forusbots_intent_guard is not None:
+            await self._forusbots_intent_guard()
 
         # 2) ForusBots scrapes AND ticket-field extraction, in PARALLEL — the
         # extraction only needs the ticket text, not the scrape result.
@@ -567,10 +599,17 @@ class TicketOrchestrator:
 
         # 5) campos server-owned SIEMPRE fijados desde fuentes confiables
         # (invariante 4 / HT-22): el LLM no controla límites ni conteos.
+        response_inquiry = sanitize_retrieval_query(
+            draft.inquiry or ext.inquiry,
+            sensitive_literals=self._participant_sensitive_literals(req),
+        )
         gr = await self.deps.rag_engine.generate_response(
-            inquiry=(draft.inquiry or ext.inquiry),
+            inquiry=response_inquiry,
             record_keeper=ext.record_keeper,
-            plan_type=(draft.plan_type or ext.plan_type),
+            # ``draft`` es salida LLM no confiable. El plan_type canónico se
+            # fijó al extraer la inquiry desde el request autorizado y no se
+            # puede sobrescribir en la fase de redacción.
+            plan_type=ext.plan_type,
             topic=(draft.topic or ext.topic),
             collected_data=collected_data,
             max_response_tokens=req.max_response_tokens,
@@ -581,6 +620,18 @@ class TicketOrchestrator:
             record_keeper=ext.record_keeper, plan_type=ext.plan_type,
             scrape_status=scrape_status, generate_result=gr, diagnostics=diag,
         )
+
+    @staticmethod
+    def _participant_sensitive_literals(req: Any) -> Tuple[str, ...]:
+        """Known request values that must not enter semantic-search text."""
+        ticket = getattr(req, "ticket", None)
+        return tuple(filter(None, (
+            getattr(req, "participant_id", None),
+            getattr(req, "plan_id", None),
+            getattr(req, "company_name", None),
+            getattr(ticket, "username", None),
+            getattr(ticket, "user_email", None),
+        )))
 
     def _needs_more_info(self, ext: ExtractedInquiry, classification: Any) -> InquiryOutcome:
         return InquiryOutcome(
@@ -726,11 +777,31 @@ class TicketOrchestrator:
                     status = "ok"
                 return flat, meta, status
             except ForusBotsTimeout as e:
-                logger.warning("ForusBots %s timeout: %s", coro_label, e)
-                return {}, {"error": str(e)}, "timeout"
+                logger.warning(
+                    "ForusBots %s timeout code=%s job=%s",
+                    coro_label, e.code, e.job_id,
+                )
+                diag[f"forusbots_{coro_label}_job_id"] = e.job_id
+                return {}, {
+                    "error_code": e.code,
+                    "job_id": e.job_id,
+                }, "timeout"
             except (ForusBotsJobFailed, ForusBotsError) as e:
-                logger.warning("ForusBots %s failed: %s", coro_label, e)
-                return {}, {"error": str(e)}, "failed"
+                error_code = e.code
+                job_id = getattr(e, "job_id", None)
+                logger.warning(
+                    "ForusBots %s failed code=%s job=%s",
+                    coro_label, error_code, job_id or "unconfirmed",
+                )
+                if job_id:
+                    diag[f"forusbots_{coro_label}_job_id"] = job_id
+                meta = {"error_code": error_code}
+                if getattr(e, "needs_reconciliation", False):
+                    diag["manual_reconciliation_required"] = True
+                    meta["manual_reconciliation_required"] = True
+                if job_id:
+                    meta["job_id"] = job_id
+                return {}, meta, "failed"
 
         tasks = []
         if p_modules:
@@ -776,7 +847,11 @@ class TicketOrchestrator:
         # legacy single-job diagnostics keys (kept for dashboards)
         if "forusbots_participant_job_id" in diag:
             diag.setdefault("forusbots_job_id", diag["forusbots_participant_job_id"])
-            diag.setdefault("forusbots_elapsed_s", diag["forusbots_participant_elapsed_s"])
+        if "forusbots_participant_elapsed_s" in diag:
+            diag.setdefault(
+                "forusbots_elapsed_s",
+                diag["forusbots_participant_elapsed_s"],
+            )
         return ppt_flat, plan_flat, meta, status
 
     async def _extract_ticket_fields(
@@ -1025,7 +1100,7 @@ def _build_data_collection(
             ("unknown_fields", "unknownFields"),
             ("warnings", "warnings"),
             ("errors", "errors"),
-            ("error", "errors"),
+            ("error_code", "errorCodes"),
         ):
             val = side_meta.get(src)
             if val:

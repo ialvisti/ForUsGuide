@@ -860,6 +860,11 @@ class InquiryStatusV2(BaseModel):
         "pending", "running", "succeeded", "timeout", "failed", "unprocessed"
     ] = Field(..., description="estado cerrado por inquiry")
     participant_reply_safe: bool = Field(default=False)
+    manual_reconciliation_required: bool = Field(
+        default=False,
+        description="True when an upstream effect may exist but lacks a "
+                    "confirmed terminal result; never retry blindly.",
+    )
     result: Optional[Dict[str, Any]] = Field(default=None)
     error: Optional[Dict[str, Any]] = Field(
         default=None, description="{code, retryable, trace_id} machine-readable"
@@ -879,6 +884,14 @@ class TicketJobStatusV2(BaseModel):
     total_inquiries: Optional[int] = Field(default=None)
     processed_inquiries: int = Field(default=0)
     unprocessed_inquiries: int = Field(default=0)
+    forusbots_job_ids: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Identificadores opacos de efectos ForusBots ya observados; se "
+            "conservan para reconciliación y nunca implican por sí solos que "
+            "el efecto haya terminado correctamente."
+        ),
+    )
     inquiries: List[InquiryStatusV2] = Field(default_factory=list)
     next_action: NextAction = Field(
         ..., description="enum cerrado: send_participant_reply | poll | "

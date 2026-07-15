@@ -93,7 +93,7 @@ class TestReconcilerRepairs:
 
     async def test_reconciler_terminalizes_expired_deadline(self, repo, backend):
         rec = await _seed(repo)
-        await repo.claim(rec.job_id, worker_id="w")
+        epoch = await repo.claim(rec.job_id, worker_id="w")
         control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
         control["job_deadline_at"] = utcnow() - timedelta(seconds=1)
         backend._data[JOBS_COLLECTION][rec.job_id] = control
@@ -103,6 +103,10 @@ class TestReconcilerRepairs:
         refreshed = await repo.get(rec.job_id)
         assert refreshed.state == TicketJobState.TIMEOUT
         assert refreshed.next_action.value == "use_legacy_or_human"
+        assert refreshed.lease_epoch > epoch
+        assert refreshed.lease_owner is None
+        assert refreshed.claimed_by is None
+        assert await repo.count_active("n8n") == 0
 
     async def test_reconciler_terminalizes_missing_payload(self, repo, backend):
         rec = await _seed(repo)
@@ -114,6 +118,9 @@ class TestReconcilerRepairs:
         assert counts["payload_expired"] == 1
         refreshed = await repo.get(rec.job_id)
         assert refreshed.state == TicketJobState.FAILED
+        assert refreshed.lease_owner is None
+        assert refreshed.claimed_by is None
+        assert await repo.count_active("n8n") == 0
 
     async def test_two_concurrent_reconcilers_do_not_double_repair(self, repo):
         await _seed(repo)
@@ -135,3 +142,102 @@ class TestReconcilerRepairs:
         assert counts["requeued_outbox"] == 0
         assert counts["fenced_leases"] == 0
         assert counts["errors"] == 0
+
+    async def test_terminal_tombstones_cannot_starve_pending_jobs(self, repo):
+        for _ in range(25):
+            terminal = await _seed(repo)
+            await repo.update(terminal.job_id, state=TicketJobState.RUNNING)
+            await repo.update(terminal.job_id, state=TicketJobState.SUCCEEDED)
+        pending = await _seed(repo)
+
+        queue = FakeQueue()
+        counts = await TicketReconciler(
+            repo, queue, batch_size=25,
+        ).run_once()
+
+        assert counts["requeued_outbox"] == 1
+        assert queue.enqueued == [(pending.job_id, 0)]
+
+    async def test_heartbeat_after_scan_prevents_stale_lease_fencing(
+            self, repo, backend, monkeypatch):
+        rec = await _seed(repo)
+        epoch = await repo.claim(rec.job_id, worker_id="w-live", lease_s=90)
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["lease_expires_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+
+        acquire = repo.acquire_recovery_lock
+
+        async def acquire_then_heartbeat(job_id, *, owner, lock_s=120.0):
+            acquired = await acquire(job_id, owner=owner, lock_s=lock_s)
+            if acquired:
+                assert await repo.renew_lease(
+                    job_id,
+                    worker_id="w-live",
+                    lease_epoch=epoch,
+                    lease_s=90,
+                )
+            return acquired
+
+        monkeypatch.setattr(repo, "acquire_recovery_lock",
+                            acquire_then_heartbeat)
+        queue = FakeQueue()
+        counts = await TicketReconciler(repo, queue).run_once()
+
+        current = await repo.get(rec.job_id)
+        assert counts["fenced_leases"] == 0
+        assert current.state == TicketJobState.RUNNING
+        assert current.lease_epoch == epoch
+        assert current.lease_owner == "w-live"
+        assert queue.enqueued == []
+
+    async def test_new_claim_after_scan_is_not_terminalized_from_stale_snapshot(
+            self, repo, backend, monkeypatch):
+        rec = await _seed(repo)
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["job_deadline_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+        acquire = repo.acquire_recovery_lock
+
+        async def acquire_then_claim(job_id, *, owner, lock_s=120.0):
+            acquired = await acquire(job_id, owner=owner, lock_s=lock_s)
+            if acquired:
+                assert await repo.claim(job_id, worker_id="w-new")
+            return acquired
+
+        monkeypatch.setattr(repo, "acquire_recovery_lock", acquire_then_claim)
+        counts = await TicketReconciler(repo, FakeQueue()).run_once()
+
+        current = await repo.get(rec.job_id)
+        assert counts["deadline_terminalized"] == 0
+        assert current.state == TicketJobState.RUNNING
+        assert current.lease_owner == "w-new"
+
+    async def test_terminalization_has_no_claimable_gap_after_fencing(
+            self, repo, backend, monkeypatch):
+        rec = await _seed(repo)
+        await repo.claim(rec.job_id, worker_id="w-old")
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["job_deadline_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+        fence = repo.fence_and_requeue
+
+        async def fence_then_claim(job_id, **kwargs):
+            generation = await fence(job_id, **kwargs)
+            assert await repo.claim(job_id, worker_id="w-between")
+            return generation
+
+        monkeypatch.setattr(repo, "fence_and_requeue", fence_then_claim)
+        await TicketReconciler(repo, FakeQueue()).run_once()
+
+        current = await repo.get(rec.job_id)
+        assert not (
+            current.state in {
+                TicketJobState.SUCCEEDED,
+                TicketJobState.PARTIAL,
+                TicketJobState.FAILED,
+                TicketJobState.TIMEOUT,
+                TicketJobState.CANCELLED,
+            }
+            and (current.lease_owner is not None or current.claimed_by is not None)
+        ), "un worker reclamó el job entre fence y terminalización"

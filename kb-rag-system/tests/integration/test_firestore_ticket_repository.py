@@ -136,10 +136,12 @@ class TestConcurrencyAndQuota:
         rec, _ = await _create(repo, unique_key, principal=principal)
         await repo.update(rec.job_id, state=TicketJobState.RUNNING)
         await repo.update(rec.job_id, state=TicketJobState.SUCCEEDED)
-        # segunda escritura sobre terminal no re-libera
-        await repo.record_inquiry_result(rec.job_id, 0, {
-            "execution_status": "succeeded", "participant_reply_safe": True,
-        })
+        # una escritura tardía queda fenced y tampoco vuelve a liberar cuota
+        with pytest.raises(StaleLeaseEpoch):
+            await repo.record_inquiry_result(rec.job_id, 0, {
+                "execution_status": "succeeded",
+                "participant_reply_safe": True,
+            })
         counter = await backend.get_doc(
             COUNTERS_COLLECTION, principal_hash(principal))
         assert counter is None, (

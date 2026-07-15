@@ -17,33 +17,26 @@ terraform {
 }
 
 locals {
+  image_is_immutable = can(regex("@sha256:[0-9a-f]{64}$", var.image_digest))
+
   # invariant: shadow_sample_rate=100 sólo en fase shadow; 0 en el resto.
   shadow_rate_ok = (
     var.release_phase == "shadow" ? var.shadow_sample_rate == 100
     : var.shadow_sample_rate == 0
   )
 
-  # dark_no_traffic / dark_100 fuerzan handler disabled (baseline endurecida).
-  mode_ok = (
-    contains(["dark_no_traffic", "dark_100", "infra_only"], var.release_phase)
-    ? var.ticket_handler_mode == "disabled"
-    : true
-  )
+  # Cada fase tiene exactamente un modo posible. Esto impide combinar, por
+  # ejemplo, release_phase=shadow con un handler full.
+  expected_ticket_handler_modes = {
+    infra_only      = "disabled"
+    dark_no_traffic = "disabled"
+    dark_100        = "disabled"
+    shadow          = "shadow"
+    knowledge_only  = "knowledge_only"
+    full            = "full"
+  }
+  expected_ticket_handler_mode = local.expected_ticket_handler_modes[var.release_phase]
+  mode_ok                      = var.ticket_handler_mode == local.expected_ticket_handler_mode
 
   create_services = var.enable_services && var.release_phase != "infra_only"
-}
-
-# Guards de coherencia declarativos: un plan con combinación inválida falla
-# en `validate`/`plan`, no en producción.
-resource "null_resource" "release_phase_invariants" {
-  lifecycle {
-    precondition {
-      condition     = local.shadow_rate_ok
-      error_message = "shadow_sample_rate=100 sólo es válido con release_phase=shadow."
-    }
-    precondition {
-      condition     = local.mode_ok
-      error_message = "las fases dark_* / infra_only exigen ticket_handler_mode=disabled."
-    }
-  }
 }

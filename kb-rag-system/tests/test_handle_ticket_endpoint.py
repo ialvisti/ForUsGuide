@@ -13,6 +13,7 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import pytest
+from fastapi import Request
 from fastapi.testclient import TestClient
 
 
@@ -40,8 +41,14 @@ def client(monkeypatch):
          patch("api.main.RAGEngine", return_value=mock_engine), \
          patch("api.main.PineconeUploader", return_value=mock_pinecone), \
          patch("api.main.InquiryRouterEngine", return_value=mock_inquiry_router):
-        from api.main import app, verify_api_key
-        app.dependency_overrides[verify_api_key] = lambda: None
+        from api.main import app, verify_api_key, verify_v2_api_key
+
+        async def _authenticated_test_principal(request: Request) -> None:
+            request.state.principal_id = "test-principal"
+            request.state.tenant_id = "test-tenant"
+
+        app.dependency_overrides[verify_api_key] = _authenticated_test_principal
+        app.dependency_overrides[verify_v2_api_key] = _authenticated_test_principal
         with TestClient(app) as c:
             # La autorización participant-plan es FAIL-CLOSED (Tarea 4): los
             # tests de contrato del endpoint cablean una fuente sintética que
@@ -635,6 +642,32 @@ class TestV2ContractRegressions:
         assert r1.status_code == 202 and r2.status_code == 202
         assert r1.json()["ticket_job_id"] == r2.json()["ticket_job_id"]
         assert r2.json()["idempotency_replayed"] is True
+
+    def test_v2_poll_exposes_forusbots_job_ids_for_reconciliation(self, client):
+        """El poll durable debe conservar los IDs de efectos externos también
+        en v2; sin ellos n8n/operaciones no pueden reconciliar un POST ambiguo."""
+        outcome = InquiryOutcome(
+            inquiry="cash out 401k",
+            topic="rollover",
+            route="generate_response",
+            scrape_status="ok",
+            generate_result=_gr_result(),
+            diagnostics={"forusbots_job_id": "forusbots-v2-9"},
+        )
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), outcome))
+
+        accepted = client.post(
+            "/api/v2/handle-ticket",
+            json=_v2_body(),
+            headers={"Idempotency-Key": "v2-forusbots-reconciliation"},
+        )
+        assert accepted.status_code == 202
+
+        polled = client.get(
+            f"/api/v2/ticket-jobs/{accepted.json()['ticket_job_id']}"
+        )
+        assert polled.status_code == 200
+        assert polled.json()["forusbots_job_ids"] == ["forusbots-v2-9"]
 
     def test_v2_same_key_different_payload_is_409(self, client):
         _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), _gr_outcome()))

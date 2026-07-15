@@ -43,8 +43,8 @@ from data_pipeline.ticket_job_repository import (
     InvalidStateTransition,
     JobNotFound,
     PAYLOADS_COLLECTION,
+    StaleEnqueueGeneration,
     StaleLeaseEpoch,
-    TicketJobError,
     TicketJobRepository,
 )
 
@@ -96,7 +96,11 @@ class TicketReconciler:
                 if deadline is not None and now > deadline:
                     await self._terminalize(
                         job_id, TicketJobState.TIMEOUT,
-                        PublicErrorCode.TOTAL_JOB_TIMEOUT.value)
+                        PublicErrorCode.TOTAL_JOB_TIMEOUT.value,
+                        control=control,
+                        observed_at=now,
+                        expected_deadline_at=deadline,
+                    )
                     counts["deadline_terminalized"] += 1
                     continue
 
@@ -106,7 +110,11 @@ class TicketReconciler:
                     PAYLOADS_COLLECTION, job_id)
                 if payload is None:
                     await self._terminalize(
-                        job_id, TicketJobState.FAILED, "EXPIRED_PAYLOAD")
+                        job_id, TicketJobState.FAILED, "EXPIRED_PAYLOAD",
+                        control=control,
+                        observed_at=now,
+                        require_payload_missing=True,
+                    )
                     counts["payload_expired"] += 1
                     continue
 
@@ -114,11 +122,19 @@ class TicketReconciler:
                 lease_expiry = control.get("lease_expires_at")
                 if state == TicketJobState.RUNNING.value \
                         and lease_expiry is not None and now > lease_expiry:
-                    generation = await self.repo.fence_and_requeue(job_id)
+                    generation = await self.repo.fence_and_requeue(
+                        job_id,
+                        recovery_owner=self.owner,
+                        expected_lease_epoch=control.get("lease_epoch", 0),
+                        expected_lease_expires_at=lease_expiry,
+                        observed_at=now,
+                    )
                     if generation is not None:
                         name = await self.queue.ensure_enqueued(
                             job_id, generation)
-                        await self.repo.mark_enqueued(job_id, name)
+                        await self.repo.mark_enqueued(
+                            job_id, name, expected_generation=generation,
+                        )
                         counts["fenced_leases"] += 1
                     continue
 
@@ -127,9 +143,12 @@ class TicketReconciler:
                         and state == TicketJobState.QUEUED.value:
                     generation = control.get("enqueue_generation", 0)
                     name = await self.queue.ensure_enqueued(job_id, generation)
-                    await self.repo.mark_enqueued(job_id, name)
+                    await self.repo.mark_enqueued(
+                        job_id, name, expected_generation=generation,
+                    )
                     counts["requeued_outbox"] += 1
-            except (JobNotFound, InvalidStateTransition, StaleLeaseEpoch):
+            except (JobNotFound, InvalidStateTransition, StaleLeaseEpoch,
+                    StaleEnqueueGeneration):
                 # otro reconciliador/worker llegó primero: benigno
                 continue
             except asyncio.CancelledError:
@@ -140,33 +159,31 @@ class TicketReconciler:
         self._metric("ticket_reconciler_run", **counts)
         return counts
 
-    async def _terminalize(self, job_id: str, state: TicketJobState,
-                           code: str) -> None:
-        # FENCE primero (P1 review): incrementar lease_epoch para que un worker
-        # aún vivo no siga haciendo efectos externos sobre un job que el
-        # reconciliador va a declarar terminal. fence_and_requeue deja el job
-        # en QUEUED con epoch nuevo; luego lo terminalizamos.
-        await self.repo.fence_and_requeue(job_id)
-        try:
-            await self.repo.update(
-                job_id,
-                state=state,
-                next_action=NextAction.USE_LEGACY_OR_HUMAN,
-                public_error_code=code,
-                retryable=False,
-                current_step="done",
-            )
-        except InvalidStateTransition:
-            # QUEUED→TIMEOUT no es transición directa: pasar por RUNNING
-            await self.repo.update(job_id, state=TicketJobState.RUNNING)
-            await self.repo.update(
-                job_id,
-                state=state,
-                next_action=NextAction.USE_LEGACY_OR_HUMAN,
-                public_error_code=code,
-                retryable=False,
-                current_step="done",
-            )
+    async def _terminalize(
+        self,
+        job_id: str,
+        state: TicketJobState,
+        code: str,
+        *,
+        control: dict,
+        observed_at,
+        expected_deadline_at=None,
+        require_payload_missing: bool = False,
+    ) -> None:
+        await self.repo.terminalize_recovery(
+            job_id,
+            state=state,
+            recovery_owner=self.owner,
+            expected_state=control.get("state"),
+            expected_lease_epoch=control.get("lease_epoch", 0),
+            next_action=NextAction.USE_LEGACY_OR_HUMAN,
+            public_error_code=code,
+            retryable=False,
+            current_step="done",
+            observed_at=observed_at,
+            expected_deadline_at=expected_deadline_at,
+            require_payload_missing=require_payload_missing,
+        )
 
 
 def _build_from_settings():

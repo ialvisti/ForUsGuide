@@ -48,7 +48,9 @@ class AuthenticatedClient:
     tenant_id: str
 
 
-def resolve_principal(api_key: Optional[str]) -> Optional[str]:
+def resolve_principal(
+    api_key: Optional[str], *, allow_legacy: bool = True
+) -> Optional[str]:
     """Devuelve el nombre del principal para una API key válida, o None."""
     if not api_key:
         return None
@@ -58,21 +60,37 @@ def resolve_principal(api_key: Optional[str]) -> Optional[str]:
         # TypeError en el path de auth.
         if key and hmac.compare_digest(api_key, str(key)):
             return str(principal)
-    if settings.API_KEY and hmac.compare_digest(api_key, settings.API_KEY):
+    if (allow_legacy and settings.API_KEY
+            and hmac.compare_digest(api_key, settings.API_KEY)):
         return LEGACY_PRINCIPAL
     return None
 
 
-def resolve_client(api_key: Optional[str]) -> Optional[AuthenticatedClient]:
-    principal = resolve_principal(api_key)
+def resolve_client(
+    api_key: Optional[str], *, allow_legacy: bool = True,
+    require_tenant: bool = False,
+) -> Optional[AuthenticatedClient]:
+    """Resolve a credential to a server-owned principal/tenant.
+
+    v1 may temporarily opt into the legacy ``API_KEY`` mapping during its
+    migration window. v2 must call this with ``allow_legacy=False`` and
+    ``require_tenant=True`` so a missing mapping never becomes ``default``.
+    """
+    principal = resolve_principal(api_key, allow_legacy=allow_legacy)
     if principal is None:
         return None
     tenants = settings.API_CLIENT_TENANTS or {}
-    tenant = str(tenants.get(principal) or LEGACY_TENANT)
+    mapped_tenant = tenants.get(principal)
+    if require_tenant and not mapped_tenant:
+        return None
+    tenant = str(mapped_tenant or LEGACY_TENANT)
     return AuthenticatedClient(principal_id=principal, tenant_id=tenant)
 
 
-async def authenticate_principal(request: Request) -> str:
+async def authenticate_principal(
+    request: Request, *, allow_legacy: bool = True,
+    require_tenant: bool = False,
+) -> str:
     """Dependency: autentica y deja principal/tenant en ``request.state``."""
     api_key = request.headers.get("X-API-Key")
     if not api_key:
@@ -80,7 +98,11 @@ async def authenticate_principal(request: Request) -> str:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="API key missing. Include 'X-API-Key' header.",
         )
-    client = resolve_client(api_key)
+    client = resolve_client(
+        api_key,
+        allow_legacy=allow_legacy,
+        require_tenant=require_tenant,
+    )
     if client is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

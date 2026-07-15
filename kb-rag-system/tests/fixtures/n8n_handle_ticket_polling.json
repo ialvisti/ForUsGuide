@@ -5,7 +5,10 @@
   },
   "poll": {
     "interval_s": 3,
-    "deadline_s": 540
+    "max_interval_s": 30,
+    "deadline_s": 2700,
+    "workflow_timeout_s": 3000,
+    "resume_mode": "durable_wait"
   },
   "on_http_status": {
     "200": "inspect_state",
@@ -24,7 +27,7 @@
     "succeeded": {
       "action": "publish_participant_reply",
       "publishable": true,
-      "guard": "SOLO si metadata.fallback != true (un job shadow devuelve succeeded + fallback=true y NUNCA se publica; usar legacy)"
+      "guard": "SOLO si state == succeeded AND next_action == send_participant_reply AND metadata.fallback != true AND TODAS inquiries[].participant_reply_safe == true AND NINGUNA inquiry.manual_reconciliation_required == true"
     },
     "partial": { "action": "use_legacy_or_human", "publishable": false },
     "failed": { "action": "use_legacy_or_human", "publishable": false },

@@ -1,0 +1,25 @@
+# Keep Cloud Build source uploads reproducible and free of local runtime state.
+.gcloudignore
+.git
+.git/**
+
+# Python environments and generated caches.
+**/.venv/**
+**/venv/**
+**/__pycache__/**
+**/.pytest_cache/**
+**/.mypy_cache/**
+**/.ruff_cache/**
+**/*.py[cod]
+
+# Terraform working directories are regenerated from the provider locks.
+**/.terraform/**
+
+# Local credentials and environment overrides must never enter build context.
+**/.env
+**/.env.*
+**/sa-key.json
+
+# Desktop/editor noise.
+**/.DS_Store
+**/*~

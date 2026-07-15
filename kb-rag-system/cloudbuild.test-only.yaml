@@ -1,35 +1,53 @@
-# Trigger handle-ticket-test-only (plan Tarea 12/18 Paso 5). Checkout del SHA
-# canónico, ejecuta los gates Python 3.12 y revalida un digest existente; NO
-# construye/pushea imagen ni accede a deploy/state.
+# Canonical-SHA test controller. It runs local quality/security gates and only
+# revalidates an already-built digest; it has no deploy or state operation.
 substitutions:
   _IMAGE_DIGEST: ""
-  _PYTHON_IMAGE: "python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce"
+
 steps:
-  - name: '${_PYTHON_IMAGE}'
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
     id: 'gates'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        cd kb-rag-system
-        python -m pip install --no-cache-dir --require-hashes -r requirements-dev.lock
-        python -m pytest -q -rs -m "not live_dependencies and not staging_e2e"
+        cd /workspace/kb-rag-system
+        python -m pip install --no-cache-dir --require-hashes \
+          -r requirements-dev.lock
+        python -m pytest -q -rs \
+          -m "not live_dependencies and not staging_e2e"
+        python -m pytest --collect-only -q >/dev/null
         ruff check .
         mypy
         python -m pip check
         pip-audit --strict --require-hashes -r requirements.lock
-        detect-secrets scan --baseline .secrets.baseline
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+
+        # detect-secrets updates a baseline file in place. Scan a disposable
+        # copy, then serialize that fresh result for fail-closed comparison.
+        cp .secrets.baseline /workspace/scanned-secrets.baseline
+        detect-secrets scan \
+          --baseline /workspace/scanned-secrets.baseline >/dev/null
+        python -m json.tool /workspace/scanned-secrets.baseline \
+          > /workspace/candidate-secrets.baseline
+        python scripts/verify_secrets_baseline.py \
+          --approved .secrets.baseline \
+          --candidate /workspace/candidate-secrets.baseline
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
     id: 'revalidate-digest'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        # revalida provenance/SBOM/scan del digest de producción SIN reconstruir
-        test -n "${_IMAGE_DIGEST}"
-        gcloud artifacts docker images describe "${_IMAGE_DIGEST}" \
-          --show-provenance --format='value(image_summary.digest)'
+        [[ "${_IMAGE_DIGEST}" =~ @sha256:[0-9a-f]{64}$ ]] || {
+          echo "STOP: image digest no es inmutable" >&2
+          exit 1
+        }
+        resolved="$(gcloud artifacts docker images describe \
+          "${_IMAGE_DIGEST}" --show-provenance \
+          --format='value(image_summary.digest)')"
+        [[ "${_IMAGE_DIGEST}" == *@"$$resolved" ]]
+
 options:
   logging: CLOUD_LOGGING_ONLY

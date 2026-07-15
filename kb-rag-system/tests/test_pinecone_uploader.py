@@ -91,6 +91,26 @@ def test_verify_readonly_uses_stats_and_neutral_query():
     index.delete.assert_not_called()
 
 
+def test_query_sanitizes_participant_and_financial_values_before_pinecone():
+    index = Mock()
+    index.search.return_value = {"result": {"hits": []}}
+    uploader = _uploader_with_index(index)
+
+    uploader.query_chunks(
+        "Participant Jane Doe, participant ID 158948, has balance $40,000 "
+        "and email jane.doe@example.com",
+        top_k=1,
+    )
+
+    kwargs = index.search.call_args.kwargs
+    outbound = (kwargs.get("inputs") or kwargs["query"]["inputs"])["text"]
+    assert "Jane Doe" not in outbound
+    assert "158948" not in outbound
+    assert "$40,000" not in outbound
+    assert "jane.doe@example.com" not in outbound
+    assert "balance" in outbound.lower()
+
+
 def test_query_chunks_raises_typed_error_with_safe_context_on_pinecone_exception():
     index = Mock()
     index.search.side_effect = RuntimeError("pinecone boom")

@@ -1,10 +1,15 @@
 # Estado de ejecución del plan de finalización handle-ticket
 
-Actualizado 2026-07-14. Rama `handle-ticket-production-finalization` (worktree
-`ForUsGuide-handle-ticket-finalization`), 13 commits sobre `3d48415`. **NO se
+Actualizado 2026-07-15. Rama `handle-ticket-production-finalization` (worktree
+`ForUsGuide-handle-ticket-finalization`), 15 commits sobre `3d48415`. **NO se
 ha hecho push** (mutación Git sin aprobación). Suite CI local:
-`564 passed, 15 skipped` en Python 3.14 (bootstrap NO autoritativo; el gate
+`569 passed, 15 skipped` en Python 3.14 (bootstrap NO autoritativo; el gate
 real es Cloud Build Python 3.12).
+
+Revisión adversarial (Tarea 15 Paso 5) ejecutada: 17 hallazgos, 8 confirmados;
+los 3 P1 y 3 P2 corregidos RED-first en `da1efe4` (ver `15-review-checklist.md`).
+Los P1 eran: v1 evadía el segundo factor WIF, pérdida de ForusBots job IDs en
+checkpoints degradados, y el reconciliador terminalizaba sin fencear al worker.
 
 ## Tareas completadas localmente (0–12)
 

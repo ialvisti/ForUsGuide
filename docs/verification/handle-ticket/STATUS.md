@@ -2,10 +2,11 @@
 
 Revisado el 2026-07-15 en el worktree aislado
 `ForUsGuide-handle-ticket-finalization`, rama
-`handle-ticket-production-finalization`. El punto de partida revisado es
-`124b55f` (16 commits sobre `3d48415`); las correcciones de esta segunda
-auditoría todavía están locales hasta cerrar todos los gates de verificación.
-No se hizo push ni PR y el worktree sucio original no se modificó.
+`handle-ticket-production-finalization`. Las correcciones de la segunda
+auditoría están consolidadas en `746eb28`; la evidencia actualizada queda en
+el commit documental de cierre (18 commits sobre `3d48415`) y
+siguen exclusivamente locales. No se hizo push ni PR y el worktree sucio
+original no se modificó.
 
 ## Resultado ejecutivo
 
@@ -78,9 +79,10 @@ tráfico. Autenticación no equivale a `APROBADO Gx <ALCANCE>`.
 
 ## Bloqueos que requieren intervención/autoridad nueva
 
-1. Completar el callback interactivo de
-   `gcloud auth login --update-adc` para ejecutar el build autoritativo sin
-   deploy.
+1. Ejecutar y completar en una terminal interactiva
+   `gcloud auth login --update-adc`; el intento de esta sesión esperó más de
+   20 minutos sin recibir callback. Después se ejecuta el build autoritativo
+   sin deploy.
 2. Implementar y revisar el release-controller, luego producir su digest
    escaneado antes de pedir G1B.
 3. Obtener los cuatro contratos: participant-plan, ForusBots

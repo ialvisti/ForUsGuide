@@ -31,6 +31,7 @@ ni usó un gate de rollout.
 ## Verificación local integrada
 
 - Suite completa: **717 passed, 18 skipped** de 735 tests.
+- Selección CI: **717 passed, 15 skipped, 3 deselected**.
 - Los 11 skips del repositorio Firestore corresponden al emulador real.
 - Los skips live corresponden a ForusBots/Pinecone/staging y a los contratos
   externos aún inexistentes; no se fabricaron fixtures.
@@ -53,6 +54,8 @@ autoritativo del plan.
 
 El controller no contiene publicación, `terraform apply`, deploy, escritura
 de evidencia ni cambio de runtime. El submit final todavía no obtuvo build ID:
-la política de reautenticación volvió a invalidar el token y el proceso
-`gcloud auth login --update-adc` espera el callback interactivo del navegador.
-No se cambia de cuenta ni se usa una key como atajo.
+la política de reautenticación volvió a invalidar el token. Se abrió
+`gcloud auth login --update-adc`, pero el callback no llegó durante más de 20
+minutos y el listener se canceló limpiamente. Debe completarse el comando en
+una terminal interactiva antes de reintentar. No se cambia de cuenta ni se usa
+una key como atajo.

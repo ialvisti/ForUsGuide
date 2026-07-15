@@ -326,3 +326,68 @@ class TestWorkloadIdentityV2:
             f"token no verificable aceptado con {r.status_code}: "
             "X-Serverless-Authorization y JWT sin firma deben rechazarse"
         )
+
+
+# ---------------------------------------------------------------------------
+# Revisión adversarial (Tarea 15 Paso 5) — P1: v1 no puede evadir WIF; P2:
+# record_keeper server-owned incluso cuando la fuente devuelve None.
+# ---------------------------------------------------------------------------
+
+class TestV1AlsoRequiresWorkloadIdentity:
+    """P1 review: v1 alcanza el MISMO pipeline durable que v2, así que la
+    identidad workload también lo protege cuando está configurada. Un
+    X-API-Key filtrado no basta una vez activado WIF."""
+
+    def test_v1_rejects_missing_workload_token_when_wif_enforced(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "TICKET_WIF_AUDIENCE",
+                            "https://kb-rag-system.example.run.app")
+        monkeypatch.setattr(
+            app_settings, "TICKET_WIF_EXPECTED_EMAIL",
+            "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com")
+        _use_orch(client)
+        r = client.post("/api/v1/handle-ticket", json=_body(),
+                        headers={"X-API-Key": KEY_N8N})  # sin token workload
+        assert r.status_code in (401, 403), (
+            f"v1 con WIF activo aceptó sólo X-API-Key ({r.status_code}); el "
+            "segundo factor es evadible vía v1 (P1 review)"
+        )
+
+    def test_v1_still_works_without_wif_during_migration(self, client):
+        """Ventana de migración: WIF no configurado ⇒ v1 sigue con X-API-Key
+        (no rompe el caller legacy)."""
+        _use_orch(client)
+        r = client.post("/api/v1/handle-ticket", json=_body(),
+                        headers={"X-API-Key": KEY_N8N})
+        assert r.status_code in (200, 202)
+
+
+class TestRecordKeeperServerOwned:
+
+    def test_caller_record_keeper_dropped_when_canonical_is_none(self, client):
+        """P2 review: la fuente canónica devuelve record_keeper=None; el valor
+        del body NO debe sobrevivir en el job persistido."""
+        class _NoneRK:
+            async def authorize(self, *, tenant_id, participant_id, plan_id):
+                from api.participant_plan import AuthorizedParticipantPlan
+                return AuthorizedParticipantPlan(
+                    tenant_id=tenant_id, participant_id=participant_id,
+                    plan_id=plan_id, record_keeper=None)
+
+        client.app.state.participant_plan_validator = _NoneRK()
+        _use_orch(client)
+        r = client.post("/api/v1/handle-ticket",
+                        json=_body(record_keeper="Caller Provided RK"),
+                        headers={"X-API-Key": KEY_N8N})
+        assert r.status_code in (200, 202)
+        job_id = r.json().get("ticket_job_id") or r.json().get("primary", {}).get("job_id")
+
+        async def _get(repo, jid):
+            return await repo.get(jid)
+
+        if job_id:
+            rec = client.portal.call(_get, client.app.state.ticket_repo, job_id)
+            assert rec.request_payload.get("record_keeper") is None, (
+                "el record_keeper del caller sobrevivió pese a que la fuente "
+                "canónica no lo afirmó (P2 review)"
+            )

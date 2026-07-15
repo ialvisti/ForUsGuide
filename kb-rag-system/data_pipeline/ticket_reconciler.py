@@ -142,6 +142,11 @@ class TicketReconciler:
 
     async def _terminalize(self, job_id: str, state: TicketJobState,
                            code: str) -> None:
+        # FENCE primero (P1 review): incrementar lease_epoch para que un worker
+        # aún vivo no siga haciendo efectos externos sobre un job que el
+        # reconciliador va a declarar terminal. fence_and_requeue deja el job
+        # en QUEUED con epoch nuevo; luego lo terminalizamos.
+        await self.repo.fence_and_requeue(job_id)
         try:
             await self.repo.update(
                 job_id,

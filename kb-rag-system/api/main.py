@@ -542,6 +542,14 @@ async def verify_api_key(
     await authenticate_principal(request)
 
 
+async def verify_workload_identity(http_request: Request) -> None:
+    """Dependency de v1/v2: identidad workload independiente de X-API-Key
+    (Tarea 4 Paso 2a). No-op mientras WIF no esté configurado (ventana de
+    migración); una vez activo, cierra el bypass de v1 (P1 review). La
+    verificación completa vive en api.auth."""
+    verify_workload_identity_token(http_request)
+
+
 def get_rag_engine(request: Request) -> RAGEngine:
     """Dependency para obtener RAG engine from app.state."""
     engine = getattr(request.app.state, "rag_engine", None)
@@ -1344,10 +1352,11 @@ async def _accept_ticket_job(
         request, http_request, allow_body=allow_body_idem
     )
     payload = request.model_dump(mode="json", exclude={"idempotency_key"})
-    # Campos confiables SERVER-OWNED (Tarea 4 Paso 3): el record keeper de la
-    # fuente canónica prevalece sobre el metadato que aporte el caller.
-    if authorized.record_keeper:
-        payload["record_keeper"] = authorized.record_keeper
+    # Campo SERVER-OWNED (Tarea 4 Paso 3 / P2 review): el record keeper SIEMPRE
+    # proviene de la fuente canónica, nunca del metadato del caller. Un valor
+    # None de la fuente significa "sin record keeper afirmado" y DEBE sustituir
+    # cualquier valor del body (no dejarlo sobrevivir).
+    payload["record_keeper"] = authorized.record_keeper
     fingerprint = fingerprint_request(payload)
 
     # Resolución de idempotencia ANTES de las cuotas de jobs nuevos (Tarea 4
@@ -1524,7 +1533,7 @@ def _job_handle_response(record: TicketJobRecord, replayed: bool) -> JSONRespons
 
 @app.post(
     "/api/v1/handle-ticket",
-    dependencies=[Depends(verify_api_key)],
+    dependencies=[Depends(verify_api_key), Depends(verify_workload_identity)],
     tags=["RAG Endpoints"],
     responses={200: {"model": TicketHandleResponse}, 202: {"model": TicketJobHandle}},
 )
@@ -1543,6 +1552,13 @@ async def handle_ticket_endpoint(
     poll de ``GET /api/v1/tickets/{id}``. La idempotencia se reserva en
     transacción ANTES de cualquier LLM: misma key + mismo payload replaya el
     job; misma key + otro payload es ``409``.
+
+    **Auth (P1 review):** v1 alcanza el MISMO pipeline durable que v2, así que
+    también exige la identidad workload cuando está configurada
+    (``verify_workload_identity``). El gate es no-op mientras WIF no esté
+    configurado (ventana de migración legacy con X-API-Key), y cierra el bypass
+    en cuanto WIF se activa: un X-API-Key filtrado ya no basta para conducir el
+    flujo completo. n8n siempre envía el header propio (Tarea 1 Paso 3).
 
     **Rollout:** gated por ``TICKET_HANDLER_MODE``; el override del body sólo
     puede RESTRINGIR el modo del servidor.
@@ -1642,12 +1658,6 @@ async def get_ticket_status(
 # ============================================================================
 # v2: contrato uniforme 202 + polling (plan §6)
 # ============================================================================
-
-async def verify_workload_identity(http_request: Request) -> None:
-    """Dependency de v2: identidad workload independiente de X-API-Key
-    (Tarea 4 Paso 2a). La verificación completa vive en api.auth."""
-    verify_workload_identity_token(http_request)
-
 
 @app.post(
     "/api/v2/handle-ticket",

@@ -200,17 +200,31 @@ def _collect_forusbots_ids(outcomes: List[InquiryOutcome]) -> List[str]:
     return ids
 
 
+def _entry_forusbots_ids(entry: Dict[str, Any]) -> List[str]:
+    """IDs de ForusBots de UN checkpoint, mirando tanto el bloque
+    ``forusbots_job_ids`` explícito (checkpoints degradados: timeout/failed/
+    unprocessed que YA hicieron scrape) como el ``result.diagnostics`` de los
+    outcomes exitosos (P1 review: un scrape real cuya inquiry luego degrada no
+    puede perder su job_id — la reconciliación lo necesita)."""
+    ids: List[str] = list(entry.get("forusbots_job_ids") or [])
+    diag = ((entry.get("result") or {}).get("diagnostics")) or {}
+    for key in ("forusbots_participant_job_id", "forusbots_plan_job_id",
+                "forusbots_job_id"):
+        value = diag.get(key)
+        if value:
+            ids.append(value)
+    return ids
+
+
 def _collect_forusbots_ids_from_entries(entries: List[Dict[str, Any]]) -> List[str]:
     """IDs de ForusBots desde TODOS los checkpoints persistidos (Tarea 6
     Paso 4): la agregación final no puede descartar los efectos de attempts
-    anteriores — perderlos rompe la trazabilidad y la reconciliación."""
+    anteriores ni de inquiries degradadas — perderlos rompe la trazabilidad y
+    la reconciliación (P1 review)."""
     ids: List[str] = []
     for entry in entries:
-        diag = ((entry.get("result") or {}).get("diagnostics")) or {}
-        for key in ("forusbots_participant_job_id", "forusbots_plan_job_id",
-                    "forusbots_job_id"):
-            value = diag.get(key)
-            if value and value not in ids:
+        for value in _entry_forusbots_ids(entry):
+            if value not in ids:
                 ids.append(value)
     return ids
 
@@ -470,11 +484,15 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             current_step="processing",
         )
 
-    # checkpoints terminales de attempts anteriores: NO se repiten efectos
+    # checkpoints terminales de attempts anteriores: NO se repiten efectos.
+    # 'unprocessed' NO es terminal (presupuesto agotado, retryable=True): un
+    # retry con presupuesto fresco DEBE reprocesarla, no saltarla para
+    # siempre (P2 review).
     current = await repo.get(job_id)
     done_indexes = {
         e.get("index") for e in (current.per_inquiry_status if current else [])
-        if e.get("execution_status") not in (None, "pending", "running")
+        if e.get("execution_status") not in
+        (None, "pending", "running", "unprocessed")
     }
 
     # -- shadow REAL y muestreado (HT-11/Task 10) ---------------------------
@@ -495,12 +513,17 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                         timeout=min(settings.TICKET_INQUIRY_BUDGET_S,
                                     shadow_remaining),
                     )
+                    # el shadow muestreado hace scrapes REALES de ForusBots:
+                    # sus job_ids deben trazarse aunque shadow no publique
+                    # (P2 review; reconciliación).
+                    shadow_ids = _collect_forusbots_ids([real])
                     shadow_summary.append({
                         "index": i,
                         "route": real.route,
                         "scrape_status": real.scrape_status,
                         "decision": getattr(real.generate_result, "decision", None),
                         "confidence": getattr(real.generate_result, "confidence", None),
+                        "forusbots_job_ids": shadow_ids,
                     })
                 except asyncio.CancelledError:
                     raise
@@ -520,14 +543,25 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             )
             entry = _entry_from_outcome(i, outcome)
             entry["participant_reply_safe"] = False   # shadow NUNCA publica
+            # trazar los job_ids del scrape real del shadow (P2 review)
+            shadow_entry_ids = next(
+                (s.get("forusbots_job_ids") for s in shadow_summary
+                 if s.get("index") == i and s.get("forusbots_job_ids")), None)
+            if shadow_entry_ids:
+                entry["forusbots_job_ids"] = shadow_entry_ids
             await repo.record_inquiry_result(job_id, i, entry,
                                              lease_epoch=lease_epoch)
+        shadow_current = await repo.get(job_id)
+        shadow_entries = shadow_current.per_inquiry_status if shadow_current else []
         return await repo.update(
             job_id,
             state=TicketJobState.SUCCEEDED,
             expected_lease_epoch=lease_epoch,
             next_action=NextAction.USE_LEGACY,
             current_step="done",
+            # los scrapes reales del shadow muestreado se trazan para
+            # reconciliación aunque shadow no publique (P2 review)
+            forusbots_job_ids=_collect_forusbots_ids_from_entries(shadow_entries),
             public_result={
                 "route_taken": "needs_more_info",
                 "metadata": {"ticket_handler_mode": "shadow", "fallback": True,
@@ -601,6 +635,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "execution_status": "timeout",
                 "participant_reply_safe": False,
                 "degraded": True,
+                # una ruta GR pudo lanzar un scrape ANTES del timeout: el
+                # job_id se perdió con la corrutina cancelada, así que NO se
+                # afirma "sin efectos" — queda para reconciliación manual
+                # (P1 review; plan Tarea 6 Paso 5).
+                "manual_reconciliation_required":
+                    getattr(cls, "route", None) == "generate_response",
                 "error": {"code": code.value, "retryable": True},
             }, lease_epoch=lease_epoch)
         except asyncio.CancelledError:
@@ -614,6 +654,8 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "execution_status": "failed",
                 "participant_reply_safe": False,
                 "degraded": True,
+                "manual_reconciliation_required":
+                    getattr(cls, "route", None) == "generate_response",
                 "error": {"code": PublicErrorCode.INTERNAL_ERROR.value,
                           "retryable": False},
             }, lease_epoch=lease_epoch)

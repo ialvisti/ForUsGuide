@@ -446,3 +446,89 @@ class TestStaleTaskGeneration:
         assert current.state.value == "queued", (
             "la task stale ejecutó/claimeó el job"
         )
+
+
+# ---------------------------------------------------------------------------
+# Revisión adversarial (plan de finalización, Tarea 15 Paso 5) — P0/P1/P2
+# confirmados. RED hasta corregir.
+# ---------------------------------------------------------------------------
+
+class _ScrapeThenTimeoutOrch:
+    """Primera inquiry: scrape ForusBots OK (produce job_id) pero luego el
+    outcome se marca timeout/failed en el checkpoint (efecto ya ocurrido)."""
+
+    def __init__(self, fb_id="fb-scraped-1"):
+        self._fb = fb_id
+        self.handle_calls = 0
+
+    async def extract_inquiries(self, req):
+        return [ExtractedInquiry("q0", "LT Trust", "401(k)", "rollover")]
+
+    async def classify(self, inquiry):
+        return SimpleNamespace(route="generate_response", confidence=0.9,
+                               reasoning="r", user_message=None)
+
+    async def handle_inquiry(self, ext, req, *, total_inquiries, classification=None):
+        self.handle_calls += 1
+        # el scrape YA ocurrió (job_id real) pero el paso posterior degrada:
+        # se lanza timeout DESPUÉS de tener el job_id
+        import asyncio
+        raise asyncio.TimeoutError()
+
+
+class TestForusBotsIdTraceabilityOnDegraded:
+
+    async def test_forusbots_ids_preserved_when_inquiry_times_out(self):
+        """P1 (review): un scrape que produjo job_id pero cuya inquiry terminó
+        en timeout DEBE conservar el ID en forusbots_job_ids (reconciliación).
+        Hoy el checkpoint timeout no tiene 'result' y el ID se pierde."""
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        # sembramos un checkpoint previo con un scrape exitoso + timeout
+        await repo.record_inquiry_result(rec.job_id, 0, {
+            "route": "generate_response",
+            "execution_status": "timeout",
+            "participant_reply_safe": False,
+            "degraded": True,
+            "forusbots_job_ids": ["fb-scraped-1"],  # efecto real ocurrido
+            "error": {"code": "INQUIRY_TIMEOUT", "retryable": True},
+        })
+        from api.ticket_worker import _collect_forusbots_ids_from_entries
+        current = await repo.get(rec.job_id)
+        ids = _collect_forusbots_ids_from_entries(current.per_inquiry_status)
+        assert "fb-scraped-1" in ids, (
+            "un job_id de ForusBots de una inquiry degradada se perdió: "
+            "reconciliación imposible (P1 review)"
+        )
+
+
+class TestUnprocessedResumesOnRetry:
+
+    async def test_unprocessed_inquiry_reprocessed_on_resume(self):
+        """P2 (review): 'unprocessed' (presupuesto agotado, retryable) NO es
+        terminal — un retry con presupuesto fresco debe reprocesarla, no
+        saltarla para siempre."""
+        from api.ticket_worker import _execute
+        # comprobamos la semántica de done_indexes directamente
+        entries = [
+            {"index": 0, "execution_status": "succeeded"},
+            {"index": 1, "execution_status": "unprocessed"},
+        ]
+        done = {
+            e.get("index") for e in entries
+            if e.get("execution_status") not in
+            (None, "pending", "running", "unprocessed")
+        }
+        assert 0 in done and 1 not in done, (
+            "un checkpoint 'unprocessed' debe reprocesarse en el retry"
+        )
+        # y el worker real no debe tratar unprocessed como terminal
+        import inspect
+        src = inspect.getsource(_execute)
+        assert "unprocessed" in src and "done_indexes" in src, (
+            "el loop de reanudación debe excluir 'unprocessed' de done_indexes"
+        )

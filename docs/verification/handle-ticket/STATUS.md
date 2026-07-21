@@ -2,9 +2,10 @@
 
 Revisado el 2026-07-21 en el worktree aislado
 `ForUsGuide-handle-ticket-finalization`, rama
-`handle-ticket-production-finalization`. Este corte documental precede al
-commit/push y al PR draft de cierre. El worktree original del usuario se
-mantuvo intacto.
+`handle-ticket-production-finalization`, publicada en `origin` y abierta como
+[PR draft #1](https://github.com/ialvisti/ForUsGuide/pull/1). El PR no autoriza
+merge ni ningún gate de rollout. El worktree original del usuario se mantuvo
+intacto.
 
 ## Resultado ejecutivo
 

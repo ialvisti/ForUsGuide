@@ -160,14 +160,17 @@ el gate debe probar sobre la versión exacta del secreto que
 Policy Troubleshooter/effective IAM; una precondition o un mapa Terraform no
 sustituyen esa prueba porque puede haber grants heredados o drift.
 
-## BLOQUEADO (gates, contratos y publicación de artefactos)
+## BLOQUEADO (gates, contratos y artefactos promovibles)
 
-La autenticación gcloud está disponible y el build remoto pre-delta pasó. Los pasos
-siguientes no se ejecutaron porque requieren gates/contratos distintos de la
-autorización para verificar:
+La autenticación gcloud está disponible y el build remoto pre-delta pasó. El
+**Paso 2a** quedó completo: commit y push de
+`handle-ticket-production-finalization`, con
+[PR draft #1](https://github.com/ialvisti/ForUsGuide/pull/1). Esto no autoriza
+merge ni ningún gate de rollout.
 
-- **Paso 2a — commit/push + PR draft**: se realiza en el cierre posterior a
-  este corte documental. Un PR no autoriza merge ni ningún gate de rollout.
+Los pasos restantes no se ejecutaron porque requieren gates/contratos distintos
+de la autorización para verificar:
+
 - **Paso 3 — bootstrap único de platform + neutralizar `deploy-kb-rag-system`
   (G1B)**: requiere digest publicado+escaneado, SHA remoto limpio, emails
   contractuales y quorum G1B externo sobre el plan binario exacto. Está además

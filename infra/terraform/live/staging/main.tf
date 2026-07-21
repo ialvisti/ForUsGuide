@@ -1,17 +1,9 @@
 # Staging: base nombrada ticket-staging aislada, cola, servicios/reconciler
-# (plan Tarea 10 Paso 4). Lee las SAs del state de platform (referenciando
-# nombres/emails, nunca payloads).
-
-data "terraform_remote_state" "platform" {
-  backend = "gcs"
-  config = {
-    bucket = "rag-kb-system-tfstate-platform-900340137010"
-    prefix = "state"
-  }
-}
+# (plan Tarea 10 Paso 4). Las SAs llegan en el manifest firmado del plan; este
+# root nunca lee el bucket/state de platform.
 
 locals {
-  sas = data.terraform_remote_state.platform.outputs.runtime_service_accounts
+  sas = var.runtime_service_accounts
 }
 
 module "staging" {
@@ -21,11 +13,14 @@ module "staging" {
   region     = var.region
   env        = "staging"
 
-  image_digest        = var.image_digest
-  release_phase       = var.release_phase
-  shadow_sample_rate  = var.shadow_sample_rate
-  ticket_handler_mode = contains(["dark_no_traffic", "dark_100", "infra_only"], var.release_phase) ? "disabled" : (var.release_phase == "knowledge_only" ? "knowledge_only" : (var.release_phase == "full" ? "full" : "shadow"))
-  enable_services     = var.release_phase != "infra_only"
+  image_digest               = var.image_digest
+  release_phase              = var.release_phase
+  producer_baseline_revision = var.producer_baseline_revision
+  producer_baseline_tag      = var.producer_baseline_tag
+  producer_candidate_tag     = var.producer_candidate_tag
+  shadow_sample_rate         = var.shadow_sample_rate
+  ticket_handler_mode        = contains(["dark_no_traffic", "dark_100", "infra_only"], var.release_phase) ? "disabled" : (var.release_phase == "knowledge_only" ? "knowledge_only" : (var.release_phase == "full" ? "full" : "shadow"))
+  enable_services            = var.release_phase != "infra_only"
 
   firestore_database = "ticket-staging"
 
@@ -44,6 +39,12 @@ module "staging" {
   worker_max_instances            = 1
   queue_max_concurrent_dispatches = 1
 
-  secret_version_refs   = var.secret_version_refs
-  notification_channels = var.notification_channels
+  producer_core_env         = var.producer_core_env
+  ticket_wif_audience       = var.ticket_wif_audience
+  ticket_wif_allowed_emails = var.ticket_wif_allowed_emails
+  secret_version_refs       = var.secret_version_refs
+  secret_containers         = var.secret_containers
+  e2e_job                   = var.e2e_job
+  e2e_secret_containers     = var.e2e_secret_containers
+  notification_channels     = var.notification_channels
 }

@@ -577,6 +577,56 @@ def split_modules_by_target(
 # ============================================================================
 
 _KNOWN_MODULE_KEYS = frozenset(PARTICIPANT_MODULES) | frozenset(PLAN_MODULES)
+_SAFE_MODULE_STATUSES = frozenset({
+    "ok", "error", "failed", "partial", "skipped", "canceled",
+})
+_UPSTREAM_DIAGNOSTIC_KEYS = frozenset({
+    "error", "errors", "warning", "warnings", "unknownfield",
+    "unknownfields", "extractorwarning", "extractorwarnings",
+    "moduleerror", "moduleerrors",
+})
+
+
+def _diagnostic_count(value: Any) -> int:
+    """Count an untrusted diagnostic value without retaining its contents."""
+    if value is None or value is False:
+        return 0
+    if isinstance(value, (dict, list, tuple, set, frozenset)):
+        return len(value)
+    return 1
+
+
+def _safe_module_status(value: Any) -> str:
+    """Reduce an upstream status to the closed vocabulary used downstream."""
+    if value is None or value == "":
+        return "ok"
+    if isinstance(value, str) and value in _SAFE_MODULE_STATUSES:
+        return value
+    return "unknown"
+
+
+def _without_upstream_diagnostics(value: Any) -> Any:
+    """Recursively remove known free-text diagnostic channels from data.
+
+    A service or proxy can move ``errors``/``warnings`` beneath a recognized
+    module.  Module recognition alone therefore is not a redaction boundary:
+    strip the closed diagnostic vocabulary at every nesting depth before the
+    payload can reach an LLM or a durable/public result.
+    """
+    if isinstance(value, Mapping):
+        clean: Dict[Any, Any] = {}
+        for key, child in value.items():
+            normalized = (
+                re.sub(r"[^a-z0-9]", "", key.lower())
+                if isinstance(key, str) else ""
+            )
+            if normalized in _UPSTREAM_DIAGNOSTIC_KEYS:
+                continue
+            clean[key] = _without_upstream_diagnostics(child)
+        return clean
+    if isinstance(value, list):
+        return [_without_upstream_diagnostics(child) for child in value]
+    return value
 
 
 def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -605,46 +655,50 @@ def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]
     if isinstance(data, dict) and isinstance(data.get("modules"), list):
         flat: Dict[str, Any] = {}
         module_status: Dict[str, str] = {}
-        module_errors: Dict[str, str] = {}
-        unknown_fields: Dict[str, Any] = {}
-        extractor_warnings: Dict[str, Any] = {}
+        module_error_count = 0
+        unknown_field_count = 0
+        extractor_warning_count = 0
         for entry in data["modules"]:
             if not isinstance(entry, dict):
                 continue
             key = entry.get("key")
-            if not key:
+            if key not in _KNOWN_MODULE_KEYS:
                 continue
-            status = entry.get("status") or "ok"
+            status = _safe_module_status(entry.get("status"))
             module_status[key] = status
             if status == "ok":
-                flat[key] = entry.get("data") or {}
+                flat[key] = _without_upstream_diagnostics(
+                    entry.get("data") or {}
+                )
             else:
-                module_errors[key] = str(entry.get("error") or status)
-            if entry.get("unknownFields"):
-                unknown_fields[key] = entry["unknownFields"]
-            if entry.get("extractorWarnings"):
-                extractor_warnings[key] = entry["extractorWarnings"]
+                module_error_count += 1
+            unknown_field_count += _diagnostic_count(entry.get("unknownFields"))
+            extractor_warning_count += _diagnostic_count(
+                entry.get("extractorWarnings")
+            )
         if isinstance(data.get("notes"), list) and data["notes"]:
             flat["plan_notes"] = data["notes"]
         meta["shape"] = "envelope"
         if module_status:
             meta["module_status"] = module_status
-        if module_errors:
-            meta["module_errors"] = module_errors
-        if unknown_fields:
-            meta["unknown_fields"] = unknown_fields
-        if extractor_warnings:
-            meta["extractor_warnings"] = extractor_warnings
-        if result.get("warnings"):
-            meta["warnings"] = result["warnings"]
-        if result.get("errors"):
-            meta["errors"] = result["errors"]
+        if module_error_count:
+            meta["module_error_count"] = module_error_count
+        if unknown_field_count:
+            meta["unknown_field_count"] = unknown_field_count
+        if extractor_warning_count:
+            meta["extractor_warning_count"] = extractor_warning_count
+        warning_count = _diagnostic_count(result.get("warnings"))
+        error_count = _diagnostic_count(result.get("errors"))
+        if warning_count:
+            meta["warning_count"] = warning_count
+        if error_count:
+            meta["error_count"] = error_count
         return flat, meta
 
     # Shape 2: flat module-keyed data (confirmed real payload)
     if isinstance(data, dict):
         modules_found = {
-            k: v for k, v in data.items()
+            k: _without_upstream_diagnostics(v) for k, v in data.items()
             if k in _KNOWN_MODULE_KEYS and isinstance(v, dict)
         }
         if modules_found:
@@ -652,15 +706,17 @@ def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]
             if isinstance(data.get("notes"), list) and data["notes"]:
                 flat["plan_notes"] = data["notes"]
             meta["shape"] = "flat_data"
-            if result.get("warnings"):
-                meta["warnings"] = result["warnings"]
-            if result.get("errors"):
-                meta["errors"] = result["errors"]
+            warning_count = _diagnostic_count(result.get("warnings"))
+            error_count = _diagnostic_count(result.get("errors"))
+            if warning_count:
+                meta["warning_count"] = warning_count
+            if error_count:
+                meta["error_count"] = error_count
             return flat, meta
 
     # Shape 4: already-flat module-keyed dict
     modules_found = {
-        k: v for k, v in result.items()
+        k: _without_upstream_diagnostics(v) for k, v in result.items()
         if k in _KNOWN_MODULE_KEYS and isinstance(v, dict)
     }
     if modules_found:

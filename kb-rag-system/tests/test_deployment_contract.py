@@ -11,7 +11,6 @@ from __future__ import annotations
 import re
 import importlib.util
 import sys
-from datetime import date
 from pathlib import Path
 
 import pytest
@@ -33,6 +32,15 @@ def _tool_image(name: str) -> str:
     raise AssertionError(f"{name} is missing from ci/tool-images.env")
 
 
+def test_router_keeps_api_key_in_dom_memory_only() -> None:
+    router = _read(KB_ROOT / "ui" / "router.html")
+
+    assert "localStorage" not in router
+    assert "sessionStorage" not in router
+    assert "API_KEY_STORAGE" not in router
+    assert "const apiKey = document.getElementById('apiKey').value.trim();" in router
+
+
 def test_runtime_dockerfile_uses_pinned_base_and_hashed_runtime_lock() -> None:
     dockerfile = _read(KB_ROOT / "Dockerfile")
     pinned_base = _tool_image("PYTHON_BASE_IMAGE")
@@ -42,6 +50,28 @@ def test_runtime_dockerfile_uses_pinned_base_and_hashed_runtime_lock() -> None:
     assert "--require-hashes -r requirements.lock" in dockerfile
     assert "requirements.txt" not in dockerfile
     assert "pip install --no-cache-dir --upgrade pip" not in dockerfile
+
+
+def test_dev_lock_is_self_contained_for_a_fresh_python_image() -> None:
+    """pip-tools bootstrap dependencies must not be hidden by the generator."""
+    controller = _read(KB_ROOT / "ci" / "cloudbuild.generate-locks.yaml")
+    dev_lock = _read(KB_ROOT / "requirements-dev.lock")
+
+    assert "--allow-unsafe" in controller
+    assert "--require-hashes" in controller
+    assert "-r requirements-dev.lock" in controller
+    assert "pip install --no-cache-dir 'pip-tools" not in controller
+    assert "dir: 'kb-rag-system'" in controller
+    assert "cp requirements.lock /workspace/requirements.lock" in controller
+    assert "cp requirements-dev.lock /workspace/requirements-dev.lock" in controller
+    assert "- 'requirements.lock'" in controller
+    assert "- 'requirements-dev.lock'" in controller
+    assert "python -m venv /tmp/lock-verification" in controller
+    assert "/tmp/lock-verification/bin/python -m pip install" in controller  # noqa: S108
+    assert re.search(r"(?m)^pip==", dev_lock)
+    assert re.search(r"(?m)^setuptools==", dev_lock)
+    assert re.search(r"(?m)^types-protobuf==", dev_lock)
+    assert "packages were not pinned" not in dev_lock
 
 
 def test_ci_container_scan_fails_closed_and_enforces_severity() -> None:
@@ -78,8 +108,6 @@ def test_container_scan_rejects_critical_without_exception(tmp_path: Path) -> No
         verifier.verify(
             findings,
             digest=digest,
-            approvals_text="",
-            today=date(2026, 7, 15),
         )
 
 
@@ -94,28 +122,12 @@ def test_container_scan_requires_digest_and_cve_scoped_g5v_for_high() -> None:
         verifier.verify(
             findings,
             digest=digest,
-            approvals_text="",
-            today=date(2026, 7, 15),
         )
-
-    approval = (
-        f"APROBADO G5V {digest} CVE-2026-2000 security-owner=sec "
-        "release-owner=release requester=requester exploitability=not-reachable "
-        "expires=2026-07-30 compensating-control=network-deny"
-    )
-    verifier.verify(
-        findings,
-        digest=digest,
-        approvals_text=approval,
-        today=date(2026, 7, 15),
-    )
 
     with pytest.raises(verifier.ScanRejected, match="G5V"):
         verifier.verify(
             findings,
             digest="registry/image@sha256:" + "c" * 64,
-            approvals_text=approval,
-            today=date(2026, 7, 15),
         )
 
 
@@ -160,23 +172,19 @@ def test_environment_module_preserves_core_env_and_models_traffic() -> None:
     assert "dark_no_traffic" in cloud_run_tf
 
 
-def test_environment_module_declares_database_scoped_iam() -> None:
-    iam_tf = _read(TF_ROOT / "modules" / "ticket_environment" / "iam.tf")
+def test_platform_brokers_database_scoped_iam_for_environment_runtimes() -> None:
+    iam_tf = _read(TF_ROOT / "live" / "platform" / "runtime_project_iam.tf")
+    containers_tf = _read(TF_ROOT / "live" / "platform" / "environment_containers.tf")
+    pipeline_iam = _read(TF_ROOT / "live" / "platform" / "pipeline_iam.tf")
 
-    # google/google-beta 5.x has no per-database Firestore IAM resource. The
-    # supported least-privilege shape is a non-authoritative project member
-    # whose condition matches the database resource name exactly.
-    for runtime in ("producer", "worker", "reconciler"):
-        assert (
-            f'resource "google_project_iam_member" "{runtime}_firestore"'
-            in iam_tf
-        )
-    exact_database_condition = (
+    assert 'resource "google_firestore_database" "environment"' in containers_tf
+    assert 'resource "google_project_iam_member" "runtime_firestore"' in iam_tf
+    assert (
         'expression  = "resource.name == '
-        '\\"${local.firestore_database_resource}\\""'
-    )
-    assert iam_tf.count(exact_database_condition) == 3
-    assert "startsWith(" not in iam_tf
+        '\\"projects/${var.project_id}/databases/${each.value.database}\\""'
+    ) in iam_tf
+    assert '"datastore.entities.get"' not in pipeline_iam
+    assert '"roles/iam.securityAdmin"' not in pipeline_iam
 
 
 def test_environment_module_declares_secret_containers_and_staging_e2e_job() -> None:
@@ -221,6 +229,65 @@ def test_remote_verification_controller_cannot_deploy_or_publish() -> None:
     assert all("@sha256:" in image for image in image_references)
 
 
+def test_cloud_build_source_upload_is_default_deny() -> None:
+    ignore_lines = [
+        line.strip()
+        for line in _read(REPO_ROOT / ".gcloudignore").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    ]
+
+    assert ignore_lines[0] == "**"
+    assert {
+        "!.gcloudignore",
+        "!kb-rag-system/",
+        "!kb-rag-system/**",
+        "!infra/",
+        "!infra/terraform/",
+        "!infra/terraform/**",
+        "!PA/",
+        "!PA/**/",
+        "!docs/",
+        "!docs/verification/",
+        "!docs/verification/handle-ticket/",
+        "!docs/verification/handle-ticket/11-incident-drill-template.md",
+        "!External agents/",
+        "!External agents/Inquiry Extraction & Required-Data Builder agent .md",
+        "!External agents/Knowledge Question Inquiry Generator.md",
+        "!External agents/Generate Response Body Builder.md",
+        "!External agents/Forusbots field mapper.md",
+    }.issubset(ignore_lines)
+    reviewed_pa_json = {
+        f"!{path.relative_to(REPO_ROOT).as_posix()}"
+        for path in (REPO_ROOT / "PA").rglob("*.json")
+    }
+    assert reviewed_pa_json
+    assert reviewed_pa_json.issubset(ignore_lines)
+    assert "!PA/**" not in ignore_lines
+    assert "!PA/**/*.json" not in ignore_lines
+    assert "!docs/**" not in ignore_lines
+    assert "!External agents/**" not in ignore_lines
+    assert not any(
+        line.startswith("!ticket-handler-planning") for line in ignore_lines
+    )
+    assert {
+        "**/*.tfstate",
+        "**/*.tfstate.*",
+        "**/*.tfplan",
+        "**/*.pem",
+        "**/*.key",
+        "**/*credentials*.json",
+    }.issubset(ignore_lines)
+    assert {
+        "kb-rag-system/rag-testing/**",
+        "!kb-rag-system/rag-testing/ground_truth.py",
+        "!kb-rag-system/rag-testing/ticket_differential.py",
+        "!kb-rag-system/rag-testing/ticket_differential_thresholds.json",
+        "kb-rag-system/STRESS_TEST_COMPARISON_REPORT.md",
+        "kb-rag-system/Development Docs/**",
+        "!kb-rag-system/Development Docs/HANDLE_TICKET_RUNBOOK.md",
+    }.issubset(ignore_lines)
+
+
 def test_terraform_lock_controller_preserves_all_three_root_locks() -> None:
     controller = _read(KB_ROOT / "ci" / "cloudbuild.generate-terraform-locks.yaml")
 
@@ -236,6 +303,22 @@ def test_terraform_lock_controller_preserves_all_three_root_locks() -> None:
 
 def test_candidate_terraform_contains_no_execution_escape_hatches() -> None:
     terraform_text = "\n".join(_read(path) for path in TF_ROOT.rglob("*.tf"))
+    implicit_inputs = [
+        path.relative_to(TF_ROOT)
+        for path in TF_ROOT.rglob("*")
+        if path.is_file() and (
+            path.name.endswith((".tf.json", ".tftest.json"))
+            or path.name in {
+                "override.tf", "override.tf.json",
+                "terraform.tfvars", "terraform.tfvars.json",
+            }
+            or path.name.endswith((
+                "_override.tf", "_override.tf.json",
+                ".auto.tfvars", ".auto.tfvars.json",
+            ))
+        )
+    ]
+    assert implicit_inputs == []
 
     forbidden = (
         'resource "null_resource"',

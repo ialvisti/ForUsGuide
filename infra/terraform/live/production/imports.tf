@@ -12,10 +12,13 @@ import {
   id = "projects/rag-kb-system/locations/us-central1/services/kb-rag-system"
 }
 
-# La cola, worker, reconciler, base (default) y SAs nuevas NO se importan:
-# se crean. El binding invoker existente (kb-rag-client) se importa para no
-# recrearlo.
+# La database `(default)` y los secret containers se importan en platform.
+# Production sólo crea recursos hijos y accessor IAM sobre IDs aprobados.
+
+# Policy legacy inventariada read-only el 2026-07-20. Se adopta antes de
+# deshabilitar/renombrar para que Terraform neutralice el recurso existente y
+# jamás cree un duplicado con el mismo significado ambiguo.
 import {
-  to = module.production.google_cloud_run_v2_service_iam_member.producer_preserved_invokers["serviceAccount:kb-rag-client@rag-kb-system.iam.gserviceaccount.com"]
-  id = "projects/rag-kb-system/locations/us-central1/services/kb-rag-system roles/run.invoker serviceAccount:kb-rag-client@rag-kb-system.iam.gserviceaccount.com"
+  to = module.production.google_monitoring_alert_policy.legacy_high_error_rate[0]
+  id = "projects/rag-kb-system/alertPolicies/15030298849808887870"
 }

@@ -44,11 +44,13 @@ del incidente, recepción por cada canal, ack y recuperación.
 | `worker_5xx_ratio` | 5xx/requests >1% durante 5m | n8n a legacy; preservar store y polling | |
 | `producer_auth_failure_ratio` | 401/403 >5% durante 5m | revisar WIF/audience/mapping; nunca relajar auth | |
 | `ticket_lease_fencing` | reconciler fencea un lease vencido | verificar heartbeat, epoch y generación; no revivir worker viejo | |
+| `ticket_oldest_active_job` | job activo >120s (lease 90s + gracia) | comprobar heartbeat/fencing; no repetir efectos externos | |
 | `ticket_reconciler_health` | sin heartbeat 10m o errores >0 | revisar Job/Scheduler/locks; CLI sólo break-glass auditado | |
-| `ticket_forusbots_reconciliation` | fallo ForusBots o conciliación manual | consultar estado upstream; nunca repetir POST ambiguo | |
+| `ticket_forusbots_reconciliation` | circuit abierto, fallo o conciliación manual | consultar estado upstream; nunca repetir POST ambiguo | |
 | `ticket_pinecone_circuit` | circuit breaker abierto | mantener fail-fast y usar fallback/legacy | |
 | `ticket_task_delivery_deadline` | intentos no-OK 5m o deadline terminalizado | inspeccionar retry horizon; requeue sólo con nueva generación | |
 | `ticket_billable_time_budget` | segundos facturables/hora sobre guardrail | contener cohort/capacidad y revisar presupuesto de Billing | |
+| `ticket_llm_cost_budget` | costo LLM estimado >5 USD/h staging o >50 USD/h production | contener cohort y revisar tokens/modelo/presupuesto | |
 
 ## Semántica de Cloud Tasks: no inventar una DLQ
 
@@ -85,14 +87,17 @@ documentos Firestore en esta evidencia.
 ### Lease/reconciler
 
 - [ ] Perder un heartbeat y observar fencing con epoch nuevo.
+- [ ] Confirmar `ticket_oldest_active_job` al superar lease + gracia.
 - [ ] Confirmar que el worker viejo no publica ni checkpointea.
 - [ ] Detener una ejecución programada y observar ausencia del reconciler.
 - [ ] Restaurar Scheduler/Job declarativamente y comprobar reanudación.
 
 ### Dependencias
 
-- [ ] ForusBots timeout/fallo ambiguo: conciliación manual, sin reenvío ciego.
+- [ ] ForusBots timeout/fallo ambiguo: abrir circuit, conciliar y no reenviar.
 - [ ] Pinecone degradado: circuit abierto y fallback acotado.
+- [ ] Forzar costo LLM controlado y confirmar `ticket_llm_cost_budget` sin
+      registrar prompts, respuestas ni IDs.
 - [ ] Fallo de identidad: 401/403 fail-closed, sin desactivar segundo factor.
 
 ## Entrega real a dos canales

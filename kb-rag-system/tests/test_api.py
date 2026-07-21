@@ -846,6 +846,7 @@ class TestTicketHandlerContainment:
         """Fija en el singleton una configuración base válida y aplica overrides."""
         from api.config import settings as app_settings
         base = dict(
+            APP_ROLE="producer",
             API_KEY="k",
             API_CLIENT_KEYS={"n8n": "mapped-k"},
             API_CLIENT_TENANTS={"n8n": "tenant-a"},
@@ -853,6 +854,7 @@ class TestTicketHandlerContainment:
             OPENAI_API_KEY="o",
             GEMINI_API_KEY="g",
             ENVIRONMENT="production",
+            APP_ENV="production",
             TICKET_HANDLER_MODE="full",
             FORUSBOTS_BASE_URL="https://forusbots.internal.example",
             FORUSBOTS_AUTH_TOKEN="tok",
@@ -860,6 +862,9 @@ class TestTicketHandlerContainment:
             # identidad workload configuradas (fail-closed).
             PARTICIPANT_PLAN_SOURCE="mock://participant-plan-directory",
             TICKET_WIF_AUDIENCE="https://kb-rag-system.example.run.app",
+            TICKET_WIF_ALLOWED_EMAILS=[
+                "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com"
+            ],
             TICKET_WIF_EXPECTED_EMAIL=(
                 "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com"),
         )
@@ -871,12 +876,52 @@ class TestTicketHandlerContainment:
         """En producción, un modo activo con FORUSBOTS_BASE_URL http:// no arranca."""
         from api.config import validate_settings
         self._pin_settings(
-            monkeypatch, FORUSBOTS_BASE_URL="http://35.224.156.104:10000"
+            monkeypatch,
+            APP_ROLE="worker",
+            FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
         )
         with pytest.raises(ValueError, match="https://"):
             validate_settings()
 
-    def test_reconciler_validation_does_not_require_api_pinecone_or_llm(
+    def test_staging_active_rejects_non_tls_forusbots(self, monkeypatch):
+        """Staging E2E también transporta token/datos y jamás permite HTTP."""
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch,
+            APP_ROLE="worker",
+            ENVIRONMENT="staging",
+            APP_ENV="staging",
+            FIRESTORE_DATABASE="ticket-staging",
+            FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
+            TICKET_WIF_ALLOWED_EMAILS=[
+                "n8n-ticket-invoker-stg@rag-kb-system.iam.gserviceaccount.com",
+                "ticket-e2e-stg@rag-kb-system.iam.gserviceaccount.com",
+            ],
+        )
+        with pytest.raises(ValueError, match="https://"):
+            validate_settings()
+
+    @pytest.mark.parametrize("base_url", [
+        "https://user:raw-secret@forusbots.internal.example",
+        "https://forusbots.internal.example?token=raw-secret",
+        "https://forusbots.internal.example#raw-secret",
+        "https://forusbots.internal.example/unreviewed-prefix",
+    ])
+    def test_active_mode_rejects_noncanonical_forusbots_origin_without_echoing_it(
+        self, monkeypatch, base_url,
+    ):
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch, APP_ROLE="worker", FORUSBOTS_BASE_URL=base_url
+        )
+        with pytest.raises(ValueError, match="origen HTTPS") as captured:
+            validate_settings()
+
+        assert "raw-secret" not in str(captured.value)
+
+    def test_reconciler_validation_does_not_require_api_pinecone_or_llm_credentials(
             self, monkeypatch):
         from api.config import validate_settings
 
@@ -891,6 +936,27 @@ class TestTicketHandlerContainment:
             OPENAI_API_KEY="",
             GEMINI_API_KEY="",
             USE_VERTEX_AI=False,
+            TICKET_LLM_PRICING_JSON=(
+                '{"pricing_as_of":"2026-07-21","source":"official",'
+                '"models":{"openai:gpt-5.5":{'
+                '"input_usd_per_million":5.0,'
+                '"output_usd_per_million":30.0}}}'
+            ),
+            TICKET_JOB_BACKEND="firestore",
+            FIRESTORE_DATABASE="(default)",
+            TICKET_TASK_QUEUE="cloudtasks",
+            GCP_PROJECT="rag-kb-system",
+            CLOUD_TASKS_LOCATION="us-central1",
+            CLOUD_TASKS_QUEUE="ticket-jobs",
+            TICKET_WORKER_URL="https://worker.example.run.app",
+            TICKET_WORKER_AUDIENCE=(
+                "https://kb-rag-ticket-worker."
+                "rag-kb-system.ticket.internal"
+            ),
+            TICKET_WORKER_SERVICE_ACCOUNT=(
+                "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
+            ),
+            TICKET_WORKER_REQUIRE_OIDC=True,
         )
         assert validate_settings() is True
 
@@ -909,19 +975,24 @@ class TestTicketHandlerContainment:
     def test_full_mode_requires_forusbots_token(self, monkeypatch):
         """Un modo activo sin FORUSBOTS_AUTH_TOKEN no arranca (antes era warning)."""
         from api.config import validate_settings
-        self._pin_settings(monkeypatch, FORUSBOTS_AUTH_TOKEN="")
+        self._pin_settings(
+            monkeypatch, APP_ROLE="worker", FORUSBOTS_AUTH_TOKEN=""
+        )
         with pytest.raises(ValueError, match="FORUSBOTS_AUTH_TOKEN"):
             validate_settings()
 
-    def test_non_production_http_forusbots_still_boots(self, monkeypatch):
-        """Development conserva el host http actual (con warning, no error)."""
+    def test_non_production_http_forusbots_is_also_rejected(self, monkeypatch):
+        """Development cannot instantiate a token-bearing HTTP client either."""
         from api.config import validate_settings
         self._pin_settings(
             monkeypatch,
+            APP_ROLE="worker",
             ENVIRONMENT="development",
+            APP_ENV="development",
             FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
         )
-        assert validate_settings() is True
+        with pytest.raises(ValueError, match="origen HTTPS"):
+            validate_settings()
 
     def test_request_cannot_expand_server_mode(self, client, test_api_key, monkeypatch):
         """Servidor disabled + body ticket_handler_mode=full → sigue 503."""
@@ -1036,6 +1107,40 @@ class TestAppRoleSeparation:
             "producer; los roles no son excluyentes"
         )
 
+    def test_openapi_contains_only_routes_served_by_each_role(
+        self, client, monkeypatch,
+    ):
+        from api.config import settings as app_settings
+
+        expected = {
+            "producer": {
+                "/api/v1/knowledge-question",
+                "/api/v2/handle-ticket",
+            },
+            # The internal task endpoint deliberately has
+            # include_in_schema=False; probes are excluded as well.
+            "worker": set(),
+            "reconciler": set(),
+        }
+        forbidden = {
+            "producer": {"/internal/tasks/ticket-job"},
+            "worker": {"/api/v1/knowledge-question", "/api/v2/handle-ticket"},
+            "reconciler": {
+                "/internal/tasks/ticket-job",
+                "/api/v1/knowledge-question",
+                "/api/v2/handle-ticket",
+            },
+        }
+
+        # Do not clear the cache between roles: this also proves a schema from
+        # one process role cannot bleed into another role's documentation.
+        client.app.openapi_schema = None
+        for role in ("producer", "worker", "reconciler"):
+            monkeypatch.setattr(app_settings, "APP_ROLE", role)
+            paths = set(client.app.openapi()["paths"])
+            assert expected[role] <= paths
+            assert paths.isdisjoint(forbidden[role])
+
 
 # ---------------------------------------------------------------------------
 # Producción (Tarea 11) — readiness role-aware y sanitización de métricas
@@ -1043,15 +1148,53 @@ class TestAppRoleSeparation:
 
 class TestRoleAwareReadiness:
 
-    def test_producer_disabled_ready_without_ticket_deps(self, client, monkeypatch):
+    def test_participant_plan_validator_contract_requires_safe_health_probe(self):
+        from api.participant_plan import ParticipantPlanValidator
+
+        class _AuthorizeOnly:
+            async def authorize(self, **_kwargs):
+                return None
+
+        assert not isinstance(_AuthorizeOnly(), ParticipantPlanValidator)
+
+    def test_producer_disabled_actually_probes_core_pinecone(
+            self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        client.app.state.pinecone_uploader.get_index_stats.side_effect = (
+            RuntimeError("secret upstream detail")
+        )
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert response.json()["unhealthy"] == ["pinecone"]
+        assert "secret upstream detail" not in response.text
+
+    def test_producer_disabled_ready_without_admission_deps(self, client, monkeypatch):
         from api.config import settings as app_settings
         monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
         monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
-        # sin validador de tickets: un producer disabled sigue READY (core ok)
+        # Sin validador/cola/ForusBots: disabled sigue READY, pero conserva el
+        # repositorio durable para polling de trabajos ya admitidos.
         client.app.state.participant_plan_validator = None
         r = client.get("/readyz")
         assert r.status_code == 200
         assert r.json()["role"] == "producer"
+
+    def test_producer_disabled_requires_polling_repository(self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        client.app.state.ticket_repo = None
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert "ticket_repo" in response.json()["missing"]
 
     def test_producer_active_requires_validator(self, client, monkeypatch):
         from api.config import settings as app_settings
@@ -1062,15 +1205,86 @@ class TestRoleAwareReadiness:
         assert r.status_code == 503
         assert "participant_plan_validator" in r.json()["missing"]
 
-    def test_producer_active_requires_forusbots_client(self, client, monkeypatch):
+    def test_producer_active_does_not_require_forusbots_client(
+            self, client, monkeypatch):
         from api.config import settings as app_settings
 
         monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
         monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.participant_plan_validator = Mock(
+            authorize=AsyncMock(),
+            health=AsyncMock(return_value={"status": "ok"}),
+        )
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(return_value=0.0),
+            aclose=AsyncMock(),
+        )
         client.app.state.forusbots_client = None
         r = client.get("/readyz")
-        assert r.status_code == 503
-        assert "forusbots_client" in r.json()["missing"]
+        assert r.status_code == 200
+        assert "forusbots_client" not in r.json().get("missing", [])
+
+    def test_producer_active_probes_only_admission_dependencies(
+            self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.participant_plan_validator = Mock(
+            authorize=AsyncMock(),
+            health=AsyncMock(return_value={"status": "ok"}),
+        )
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(return_value=0.0),
+            aclose=AsyncMock(),
+        )
+        client.app.state.forusbots_client = None
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 200
+        client.app.state.ticket_repo.get.assert_awaited_once()
+        client.app.state.ticket_queue.estimated_queue_delay_s.assert_awaited_once()
+
+    def test_reconciler_fails_readiness_when_queue_probe_fails(
+            self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "reconciler")
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(
+                side_effect=RuntimeError("credential material")
+            ),
+            aclose=AsyncMock(),
+        )
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert response.json()["unhealthy"] == ["ticket_queue"]
+        assert "credential material" not in response.text
+
+    def test_worker_probes_execution_dependencies(self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "worker")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.forusbots_client = Mock(
+            health=AsyncMock(side_effect=RuntimeError("private upstream")),
+            aclose=AsyncMock(),
+        )
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert response.json()["unhealthy"] == ["forusbots"]
+        assert "private upstream" not in response.text
+        client.app.state.ticket_repo.get.assert_awaited_once()
+        client.app.state.pinecone_uploader.get_index_stats.assert_called()
 
     def test_reconciler_ready_without_llm_provider(self, client, monkeypatch):
         from api.config import settings as app_settings
@@ -1079,6 +1293,14 @@ class TestRoleAwareReadiness:
         monkeypatch.setattr(app_settings, "OPENAI_API_KEY", "")
         monkeypatch.setattr(app_settings, "GEMINI_API_KEY", "")
         monkeypatch.setattr(app_settings, "USE_VERTEX_AI", False)
+        # This test mutates the role after the fixture's producer startup, so
+        # inject the reconciler's own healthy dependencies explicitly. Actual
+        # role-specific construction is covered by test_app_role_startup.py.
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(return_value=0.0),
+            aclose=AsyncMock(),
+        )
         r = client.get("/readyz")
         assert r.status_code == 200
         assert r.json()["role"] == "reconciler"
@@ -1104,9 +1326,10 @@ class TestMetricsSanitization:
         metrics.logger.addHandler(h)
         prev_level = metrics.logger.level
         metrics.logger.setLevel(logging.INFO)
+        job_hash = "a" * 64
         try:
-            metrics.emit("ticket_job_terminal", 1, job_hash="abc123",
-                         trace_id="t1", state="succeeded",
+            metrics.emit("ticket_job_terminal", 1, job_hash=job_hash,
+                         trace_id="t1", state="succeeded", code="none",
                          participant_id="158948",  # PROHIBIDO: debe filtrarse
                          email="luke@example.com")  # PROHIBIDO
         finally:
@@ -1116,4 +1339,4 @@ class TestMetricsSanitization:
         blob = "\n".join(records)
         assert "158948" not in blob, "un ID de participante llegó a las métricas"
         assert "luke@example.com" not in blob
-        assert "succeeded" in blob and "abc123" in blob
+        assert "succeeded" in blob and job_hash in blob

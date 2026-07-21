@@ -30,6 +30,7 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
+from api import metrics as ticket_metrics
 from data_pipeline.llm_router import LLMRouter
 from data_pipeline.prompts import build_classify_inquiry_prompt
 from data_pipeline.rag_engine import detect_advisory_concepts
@@ -350,6 +351,19 @@ def _unparseable_default() -> Dict[str, Any]:
     }
 
 
+def _emit_classifier_parse_outcome(success: bool) -> None:
+    if not ticket_metrics.ticket_execution_active():
+        return
+    try:
+        ticket_metrics.emit(
+            "ticket_llm_parse_count",
+            1,
+            code="success" if success else "failed",
+        )
+    except (TypeError, ValueError):
+        logger.error("classifier parse metric rejected by telemetry schema")
+
+
 def _safe_parse_classifier_json(
     content: Optional[str],
 ) -> Tuple[Dict[str, Any], bool]:
@@ -363,6 +377,7 @@ def _safe_parse_classifier_json(
     """
     if not content or not content.strip():
         logger.warning("Classifier returned empty content; defaulting to needs_more_info.")
+        _emit_classifier_parse_outcome(False)
         return _unparseable_default(), False
 
     text = content.strip()
@@ -383,26 +398,28 @@ def _safe_parse_classifier_json(
 
     if parsed is None:
         logger.warning(
-            "Classifier output unparseable (len=%d): %r",
+            "Classifier output unparseable (length=%d)",
             len(content),
-            content[:500],
         )
+        _emit_classifier_parse_outcome(False)
         return _unparseable_default(), False
 
     if not isinstance(parsed, dict):
-        logger.warning("Classifier output was not a JSON object: %r", content[:500])
+        logger.warning(
+            "Classifier output was not a JSON object (length=%d)", len(content)
+        )
+        _emit_classifier_parse_outcome(False)
         return _unparseable_default(), False
 
     route = parsed.get("route")
     if route not in VALID_ROUTES:
-        logger.warning("Classifier returned invalid route %r; coercing to needs_more_info.", route)
-        parsed["route"] = "needs_more_info"
-        parsed["confidence"] = 0.0
-        parsed["reasoning"] = (
-            f"Invalid route {route!r}; coerced to needs_more_info."
-        )
-        parsed["coverage_basis"] = "topic_unclear"
+        logger.warning("Classifier returned an invalid route; output rejected")
+        invalid = _unparseable_default()
+        invalid["reasoning"] = "Classifier output invalid"
+        _emit_classifier_parse_outcome(False)
+        return invalid, False
 
+    _emit_classifier_parse_outcome(True)
     return parsed, True
 
 
@@ -566,6 +583,10 @@ class InquiryRouterEngine:
                 "provider": llm_result.provider_used,
                 "usage": llm_result.usage,
                 "latency_ms": llm_latency_ms,
+                # El router público puede degradar una salida no parseable a
+                # NMI, pero el worker debe distinguir ese fallo técnico de un
+                # NMI legítimo para no publicarlo al participante.
+                "classifier_parse_ok": parse_ok,
                 "coverage_signals": coverage_pack.signals_dict(),
                 "coverage_basis": coverage_basis,
                 # Kept for backwards compatibility with existing consumers.

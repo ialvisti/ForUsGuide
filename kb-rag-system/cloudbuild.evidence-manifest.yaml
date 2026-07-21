@@ -10,6 +10,7 @@ substitutions:
   _STAGING_REVISIONS_URI: ""
   _E2E_URI: ""
   _DIFFERENTIAL_URI: ""
+  _SEMANTIC_REVIEW_URI: ""
   _ROLLBACK_URI: ""
 
 steps:
@@ -27,7 +28,7 @@ steps:
           exit 1
         fi
 
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'fetch-artifacts'
     entrypoint: bash
     args:
@@ -48,6 +49,7 @@ steps:
         fetch_artifact staging_revisions "${_STAGING_REVISIONS_URI}"
         fetch_artifact e2e "${_E2E_URI}"
         fetch_artifact differential "${_DIFFERENTIAL_URI}"
+        fetch_artifact semantic_review "${_SEMANTIC_REVIEW_URI}"
         fetch_artifact rollback "${_ROLLBACK_URI}"
 
   - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
@@ -64,7 +66,6 @@ steps:
           --image-digest "${_IMAGE_DIGEST}" \
           --controller-builder-digest \
             'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce' \
-          --approvals-file /workspace/docs/verification/handle-ticket/approvals.md \
           --ci-provenance-uri "${_CI_PROVENANCE_URI}" \
           --ci-provenance-file /workspace/ci_provenance.json \
           --sbom-uri "${_SBOM_URI}" \
@@ -77,6 +78,8 @@ steps:
           --e2e-file /workspace/e2e.json \
           --differential-uri "${_DIFFERENTIAL_URI}" \
           --differential-file /workspace/differential.json \
+          --semantic-review-uri "${_SEMANTIC_REVIEW_URI}" \
+          --semantic-review-file /workspace/semantic_review.json \
           --rollback-uri "${_ROLLBACK_URI}" \
           --rollback-file /workspace/rollback.json \
           --out /workspace/evidence_manifest.json \
@@ -96,9 +99,10 @@ steps:
           --artifact staging_revisions=/workspace/staging_revisions.json \
           --artifact e2e=/workspace/e2e.json \
           --artifact differential=/workspace/differential.json \
+          --artifact semantic_review=/workspace/semantic_review.json \
           --artifact rollback=/workspace/rollback.json
 
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-evidence-manifest'
     entrypoint: bash
     args:

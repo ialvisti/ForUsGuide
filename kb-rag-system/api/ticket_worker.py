@@ -21,13 +21,15 @@ dev llama a ``run_ticket_job`` directamente, sin HTTP.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import logging
+import re
 import time
 import uuid
 from typing import Any, Dict, List, Optional, Tuple
 
 from fastapi import APIRouter, HTTPException, Request, Response, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from api import metrics as ticket_metrics
 from api.config import settings
@@ -72,6 +74,14 @@ _TICKET_GREETING = "Could you share a bit more detail about what you'd like help
 
 # scrape_status que NO degradan el resultado (invariante 7).
 _SCRAPE_OK_STATES = {None, "ok", "skipped"}
+
+# Una renovación puede consumir como máximo heartbeat/3 y se reintenta una
+# vez tras heartbeat/6. Con la invarianta heartbeat*3 <= lease, la
+# incertidumbre se corta con margen amplio antes de que venza el lease.
+_HEARTBEAT_MAX_CONSECUTIVE_FAILURES = 2
+_HEARTBEAT_RENEW_TIMEOUT_CAP_S = 10.0
+_HEARTBEAT_RETRY_DELAY_CAP_S = 5.0
+_HEARTBEAT_MIN_STEP_S = 0.001
 
 
 class _ForusBotsSubmitIntentAlreadyExists(RuntimeError):
@@ -207,6 +217,32 @@ def outcome_is_degraded(o: InquiryOutcome) -> Tuple[bool, Optional[str]]:
         return True, PublicErrorCode.LLM_FAILURE.value
     if diag.get("gr_body_build_failed"):
         return True, PublicErrorCode.LLM_FAILURE.value
+    field_mapping = diag.get("field_mapping") or {}
+    if isinstance(field_mapping, dict) \
+            and field_mapping.get("llm_failed") is True:
+        return True, PublicErrorCode.LLM_FAILURE.value
+    if (diag.get("classifier") or {}).get("parse_ok") is False:
+        return True, PublicErrorCode.LLM_FAILURE.value
+    coverage_signals = (
+        (diag.get("classifier") or {}).get("coverage_signals") or {}
+    )
+    if isinstance(coverage_signals, dict) \
+            and coverage_signals.get("retrieval_status") == "failed":
+        return True, PublicErrorCode.PINECONE_TRANSIENT_FAILURE.value
+    knowledge_metadata = getattr(o.knowledge_result, "metadata", None) or {}
+    if isinstance(knowledge_metadata, dict) \
+            and knowledge_metadata.get("error") is not None:
+        error_type = str(knowledge_metadata.get("error_type") or "").lower()
+        code = (
+            PublicErrorCode.PINECONE_TRANSIENT_FAILURE
+            if "pinecone" in error_type
+            else PublicErrorCode.INTERNAL_ERROR
+        )
+        return True, code.value
+    generate_metadata = getattr(o.generate_result, "metadata", None) or {}
+    if isinstance(generate_metadata, dict) \
+            and generate_metadata.get("error") is not None:
+        return True, PublicErrorCode.LLM_FAILURE.value
     if diag.get("error"):
         return True, PublicErrorCode.INTERNAL_ERROR.value
     return False, None
@@ -303,7 +339,7 @@ def _emit_manual_reconciliation_metric(
 
     import hashlib as _hashlib
 
-    job_hash = _hashlib.sha256(record.job_id.encode()).hexdigest()[:16]
+    job_hash = _hashlib.sha256(record.job_id.encode()).hexdigest()
     try:
         ticket_metrics.emit(
             "ticket_manual_reconciliation_required",
@@ -313,7 +349,64 @@ def _emit_manual_reconciliation_metric(
             code="manual_reconciliation",
         )
     except Exception:  # noqa: BLE001 - observabilidad nunca rompe el job
-        logger.exception("manual reconciliation metric emission failed")
+        logger.error("manual reconciliation metric emission failed")
+
+
+def _emit_worker_metric(
+    metric: str, value: int | float, **labels: str
+) -> None:
+    """Best-effort closed-schema worker telemetry."""
+    try:
+        ticket_metrics.emit(metric, value, **labels)
+    except (TypeError, ValueError):
+        logger.error("ticket worker metric rejected by telemetry schema")
+
+
+def _emit_step_latency(started: float, *, step: str, code: str) -> None:
+    _emit_worker_metric(
+        "ticket_step_latency_seconds",
+        max(0.0, time.monotonic() - started),
+        step=step,
+        code=code,
+    )
+
+
+def _route_metric_step(route: Any) -> str:
+    return {
+        "knowledge_question": "retrieve",
+        "generate_response": "generate",
+        "needs_more_info": "validate",
+    }.get(route, "validate")
+
+
+def _terminal_metric_code(state: TicketJobState) -> str:
+    return {
+        TicketJobState.SUCCEEDED: "success",
+        TicketJobState.PARTIAL: "partial",
+        TicketJobState.FAILED: "failed",
+        TicketJobState.TIMEOUT: "timeout",
+        TicketJobState.CANCELLED: "cancelled",
+    }.get(state, "failed")
+
+
+def _emit_result_metrics(record: TicketJobRecord) -> None:
+    """Emit per-job and per-item result counters exactly once at terminal."""
+    if record.state == TicketJobState.PARTIAL:
+        _emit_worker_metric("ticket_result_count", 1, reason="partial")
+
+    capped_out = max(0, int(record.unprocessed_inquiries or 0))
+    checkpoint_unprocessed = sum(
+        entry.get("execution_status") == "unprocessed"
+        for entry in record.per_inquiry_status
+    )
+    unprocessed = max(capped_out, checkpoint_unprocessed)
+    if capped_out:
+        # One truncated ticket, plus the number of omitted inquiries.
+        _emit_worker_metric("ticket_result_count", 1, reason="truncated")
+    if unprocessed:
+        _emit_worker_metric(
+            "ticket_result_count", unprocessed, reason="unprocessed"
+        )
 
 
 def _emit_terminal_metric(record: TicketJobRecord) -> None:
@@ -327,9 +420,11 @@ def _emit_terminal_metric(record: TicketJobRecord) -> None:
     if record.state not in TERMINAL_STATES:
         return
 
+    _emit_result_metrics(record)
+
     import hashlib as _hashlib
 
-    job_hash = _hashlib.sha256(record.job_id.encode()).hexdigest()[:16]
+    job_hash = _hashlib.sha256(record.job_id.encode()).hexdigest()
     try:
         ticket_metrics.increment("ticket_jobs_terminal", state=record.state.value)
         ticket_metrics.emit(
@@ -341,7 +436,7 @@ def _emit_terminal_metric(record: TicketJobRecord) -> None:
             code=record.public_error_code or "none",
         )
     except Exception:  # noqa: BLE001 - métricas jamás cambian el outcome
-        logger.exception("terminal metric emission failed")
+        logger.error("terminal metric emission failed")
 
 
 # ---------------------------------------------------------------------------
@@ -363,7 +458,7 @@ async def run_ticket_job(app: Any, job_id: str,
 
     record = await repo.get(job_id)
     if record is None:
-        logger.warning("ticket job %s no existe (¿expirado?)", job_id)
+        logger.warning("ticket job no existe o expiró")
         return None
     lease_epoch = await repo.claim(
         job_id,
@@ -372,20 +467,27 @@ async def run_ticket_job(app: Any, job_id: str,
         expected_generation=expected_generation,
     )
     if lease_epoch is None:
-        logger.info("ticket job %s ya reclamado/terminal — delivery duplicado", job_id)
+        logger.info("ticket job ya reclamado o terminal; delivery duplicado")
         return None
 
+    owner_task = asyncio.current_task()
+    if owner_task is None:  # pragma: no cover - asyncio siempre crea un Task
+        raise RuntimeError("ticket worker ejecutado fuera de un asyncio.Task")
     heartbeat = asyncio.create_task(
-        _heartbeat_loop(repo, job_id, worker_id, lease_epoch))
+        _heartbeat_loop(
+            repo, job_id, worker_id, lease_epoch, owner_task=owner_task,
+        ),
+        name=f"ticket-heartbeat:{lease_epoch}",
+    )
     try:
-        final = await _execute(app, repo, job_id, worker_id, lease_epoch)
+        with ticket_metrics.ticket_execution_scope():
+            final = await _execute(app, repo, job_id, worker_id, lease_epoch)
         _emit_terminal_metric(final)
         return final
     except StaleLeaseEpoch:
         # Fenced: otro worker/reconciliador posee ya el job. Este intento no
         # escribe NADA más; el dueño actual completa o re-encola.
-        logger.info("ticket job %s: intento con epoch %d fenced", job_id,
-                    lease_epoch)
+        logger.info("ticket job fenced (epoch=%d)", lease_epoch)
         return None
     except InjectedFault:
         # A post-checkpoint crash must surface as a failed Cloud Tasks
@@ -411,10 +513,10 @@ async def run_ticket_job(app: Any, job_id: str,
         except StaleLeaseEpoch:
             pass
         except Exception:
-            logger.exception("no se pudo re-encolar el job %s tras cancelación", job_id)
+            logger.error("no se pudo re-encolar ticket job tras cancelación")
         raise
-    except Exception as exc:  # noqa: BLE001
-        logger.exception("ticket job %s falló", job_id)
+    except Exception:  # noqa: BLE001
+        logger.error("ticket job falló")
         try:
             await repo.update(
                 job_id,
@@ -428,34 +530,106 @@ async def run_ticket_job(app: Any, job_id: str,
         except StaleLeaseEpoch:
             return None
         except Exception:
-            logger.exception("no se pudo marcar failed el job %s", job_id)
-        final = await repo.get(job_id)
-        if final is not None:
-            _emit_terminal_metric(final)
-        return final
+            logger.error("no se pudo marcar failed el ticket job")
+        final_record = await repo.get(job_id)
+        if final_record is not None:
+            _emit_terminal_metric(final_record)
+        return final_record
     finally:
         heartbeat.cancel()
+        try:
+            await heartbeat
+        except asyncio.CancelledError:
+            pass
 
 
 async def _heartbeat_loop(repo: TicketJobRepository, job_id: str,
-                          worker_id: str, lease_epoch: int) -> None:
-    """Renueva el lease cada TICKET_WORKER_HEARTBEAT_S mientras el intento
-    ejecuta. Si la renovación falla (fenced), no interrumpe: la próxima
-    escritura condicional del intento lanzará StaleLeaseEpoch."""
+                          worker_id: str, lease_epoch: int, *,
+                          owner_task: asyncio.Task[Any]) -> None:
+    """Renueva el lease y cancela el intento cuando deja de ser demostrable.
+
+    Una excepción/timeout transitorio recibe un retry corto. Dos fallos
+    consecutivos, o un ``False`` definitivo, cancelan ``owner_task``: su
+    manejador existente de ``CancelledError`` re-encola sólo si aún posee el
+    epoch; si ya fue fenced, la escritura condicional no pisa al nuevo owner.
+    """
+    interval_s = max(
+        _HEARTBEAT_MIN_STEP_S,
+        float(settings.TICKET_WORKER_HEARTBEAT_S),
+    )
+    renew_timeout_s = max(
+        _HEARTBEAT_MIN_STEP_S,
+        min(_HEARTBEAT_RENEW_TIMEOUT_CAP_S, interval_s / 3),
+    )
+    retry_delay_s = max(
+        _HEARTBEAT_MIN_STEP_S,
+        min(_HEARTBEAT_RETRY_DELAY_CAP_S, interval_s / 6),
+    )
+    consecutive_failures = 0
+
+    def _cancel_owner(reason: str) -> None:
+        if owner_task.done():
+            return
+        logger.error(
+            "ticket heartbeat cancela intento epoch=%d reason=%s",
+            lease_epoch,
+            reason,
+        )
+        owner_task.cancel(f"ticket heartbeat: {reason}")
+
     try:
+        await asyncio.sleep(interval_s)
         while True:
-            await asyncio.sleep(settings.TICKET_WORKER_HEARTBEAT_S)
-            renewed = await repo.renew_lease(
-                job_id, worker_id=worker_id, lease_epoch=lease_epoch,
-                lease_s=settings.TICKET_WORKER_LEASE_S)
+            try:
+                renewed = await asyncio.wait_for(
+                    repo.renew_lease(
+                        job_id,
+                        worker_id=worker_id,
+                        lease_epoch=lease_epoch,
+                        lease_s=settings.TICKET_WORKER_LEASE_S,
+                    ),
+                    timeout=renew_timeout_s,
+                )
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - backend transport
+                consecutive_failures += 1
+                logger.warning(
+                    "ticket heartbeat renewal incierta "
+                    "attempt=%d/%d error_type=%s",
+                    consecutive_failures,
+                    _HEARTBEAT_MAX_CONSECUTIVE_FAILURES,
+                    type(exc).__name__,
+                )
+                if consecutive_failures \
+                        >= _HEARTBEAT_MAX_CONSECUTIVE_FAILURES:
+                    _cancel_owner("renewal_unconfirmed")
+                    return
+                await asyncio.sleep(retry_delay_s)
+                continue
+
             if not renewed:
-                logger.warning("ticket job %s: heartbeat perdió el lease "
-                               "(epoch %d)", job_id, lease_epoch)
+                # La terminalización normal limpia el owner antes de que
+                # _execute retorne. No convertir esa pequeña ventana en una
+                # cancelación espuria; cualquier otro estado queda fail-closed.
+                current = await asyncio.wait_for(
+                    repo.get(job_id), timeout=renew_timeout_s,
+                )
+                if current is not None \
+                        and current.state in TERMINAL_STATES \
+                        and current.lease_epoch == lease_epoch:
+                    return
+                logger.warning("ticket heartbeat perdió el lease (epoch %d)",
+                               lease_epoch)
+                _cancel_owner("lease_lost")
                 return
+            consecutive_failures = 0
+            await asyncio.sleep(interval_s)
     except asyncio.CancelledError:
         return
-    except Exception:
-        logger.exception("heartbeat del job %s falló", job_id)
+    except Exception:  # noqa: BLE001 - el supervisor siempre falla cerrado
+        logger.error("ticket heartbeat supervisor falló")
+        _cancel_owner("supervisor_failed")
 
 
 async def _ensure_lease(repo: TicketJobRepository, job_id: str,
@@ -508,11 +682,29 @@ class _PlanClassification:
     def __init__(self, route: Optional[str] = None,
                  confidence: Optional[float] = None,
                  reasoning: Optional[str] = None,
-                 user_message: Optional[str] = None):
+                 user_message: Optional[str] = None,
+                 metadata: Optional[Dict[str, Any]] = None):
         self.route = route
         self.confidence = confidence
         self.reasoning = reasoning
         self.user_message = user_message
+        self.metadata = dict(metadata or {})
+
+
+def _durable_classifier_failure_metadata(
+    classification: Any,
+) -> Dict[str, Any]:
+    """Retiene sólo señales necesarias para fallar cerrado tras un retry."""
+    source = getattr(classification, "metadata", None) or {}
+    if not isinstance(source, dict):
+        return {}
+    durable: Dict[str, Any] = {}
+    if source.get("classifier_parse_ok") is False:
+        durable["classifier_parse_ok"] = False
+    coverage_signals = source.get("coverage_signals")
+    if isinstance(coverage_signals, dict):
+        durable["coverage_signals"] = dict(coverage_signals)
+    return durable
 
 
 def _build_execution_plan(capped: List[Any], classifications: List[Any],
@@ -532,7 +724,8 @@ def _build_execution_plan(capped: List[Any], classifications: List[Any],
             {"route": getattr(c, "route", None),
              "confidence": getattr(c, "confidence", None),
              "reasoning": getattr(c, "reasoning", None),
-             "user_message": getattr(c, "user_message", None)}
+             "user_message": getattr(c, "user_message", None),
+             "metadata": _durable_classifier_failure_metadata(c)}
             for c in classifications
         ],
         "gating": [
@@ -542,11 +735,13 @@ def _build_execution_plan(capped: List[Any], classifications: List[Any],
     }
 
 
-def _rehydrate_plan(plan: Dict[str, Any]):
+def _rehydrate_plan(
+    plan: Dict[str, Any],
+) -> Tuple[List[Any], List[_PlanClassification], List[Tuple[str, Optional[str]]]]:
     from data_pipeline.ticket_orchestrator import ExtractedInquiry
     capped = [ExtractedInquiry(**item) for item in plan["inquiries"]]
     classifications = [_PlanClassification(**c) for c in plan["classifications"]]
-    gated = [(g.get("route"), g.get("override_reason"))
+    gated = [(str(g.get("route") or "needs_more_info"), g.get("override_reason"))
              for g in plan["gating"]]
     return capped, classifications, gated
 
@@ -596,6 +791,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         total = record.execution_plan["total_inquiries"]
         unprocessed = record.execution_plan["unprocessed_inquiries"]
     else:
+        validate_started = time.monotonic()
         await repo.update(job_id, current_step="extracting",
                           expected_lease_epoch=lease_epoch)
         try:
@@ -603,6 +799,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         except ExtractionUnavailable:
             # Fallo TÉCNICO del proveedor: jamás un saludo publicable
             # (bloqueo 4). n8n resuelve por legacy/humano.
+            _emit_step_latency(
+                validate_started, step="validate", code="failed"
+            )
             return await repo.update(
                 job_id,
                 state=TicketJobState.FAILED,
@@ -615,6 +814,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                                             "reason": "extract_llm_failure"}},
             )
         except ExtractionInvalidOutput:
+            _emit_step_latency(
+                validate_started, step="validate", code="failed"
+            )
             return await repo.update(
                 job_id,
                 state=TicketJobState.FAILED,
@@ -630,6 +832,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         if not extracted:
             # Extracción VÁLIDA y vacía: elegible para legacy/humano; nunca
             # se sintetiza un saludo publicable (Tarea 6 Paso 1).
+            _emit_step_latency(
+                validate_started, step="validate", code="success"
+            )
             return await repo.update(
                 job_id,
                 state=TicketJobState.SUCCEEDED,
@@ -645,7 +850,20 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         total = len(extracted)
         capped = extracted[: 1 + settings.TICKET_MAX_RELATED]
         unprocessed = total - len(capped)
-        classifications = [await orchestrator.classify(e.inquiry) for e in capped]
+        try:
+            classifications = [
+                await orchestrator.classify(e.inquiry) for e in capped
+            ]
+        except asyncio.CancelledError:
+            _emit_step_latency(
+                validate_started, step="validate", code="cancelled"
+            )
+            raise
+        except Exception:
+            _emit_step_latency(
+                validate_started, step="validate", code="failed"
+            )
+            raise
         gated = [
             apply_ticket_handler_mode(getattr(c, "route", "needs_more_info"), mode)
             for c in classifications
@@ -658,6 +876,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             total_inquiries=total,
             unprocessed_inquiries=unprocessed,
             current_step="processing",
+        )
+        _emit_step_latency(
+            validate_started, step="validate", code="success"
         )
 
     # checkpoints terminales de attempts anteriores: NO se repiten efectos.
@@ -675,11 +896,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
     if mode == "shadow":
         sampled = _shadow_sampled(record.job_id)
         shadow_summary: List[Dict[str, Any]] = []
-        for i, (ext, cls) in enumerate(zip(capped, classifications)):
+        for i, (ext, cls) in enumerate(zip(capped, classifications, strict=True)):
             if i in done_indexes:
                 continue
             shadow_remaining = deadline - time.monotonic()
             intent_blocked = False
+            real: Optional[InquiryOutcome] = None
             if sampled and shadow_remaining > 0:
                 try:
                     await _ensure_lease(repo, job_id, worker_id, lease_epoch)
@@ -701,23 +923,28 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                             inquiry_index=i,
                             record=record,
                         )
-                    real = await asyncio.wait_for(
+                    real_outcome = await asyncio.wait_for(
                         orchestrator.handle_inquiry(
                             ext, req, total_inquiries=total, classification=cls
                         ),
                         timeout=min(settings.TICKET_INQUIRY_BUDGET_S,
                                     shadow_remaining),
                     )
+                    real = real_outcome
                     # el shadow muestreado hace scrapes REALES de ForusBots:
                     # sus job_ids deben trazarse aunque shadow no publique
                     # (P2 review; reconciliación).
-                    shadow_ids = _collect_forusbots_ids([real])
+                    shadow_ids = _collect_forusbots_ids([real_outcome])
                     shadow_summary.append({
                         "index": i,
-                        "route": real.route,
-                        "scrape_status": real.scrape_status,
-                        "decision": getattr(real.generate_result, "decision", None),
-                        "confidence": getattr(real.generate_result, "confidence", None),
+                        "route": real_outcome.route,
+                        "scrape_status": real_outcome.scrape_status,
+                        "decision": getattr(
+                            real_outcome.generate_result, "decision", None,
+                        ),
+                        "confidence": getattr(
+                            real_outcome.generate_result, "confidence", None,
+                        ),
                         "forusbots_job_ids": shadow_ids,
                     })
                 except asyncio.CancelledError:
@@ -734,8 +961,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 except (FaultInjectionRejected, InjectedFault):
                     raise
                 except Exception:  # noqa: BLE001
-                    logger.exception("shadow pipeline failed (job %s, inquiry %d)",
-                                     job_id, i)
+                    logger.error("shadow pipeline failed (inquiry_index=%d)", i)
                     shadow_summary.append({"index": i,
                                            "route": getattr(cls, "route", None),
                                            "error": "shadow_pipeline_failed"})
@@ -747,7 +973,38 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             )
             entry = _entry_from_outcome(i, outcome)
             entry["participant_reply_safe"] = False   # shadow NUNCA publica
-            if intent_blocked:
+            # El guard pudo persistir el intent antes de que el pipeline
+            # fallara. No reemplazar ese fence durable con el NMI sintético de
+            # shadow: conservarlo y exigir reconciliación si no observamos un
+            # resultado terminal inequívoco.
+            shadow_checkpoint = await repo.get(job_id)
+            prior_entry = next(
+                (item for item in (
+                    shadow_checkpoint.per_inquiry_status
+                    if shadow_checkpoint else []
+                ) if item.get("index") == i),
+                None,
+            )
+            intent_reserved = bool(
+                prior_entry
+                and prior_entry.get("forusbots_submit_intent") is True
+            )
+            if intent_reserved and prior_entry is not None:
+                entry["forusbots_submit_intent"] = True
+                if prior_entry.get("forusbots_submit_intent_epoch") is not None:
+                    entry["forusbots_submit_intent_epoch"] = prior_entry[
+                        "forusbots_submit_intent_epoch"
+                    ]
+            real_needs_reconciliation = bool(
+                real is not None
+                and (real.diagnostics or {}).get(
+                    "manual_reconciliation_required"
+                )
+            )
+            if intent_blocked or (
+                intent_reserved
+                and (real is None or real_needs_reconciliation)
+            ):
                 entry.update({
                     "degraded": True,
                     "forusbots_submit_intent": True,
@@ -797,7 +1054,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
     # -- ejecución por inquiry con checkpoints (reanuda: omite terminales) --
     outcomes: List[InquiryOutcome] = []
     for i, (ext, cls, (_route, override_reason)) in enumerate(
-        zip(capped, classifications, gated)
+        zip(capped, classifications, gated, strict=True)
     ):
         if i in done_indexes:
             continue
@@ -815,6 +1072,8 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             }, lease_epoch=lease_epoch)
             continue
 
+        inquiry_started = time.monotonic()
+        inquiry_step = _route_metric_step(getattr(cls, "route", None))
         try:
             if override_reason is not None:
                 # Coerción de rollout (knowledge_only): NO es un outcome de
@@ -837,6 +1096,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     point="post_checkpoint",
                     inquiry_index=i,
                     record=record,
+                )
+                _emit_step_latency(
+                    inquiry_started, step=inquiry_step, code="fallback"
                 )
                 continue
             # verificación de lease ANTES del efecto externo (Paso 4a)
@@ -877,6 +1139,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 inquiry_index=i,
                 record=record,
             )
+            degraded, _ = outcome_is_degraded(outcome)
+            _emit_step_latency(
+                inquiry_started,
+                step=inquiry_step,
+                code="partial" if degraded else "success",
+            )
         except _ForusBotsSubmitIntentAlreadyExists:
             # No sabemos si el attempt anterior alcanzó ForusBots y perdió
             # la respuesta. Sin idempotencia/reconcile upstream, la única
@@ -893,6 +1161,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     "retryable": False,
                 },
             }, lease_epoch=lease_epoch)
+            _emit_step_latency(
+                inquiry_started, step=inquiry_step, code="failed"
+            )
         except asyncio.TimeoutError:
             timed_out_total = (deadline - time.monotonic()) <= 0
             code = (PublicErrorCode.TOTAL_JOB_TIMEOUT if timed_out_total
@@ -910,14 +1181,20 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     getattr(cls, "route", None) == "generate_response",
                 "error": {"code": code.value, "retryable": True},
             }, lease_epoch=lease_epoch)
+            _emit_step_latency(
+                inquiry_started, step=inquiry_step, code="timeout"
+            )
         except asyncio.CancelledError:
+            _emit_step_latency(
+                inquiry_started, step=inquiry_step, code="cancelled"
+            )
             raise
         except StaleLeaseEpoch:
             raise
         except (FaultInjectionRejected, InjectedFault):
             raise
         except Exception:  # noqa: BLE001
-            logger.exception("inquiry %d del job %s falló", i, job_id)
+            logger.error("ticket inquiry failed (inquiry_index=%d)", i)
             await repo.record_inquiry_result(job_id, i, {
                 "route": getattr(cls, "route", None),
                 "execution_status": "failed",
@@ -928,8 +1205,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "error": {"code": PublicErrorCode.INTERNAL_ERROR.value,
                           "retryable": False},
             }, lease_epoch=lease_epoch)
+            _emit_step_latency(
+                inquiry_started, step=inquiry_step, code="failed"
+            )
 
     # -- agregación + cierre: SIEMPRE desde los checkpoints persistidos ----
+    finalize_started = time.monotonic()
     current = await repo.get(job_id)
     entries = current.per_inquiry_status if current else []
     _emit_manual_reconciliation_metric(record, entries)
@@ -965,6 +1246,11 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         },
     )
     await _log_execution_safe(app, record, final)
+    _emit_step_latency(
+        finalize_started,
+        step="finalize",
+        code=_terminal_metric_code(final.state),
+    )
     return final
 
 
@@ -1024,7 +1310,7 @@ async def _log_execution_safe(app: Any, record: TicketJobRecord,
             idempotency_key=final.idempotency_key_hash,
         )
     except Exception:
-        logger.exception("ticket execution logging failed")
+        logger.error("ticket execution logging failed")
 
 
 # ---------------------------------------------------------------------------
@@ -1032,10 +1318,28 @@ async def _log_execution_safe(app: Any, record: TicketJobRecord,
 # ---------------------------------------------------------------------------
 
 class _TaskBody(BaseModel):
-    job_id: str
+    job_id: str = Field(pattern=r"^[0-9a-f]{32}$")
     # generación del outbox (Tarea 7 Paso 3); tasks viejas (pre-generación)
     # llegan sin él → generación 0 por compat.
-    enqueue_generation: int = 0
+    enqueue_generation: int = Field(default=0, ge=0, le=2_147_483_647)
+
+
+_TASK_NAME_RE = re.compile(r"^[A-Za-z0-9/_-]{1,1024}$")
+_TASK_RETRY_RE = re.compile(r"^(?:0|[1-9][0-9]{0,5})$")
+
+
+def _worker_id_from_task_headers(request: Request) -> Optional[str]:
+    """Validate untrusted delivery headers and return only a bounded hash."""
+    task_name = request.headers.get("X-CloudTasks-TaskName", "")
+    retry_text = request.headers.get("X-CloudTasks-TaskRetryCount", "")
+    if (
+        _TASK_NAME_RE.fullmatch(task_name) is None
+        or _TASK_RETRY_RE.fullmatch(retry_text) is None
+        or int(retry_text) > 100_000
+    ):
+        return None
+    digest = hashlib.sha256(f"{task_name}|{retry_text}".encode()).hexdigest()[:32]
+    return f"task-{digest}"
 
 
 async def verify_task_oidc(request: Request) -> None:
@@ -1047,7 +1351,11 @@ async def verify_task_oidc(request: Request) -> None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="missing bearer token")
     token = auth.removeprefix("Bearer ").strip()
-    audience = settings.TICKET_WORKER_URL
+    # El target URI de Cloud Run es provider-computed y no puede entrar en el
+    # template del propio worker sin formar un ciclo Terraform. Cloud Run y la
+    # task comparten una custom audience estable; URL queda como fallback sólo
+    # para despliegues legacy/dev anteriores a esa separación.
+    audience = settings.TICKET_WORKER_AUDIENCE or settings.TICKET_WORKER_URL
     expected_sa = settings.TICKET_WORKER_SERVICE_ACCOUNT
     if not audience or not expected_sa:
         raise HTTPException(
@@ -1055,20 +1363,18 @@ async def verify_task_oidc(request: Request) -> None:
             detail="task identity verifier is not configured",
         )
     try:
-        from google.auth.transport import requests as garequests
-        from google.oauth2 import id_token as gid
+        from api.auth import _verify_google_id_token
 
         claims = await asyncio.to_thread(
-            gid.verify_oauth2_token,
+            _verify_google_id_token,
             token,
-            garequests.Request(),
             audience,
         )
     except (ValueError, KeyError) as exc:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail="invalid task token") from exc
     except Exception as exc:  # noqa: BLE001 - cert transport is retryable
-        logger.exception("task identity verifier unavailable")
+        logger.error("task identity verifier unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="task identity verifier unavailable",
@@ -1080,7 +1386,9 @@ async def verify_task_oidc(request: Request) -> None:
 
 
 @router.post("/internal/tasks/ticket-job", include_in_schema=False)
-async def ticket_job_task(body: _TaskBody, request: Request):
+async def ticket_job_task(
+    body: _TaskBody, request: Request,
+) -> Any:
     """Handler del task de Cloud Tasks. La request queda abierta durante toda
     la ejecución (Cloud Run mantiene CPU asignada). Respuestas:
 
@@ -1092,9 +1400,10 @@ async def ticket_job_task(body: _TaskBody, request: Request):
     Sólo la generación ACTUAL pasa a running; sólo fallos realmente
     transitorios devuelven non-2xx (Tarea 7 Paso 3)."""
     await verify_task_oidc(request)
-    retry_count = request.headers.get("X-CloudTasks-TaskRetryCount", "0")
-    task_name = request.headers.get("X-CloudTasks-TaskName", "")
-    worker_id = f"{task_name or 'task'}#{retry_count}"
+    worker_id = _worker_id_from_task_headers(request)
+    if worker_id is None:
+        logger.warning("authenticated Cloud Task rejected: invalid delivery headers")
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     repo: TicketJobRepository = request.app.state.ticket_repo
     current = await repo.get(body.job_id)
@@ -1103,14 +1412,14 @@ async def ticket_job_task(body: _TaskBody, request: Request):
     # Tasks reintenta CUALQUIER non-2xx (incluso 4xx), así que un job que no
     # debe ejecutarse debe devolver 2xx, no 404/409.
     if current is None:
-        logger.info("ticket job %s desconocido: 204 sin efecto", body.job_id)
+        logger.info("ticket job desconocido: 204 sin efecto")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     if current.state in TERMINAL_STATES:
         return Response(status_code=status.HTTP_204_NO_CONTENT)
     if body.enqueue_generation != current.enqueue_generation:
         logger.info(
-            "ticket job %s: generación stale g%d != g%d — 204 sin efecto",
-            body.job_id, body.enqueue_generation, current.enqueue_generation)
+            "ticket job con generación stale g%d != g%d — 204 sin efecto",
+            body.enqueue_generation, current.enqueue_generation)
         ticket_metrics.increment("ticket_stale_generation")
         return Response(status_code=status.HTTP_204_NO_CONTENT)
 

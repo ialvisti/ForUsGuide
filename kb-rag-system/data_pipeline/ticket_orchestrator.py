@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
@@ -26,7 +28,11 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from pydantic import ValidationError
 
 from data_pipeline import forusbots_catalog, gr_payload_builder, prompts
-from data_pipeline.retrieval_privacy import sanitize_retrieval_query
+from data_pipeline.retrieval_privacy import (
+    UnsafeRetrievalQuery,
+    redact_retrieval_context,
+    sanitize_retrieval_query,
+)
 from data_pipeline.forusbots_client import (
     ForusBotsError,
     ForusBotsJobFailed,
@@ -42,6 +48,23 @@ from data_pipeline.llm_output_models import (
 )
 
 logger = logging.getLogger(__name__)
+
+_SAFE_FORUSBOTS_ERROR_CODES = frozenset({
+    "FORUSBOTS_ERROR",
+    "FORUSBOTS_TIMEOUT",
+    "FORUSBOTS_JOB_FAILED",
+    "FORUSBOTS_AMBIGUOUS_SUBMIT",
+    "FORUSBOTS_POLL_FAILED",
+    "FORUSBOTS_CIRCUIT_OPEN",
+})
+
+
+def _safe_nonnegative_number(value: Any) -> Optional[float]:
+    """Accept numeric upstream metadata without reflecting arbitrary values."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    return numeric if numeric >= 0 and math.isfinite(numeric) else None
 
 
 # ---------------------------------------------------------------------------
@@ -89,8 +112,8 @@ _MONTHS = {
 }
 
 
-def _numbers_in(text: str) -> set:
-    values = set()
+def _numbers_in(text: str) -> set[float]:
+    values: set[float] = set()
     for token in _NUM_TOKEN_RE.findall(text):
         try:
             values.add(float(token.replace("$", "").replace(",", "")))
@@ -321,6 +344,10 @@ class TicketOrchestrator:
         self._forusbots_intent_guard: Optional[
             Callable[[], Awaitable[None]]
         ] = None
+        # ForusBotsClient es singleton de proceso, pero cada orchestrator
+        # pertenece a un ticket job. El scope aleatorio impide que caché o
+        # in-flight dedupe crucen tickets/tenants con IDs coincidentes.
+        self._forusbots_dedupe_scope = uuid.uuid4().hex
 
     def set_forusbots_intent_guard(
         self, guard: Callable[[], Awaitable[None]]
@@ -350,7 +377,7 @@ class TicketOrchestrator:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            logger.exception("extract_inquiries LLM call failed")
+            logger.error("extract_inquiries LLM call failed")
             raise ExtractionUnavailable(str(type(exc).__name__)) from exc
 
         items = parse_json_array(resp.content)
@@ -472,7 +499,7 @@ class TicketOrchestrator:
         except asyncio.CancelledError:
             raise
         except Exception:
-            logger.exception("kb_question_synthesis failed")
+            logger.error("kb_question_synthesis failed")
             synthesis_failed = True
             diag["kb_synthesis_provider_failed"] = True
 
@@ -506,10 +533,21 @@ class TicketOrchestrator:
                 diagnostics={**diag, "kb_insufficient": True},
             )
 
-        question = sanitize_retrieval_query(
+        question = redact_retrieval_context(
             question,
             sensitive_literals=self._participant_sensitive_literals(req),
         )
+        # The rich redacted question is useful to the answer LLM.  Prove that
+        # the final Pinecone boundary can derive a reviewed concept from it;
+        # only when synthesis produced no domain signal do we append a neutral,
+        # server-owned fallback instead of forwarding arbitrary text alone.
+        try:
+            sanitize_retrieval_query(question)
+        except UnsafeRetrievalQuery:
+            fallback = sanitize_retrieval_query(
+                f"{ext.topic} {ext.plan_type} retirement plan guidance"
+            )
+            question = f"{question} ({fallback})"
 
         kq = await self.deps.rag_engine.ask_knowledge_question(question=question)
         return InquiryOutcome(
@@ -525,7 +563,7 @@ class TicketOrchestrator:
         diag: Dict[str, Any] = self._classifier_diag(classification)
 
         # 1) required data → flatten → field map → modules
-        safe_inquiry = sanitize_retrieval_query(
+        safe_inquiry = redact_retrieval_context(
             ext.inquiry,
             sensitive_literals=self._participant_sensitive_literals(req),
         )
@@ -550,10 +588,12 @@ class TicketOrchestrator:
 
         # 2) ForusBots scrapes AND ticket-field extraction, in PARALLEL — the
         # extraction only needs the ticket text, not the scrape result.
-        async def _noop_scrape():
+        async def _noop_scrape(
+        ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], str]:
             return {}, {}, {}, "skipped"
 
-        async def _noop_extract():
+        async def _noop_extract(
+        ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
             return {}, []
 
         scrape_coro = (
@@ -599,7 +639,7 @@ class TicketOrchestrator:
 
         # 5) campos server-owned SIEMPRE fijados desde fuentes confiables
         # (invariante 4 / HT-22): el LLM no controla límites ni conteos.
-        response_inquiry = sanitize_retrieval_query(
+        response_inquiry = redact_retrieval_context(
             draft.inquiry or ext.inquiry,
             sensitive_literals=self._participant_sensitive_literals(req),
         )
@@ -685,7 +725,7 @@ class TicketOrchestrator:
                 )
                 mapping = parse_json_object(resp.content) or {}
             except Exception:
-                logger.exception("forusbots_field_map failed")
+                logger.error("forusbots_field_map failed")
                 mapping = {}
             # Schema estricto (HT-12): output fuera de contrato = mapper failure
             field_map: Optional[FieldMapOut] = None
@@ -759,13 +799,20 @@ class TicketOrchestrator:
         scrape dominates, and a plan-side failure downgrades to "partial"."""
         p_modules, plan_modules = forusbots_catalog.split_modules_by_target(modules)
 
-        async def _one(coro_label: str, coro) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+        async def _one(
+            coro_label: str,
+            coro: Awaitable[Any],
+        ) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
             try:
                 scrape = await coro
                 diag[f"forusbots_{coro_label}_job_id"] = scrape.job_id
-                diag[f"forusbots_{coro_label}_elapsed_s"] = scrape.elapsed_seconds
+                elapsed_seconds = _safe_nonnegative_number(
+                    scrape.elapsed_seconds
+                )
+                if elapsed_seconds is not None:
+                    diag[f"forusbots_{coro_label}_elapsed_s"] = elapsed_seconds
                 flat, meta = forusbots_catalog.normalize_scrape_result(scrape.result)
-                if meta.get("module_errors") or meta.get("errors"):
+                if meta.get("module_error_count") or meta.get("error_count"):
                     status = "partial"
                 elif not flat:
                     # Job succeeded but the normalizer found no usable module data
@@ -778,20 +825,20 @@ class TicketOrchestrator:
                 return flat, meta, status
             except ForusBotsTimeout as e:
                 logger.warning(
-                    "ForusBots %s timeout code=%s job=%s",
-                    coro_label, e.code, e.job_id,
+                    "ForusBots %s timeout code=%s", coro_label, e.code,
                 )
                 diag[f"forusbots_{coro_label}_job_id"] = e.job_id
+                diag["manual_reconciliation_required"] = True
                 return {}, {
                     "error_code": e.code,
                     "job_id": e.job_id,
+                    "manual_reconciliation_required": True,
                 }, "timeout"
             except (ForusBotsJobFailed, ForusBotsError) as e:
                 error_code = e.code
                 job_id = getattr(e, "job_id", None)
                 logger.warning(
-                    "ForusBots %s failed code=%s job=%s",
-                    coro_label, error_code, job_id or "unconfirmed",
+                    "ForusBots %s failed code=%s", coro_label, error_code,
                 )
                 if job_id:
                     diag[f"forusbots_{coro_label}_job_id"] = job_id
@@ -806,10 +853,18 @@ class TicketOrchestrator:
         tasks = []
         if p_modules:
             tasks.append(_one("participant",
-                              self.deps.forusbots.scrape_participant(participant_id, p_modules)))
+                              self.deps.forusbots.scrape_participant(
+                                  participant_id,
+                                  p_modules,
+                                  dedupe_scope=self._forusbots_dedupe_scope,
+                              )))
         if plan_modules:
             tasks.append(_one("plan",
-                              self.deps.forusbots.scrape_plan(plan_id, plan_modules)))
+                              self.deps.forusbots.scrape_plan(
+                                  plan_id,
+                                  plan_modules,
+                                  dedupe_scope=self._forusbots_dedupe_scope,
+                              )))
         results = await asyncio.gather(*tasks) if tasks else []
 
         idx = 0
@@ -886,7 +941,7 @@ class TicketOrchestrator:
             )
             parsed = parse_json_object(resp.content) or {}
         except Exception:
-            logger.exception("ticket_field_extract failed")
+            logger.error("ticket_field_extract failed")
             parsed = {}
 
         extraction: Optional[TicketFieldExtractOut] = None
@@ -990,7 +1045,7 @@ class TicketOrchestrator:
             )
             body = parse_json_object(resp.content)
         except Exception:
-            logger.exception("gr_body_build failed")
+            logger.error("gr_body_build failed")
             body = None
         if isinstance(body, dict):
             try:
@@ -1038,13 +1093,18 @@ class TicketOrchestrator:
 
     @staticmethod
     def _classifier_diag(classification: Any) -> Dict[str, Any]:
-        return {
-            "classifier": {
-                "route": getattr(classification, "route", None),
-                "confidence": getattr(classification, "confidence", None),
-                "reasoning": getattr(classification, "reasoning", None),
-            }
+        classifier: Dict[str, Any] = {
+            "route": getattr(classification, "route", None),
+            "confidence": getattr(classification, "confidence", None),
+            "reasoning": getattr(classification, "reasoning", None),
         }
+        metadata = getattr(classification, "metadata", None) or {}
+        if metadata.get("classifier_parse_ok") is False:
+            classifier["parse_ok"] = False
+        coverage_signals = metadata.get("coverage_signals")
+        if isinstance(coverage_signals, dict):
+            classifier["coverage_signals"] = dict(coverage_signals)
+        return {"classifier": classifier}
 
 
 # ============================================================================
@@ -1096,16 +1156,20 @@ def _build_data_collection(
     for side in ("participant", "plan"):
         side_meta = scrape_meta.get(side) or {}
         for src, dst in (
-            ("module_errors", "moduleErrors"),
-            ("unknown_fields", "unknownFields"),
-            ("warnings", "warnings"),
-            ("errors", "errors"),
-            ("error_code", "errorCodes"),
+            ("module_error_count", "moduleErrorCount"),
+            ("unknown_field_count", "unknownFieldCount"),
+            ("extractor_warning_count", "extractorWarningCount"),
+            ("warning_count", "warningCount"),
+            ("error_count", "errorCount"),
         ):
             val = side_meta.get(src)
-            if val:
+            if isinstance(val, int) and not isinstance(val, bool) and val > 0:
                 bucket = out.setdefault(dst, {})
                 bucket[side] = val
+        error_code = side_meta.get("error_code")
+        if error_code in _SAFE_FORUSBOTS_ERROR_CODES:
+            bucket = out.setdefault("errorCodes", {})
+            bucket[side] = error_code
     if field_mapping.get("unmapped"):
         out["unmappedFields"] = field_mapping["unmapped"]
     if field_mapping.get("rejected"):

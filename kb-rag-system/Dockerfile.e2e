@@ -17,9 +17,15 @@ COPY scripts/ ./scripts/
 COPY tests/ ./tests/
 COPY pytest.ini pyproject.toml ./
 
+# El diferencial real forma parte del mismo runner gateado. Copiamos los dos
+# inputs revisados por nombre; reports/captures locales nunca entran al contexto.
+RUN mkdir -p ./rag-testing
+COPY rag-testing/ticket_differential.py ./rag-testing/ticket_differential.py
+COPY rag-testing/ticket_differential_thresholds.json ./rag-testing/ticket_differential_thresholds.json
+
 # mismo usuario no-root que el runtime
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
 USER appuser
 
-ENTRYPOINT ["python", "-m", "pytest"]
-CMD ["-q", "-m", "staging_e2e", "tests/e2e/test_ticket_staging.py"]
+ENTRYPOINT ["python", "-m", "scripts.run_staging_gate"]
+CMD ["all"]

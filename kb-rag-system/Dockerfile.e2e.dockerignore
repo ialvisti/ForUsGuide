@@ -8,10 +8,17 @@
 !requirements-dev.lock
 !pytest.ini
 !pyproject.toml
+!api/
 !api/**
+!data_pipeline/
 !data_pipeline/**
+!scripts/
 !scripts/**
+!tests/
 !tests/**
+!rag-testing/
+!rag-testing/ticket_differential.py
+!rag-testing/ticket_differential_thresholds.json
 
 # Re-excluir ruido dentro de los árboles permitidos
 **/__pycache__/

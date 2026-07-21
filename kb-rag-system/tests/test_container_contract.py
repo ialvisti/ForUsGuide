@@ -33,6 +33,37 @@ EXPECTED_PROMPTS = {
 }
 
 
+class TestRuntimeEntrypoint:
+
+    def test_docker_cmd_has_no_shell_expansion(self):
+        dockerfile = (KB_ROOT / "Dockerfile").read_text()
+
+        assert 'CMD ["sh", "-c"' not in dockerfile
+        assert 'CMD ["python", "-m", "api.entrypoint"]' in dockerfile
+
+    @pytest.mark.parametrize("name,value", [
+        ("PORT", "8000; touch /tmp/pwned"),
+        ("PORT", "0"),
+        ("PORT", "65536"),
+        ("WEB_CONCURRENCY", "1; id"),
+        ("WEB_CONCURRENCY", "0"),
+        ("WEB_CONCURRENCY", "65"),
+    ])
+    def test_entrypoint_rejects_malicious_or_out_of_range_integer(
+        self, monkeypatch, name, value,
+    ):
+        from api import entrypoint
+
+        environment = {"PORT": "8000", "WEB_CONCURRENCY": "1", name: value}
+        exec_call = Mock()
+        monkeypatch.setattr(entrypoint.os, "execvp", exec_call)
+
+        with pytest.raises(ValueError, match=name):
+            entrypoint.main(environment)
+
+        exec_call.assert_not_called()
+
+
 # ---------------------------------------------------------------------------
 # Simulación mínima de .dockerignore (semántica de Docker: última regla que
 # matchea gana; ``!`` re-incluye; un patrón sin slash matchea en cualquier
@@ -288,3 +319,24 @@ class TestRoleAndDatabaseConfig:
             "RED: no existe la colección ticket_active_counters "
             "(Tarea 5 Paso 2)"
         )
+
+
+def test_allowlist_dockerignores_reinclude_parent_directories():
+    root = Path(__file__).resolve().parent.parent
+    expected = {
+        "Dockerfile.ci.dockerignore": (
+            "api", "data_pipeline", "scripts", "tests", "ui", "rag-testing",
+        ),
+        "Dockerfile.e2e.dockerignore": (
+            "api", "data_pipeline", "scripts", "tests", "rag-testing",
+        ),
+        "Dockerfile.release-controller.dockerignore": ("scripts", "ci"),
+    }
+    for name, directories in expected.items():
+        lines = (root / name).read_text().splitlines()
+        assert next(
+            line for line in lines
+            if line.strip() and not line.lstrip().startswith("#")
+        ) == "*"
+        for directory in directories:
+            assert f"!{directory}/" in lines, (name, directory)

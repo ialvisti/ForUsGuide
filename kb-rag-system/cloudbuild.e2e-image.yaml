@@ -1,9 +1,9 @@
-# Trigger handle-ticket-e2e-image (plan Tarea 12 Paso 2 / Tarea 14). Construye
-# por SHA una imagen runner con tests/fixtures usando el MISMO base digest,
-# scan/SBOM y command pytest; sólo se despliega como Run Job staging y nunca
-# se acepta como digest de producción.
+# Build del runner E2E por commit completo. Nunca produce un runtime digest de
+# producción ni despliega: sólo publica imagen y evidencia inmutable.
 substitutions:
   _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
+  _SCAN_LOCATION: "us"
+
 steps:
   - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'build-e2e'
@@ -13,34 +13,101 @@ steps:
       - 'build'
       - '--platform=linux/amd64'
       - '--file=Dockerfile.e2e'
-      - '--tag=us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$SHORT_SHA'
+      - '--tag=us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$COMMIT_SHA'
+      - '--metadata-file=/workspace/e2e-build-metadata.json'
       - '--push'
       - '.'
-  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'resolve-e2e-digest'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        DIGEST=$(docker image inspect --format='{{index .RepoDigests 0}}' \
-          us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$SHORT_SHA)
-        # falla si el tag resolvió más de un digest (no determinístico)
-        echo -n "$DIGEST" > /workspace/e2e_digest.txt
-  - name: 'anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb'
-    id: 'sbom-e2e'
-    entrypoint: sh
-    args:
-      - '-c'
-      - 'syft "$(cat /workspace/e2e_digest.txt)" -o spdx-json > /workspace/e2e_sbom.json'
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
-    id: 'manifest-e2e'
+        TAG='us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-e2e:$COMMIT_SHA'
+        METADATA_DIGEST=$$(python3 -c '
+        import json
+        value = json.load(open("/workspace/e2e-build-metadata.json"))
+        print(value.get("containerimage.digest", ""))
+        ')
+        case "$$METADATA_DIGEST" in
+          sha256:[0-9a-f][0-9a-f]*) ;;
+          *) echo 'buildx metadata did not contain an image digest' >&2; exit 1 ;;
+        esac
+        test "$${#METADATA_DIGEST}" -eq 71
+        REMOTE_DIGEST=$$(gcloud artifacts docker images describe "$$TAG" \
+          --format='value(image_summary.fully_qualified_digest)')
+        REPOSITORY="$${TAG%:*}"
+        test "$$REMOTE_DIGEST" = "$${REPOSITORY}@$$METADATA_DIGEST"
+        printf '%s' "$$REMOTE_DIGEST" > /workspace/e2e_digest.txt
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'smoke-e2e'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        gsutil -h "x-goog-if-generation-match:0" cp /workspace/e2e_sbom.json \
-          gs://${_EVIDENCE_BUCKET}/e2e/$SHORT_SHA/sbom.json
+        DIGEST=$$(cat /workspace/e2e_digest.txt)
+        docker pull "$$DIGEST"
+        docker run --rm --workdir=/app --env=PYTHONPATH=/app \
+          --entrypoint python "$$DIGEST" scripts/container_smoke.py
+
+  - name: 'anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb'
+    id: 'sbom-e2e'
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        set -eu
+        syft "$$(cat /workspace/e2e_digest.txt)" \
+          -o spdx-json > /workspace/e2e-sbom.spdx.json
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
+    id: 'scan-e2e'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        DIGEST=$$(cat /workspace/e2e_digest.txt)
+        SCAN_NAME=$$(gcloud artifacts docker images scan "$$DIGEST" \
+          --remote --location="${_SCAN_LOCATION}" \
+          --format='value(response.scan)')
+        test -n "$$SCAN_NAME"
+        gcloud artifacts docker images list-vulnerabilities "$$SCAN_NAME" \
+          --location="${_SCAN_LOCATION}" --format=json \
+          > /workspace/e2e-scan-vulnerabilities.json
+        python3 kb-rag-system/scripts/verify_container_scan.py \
+          --scan-json /workspace/e2e-scan-vulnerabilities.json \
+          --image-digest "$$DIGEST" \
+          --report-out /workspace/e2e-scan-policy.json
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
+    id: 'publish-e2e-evidence'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        DIGEST=$$(cat /workspace/e2e_digest.txt)
+        python3 kb-rag-system/scripts/create_e2e_image_manifest.py \
+          --commit-sha '$COMMIT_SHA' \
+          --image-digest "$$DIGEST" \
+          --sbom /workspace/e2e-sbom.spdx.json \
+          --scan-policy /workspace/e2e-scan-policy.json \
+          --out /workspace/e2e-image-manifest.json
+        BASE='gs://${_EVIDENCE_BUCKET}/e2e/$COMMIT_SHA'
+        for artifact in \
+          e2e-sbom.spdx.json \
+          e2e-scan-vulnerabilities.json \
+          e2e-scan-policy.json \
+          e2e-image-manifest.json; do
+          gsutil -h 'x-goog-if-generation-match:0' cp \
+            "/workspace/$$artifact" "$$BASE/$$artifact"
+        done
+
 options:
   logging: CLOUD_LOGGING_ONLY
+  requestedVerifyOption: VERIFIED

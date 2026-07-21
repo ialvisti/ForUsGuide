@@ -83,7 +83,15 @@ Hallazgos:
 Los `run.admin` de Compute/Cloud Build SA confirman que el pipeline actual puede desplegar
 directo a producción; se neutraliza en Tarea 12 con G1B.
 
-## Endpoints OpenAPI (rutas actuales, todas viven en el producer)
+La inspección read-only repetida el 2026-07-21 confirmó que
+`kb-rag-runner@` conserva `roles/secretmanager.secretAccessor` sin condición a
+nivel proyecto y además un member directo sobre `FORUSBOTS_AUTH_TOKEN`. Por
+tanto, quitar el env/cliente ForusBots del producer es necesario pero no basta
+para una frontera IAM live. La revisión candidata debe usar una SA productiva
+separada y demostrar effective-IAM DENIED sobre ese secreto; la SA legacy y sus
+grants se preservan mientras `00048-bkc` sea el rollback anchor.
+
+## Endpoints OpenAPI (rutas actuales por rol)
 
 No-ticket (deben preservarse intactas en `APP_ROLE=producer`):
 `/`, `/ui`, `/ui/chunks`, `/ui/knowledge`, `/ui/router`, `/health`, `/livez`, `/readyz`,
@@ -163,8 +171,22 @@ quedan bloqueados hasta que el usuario ejecute `gcloud auth login
 Tareas 0–1 (tráfico, IAM, env, imagen) se completó ANTES de la expiración y
 sigue siendo válida.
 
-Toolchain confirmado ausente en el host (sin instalar): `terraform`/`tofu`,
-`docker`, `python3.12`, `syft`, `gh`. Por tanto: locks 3.12 + build de imagen
-(Tarea 3b), `terraform fmt/validate` (Tarea 10 Paso 8) y todo `plan/apply` se
-ejecutan en Cloud Build/Cloud Shell con imágenes fijadas por digest — no
-localmente. `gh` no es obligatorio (PR por web).
+### UPDATE 2026-07-21 — reautenticación restaurada y verificación remota pre-delta cerrada
+
+El usuario renovó la sesión interactiva. Con su autorización explícita se
+consultó el build histórico, se resolvieron/descargaron los locks y se ejecutó
+el build de verificación del source pre-delta
+`5fe68b12-1381-4bb3-9b4f-594ca401fda0`, que terminó **SUCCESS**. Los cambios
+posteriores de controller, runtime, secretos e IaC no quedan cubiertos por ese
+build. La autorización cubrió verificación y coste de Cloud Build, no los
+gates de rollout: no hubo `apply`, deploy, publicación de imágenes ni cambios
+de IAM, secretos, tráfico o n8n.
+
+Toolchain global confirmado ausente en el host (sin instalar):
+`terraform`/`tofu`, `docker`, `python3.12`, `syft`, `gh`. Para verificar sin
+mutar el host se descargó Terraform 1.9.8 a `/tmp`, se comprobó su artefacto y
+se ejecutaron localmente `fmt`, `init -backend=false -lockfile=readonly`,
+`validate` y `test` sobre roots/módulo. Los locks 3.12, builds/smokes de imagen
+y todo `plan/apply` real siguen requiriendo builders fijados por digest; el
+árbol actual no se reenvió a Cloud Build porque aún no existe una identidad
+verifier segura pre-G1B. `gh` no es obligatorio (PR por API/web).

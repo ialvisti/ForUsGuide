@@ -8,7 +8,10 @@ The normalization fixtures reproduce the REAL payloads confirmed in production
 
 from __future__ import annotations
 
+import json
 import re
+
+import pytest
 
 from data_pipeline import prompts
 from data_pipeline.forusbots_catalog import (
@@ -393,10 +396,93 @@ class TestNormalizeScrapeResult:
         assert meta["shape"] == "envelope"
         assert flat["census"]["Termination Date"] == "2026-02-01"
         assert "payroll" not in flat                      # error module excluded
-        assert meta["module_errors"] == {"payroll": "panel_not_found"}
-        assert meta["unknown_fields"] == {"census": ["Vested Balance"]}
-        assert meta["extractor_warnings"] == {"census": ["slow panel"]}
-        assert meta["warnings"] == ["w1"]
+        assert meta["module_error_count"] == 1
+        assert meta["unknown_field_count"] == 1
+        assert meta["extractor_warning_count"] == 1
+        assert meta["warning_count"] == 1
+
+    def test_upstream_diagnostics_are_reduced_to_closed_statuses_and_counts(self):
+        raw = "UPSTREAM-PRIVATE jane@example.com SSN 123-45-6789"
+        payload = {
+            "data": {
+                "modules": [
+                    {
+                        "key": "census",
+                        "status": "ok",
+                        "data": {"Termination Date": "2026-02-01"},
+                        "unknownFields": [raw],
+                        "extractorWarnings": [{"detail": raw}],
+                    },
+                    {
+                        "key": "payroll",
+                        "status": raw,
+                        "error": {"detail": raw},
+                    },
+                ],
+            },
+            "warnings": [raw],
+            "errors": [{"detail": raw}],
+        }
+
+        flat, meta = normalize_scrape_result(payload)
+
+        assert flat == {"census": {"Termination Date": "2026-02-01"}}
+        assert meta["module_status"] == {"census": "ok", "payroll": "unknown"}
+        assert meta["module_error_count"] == 1
+        assert meta["unknown_field_count"] == 1
+        assert meta["extractor_warning_count"] == 1
+        assert meta["warning_count"] == 1
+        assert meta["error_count"] == 1
+        assert raw not in json.dumps(meta)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {
+                "data": {
+                    "census": {
+                        "Termination Date": "2026-02-01",
+                        "errors": [{"detail": "RAW"}],
+                        "extractorWarnings": ["RAW"],
+                    },
+                },
+            },
+            {
+                "data": {
+                    "modules": [{
+                        "key": "census",
+                        "status": "ok",
+                        "data": {
+                            "Termination Date": "2026-02-01",
+                            "moduleErrors": [{"detail": "RAW"}],
+                            "nested": {"unknownFields": ["RAW"]},
+                        },
+                    }],
+                },
+            },
+            {
+                "census": {
+                    "Termination Date": "2026-02-01",
+                    "warnings": ["RAW"],
+                },
+            },
+        ],
+    )
+    def test_diagnostics_nested_inside_module_data_are_removed(self, payload):
+        """Moving a diagnostic under a known module must not bypass redaction."""
+        raw = "UPSTREAM-PRIVATE jane@example.com SSN 123-45-6789"
+        serialized_payload = json.dumps(payload).replace("RAW", raw)
+
+        flat, meta = normalize_scrape_result(json.loads(serialized_payload))
+
+        assert flat["census"]["Termination Date"] == "2026-02-01"
+        serialized_result = json.dumps({"flat": flat, "meta": meta})
+        assert raw not in serialized_result
+        for diagnostic_key in (
+            "errors", "warnings", "extractorWarnings", "moduleErrors",
+            "unknownFields",
+        ):
+            assert diagnostic_key not in serialized_result
 
     def test_already_flat_passthrough(self):
         flat, meta = normalize_scrape_result({"census": {"First Name": "A"}})

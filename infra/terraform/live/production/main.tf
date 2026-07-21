@@ -1,18 +1,12 @@
 # Producción: recursos equivalentes sobre la base (default) (plan Tarea 10
-# Paso 4). El producer prod (kb-rag-system) y su SA kb-rag-runner se importan
-# in-place preservando la baseline disabled (ver imports.tf). El primer plan
-# importa y NO cambia tráfico ni modo.
-
-data "terraform_remote_state" "platform" {
-  backend = "gcs"
-  config = {
-    bucket = "rag-kb-system-tfstate-platform-900340137010"
-    prefix = "state"
-  }
-}
+# Paso 4). El producer prod (kb-rag-system) se importa in-place; la revisión
+# baseline conserva kb-rag-runner, mientras la candidata usa la SA dedicada.
+# El primer plan importa y NO cambia tráfico ni modo.
 
 locals {
-  sas = data.terraform_remote_state.platform.outputs.runtime_service_accounts
+  # Outputs platform verificados por el release-controller y transportados en
+  # el manifest del plan. Production nunca obtiene acceso al state platform.
+  sas = var.runtime_service_accounts
 }
 
 module "production" {
@@ -43,9 +37,8 @@ module "production" {
   producer_port              = var.producer_port
   producer_startup_probe     = var.producer_startup_probe
   producer_liveness_probe    = var.producer_liveness_probe
-  worker_url                 = var.worker_url
   ticket_wif_audience        = var.ticket_wif_audience
-  ticket_wif_expected_email  = var.ticket_wif_expected_email
+  ticket_wif_allowed_emails  = var.ticket_wif_allowed_emails
 
   firestore_database = "(default)"
 
@@ -54,8 +47,7 @@ module "production" {
   reconciler_job_name   = "ticket-reconciler-prod"
   queue_name            = "ticket-jobs-prod"
 
-  # kb-rag-runner (existente) se preserva inicialmente como SA del producer.
-  producer_sa_email    = "kb-rag-runner@${var.project_id}.iam.gserviceaccount.com"
+  producer_sa_email    = local.sas["ticket-producer-prod"]
   worker_sa_email      = local.sas["ticket-worker-prod"]
   reconciler_sa_email  = local.sas["ticket-reconciler-prod"]
   task_signer_sa_email = local.sas["ticket-task-signer-prod"]
@@ -68,5 +60,6 @@ module "production" {
   queue_max_concurrent_dispatches = 2
 
   secret_version_refs   = var.secret_version_refs
+  secret_containers     = var.secret_containers
   notification_channels = var.notification_channels
 }

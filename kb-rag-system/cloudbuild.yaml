@@ -23,22 +23,35 @@ steps:
         set -euo pipefail
         cd kb-rag-system
         python -m pip install --no-cache-dir --require-hashes -r requirements-dev.lock
+        detect-secrets scan --all-files . \
+          --no-verify \
+          --exclude-files '\.venv/.*' \
+          --exclude-files '\.pytest_cache/.*' \
+          --exclude-files '\.mypy_cache/.*' \
+          --exclude-files '\.ruff_cache/.*' \
+          --exclude-files '^\.secrets\.baseline$' \
+          --exclude-files '__pycache__/.*' \
+          --exclude-files 'rag-testing/stress_test_results.*' \
+          | python -m json.tool \
+          > /workspace/candidate-secrets.baseline
+        python scripts/verify_secrets_baseline.py \
+          --approved .secrets.baseline \
+          --candidate /workspace/candidate-secrets.baseline \
+          --scan-root .
+        detect-secrets scan --all-files --no-verify \
+          ../PA "../External agents" \
+          ../docs/verification/handle-ticket/11-incident-drill-template.md \
+          | python -m json.tool \
+          > /workspace/external-input-secrets.json
+        python scripts/verify_secrets_baseline.py \
+          --candidate /workspace/external-input-secrets.json \
+          --require-empty
         python -m pytest -q -rs -m "not live_dependencies and not staging_e2e"
         python -m pytest --collect-only -q >/dev/null
         ruff check .
         mypy
         python -m pip check
         pip-audit --strict --require-hashes -r requirements.lock
-        cp .secrets.baseline /workspace/approved-secrets.baseline
-        cp /workspace/approved-secrets.baseline \
-          /workspace/scanned-secrets.baseline
-        detect-secrets scan \
-          --baseline /workspace/scanned-secrets.baseline >/dev/null
-        python -m json.tool /workspace/scanned-secrets.baseline \
-          > /workspace/candidate-secrets.baseline
-        python scripts/verify_secrets_baseline.py \
-          --approved /workspace/approved-secrets.baseline \
-          --candidate /workspace/candidate-secrets.baseline
 
   # 6) construir la imagen inmutable (sin tag mutable)
   - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
@@ -48,7 +61,7 @@ steps:
       - 'build'
       - '--platform=linux/amd64'
       - '-t'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$COMMIT_SHA'
       - '.'
 
   # 7) smoke de prompts/app a nivel de IMAGEN
@@ -57,31 +70,41 @@ steps:
     args:
       - 'run'
       - '--rm'
+      - '--network=none'
+      - '--workdir=/app'
+      - '--volume'
+      - '/workspace/kb-rag-system/scripts/container_smoke.py:/opt/container-smoke.py:ro'
+      - '--env'
+      - 'PYTHONPATH=/app'
       - '--entrypoint'
       - 'python'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
-      - 'scripts/container_smoke.py'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$COMMIT_SHA'
+      - '/opt/container-smoke.py'
 
   # 8) push por SHA (la imagen se declara en `images:` para registrar artefacto)
   - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'push'
     args:
       - 'push'
-      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$COMMIT_SHA'
 
   # 9) resolver DIGEST y generar SBOM Syft sobre ESE digest → evidencia
-  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'resolve-digest'
     entrypoint: bash
     args:
       - '-c'
       - |
         set -euo pipefail
-        DIGEST=$(docker image inspect \
-          --format='{{index .RepoDigests 0}}' \
-          us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA)
-        echo -n "$DIGEST" > /workspace/image_digest.txt
-        echo "resolved: $DIGEST"
+        TAG='us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$COMMIT_SHA'
+        DIGEST=$$(gcloud artifacts docker images describe "$$TAG" \
+          --format='value(image_summary.fully_qualified_digest)')
+        REPOSITORY="$${TAG%:*}"
+        DIGEST_PART="$${DIGEST#"$$REPOSITORY"@}"
+        test "$$DIGEST_PART" != "$$DIGEST"
+        [[ "$$DIGEST_PART" =~ ^sha256:[0-9a-f]{64}$$ ]]
+        printf '%s' "$$DIGEST" > /workspace/image_digest.txt
+        echo "resolved immutable registry digest: $$DIGEST"
 
   - name: 'anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb'
     id: 'sbom'
@@ -93,7 +116,7 @@ steps:
         DIGEST=$(cat /workspace/image_digest.txt)
         syft "$DIGEST" -o spdx-json > /workspace/sbom.spdx.json
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-sbom'
     entrypoint: bash
     args:
@@ -102,11 +125,11 @@ steps:
         set -euo pipefail
         gsutil -h "x-goog-if-generation-match:0" cp \
           /workspace/sbom.spdx.json \
-          gs://${_EVIDENCE_BUCKET}/ci/$SHORT_SHA/sbom.spdx.json
+          gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/sbom.spdx.json
 
   # 10) analizar ESE digest con On-Demand Scanning; CRITICAL bloquea sin
   # excepción; cada HIGH requiere G5V por digest+CVE aún vigente.
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'scan'
     entrypoint: bash
     args:
@@ -125,10 +148,9 @@ steps:
         python3 kb-rag-system/scripts/verify_container_scan.py \
           --scan-json /workspace/scan-vulnerabilities.json \
           --image-digest "$DIGEST" \
-          --approvals docs/verification/handle-ticket/approvals.md \
           --report-out /workspace/scan-policy.json
 
-  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk@sha256:934ae3cc409975d61148e7aa3705ac3676f65b8ff17ad883f731881d77c9b92d'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-scan-evidence'
     entrypoint: bash
     args:
@@ -137,10 +159,10 @@ steps:
         set -euo pipefail
         gsutil -h "x-goog-if-generation-match:0" cp \
           /workspace/scan-vulnerabilities.json \
-          gs://${_EVIDENCE_BUCKET}/ci/$SHORT_SHA/scan-vulnerabilities.json
+          gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/scan-vulnerabilities.json
         gsutil -h "x-goog-if-generation-match:0" cp \
           /workspace/scan-policy.json \
-          gs://${_EVIDENCE_BUCKET}/ci/$SHORT_SHA/scan-policy.json
+          gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/scan-policy.json
 
 options:
   logging: CLOUD_LOGGING_ONLY
@@ -149,4 +171,4 @@ options:
 # Registrar el artefacto por SHA (nunca :latest). El digest promovido se
 # resuelve del push; una scan anterior al push no cuenta como evidencia.
 images:
-  - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$SHORT_SHA'
+  - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$COMMIT_SHA'

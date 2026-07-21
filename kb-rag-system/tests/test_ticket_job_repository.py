@@ -11,11 +11,13 @@ localmente es el emulador/servicio Firestore real).
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
 from data_pipeline.ticket_job_models import (
     CreateOrGetOutcome,
+    TicketJobRecord,
     TicketJobState,
     fingerprint_request,
     new_job_record,
@@ -27,8 +29,10 @@ from data_pipeline.ticket_job_repository import (
     InMemoryTicketJobBackend,
     IdempotencyReceiptOrphaned,
     InvalidStateTransition,
+    StaleLeaseEpoch,
     TicketJobError,
     TicketJobRepository,
+    _record_to_doc,
     split_record,
 )
 
@@ -89,6 +93,30 @@ def backend():
 @pytest.fixture
 def repo(backend):
     return TicketJobRepository(backend)
+
+
+class _TransactionContentionProbe(InMemoryTicketJobBackend):
+    """Expose concurrent repository entries before the backend's own lock."""
+
+    def __init__(self):
+        super().__init__()
+        self.active_transactions = 0
+        self.max_active_transactions = 0
+
+    async def transact(self, fn):
+        self.active_transactions += 1
+        self.max_active_transactions = max(
+            self.max_active_transactions,
+            self.active_transactions,
+        )
+        try:
+            # Give peer admissions one scheduling turn. Firestore does the
+            # equivalent while 50 transactions contend on the same receipt
+            # and principal counter documents.
+            await asyncio.sleep(0)
+            return await super().transact(fn)
+        finally:
+            self.active_transactions -= 1
 
 
 def _record(principal="n8n", payload=None, **over):
@@ -173,6 +201,42 @@ class TestCreateOrGet:
         assert outcomes.count(CreateOrGetOutcome.REPLAYED) == 49
         assert len({r.job_id for r, _ in results}) == 1
 
+    async def test_same_principal_stampede_enters_one_backend_transaction_at_a_time(
+            self):
+        backend = _TransactionContentionProbe()
+        repo = TicketJobRepository(backend)
+
+        results = await asyncio.gather(*[
+            _create(repo, key="same-event", principal="same-principal")
+            for _ in range(50)
+        ])
+
+        outcomes = [outcome for _record, outcome in results]
+        assert outcomes.count(CreateOrGetOutcome.CREATED) == 1
+        assert outcomes.count(CreateOrGetOutcome.REPLAYED) == 49
+        assert backend.max_active_transactions == 1, (
+            "la instancia dejó entrar un stampede al mismo receipt/counter "
+            f"de Firestore: {backend.max_active_transactions} transacciones"
+        )
+
+    async def test_admission_single_flight_does_not_serialize_other_principals(
+            self):
+        backend = _TransactionContentionProbe()
+        repo = TicketJobRepository(backend)
+
+        results = await asyncio.gather(
+            _create(repo, key="event-a", principal="principal-a"),
+            _create(repo, key="event-b", principal="principal-b"),
+        )
+
+        assert [outcome for _record, outcome in results] == [
+            CreateOrGetOutcome.CREATED,
+            CreateOrGetOutcome.CREATED,
+        ]
+        assert backend.max_active_transactions == 2, (
+            "el single-flight local serializó principals independientes"
+        )
+
     async def test_raw_idempotency_key_is_never_stored(self, repo, backend):
         await _create(repo, key="super-secret-idem-key")
         dump = repr(await backend.dump_all())
@@ -247,6 +311,74 @@ class TestStateMachine:
         assert len(found.per_inquiry_status) == 1
         assert found.per_inquiry_status[0]["execution_status"] == "succeeded"
 
+    async def test_checkpoint_cannot_recreate_expired_payload(self, repo, backend):
+        rec, _ = await _create(repo, key="expired-payload-checkpoint")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-expired-payload")
+        backend._data[PAYLOADS_COLLECTION].pop(rec.job_id)
+
+        with pytest.raises(StaleLeaseEpoch, match="payload"):
+            await repo.record_inquiry_result(
+                rec.job_id,
+                0,
+                {"execution_status": "succeeded"},
+                lease_epoch=epoch,
+            )
+
+        assert await backend.get_doc(PAYLOADS_COLLECTION, rec.job_id) is None
+        terminal = await repo.get(rec.job_id)
+        assert terminal.state == TicketJobState.FAILED
+        assert terminal.public_error_code == "EXPIRED_PAYLOAD"
+        assert terminal.lease_epoch > epoch
+        assert await repo.count_active("n8n") == 0
+
+    async def test_update_terminalizes_before_rejecting_expired_payload(
+        self, repo, backend,
+    ):
+        rec, _ = await _create(repo, key="expired-payload-update")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-expired-update")
+        backend._data[PAYLOADS_COLLECTION][rec.job_id]["expires_at"] = (
+            utcnow() - timedelta(seconds=1)
+        )
+
+        with pytest.raises(StaleLeaseEpoch, match="payload"):
+            await repo.update(
+                rec.job_id,
+                expected_lease_epoch=epoch,
+                current_step="processing",
+            )
+
+        terminal = await repo.get(rec.job_id)
+        assert terminal.state == TicketJobState.FAILED
+        assert terminal.public_error_code == "EXPIRED_PAYLOAD"
+        assert terminal.lease_epoch > epoch
+        assert await repo.count_active("n8n") == 0
+        assert await backend.get_doc(PAYLOADS_COLLECTION, rec.job_id) is None
+
+    async def test_submit_intent_terminalizes_before_rejecting_expired_payload(
+        self, repo, backend,
+    ):
+        rec, _ = await _create(repo, key="expired-payload-submit-intent")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-expired-intent")
+        backend._data[PAYLOADS_COLLECTION][rec.job_id]["expires_at"] = (
+            utcnow() - timedelta(seconds=1)
+        )
+
+        with pytest.raises(StaleLeaseEpoch, match="payload"):
+            await repo.reserve_forusbots_submit_intent(
+                rec.job_id,
+                0,
+                worker_id="worker-expired-intent",
+                lease_epoch=epoch,
+                route="generate_response",
+            )
+
+        terminal = await repo.get(rec.job_id)
+        assert terminal.state == TicketJobState.FAILED
+        assert terminal.public_error_code == "EXPIRED_PAYLOAD"
+        assert terminal.lease_epoch > epoch
+        assert await repo.count_active("n8n") == 0
+        assert await backend.get_doc(PAYLOADS_COLLECTION, rec.job_id) is None
+
     async def test_worker_claim_is_exclusive(self, repo):
         rec, _ = await _create(repo)
         claim1 = await repo.claim(rec.job_id, worker_id="task-attempt-1")
@@ -255,19 +387,31 @@ class TestStateMachine:
         assert claim1, "el primer claim debe otorgar un lease_epoch"
         assert claim2 is None, "delivery at-least-once ejecutó el job dos veces"
 
+    async def test_same_worker_cannot_reclaim_a_live_lease(self, repo):
+        rec, _ = await _create(repo, key="same-worker-live-lease")
+        first_epoch = await repo.claim(
+            rec.job_id, worker_id="stable-cloud-task-name", lease_s=90,
+        )
+        after_first = await repo.get(rec.job_id)
+
+        second_epoch = await repo.claim(
+            rec.job_id, worker_id="stable-cloud-task-name", lease_s=90,
+        )
+        after_second = await repo.get(rec.job_id)
+
+        assert first_epoch is not None
+        assert second_epoch is None, (
+            "el mismo worker_id robó un lease aún vigente a su intento activo"
+        )
+        assert after_second.lease_epoch == after_first.lease_epoch
+        assert after_second.attempt == after_first.attempt
+
 
 # ---------------------------------------------------------------------------
 # Producción (plan de finalización, Tarea 2 Paso 3) — timestamps nativos,
 # cuotas atómicas, fencing por lease epoch, deadline absoluto y reconciliador.
 # RED hasta cerrar las Tareas 5/6/7.
 # ---------------------------------------------------------------------------
-
-from datetime import datetime, timedelta
-
-from data_pipeline.ticket_job_models import TicketJobRecord
-from data_pipeline.ticket_job_repository import _record_to_doc
-from data_pipeline.ticket_job_repository import StaleLeaseEpoch
-
 
 class TestNativeTimestamps:
 
@@ -422,7 +566,7 @@ class TestLeaseFencing:
         assert await repo.claim(rec.job_id, worker_id="w-new")
         fresh = await repo.get(rec.job_id)
         assert fresh.lease_epoch > old_epoch, "el claim no incrementó el epoch"
-        with pytest.raises(Exception):
+        with pytest.raises(StaleLeaseEpoch):
             await repo.record_inquiry_result(
                 rec.job_id, 0,
                 {"execution_status": "succeeded",
@@ -556,6 +700,59 @@ class TestAbsoluteDeadline:
 
 
 class TestAtomicLazyTerminalization:
+
+    async def test_payload_presence_and_join_share_one_observation(
+        self, repo, backend, monkeypatch,
+    ):
+        """A payload cannot be reported present after its PII was omitted.
+
+        Firestore TTL is logical at read time.  If the clock advances across
+        the deadline between the presence check and the join, independently
+        evaluating both creates an inconsistent 200/410 decision.
+        """
+        from data_pipeline import ticket_job_repository as repository_module
+
+        rec, _ = await _create(repo, key="single-read-observation")
+        observed_at = datetime(2030, 1, 1, tzinfo=timezone.utc)
+        backend._data[PAYLOADS_COLLECTION][rec.job_id]["request_payload"] = (
+            PAYLOAD_A
+        )
+        backend._data[PAYLOADS_COLLECTION][rec.job_id]["expires_at"] = (
+            observed_at + timedelta(seconds=1)
+        )
+        clock = iter((observed_at, observed_at + timedelta(seconds=2)))
+        monkeypatch.setattr(repository_module, "utcnow", lambda: next(clock))
+
+        observed, payload_present = await repo.get_with_payload_state(rec.job_id)
+
+        assert payload_present is True
+        assert observed.request_payload == PAYLOAD_A
+
+    async def test_logically_expired_present_payload_is_never_read_or_claimed(
+        self, repo, backend,
+    ):
+        rec, _ = await _create(repo, key="logical-expiry")
+        backend._data[PAYLOADS_COLLECTION][rec.job_id]["expires_at"] = (
+            utcnow() - timedelta(seconds=1)
+        )
+
+        observed, payload_present = await repo.get_with_payload_state(rec.job_id)
+        assert observed is not None
+        assert payload_present is False
+        assert "158948" not in repr(observed)
+        assert "cash out" not in repr(observed)
+
+        assert await repo.claim(rec.job_id, worker_id="late-worker") is None
+        terminal = await repo.get(rec.job_id)
+        assert terminal.state == TicketJobState.FAILED
+        assert terminal.public_error_code == "EXPIRED_PAYLOAD"
+        assert await repo.count_active("n8n") == 0
+        assert await backend.get_doc(PAYLOADS_COLLECTION, rec.job_id) is None
+
+        # Lazy/reconciler retries cannot release the active slot twice.
+        again = await repo.terminalize_if_unrecoverable(rec.job_id)
+        assert again.state == TicketJobState.FAILED
+        assert await repo.count_active("n8n") == 0
 
     async def test_deadline_and_missing_payload_terminalize_atomically(
             self, repo, backend):

@@ -14,6 +14,29 @@ steps:
         cd /workspace/kb-rag-system
         python -m pip install --no-cache-dir --require-hashes \
           -r requirements-dev.lock
+        detect-secrets scan --all-files . \
+          --no-verify \
+          --exclude-files '\.venv/.*' \
+          --exclude-files '\.pytest_cache/.*' \
+          --exclude-files '\.mypy_cache/.*' \
+          --exclude-files '\.ruff_cache/.*' \
+          --exclude-files '^\.secrets\.baseline$' \
+          --exclude-files '__pycache__/.*' \
+          --exclude-files 'rag-testing/stress_test_results.*' \
+          | python -m json.tool \
+          > /workspace/candidate-secrets.baseline
+        python scripts/verify_secrets_baseline.py \
+          --approved .secrets.baseline \
+          --candidate /workspace/candidate-secrets.baseline \
+          --scan-root .
+        detect-secrets scan --all-files --no-verify \
+          ../PA "../External agents" \
+          ../docs/verification/handle-ticket/11-incident-drill-template.md \
+          | python -m json.tool \
+          > /workspace/external-input-secrets.json
+        python scripts/verify_secrets_baseline.py \
+          --candidate /workspace/external-input-secrets.json \
+          --require-empty
         python -m pytest -q -rs \
           -m "not live_dependencies and not staging_e2e"
         python -m pytest --collect-only -q >/dev/null
@@ -22,18 +45,7 @@ steps:
         python -m pip check
         pip-audit --strict --require-hashes -r requirements.lock
 
-        # detect-secrets updates a baseline file in place. Scan a disposable
-        # copy, then serialize that fresh result for fail-closed comparison.
-        cp .secrets.baseline /workspace/scanned-secrets.baseline
-        detect-secrets scan \
-          --baseline /workspace/scanned-secrets.baseline >/dev/null
-        python -m json.tool /workspace/scanned-secrets.baseline \
-          > /workspace/candidate-secrets.baseline
-        python scripts/verify_secrets_baseline.py \
-          --approved .secrets.baseline \
-          --candidate /workspace/candidate-secrets.baseline
-
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'revalidate-digest'
     entrypoint: bash
     args:

@@ -9,15 +9,119 @@ override de verify_api_key) para poder probar identidad multi-principal.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
+from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.testclient import TestClient
 
 from data_pipeline.ticket_orchestrator import ExtractedInquiry, InquiryOutcome
 
 KEY_N8N = "key-n8n-aaaaaaaaaaaaaaaa"
 KEY_OPS = "key-ops-bbbbbbbbbbbbbbbb"
+
+
+def test_api_key_rotation_keeps_one_stable_principal_and_tenant(monkeypatch):
+    from api.auth import resolve_client
+    from api.config import settings
+
+    monkeypatch.setattr(
+        settings,
+        "API_CLIENT_KEYS",
+        {"n8n": ["key-n8n-old", "key-n8n-new"]},
+    )
+    monkeypatch.setattr(settings, "API_CLIENT_TENANTS", {"n8n": "tenant-a"})
+
+    old = resolve_client(
+        "key-n8n-old", allow_legacy=False, require_tenant=True
+    )
+    new = resolve_client(
+        "key-n8n-new", allow_legacy=False, require_tenant=True
+    )
+
+    assert old is not None and new is not None
+    assert (old.principal_id, old.tenant_id) == ("n8n", "tenant-a")
+    assert new == old
+
+
+async def test_legacy_auth_middleware_handles_missing_client_address(monkeypatch):
+    from fastapi import HTTPException, Request
+
+    from api.config import settings
+    from api.middleware import authenticate_request
+
+    monkeypatch.setattr(settings, "API_KEY", "expected-key")
+    request = Request(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/private",
+            "headers": [(b"x-api-key", b"wrong-key")],
+            "query_string": b"",
+            "scheme": "https",
+            "server": ("testserver", 443),
+        }
+    )
+    assert request.client is None
+
+    with pytest.raises(HTTPException) as raised:
+        await authenticate_request(request)
+
+    assert raised.value.status_code == 403
+
+
+@pytest.mark.parametrize("correlation_id", [
+    "Jane Doe wants a rollover",
+    "jane.doe@example.com",
+    "trace-ok\r\nX-Leak: raw-secret",
+    "x" * 129,
+])
+async def test_request_id_middleware_does_not_reflect_free_form_correlation_id(
+    correlation_id,
+):
+    from api.middleware import add_request_id
+
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/livez",
+        "headers": [(b"x-correlation-id", correlation_id.encode())],
+        "query_string": b"",
+        "scheme": "https",
+        "server": ("testserver", 443),
+    })
+
+    async def call_next(_request):
+        return JSONResponse({"ok": True})
+
+    response = await add_request_id(request, call_next)
+
+    assert "x-correlation-id" not in response.headers
+    assert not hasattr(request.state, "correlation_id")
+
+
+async def test_request_id_middleware_reflects_only_bounded_opaque_id():
+    from api.middleware import add_request_id
+
+    opaque = "n8n:run_2026-07-21.abc-123"
+    request = Request({
+        "type": "http",
+        "method": "GET",
+        "path": "/livez",
+        "headers": [(b"x-correlation-id", opaque.encode())],
+        "query_string": b"",
+        "scheme": "https",
+        "server": ("testserver", 443),
+    })
+
+    async def call_next(_request):
+        return JSONResponse({"ok": True})
+
+    response = await add_request_id(request, call_next)
+
+    assert response.headers["x-correlation-id"] == opaque
+    assert request.state.correlation_id == opaque
 
 
 @pytest.fixture
@@ -29,6 +133,9 @@ def client(monkeypatch):
     from api.config import settings as app_settings
     monkeypatch.setattr(app_settings, "API_KEY", KEY_N8N)
     monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+    monkeypatch.setattr(
+        app_settings, "FORUSBOTS_BASE_URL", "https://forusbots.example.test",
+    )
     # Dos principals válidos: la identidad viene de la credencial, no del body.
     # (El setting API_CLIENT_KEYS nace en Task 6; hasta entonces el intento de
     # configurarlo es un no-op y los tests multi-principal fallan en rojo.)
@@ -125,6 +232,35 @@ class TestModeExpansion:
 
 
 class TestObjectAuthorization:
+
+    @pytest.mark.parametrize("job_id", [
+        "not-a-job-id",
+        "a" * 31,
+        "a" * 33,
+        "g" * 32,
+        "JaneDoeWantsARollover1234567890",
+    ])
+    @pytest.mark.parametrize("path", [
+        "/api/v1/tickets/{job_id}",
+        "/api/v2/ticket-jobs/{job_id}",
+    ])
+    def test_poll_rejects_noncanonical_job_id_before_repository(
+        self, client, job_id, path,
+    ):
+        repo = Mock(
+            get_with_payload_state=AsyncMock(
+                side_effect=AssertionError("repository must not receive raw IDs")
+            )
+        )
+        client.app.state.ticket_repo = repo
+
+        response = client.get(
+            path.format(job_id=job_id),
+            headers={"X-API-Key": KEY_N8N},
+        )
+
+        assert response.status_code == 404
+        repo.get_with_payload_state.assert_not_awaited()
 
     def test_cross_principal_job_poll_is_403(self, client):
         """Invariante 10: un job sólo es visible para el principal que lo creó."""
@@ -250,6 +386,109 @@ class TestObjectAuthorization:
 
 class TestResourceBounds:
 
+    @staticmethod
+    def _streaming_request(
+        *, content_length, chunks, path="/api/v2/handle-ticket"
+    ):
+        messages = [
+            {
+                "type": "http.request",
+                "body": chunk,
+                "more_body": index < len(chunks) - 1,
+            }
+            for index, chunk in enumerate(chunks)
+        ]
+
+        async def receive():
+            return messages.pop(0)
+
+        headers = []
+        if content_length is not None:
+            headers.append((b"content-length", content_length.encode("ascii")))
+        return Request(
+            {
+                "type": "http",
+                "method": "POST",
+                "path": path,
+                "headers": headers,
+                "query_string": b"",
+                "scheme": "https",
+                "server": ("testserver", 443),
+            },
+            receive,
+        )
+
+    @pytest.mark.parametrize("declared", ["abc", "-1", "+1", " 1"])
+    async def test_invalid_content_length_is_rejected_before_route(
+        self, monkeypatch, declared,
+    ):
+        from api.config import settings
+        from api.middleware import limit_body_size
+
+        monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 8)
+        request = self._streaming_request(
+            content_length=declared,
+            chunks=[b"{}"],
+        )
+        called = False
+
+        async def call_next(_request):
+            nonlocal called
+            called = True
+            return JSONResponse({"accepted": True})
+
+        response = await limit_body_size(request, call_next)
+
+        assert response.status_code == 400
+        assert called is False
+
+    @pytest.mark.parametrize("declared", [None, "1", "8"])
+    async def test_stream_is_always_counted_despite_missing_or_false_header(
+        self, monkeypatch, declared,
+    ):
+        from api.config import settings
+        from api.middleware import limit_body_size
+
+        monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 8)
+        request = self._streaming_request(
+            content_length=declared,
+            chunks=[b"1234", b"56789"],
+        )
+
+        async def call_next(streaming_request):
+            await streaming_request.body()
+            return JSONResponse({"accepted": True})
+
+        with pytest.raises(HTTPException) as raised:
+            await limit_body_size(request, call_next)
+
+        assert raised.value.status_code == 413
+
+    async def test_ticket_limit_does_not_regress_large_core_post(
+        self, monkeypatch,
+    ):
+        from api.config import settings
+        from api.middleware import limit_body_size
+
+        monkeypatch.setattr(settings, "MAX_REQUEST_BODY_BYTES", 8)
+        request = self._streaming_request(
+            content_length="9",
+            chunks=[b"123456789"],
+            path="/api/v1/process-article",
+        )
+        called = False
+
+        async def call_next(core_request):
+            nonlocal called
+            called = True
+            assert await core_request.body() == b"123456789"
+            return JSONResponse({"accepted": True})
+
+        response = await limit_body_size(request, call_next)
+
+        assert response.status_code == 200
+        assert called is True
+
     def test_oversized_body_is_413(self, client):
         _use_orch(client)
         huge = _body()
@@ -270,8 +509,10 @@ class TestResourceBounds:
         )
 
     def test_rate_limit_returns_429_and_retry_after(self, client, monkeypatch):
-        from api.config import settings as app_settings
-        monkeypatch.setattr(app_settings, "RATE_LIMIT_HANDLE_TICKET", 3)
+        # Admission is intentionally enforced only inside the repository's
+        # atomic create transaction; mutating Settings after startup would
+        # exercise a removed process-local limiter instead of that contract.
+        monkeypatch.setattr(client.app.state.ticket_repo, "_rate_limit", 3)
         _use_orch(client)
         responses = [
             client.post("/api/v1/handle-ticket", json=_body(),
@@ -308,6 +549,74 @@ def _unsigned_jwt(payload: dict) -> str:
     return f"{_b64({'alg': 'none', 'typ': 'JWT'})}.{_b64(payload)}."
 
 
+def _exercise_google_cert_transport(monkeypatch, *, cache_control: str) -> int:
+    import threading
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    from google.oauth2 import id_token as google_id_token
+
+    from api import auth as api_auth
+
+    class CertificateHandler(BaseHTTPRequestHandler):
+        calls = 0
+
+        def do_GET(self):  # noqa: N802 - stdlib handler contract
+            type(self).calls += 1
+            body = b'{"kid":"certificate"}'
+            self.send_response(200)
+            self.send_header("Cache-Control", cache_control)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("ETag", '"cert-v1"')
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format, *_args):
+            return
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), CertificateHandler)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    cert_url = f"http://127.0.0.1:{server.server_port}/certs"
+
+    def fake_verify(_token, request, *, audience):
+        assert audience == "https://producer.example.run.app"
+        response = request(
+            url=cert_url,
+            method="GET",
+        )
+        assert response.status == 200
+        return {"aud": audience}
+
+    monkeypatch.setattr(google_id_token, "verify_oauth2_token", fake_verify)
+    monkeypatch.setattr(api_auth, "_google_auth_request", None, raising=False)
+
+    try:
+        api_auth._verify_google_id_token(
+            "token-one", "https://producer.example.run.app",
+        )
+        api_auth._verify_google_id_token(
+            "token-two", "https://producer.example.run.app",
+        )
+        return CertificateHandler.calls
+    finally:
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
+
+
+def test_google_certificate_transport_reuses_fresh_http_cache(monkeypatch):
+    assert _exercise_google_cert_transport(
+        monkeypatch, cache_control="public, max-age=3600",
+    ) == 1
+
+
+def test_google_certificate_transport_revalidates_expired_cache(monkeypatch):
+    assert _exercise_google_cert_transport(
+        monkeypatch, cache_control="public, max-age=0",
+    ) == 2
+
+
 class TestWorkloadIdentityV2:
     """v2 activo exige DOS credenciales independientes: X-API-Key (cliente/
     tenant) y X-ForUs-Workload-Authorization con un ID token Google-signed de
@@ -322,8 +631,11 @@ class TestWorkloadIdentityV2:
         monkeypatch.setattr(app_settings, "TICKET_WIF_AUDIENCE",
                             "https://kb-rag-system.example.run.app")
         monkeypatch.setattr(
-            app_settings, "TICKET_WIF_EXPECTED_EMAIL",
-            "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com")
+            app_settings, "TICKET_WIF_ALLOWED_EMAILS", [
+                "n8n-ticket-invoker-stg@rag-kb-system.iam.gserviceaccount.com",
+                "ticket-e2e-stg@rag-kb-system.iam.gserviceaccount.com",
+            ])
+        monkeypatch.setattr(app_settings, "TICKET_WIF_EXPECTED_EMAIL", "")
 
     @pytest.mark.parametrize("extra_headers", [
         {},                                                # sin token workload
@@ -354,7 +666,7 @@ class TestWorkloadIdentityV2:
         claims = {
             "iss": "https://accounts.google.com",
             "aud": "https://kb-rag-system.example.run.app",
-            "email": "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com",
+            "email": "n8n-ticket-invoker-stg@rag-kb-system.iam.gserviceaccount.com",
             "email_verified": True,
             "exp": 4102444800,
         }
@@ -379,6 +691,57 @@ class TestWorkloadIdentityV2:
                                  "Idempotency-Key": "wif-ok-1",
                                  "X-ForUs-Workload-Authorization": f"Bearer {token}"})
         assert r.status_code == 202
+
+    def test_v2_accepts_staging_e2e_caller_but_rejects_unlisted_sa(
+            self, client, monkeypatch):
+        import base64
+        import json as _json
+
+        from api import auth as api_auth
+
+        self._enable_wif(monkeypatch)
+        _use_orch(client)
+
+        def _b64(obj):
+            return base64.urlsafe_b64encode(
+                _json.dumps(obj).encode()).rstrip(b"=").decode()
+
+        def request_for(email, key):
+            claims = {
+                "iss": "https://accounts.google.com",
+                "aud": "https://kb-rag-system.example.run.app",
+                "email": email,
+                "email_verified": True,
+                "exp": 4102444800,
+            }
+            monkeypatch.setattr(
+                api_auth, "_verify_google_id_token",
+                lambda token, audience: claims,
+            )
+            token = (
+                f"{_b64({'alg': 'RS256', 'typ': 'JWT', 'kid': 'k1'})}."
+                f"{_b64(claims)}.c2ln"
+            )
+            return client.post(
+                "/api/v2/handle-ticket",
+                json=_v2_body(),
+                headers={
+                    "X-API-Key": KEY_N8N,
+                    "Idempotency-Key": key,
+                    "X-ForUs-Workload-Authorization": f"Bearer {token}",
+                },
+            )
+
+        accepted = request_for(
+            "ticket-e2e-stg@rag-kb-system.iam.gserviceaccount.com",
+            "wif-e2e-allowed",
+        )
+        rejected = request_for(
+            "unlisted@rag-kb-system.iam.gserviceaccount.com",
+            "wif-e2e-rejected",
+        )
+        assert accepted.status_code == 202
+        assert rejected.status_code == 403
 
     def test_v2_rejects_legacy_api_key_without_explicit_tenant_mapping(
             self, client, monkeypatch):

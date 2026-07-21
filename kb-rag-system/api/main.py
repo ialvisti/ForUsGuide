@@ -14,6 +14,7 @@ Endpoints:
 import asyncio
 import logging
 import math
+import re
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional, Tuple
@@ -39,7 +40,11 @@ load_dotenv()
 from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.pinecone_uploader import PineconeUploader
 from data_pipeline.execution_logger import ExecutionLogger
-from data_pipeline.llm_router import LLMRouter, build_routes_from_settings
+from data_pipeline.llm_router import (
+    LLMRouter,
+    build_routes_from_settings,
+    parse_llm_pricing_json,
+)
 from data_pipeline.inquiry_router import (
     COVERAGE_TOP_K,
     CoveragePack,
@@ -105,17 +110,16 @@ from .models import (
     TicketJobStatusV2,
     InquiryStatusV2,
     InquiryResult,
-    RouteDecision,
 )
 from .config import settings, validate_settings
 from .middleware import (
+    _path_allowed_for_role,
     add_request_id,
     enforce_app_role,
     log_requests,
     handle_errors,
     limit_body_size,
 )
-from .rate_limit import FixedWindowRateLimiter
 from .participant_plan import (
     ParticipantPlanUnavailable,
     build_validator_from_settings,
@@ -134,9 +138,19 @@ if settings.ENVIRONMENT == "production":
         import google.cloud.logging as cloud_logging
         cloud_logging.Client().setup_logging()
     except Exception:
-        pass
+        logging.getLogger(__name__).error(
+            "Cloud Logging setup failed; continuing with standard logging"
+        )
 
 logger = logging.getLogger(__name__)
+
+
+def _emit_ticket_metric(metric: str, value: int | float, **labels: str) -> None:
+    """Best-effort closed-schema telemetry for producer endpoints."""
+    try:
+        ticket_metrics.emit(metric, value, **labels)
+    except (TypeError, ValueError):
+        logger.error("ticket producer metric rejected by telemetry schema")
 
 
 def _hit_count(value: Any) -> int:
@@ -280,100 +294,131 @@ async def lifespan(app: FastAPI):
     logger.info("=" * 80)
     logger.info("KB RAG System API - Starting Up")
     logger.info("=" * 80)
-    
+
     try:
         # Validar configuración
         validate_settings()
         logger.info("✅ Configuration validated")
-        
-        # Inicializar Pinecone Uploader → app.state (explicit settings)
-        app.state.pinecone_uploader = PineconeUploader(
-            api_key=settings.PINECONE_API_KEY,
-            index_name=settings.INDEX_NAME,
-            namespace=settings.NAMESPACE
-        )
-        logger.info("✅ Pinecone connection established")
 
-        # Build hybrid LLM Router. In production (GCP) USE_VERTEX_AI=true
-        # authenticates via ADC with no API key. Locally either OPENAI_API_KEY
-        # or GEMINI_API_KEY (or both) must be set.
-        llm_router = LLMRouter(
-            openai_api_key=settings.OPENAI_API_KEY or None,
-            gemini_api_key=settings.GEMINI_API_KEY or None,
-            use_vertex_ai=settings.USE_VERTEX_AI,
-            gcp_project=settings.GCP_PROJECT or None,
-            gcp_location=settings.GCP_LOCATION,
+        role = settings.APP_ROLE
+        ticket_active = settings.TICKET_HANDLER_MODE != "disabled"
+        needs_rag_runtime = role in {"producer", "worker"}
+        needs_ticket_execution = role == "worker"
+        # El flag disabled detiene admisión, no lectura. Un productor que
+        # actúa como rollback anchor debe conservar el repositorio durable
+        # para que los clientes puedan terminar de sondear jobs ya admitidos
+        # por una revisión anterior.
+        needs_ticket_repo = role in {"producer", "worker", "reconciler"}
+        needs_ticket_queue = role == "reconciler" or (
+            role == "producer" and ticket_active
         )
-        llm_router.configure_routes(build_routes_from_settings(settings))
-        app.state.llm_router = llm_router
-        logger.info("✅ LLM Router configured")
 
-        # Inicializar RAG Engine → app.state (shares Pinecone + LLM Router)
-        app.state.rag_engine = RAGEngine(
-            llm_router=llm_router,
-            pinecone_uploader=app.state.pinecone_uploader,
-        )
-        logger.info("✅ RAG Engine initialized")
-
-        # Inicializar Inquiry Router → app.state. Shares the LLM Router and
-        # a coverage_pack_builder that retrieves the top-K KB chunks via
-        # Pinecone before each classification, so the LLM reasons about
-        # actual KB content rather than just surface text patterns.
-        app.state.inquiry_router = InquiryRouterEngine(
-            llm_router=llm_router,
-            coverage_pack_builder=_make_coverage_pack_builder(
-                app.state.rag_engine
-            ),
-        )
-        logger.info("✅ Inquiry Router initialized")
-        
-        # Get stats
-        stats = app.state.pinecone_uploader.get_index_stats()
-        logger.info(f"📊 Total vectors in index: {stats.get('total_vectors', 0)}")
-        _log_pinecone_startup_diagnostics(app.state.pinecone_uploader, stats)
-        
-        # Inicializar Execution Logger → app.state (Firestore, optional)
-        if settings.ENABLE_EXECUTION_LOGGING:
-            app.state.execution_logger = ExecutionLogger(
-                project_id=settings.GCP_PROJECT or None,
-                retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
+        # Producer conserva toda la API core aunque tickets esté disabled.
+        # Worker comparte el runtime RAG porque reanuda el execution_plan.
+        # Reconciler es control-plane y no carga SDKs/modelos de ejecución.
+        if needs_rag_runtime:
+            app.state.pinecone_uploader = PineconeUploader(
+                api_key=settings.PINECONE_API_KEY,
+                index_name=settings.INDEX_NAME,
+                namespace=settings.NAMESPACE,
             )
-            logger.info("✅ Execution logger initialized (Firestore)")
-        else:
-            app.state.execution_logger = None
+            logger.info("✅ Pinecone connection established")
 
-        # End-to-end ticket handler wiring (Tasks 3/4): ForusBots client +
-        # repositorio DURABLE de jobs (compartido entre instancias) + cola de
-        # ejecución. El orchestrator se construye on-demand desde app.state.
-        app.state.forusbots_client = ForusBotsClient.from_settings(settings)
-        app.state.ticket_repo = TicketJobRepository(
-            _build_ticket_job_backend(),
-            retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
-            max_outstanding=settings.TICKET_MAX_OUTSTANDING_JOBS,
-            rate_limit_per_minute=settings.RATE_LIMIT_HANDLE_TICKET,
-        )
-        app.state.ticket_orchestrator_factory = lambda: _build_orchestrator_from_state(app)
-        app.state.ticket_queue = _build_ticket_queue(app)
-        app.state.ticket_rate_limiter = FixedWindowRateLimiter()
-        # Autorización de objetos participant-plan (Tarea 4): la factory
-        # construye el adaptador según PARTICIPANT_PLAN_SOURCE. Sin fuente,
-        # devuelve None y todo modo ACTIVO falla cerrado (validate_settings
-        # en arranque + 503 en request); None jamás autoriza.
-        app.state.participant_plan_validator = build_validator_from_settings(settings)
+            llm_router = LLMRouter(
+                openai_api_key=settings.OPENAI_API_KEY or None,
+                gemini_api_key=settings.GEMINI_API_KEY or None,
+                use_vertex_ai=settings.USE_VERTEX_AI,
+                gcp_project=settings.GCP_PROJECT or None,
+                gcp_location=settings.GCP_LOCATION,
+            )
+            llm_router.configure_routes(build_routes_from_settings(settings))
+            # Only durable worker execution owns ticket token/cost metrics.
+            # Producer/core calls share this router but remain outside the
+            # ticket ContextVar and do not depend on ticket pricing config.
+            if role == "worker":
+                llm_router.configure_pricing(
+                    parse_llm_pricing_json(settings.TICKET_LLM_PRICING_JSON)
+                )
+            app.state.llm_router = llm_router
+            logger.info("✅ LLM Router configured")
+
+            app.state.rag_engine = RAGEngine(
+                llm_router=llm_router,
+                pinecone_uploader=app.state.pinecone_uploader,
+            )
+            logger.info("✅ RAG Engine initialized")
+
+            app.state.inquiry_router = InquiryRouterEngine(
+                llm_router=llm_router,
+                coverage_pack_builder=_make_coverage_pack_builder(
+                    app.state.rag_engine
+                ),
+            )
+            logger.info("✅ Inquiry Router initialized")
+
+            stats = app.state.pinecone_uploader.get_index_stats()
+            logger.info(
+                "📊 Total vectors in index: %s",
+                stats.get("total_vectors", 0),
+            )
+            _log_pinecone_startup_diagnostics(
+                app.state.pinecone_uploader, stats
+            )
+
+            if settings.ENABLE_EXECUTION_LOGGING:
+                app.state.execution_logger = ExecutionLogger(
+                    project_id=settings.GCP_PROJECT or None,
+                    database=settings.FIRESTORE_DATABASE or "(default)",
+                    retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
+                )
+                logger.info("✅ Execution logger initialized (Firestore)")
+            else:
+                app.state.execution_logger = None
+
+        if needs_ticket_repo:
+            app.state.ticket_repo = TicketJobRepository(
+                _build_ticket_job_backend(),
+                retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
+                max_outstanding=settings.TICKET_MAX_OUTSTANDING_JOBS,
+                rate_limit_per_minute=settings.RATE_LIMIT_HANDLE_TICKET,
+            )
+
+        # ForusBots y el orchestrator pertenecen exclusivamente al worker.
+        # El producer sólo autoriza, persiste y encola trabajo durable.
+        if needs_ticket_execution:
+            app.state.forusbots_client = ForusBotsClient.from_settings(settings)
+            app.state.ticket_orchestrator_factory = (
+                lambda: _build_orchestrator_from_state(app)
+            )
+
+        # Producer y reconciler encolan; worker sólo recibe Cloud Tasks y no
+        # debe requerir permisos ni configuración de la cola.
+        if needs_ticket_queue:
+            app.state.ticket_queue = _build_ticket_queue(app)
+
+        if role == "producer" and ticket_active:
+            # La autorización participant-plan ocurre sólo en admission. El
+            # worker consume el payload durable ya autorizado.
+            app.state.participant_plan_validator = (
+                build_validator_from_settings(settings)
+            )
+
         logger.info(
-            "✅ Ticket handler wired (mode=%s, backend=%s, queue=%s)",
-            settings.TICKET_HANDLER_MODE, settings.TICKET_JOB_BACKEND,
+            "✅ Runtime wired (role=%s, ticket_mode=%s, backend=%s, queue=%s)",
+            role,
+            settings.TICKET_HANDLER_MODE,
+            settings.TICKET_JOB_BACKEND,
             settings.TICKET_TASK_QUEUE,
         )
 
         logger.info("=" * 80)
         logger.info(f"🚀 API Ready on http://{settings.API_HOST}:{settings.API_PORT}")
         logger.info("=" * 80)
-        
-    except Exception as e:
-        logger.error(f"❌ Startup failed: {e}")
+
+    except Exception as exc:
+        logger.error("Startup failed (error_type=%s)", type(exc).__name__)
         raise
-    
+
     yield
 
     # Shutdown
@@ -383,13 +428,13 @@ async def lifespan(app: FastAPI):
         try:
             await queue.aclose()
         except Exception:
-            logger.exception("Error closing ticket queue")
+            logger.error("Error closing ticket queue")
     forusbots = getattr(app.state, "forusbots_client", None)
     if forusbots is not None:
         try:
             await forusbots.aclose()
         except Exception:
-            logger.exception("Error closing ForusBots client")
+            logger.error("Error closing ForusBots client")
 
 
 def _build_ticket_job_backend():
@@ -425,6 +470,7 @@ def _build_ticket_queue(app: FastAPI):
             location=settings.CLOUD_TASKS_LOCATION,
             queue=settings.CLOUD_TASKS_QUEUE,
             worker_url=settings.TICKET_WORKER_URL,
+            worker_audience=settings.TICKET_WORKER_AUDIENCE,
             service_account=settings.TICKET_WORKER_SERVICE_ACCOUNT,
             dispatch_deadline_s=settings.TICKET_TASK_DISPATCH_DEADLINE_S,
         )
@@ -515,7 +561,8 @@ def _custom_openapi():
     """OpenAPI con los DOS esquemas de autenticación del flujo de tickets
     (Tarea 4 Paso 7): X-API-Key (cliente/tenant) y la identidad workload de
     v2, más el bearer de Cloud Run IAM cuando el servicio es privado."""
-    if app.openapi_schema:
+    role = settings.APP_ROLE
+    if app.openapi_schema and getattr(app.state, "openapi_role", None) == role:
         return app.openapi_schema
     from fastapi.openapi.utils import get_openapi
 
@@ -523,7 +570,10 @@ def _custom_openapi():
         title=settings.API_TITLE,
         version=settings.API_VERSION,
         description=settings.API_DESCRIPTION,
-        routes=app.routes,
+        routes=[
+            route for route in app.routes
+            if _path_allowed_for_role(getattr(route, "path", ""), role)
+        ],
     )
     schemes = schema.setdefault("components", {}).setdefault("securitySchemes", {})
     schemes["ApiKeyAuth"] = {
@@ -556,6 +606,7 @@ def _custom_openapi():
                     {"ApiKeyAuth": [], "WorkloadIdentity": []},
                 ]
     app.openapi_schema = schema
+    app.state.openapi_role = role
     return schema
 
 
@@ -728,7 +779,7 @@ async def health_check(
 ):
     """
     Health check endpoint.
-    
+
     Verifica el estado del servicio y sus dependencias.
     """
     try:
@@ -737,8 +788,9 @@ async def health_check(
         stats = pinecone.get_index_stats()
         pinecone_connected = "error" not in stats and "total_vectors" in stats
         total_vectors = stats.get('total_vectors', 0)
-    except Exception as e:
-        logger.error(f"Pinecone health check failed: {e}")
+    except Exception as exc:
+        logger.error("Pinecone health check failed (error_type=%s)",
+                     type(exc).__name__)
         pinecone_connected = False
         total_vectors = 0
 
@@ -747,7 +799,7 @@ async def health_check(
     openai_configured = bool(settings.OPENAI_API_KEY) or bool(
         settings.GEMINI_API_KEY
     ) or (settings.USE_VERTEX_AI and bool(settings.GCP_PROJECT))
-    
+
     return HealthResponse(
         status="healthy" if (pinecone_connected and openai_configured) else "degraded",
         version=settings.API_VERSION,
@@ -765,14 +817,71 @@ async def livez():
     return {"status": "ok"}
 
 
+_READINESS_PROBE_TIMEOUT_S = 3.0
+_READINESS_SENTINEL_JOB_ID = "__readyz_nonexistent__"
+
+
+async def _readiness_probe(
+    dependency: str,
+    probe,
+    *,
+    role: str,
+) -> Optional[str]:
+    """Ejecuta una sonda read-only acotada y sanitiza cualquier fallo."""
+    try:
+        await asyncio.wait_for(probe(), timeout=_READINESS_PROBE_TIMEOUT_S)
+        return None
+    except Exception as exc:  # noqa: BLE001 - readiness falla cerrado
+        # El mensaje puede contener URLs, IDs o contexto de credenciales.
+        logger.warning(
+            "readiness dependency failed role=%s dependency=%s error_type=%s",
+            role,
+            dependency,
+            type(exc).__name__,
+        )
+        return dependency
+
+
+async def _probe_pinecone(pinecone) -> None:
+    """Sonda SDK read-only; nunca query/upsert y nunca bloquea el event loop."""
+    stats = await asyncio.to_thread(pinecone.get_index_stats)
+    if not isinstance(stats, dict) or "error" in stats or "total_vectors" not in stats:
+        raise RuntimeError("pinecone stats unavailable")
+
+
+async def _probe_ticket_repo(repo) -> None:
+    # ID deliberadamente imposible: ejercita el backend sin leer datos reales.
+    await repo.get(_READINESS_SENTINEL_JOB_ID)
+
+
+async def _probe_ticket_queue(queue) -> None:
+    # Cloud Tasks usa GetQueue; la cola inline de desarrollo devuelve 0.
+    await queue.estimated_queue_delay_s()
+
+
+async def _probe_forusbots(client) -> None:
+    # GET health dedicado, sin datos de participante.
+    await client.health()
+
+
+async def _probe_participant_plan_validator(validator) -> None:
+    # No inventar IDs para llamar authorize. El adaptador real debe exponer
+    # una sonda sin efectos propia.
+    health = getattr(validator, "health", None)
+    if not callable(health):
+        raise RuntimeError("validator health probe unavailable")
+    await health()
+
+
 @app.get("/readyz", include_in_schema=False)
 async def readyz(request: Request):
-    """Readiness ROLE-AWARE (Tarea 11 Paso 4): sin I/O externo (eso es
-    /health). El producer siempre preserva los checks core existentes; los
-    checks específicos de tickets se añaden sólo cuando el rol/modo los exige.
+    """Readiness role-aware con sondas read-only de las dependencias.
 
-    - producer disabled: core (rag/pinecone/inquiry_router) + LLM provider;
-      NO depende de validador/cola/ForusBots de tickets.
+    `/livez` es la sonda de proceso sin I/O. Aquí cada sonda queda acotada a
+    tres segundos y la respuesta nunca incluye detalles del proveedor.
+
+    - producer disabled: core + repositorio durable de polling; NO depende de
+      validador/cola/ForusBots de admisión/ejecución.
     - producer activo: además validador participant-plan, repo, cola.
     - worker: repo + dependencias de ejecución (LLM/Pinecone).
     - reconciler: repo + cola (sin LLM/Pinecone/ForusBots)."""
@@ -780,6 +889,7 @@ async def readyz(request: Request):
     role = settings.APP_ROLE
     active = settings.TICKET_HANDLER_MODE != "disabled"
     missing: list = []
+    probes = []
 
     def _need(attr: str) -> None:
         if getattr(st, attr, None) is None:
@@ -791,32 +901,76 @@ async def readyz(request: Request):
     if role == "producer":
         # core existente: SIEMPRE (Pinecone/Vertex/buckets son core de otras
         # rutas aunque tickets esté disabled)
-        for attr in ("rag_engine", "pinecone_uploader", "inquiry_router"):
+        for attr in (
+            "rag_engine", "pinecone_uploader", "inquiry_router", "llm_router",
+        ):
             _need(attr)
+        pinecone = getattr(st, "pinecone_uploader", None)
+        if pinecone is not None:
+            probes.append(("pinecone", lambda: _probe_pinecone(pinecone)))
+        # Incluso disabled debe poder servir GET de jobs existentes durante
+        # rollback/cambio de revisión; la cola y los integradores sí quedan
+        # fuera hasta que la admisión esté activa.
+        _need("ticket_repo")
+        repo = getattr(st, "ticket_repo", None)
+        if repo is not None:
+            probes.append(("ticket_repo", lambda: _probe_ticket_repo(repo)))
         if active:
-            _need("ticket_repo")
             _need("ticket_queue")
-            _need("forusbots_client")
-            if getattr(st, "participant_plan_validator", None) is None:
+            validator = getattr(st, "participant_plan_validator", None)
+            if validator is None:
                 missing.append("participant_plan_validator")
+            else:
+                probes.append((
+                    "participant_plan_validator",
+                    lambda: _probe_participant_plan_validator(validator),
+                ))
+            queue = getattr(st, "ticket_queue", None)
+            if queue is not None:
+                probes.append(("ticket_queue", lambda: _probe_ticket_queue(queue)))
     elif role == "worker":
         _need("ticket_repo")
         for attr in (
-            "rag_engine", "pinecone_uploader", "inquiry_router",
+            "rag_engine", "pinecone_uploader", "inquiry_router", "llm_router",
             "forusbots_client",
         ):
             _need(attr)
+        repo = getattr(st, "ticket_repo", None)
+        pinecone = getattr(st, "pinecone_uploader", None)
+        forusbots = getattr(st, "forusbots_client", None)
+        if repo is not None:
+            probes.append(("ticket_repo", lambda: _probe_ticket_repo(repo)))
+        if pinecone is not None:
+            probes.append(("pinecone", lambda: _probe_pinecone(pinecone)))
+        if forusbots is not None:
+            probes.append(("forusbots", lambda: _probe_forusbots(forusbots)))
     elif role == "reconciler":
         _need("ticket_repo")
         _need("ticket_queue")
         provider_ok = True  # el reconciliador no usa LLM/Pinecone
+        repo = getattr(st, "ticket_repo", None)
+        queue = getattr(st, "ticket_queue", None)
+        if repo is not None:
+            probes.append(("ticket_repo", lambda: _probe_ticket_repo(repo)))
+        if queue is not None:
+            probes.append(("ticket_queue", lambda: _probe_ticket_queue(queue)))
 
     provider_needed = role in ("producer", "worker")
-    if missing or (provider_needed and not provider_ok):
+    probe_results = await asyncio.gather(*(
+        _readiness_probe(name, probe, role=role) for name, probe in probes
+    ))
+    unhealthy = sorted(result for result in probe_results if result is not None)
+
+    if missing or unhealthy or (provider_needed and not provider_ok):
         return JSONResponse(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            content={"status": "unavailable", "role": role, "missing": missing,
-                     "llm_provider_configured": provider_ok},
+            content={
+                "status": "unavailable",
+                "role": role,
+                "missing": sorted(missing),
+                "unhealthy": unhealthy,
+                "llm_provider_configured": provider_ok,
+            },
         )
     return {"status": "ready", "role": role}
 
@@ -835,23 +989,25 @@ async def required_data_endpoint(
 ):
     """
     Endpoint 1: Determina qué datos se necesitan para responder una inquiry.
-    
+
     Este endpoint analiza la inquiry y el contexto de la KB para identificar
     qué campos específicos de datos del participante y plan se necesitan
     recolectar antes de poder generar una respuesta.
-    
+
     **Flujo:**
     1. n8n detecta inquiry en ticket
     2. Llama este endpoint con inquiry + metadata
     3. API retorna lista de campos requeridos
     4. n8n → AI Mapper → ForUsBots para recolectar datos
-    
+
     **Autenticación:** Requiere header `X-API-Key`
     """
     start = time.monotonic()
     try:
-        logger.info(f"Required data request | Topic: {request.topic} | RK: {request.record_keeper}")
-        
+        logger.info(
+            "Required data request | inquiry_length=%d", len(request.inquiry)
+        )
+
         result = await engine.get_required_data(
             inquiry=request.inquiry,
             record_keeper=request.record_keeper,
@@ -859,9 +1015,9 @@ async def required_data_endpoint(
             topic=request.topic,
             related_inquiries=request.related_inquiries
         )
-        
+
         logger.info(f"Required data completed | Confidence: {result.confidence}")
-        
+
         response = RequiredDataResponse(
             article_reference=result.article_reference,
             required_fields=result.required_fields,
@@ -875,7 +1031,7 @@ async def required_data_endpoint(
             coverage_gaps=result.coverage_gaps,
             metadata=result.metadata
         )
-        
+
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
             await exec_logger.log_execution(
@@ -885,9 +1041,9 @@ async def required_data_endpoint(
                 request_data=request.model_dump(),
                 response_data=response.model_dump(),
             )
-        
+
         return response
-    
+
     except Exception as e:
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
@@ -899,11 +1055,11 @@ async def required_data_endpoint(
                 response_data={},
                 error=str(e),
             )
-        logger.exception("Error in required_data endpoint")
+        logger.error("Error in required_data endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while processing the required-data request."
-        )
+        ) from e
 
 
 @app.post(
@@ -920,31 +1076,30 @@ async def generate_response_endpoint(
 ):
     """
     Endpoint 2: Genera respuesta contextualizada usando datos recolectados.
-    
+
     Este endpoint toma la inquiry, los datos recolectados del participante/plan,
     y genera una respuesta estructurada con steps, warnings, y guardrails.
-    
+
     **Flujo:**
     1. ForUsBots recolectó datos requeridos
     2. n8n llama este endpoint con inquiry + collected_data
     3. API genera respuesta contextualizada
     4. n8n empaqueta y envía a DevRev AI
-    
+
     **Token Budget:**
     - Default: 5000 tokens (siempre disponibles)
     - Se puede reducir vía `max_response_tokens` si se necesita
-    
+
     **Autenticación:** Requiere header `X-API-Key`
     """
     start = time.monotonic()
     try:
         logger.info(
-            f"Generate response request | "
-            f"Topic: {request.topic} | "
-            f"RK: {request.record_keeper} | "
-            f"Max tokens: {request.max_response_tokens}"
+            "Generate response request | inquiry_length=%d | max_tokens=%d",
+            len(request.inquiry),
+            request.max_response_tokens,
         )
-        
+
         result = await engine.generate_response(
             inquiry=request.inquiry,
             record_keeper=request.record_keeper,
@@ -954,13 +1109,13 @@ async def generate_response_endpoint(
             max_response_tokens=request.max_response_tokens,
             total_inquiries_in_ticket=request.total_inquiries_in_ticket
         )
-        
+
         logger.info(
             f"Generate response completed | "
             f"Decision: {result.decision} | "
             f"Confidence: {result.confidence}"
         )
-        
+
         response = GenerateResponseResult(
             decision=result.decision,
             confidence=result.confidence,
@@ -974,7 +1129,7 @@ async def generate_response_endpoint(
             coverage_gaps=result.coverage_gaps,
             metadata=result.metadata
         )
-        
+
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
             await exec_logger.log_execution(
@@ -984,9 +1139,9 @@ async def generate_response_endpoint(
                 request_data=request.model_dump(),
                 response_data=response.model_dump(),
             )
-        
+
         return response
-    
+
     except Exception as e:
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
@@ -998,11 +1153,11 @@ async def generate_response_endpoint(
                 response_data={},
                 error=str(e),
             )
-        logger.exception("Error in generate_response endpoint")
+        logger.error("Error in generate_response endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while generating the response."
-        )
+        ) from e
 
 
 @app.post(
@@ -1018,28 +1173,31 @@ async def knowledge_question_endpoint(
 ):
     """
     Endpoint 3: Answer a general knowledge question using the KB.
-    
+
     This endpoint takes a plain question and returns an answer based on
     the knowledge base articles. No participant data, record keeper, or
     plan type is required — it performs a broad semantic search.
-    
+
     **Use cases:**
     - Support agents looking up general 401(k) rules or processes
     - Quick knowledge base lookups via the UI
     - Testing KB coverage for a given topic
-    
+
     **No autenticación requerida** (endpoint público para UI)
     """
     start = time.monotonic()
     try:
-        logger.info(f"Knowledge question request | Q: {request.question[:80]}...")
-        
+        logger.info(
+            "Knowledge question request | question_length=%d",
+            len(request.question),
+        )
+
         result = await engine.ask_knowledge_question(
             question=request.question
         )
-        
+
         logger.info(f"Knowledge question completed | Coverage: {result.confidence_note}")
-        
+
         response = KnowledgeQuestionResponse(
             answer=result.answer,
             key_points=result.key_points,
@@ -1052,7 +1210,7 @@ async def knowledge_question_endpoint(
             confidence_note=result.confidence_note,
             metadata=result.metadata
         )
-        
+
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
             await exec_logger.log_execution(
@@ -1062,9 +1220,9 @@ async def knowledge_question_endpoint(
                 request_data=request.model_dump(),
                 response_data=response.model_dump(),
             )
-        
+
         return response
-    
+
     except Exception as e:
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
@@ -1076,11 +1234,11 @@ async def knowledge_question_endpoint(
                 response_data={},
                 error=str(e),
             )
-        logger.exception("Error in knowledge_question endpoint")
+        logger.error("Error in knowledge_question endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while processing the knowledge question."
-        )
+        ) from e
 
 
 # ============================================================================
@@ -1252,11 +1410,11 @@ async def route_inquiry_endpoint(
                 response_data={},
                 error=str(e),
             )
-        logger.exception("Error in route_inquiry endpoint")
+        logger.error("Error in route_inquiry endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while routing the inquiry.",
-        )
+        ) from e
 
 
 # ============================================================================
@@ -1264,6 +1422,7 @@ async def route_inquiry_endpoint(
 # ============================================================================
 
 _TICKET_GREETING = "Could you share a bit more detail about what you'd like help with?"
+_TICKET_JOB_ID_RE = re.compile(r"^[0-9a-f]{32}$")
 
 
 def get_ticket_orchestrator(request: Request) -> TicketOrchestrator:
@@ -1459,22 +1618,22 @@ async def _accept_ticket_job(
             ),
             timeout=settings.PARTICIPANT_PLAN_TIMEOUT_S,
         )
-    except ParticipantPlanUnavailable:
+    except ParticipantPlanUnavailable as exc:
         ticket_metrics.increment("ticket_participant_plan_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
-        )
+        ) from exc
     except HTTPException:
         raise
-    except Exception:
+    except Exception as exc:
         # Un adaptador roto es indisponibilidad, jamás autorización.
-        logger.exception("participant-plan validator failed")
+        logger.error("participant-plan validator failed")
         ticket_metrics.increment("ticket_participant_plan_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
-        )
+        ) from exc
     if authorized is None or (
         authorized.tenant_id != tenant
         or authorized.participant_id != request.participant_id
@@ -1550,6 +1709,9 @@ async def _accept_ticket_job(
             "ticket queue delay estimate unavailable (error_type=%s)",
             type(exc).__name__,
         )
+        _emit_ticket_metric(
+            "ticket_queue_delay_seconds", 0, code="unavailable"
+        )
         ticket_metrics.increment("ticket_queue_delay_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1558,6 +1720,9 @@ async def _accept_ticket_job(
             headers={"Retry-After": "30"},
         ) from exc
     if not math.isfinite(estimated_delay_s) or estimated_delay_s < 0:
+        _emit_ticket_metric(
+            "ticket_queue_delay_seconds", 0, code="unavailable"
+        )
         ticket_metrics.increment("ticket_queue_delay_unavailable")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -1565,34 +1730,19 @@ async def _accept_ticket_job(
                     "retryable": True},
             headers={"Retry-After": "30"},
         )
-    if estimated_delay_s > settings.TICKET_ADMISSION_QUEUE_DELAY_CEILING_S:
+    delay_code = (
+        "rejected"
+        if estimated_delay_s > settings.TICKET_ADMISSION_QUEUE_DELAY_CEILING_S
+        else "observed"
+    )
+    _emit_ticket_metric(
+        "ticket_queue_delay_seconds", estimated_delay_s, code=delay_code
+    )
+    if delay_code == "rejected":
         ticket_metrics.increment("ticket_queue_delay_rejected")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"code": "QUEUE_DELAY_EXCEEDED", "retryable": True},
-            headers={"Retry-After": "30"},
-        )
-
-    # Cuotas por principal (HT-06) sólo para jobs NUEVOS: rate limit del
-    # productor + cap de outstanding. El límite global lo impone la cola.
-    limiter: FixedWindowRateLimiter = http_request.app.state.ticket_rate_limiter
-    allowed, retry_after = limiter.check(
-        ("handle-ticket", principal), settings.RATE_LIMIT_HANDLE_TICKET
-    )
-    if not allowed:
-        ticket_metrics.increment("ticket_rate_limited")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"code": "RATE_LIMITED", "retryable": True},
-            headers={"Retry-After": str(retry_after)},
-        )
-    outstanding = await repo.count_active(principal)
-    if outstanding >= settings.TICKET_MAX_OUTSTANDING_JOBS:
-        ticket_metrics.increment("ticket_outstanding_capped")
-        raise HTTPException(
-            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-            detail={"code": "TOO_MANY_OUTSTANDING_JOBS", "retryable": True,
-                    "outstanding": outstanding},
             headers={"Retry-After": "30"},
         )
 
@@ -1621,14 +1771,14 @@ async def _accept_ticket_job(
             candidate=candidate,
         )
     except RateWindowExceeded as exc:
-        # capa DURABLE de tasa (Tarea 5): autoritativa frente al limiter
-        # in-memory de arriba (que sólo mitiga por instancia)
+        # Única capa autoritativa de tasa: transacción durable compartida por
+        # todas las instancias (sin precheck in-memory/check-then-act).
         ticket_metrics.increment("ticket_rate_limited")
         raise HTTPException(
             status_code=status.HTTP_429_TOO_MANY_REQUESTS,
             detail={"code": "RATE_LIMITED", "retryable": True},
             headers={"Retry-After": str(exc.retry_after_s)},
-        )
+        ) from exc
     except QuotaExceeded as exc:
         ticket_metrics.increment("ticket_outstanding_capped")
         raise HTTPException(
@@ -1636,7 +1786,7 @@ async def _accept_ticket_job(
             detail={"code": "TOO_MANY_OUTSTANDING_JOBS", "retryable": True,
                     "outstanding": exc.outstanding},
             headers={"Retry-After": "30"},
-        )
+        ) from exc
     if outcome == CreateOrGetOutcome.CONFLICT or record is None:
         ticket_metrics.increment("ticket_jobs_conflicted")
         raise HTTPException(
@@ -1800,6 +1950,12 @@ async def get_ticket_status(
     """Poll de un ticket job. ``404`` = ID inexistente; ``410`` = el
     control/tombstone sigue vigente pero el payload expiró (no reintentar);
     ``403`` = job de otro principal (invariante 10)."""
+    if _TICKET_JOB_ID_RE.fullmatch(ticket_job_id) is None:
+        ticket_metrics.increment("ticket_poll_not_found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ticket job not found or expired.",
+        )
     record, payload_present = await repo.get_with_payload_state(ticket_job_id)
     if record is None:
         ticket_metrics.increment("ticket_poll_not_found")
@@ -1831,6 +1987,9 @@ async def get_ticket_status(
                     "message": "el resultado expiró; el receipt impide "
                                "recrear el job con la misma key"},
         )
+    _emit_ticket_metric(
+        "ticket_n8n_poll_count", 1, state=record.state.value
+    )
     results = _record_results(record)
     primary = results[0] if results else None
     return TicketStatusResponse(
@@ -1944,6 +2103,11 @@ async def get_ticket_job_v2(
     http_request: Request,
     repo: TicketJobRepository = Depends(get_ticket_repo),
 ):
+    if _TICKET_JOB_ID_RE.fullmatch(ticket_job_id) is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail={"code": "TICKET_JOB_NOT_FOUND"},
+        )
     record, payload_present = await repo.get_with_payload_state(ticket_job_id)
     if record is None:
         raise HTTPException(
@@ -1970,6 +2134,9 @@ async def get_ticket_job_v2(
                     "message": "el resultado expiró; el receipt impide "
                                "recrear el job con la misma key"},
         )
+    _emit_ticket_metric(
+        "ticket_n8n_poll_count", 1, state=record.state.value
+    )
     inquiries = [
         InquiryStatusV2(
             index=e.get("index", i),
@@ -2015,15 +2182,22 @@ async def list_chunks_endpoint(
 ):
     """
     Lista chunks de Pinecone con filtros opcionales.
-    
+
     Uses Pinecone's list + fetch API (no semantic search) when an article_id
     is provided. Falls back to semantic search only when no article_id is given.
-    
+
     **No requiere autenticación** (endpoint público para UI)
     """
     try:
-        logger.info(f"List chunks request | Filters: article_id={request.article_id}, tier={request.tier}, type={request.chunk_type}")
-        
+        logger.info(
+            "List chunks request | article_filter=%s | tier_filter=%s | "
+            "type_filter=%s | limit=%d",
+            request.article_id is not None,
+            request.tier is not None,
+            request.chunk_type is not None,
+            request.limit,
+        )
+
         if request.article_id:
             # Preferred path: list + fetch (no semantic search, deterministic)
             raw_chunks = pinecone.list_and_fetch_chunks(
@@ -2041,19 +2215,19 @@ async def list_chunks_endpoint(
                 query_parts.append(f"{request.chunk_type}")
             query_parts.append("knowledge base article content")
             query_text = " ".join(query_parts)
-            
+
             filter_dict = {}
             if request.tier:
                 filter_dict["chunk_tier"] = {"$eq": request.tier}
             if request.chunk_type:
                 filter_dict["chunk_type"] = {"$eq": request.chunk_type}
-            
+
             raw_chunks = pinecone.query_chunks(
                 query_text=query_text,
                 top_k=request.limit,
                 filter_dict=filter_dict if filter_dict else None
             )
-        
+
         # Convertir a modelo Pydantic
         chunks = []
         for raw_chunk in raw_chunks:
@@ -2064,12 +2238,14 @@ async def list_chunks_endpoint(
                     metadata=ChunkMetadata(**raw_chunk['metadata'])
                 )
                 chunks.append(chunk)
-            except Exception as e:
-                logger.warning(f"Error parsing chunk {raw_chunk.get('id')}: {e}")
+            except Exception as exc:
+                logger.warning(
+                    "Error parsing chunk (error_type=%s)", type(exc).__name__
+                )
                 continue
-        
+
         logger.info(f"List chunks completed | Found: {len(chunks)} chunks")
-        
+
         return ListChunksResponse(
             chunks=chunks,
             total=len(chunks),
@@ -2080,13 +2256,13 @@ async def list_chunks_endpoint(
                 "limit": request.limit
             }
         )
-    
-    except Exception as e:
-        logger.exception("Error in list_chunks endpoint")
+
+    except Exception as exc:
+        logger.error("Error in list_chunks endpoint")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while listing chunks."
-        )
+        ) from exc
 
 
 @app.get(
@@ -2099,23 +2275,23 @@ async def index_stats_endpoint(
 ):
     """
     Obtiene estadísticas del índice de Pinecone.
-    
+
     **No requiere autenticación** (endpoint público para UI)
     """
     try:
         stats = pinecone.get_index_stats()
-        
+
         return IndexStatsResponse(
             total_vectors=stats.get('total_vectors', 0),
             namespaces=stats.get('namespaces', {})
         )
-    
-    except Exception as e:
-        logger.exception("Error getting index stats")
+
+    except Exception as exc:
+        logger.error("Error getting index stats")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred while retrieving index stats."
-        )
+        ) from exc
 
 
 # ============================================================================
@@ -2147,8 +2323,8 @@ async def http_exception_handler(request: Request, exc: HTTPException):
 async def general_exception_handler(request: Request, exc: Exception):
     """Handler para excepciones generales."""
     request_id = getattr(request.state, "request_id", "unknown")
-    logger.exception(f"Unhandled exception | Request ID: {request_id}")
-    
+    logger.error("Unhandled exception | Request ID: %s", request_id)
+
     return JSONResponse(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
         content={
@@ -2165,7 +2341,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import uvicorn
-    
+
     uvicorn.run(
         "main:app",
         host=settings.API_HOST,

@@ -3,7 +3,8 @@
   "deterministic_exact_match_rate": 1.0,
   "unsafe_publish_rate_max": 0.0,
   "missing_inquiry_rate_max": 0.0,
-  "semantic_acceptability_min": 0.95,
-  "duplicate_reply_rate_max": 0.0,
+  "reviewed_lexical_coverage_min": 0.95,
+  "idempotency_replay_failure_rate_max": 0.0,
+  "idempotency_replay_observation_rate_min": 1.0,
   "unexplained_poll_404_rate_max": 0.0
 }

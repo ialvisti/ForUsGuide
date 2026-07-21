@@ -31,12 +31,21 @@ PAYLOAD = {"participant_id": "1", "plan_id": "2",
 
 
 class FakeQueue:
-    def __init__(self):
+    def __init__(self, *, task_alive=True, task_exists_error=None):
         self.enqueued = []
+        self.task_alive = task_alive
+        self.task_exists_error = task_exists_error
+        self.exists_checks = []
 
     async def ensure_enqueued(self, job_id, generation=0):
         self.enqueued.append((job_id, generation))
         return f"inline/ticket-{job_id}-g{generation}"
+
+    async def task_exists(self, job_id, generation=0):
+        self.exists_checks.append((job_id, generation))
+        if self.task_exists_error is not None:
+            raise self.task_exists_error
+        return self.task_alive
 
     async def aclose(self):
         pass
@@ -66,6 +75,34 @@ async def _seed(repo, **over):
 
 class TestReconcilerRepairs:
 
+    async def test_run_emits_exact_global_active_job_gauges(
+        self, repo, monkeypatch,
+    ):
+        now = utcnow()
+        await _seed(repo, created_at=now - timedelta(seconds=37))
+        await _seed(repo, created_at=now - timedelta(seconds=11))
+        terminal = await _seed(repo, created_at=now - timedelta(seconds=90))
+        await repo.update(terminal.job_id, state=TicketJobState.RUNNING)
+        await repo.update(terminal.job_id, state=TicketJobState.SUCCEEDED)
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.ticket_reconciler.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+
+        await TicketReconciler(repo, FakeQueue()).run_once()
+
+        active = [event for event in emitted if event[0] == "ticket_jobs_active"]
+        oldest = [
+            event for event in emitted
+            if event[0] == "ticket_jobs_oldest_age_seconds"
+        ]
+        assert active == [("ticket_jobs_active", 2, {})]
+        assert len(oldest) == 1
+        assert 37 <= oldest[0][1] < 40
+
     async def test_reconciler_reenqueues_pending_outbox(self, repo):
         rec = await _seed(repo)   # queued, enqueue_state=pending
         queue = FakeQueue()
@@ -73,6 +110,67 @@ class TestReconcilerRepairs:
         assert counts["requeued_outbox"] == 1
         assert queue.enqueued and queue.enqueued[0][0] == rec.job_id
         refreshed = await repo.get(rec.job_id)
+        assert refreshed.enqueue_state == "enqueued"
+
+    async def test_stale_enqueued_job_with_missing_task_bumps_generation(
+        self, repo, backend,
+    ):
+        rec = await _seed(repo)
+        await repo.mark_enqueued(
+            rec.job_id, f"inline/ticket-{rec.job_id}-g0",
+        )
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["updated_at"] = utcnow() - timedelta(minutes=2)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+        queue = FakeQueue(task_alive=False)
+
+        counts = await TicketReconciler(repo, queue).run_once()
+
+        refreshed = await repo.get(rec.job_id)
+        assert counts["requeued_outbox"] == 1
+        assert queue.exists_checks == [(rec.job_id, 0)]
+        assert queue.enqueued == [(rec.job_id, 1)]
+        assert refreshed.enqueue_generation == 1
+        assert refreshed.enqueue_state == "enqueued"
+
+    async def test_stale_enqueued_job_with_live_task_is_not_duplicated(
+        self, repo, backend,
+    ):
+        rec = await _seed(repo)
+        await repo.mark_enqueued(
+            rec.job_id, f"inline/ticket-{rec.job_id}-g0",
+        )
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["updated_at"] = utcnow() - timedelta(minutes=2)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+        queue = FakeQueue(task_alive=True)
+
+        counts = await TicketReconciler(repo, queue).run_once()
+
+        refreshed = await repo.get(rec.job_id)
+        assert counts["requeued_outbox"] == 0
+        assert queue.exists_checks == [(rec.job_id, 0)]
+        assert queue.enqueued == []
+        assert refreshed.enqueue_generation == 0
+
+    async def test_task_lookup_failure_does_not_bump_or_false_confirm(
+        self, repo, backend,
+    ):
+        rec = await _seed(repo)
+        await repo.mark_enqueued(
+            rec.job_id, f"inline/ticket-{rec.job_id}-g0",
+        )
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["updated_at"] = utcnow() - timedelta(minutes=2)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+        queue = FakeQueue(task_exists_error=TimeoutError("unavailable"))
+
+        counts = await TicketReconciler(repo, queue).run_once()
+
+        refreshed = await repo.get(rec.job_id)
+        assert counts["errors"] == 1
+        assert queue.enqueued == []
+        assert refreshed.enqueue_generation == 0
         assert refreshed.enqueue_state == "enqueued"
 
     async def test_reconciler_fences_expired_lease(self, repo, backend):
@@ -157,6 +255,33 @@ class TestReconcilerRepairs:
 
         assert counts["requeued_outbox"] == 1
         assert queue.enqueued == [(pending.job_id, 0)]
+
+    async def test_scan_cursor_reaches_jobs_after_a_full_healthy_page(
+            self, repo, backend):
+        for job_id in ("a-healthy", "b-healthy"):
+            healthy = await _seed(repo, job_id=job_id)
+            await repo.mark_enqueued(
+                healthy.job_id, f"inline/ticket-{healthy.job_id}-g0",
+            )
+            await repo.claim(healthy.job_id, worker_id=f"worker-{job_id}")
+        pending = await _seed(repo, job_id="z-pending")
+
+        first_queue = FakeQueue()
+        first = await TicketReconciler(
+            repo, first_queue, batch_size=2, owner="reconciler-first",
+        ).run_once()
+        next_process_repo = TicketJobRepository(
+            backend, retention_days=90, max_outstanding=25,
+        )
+        second_queue = FakeQueue()
+        second = await TicketReconciler(
+            next_process_repo, second_queue,
+            batch_size=2, owner="reconciler-second",
+        ).run_once()
+
+        assert first["requeued_outbox"] == 0
+        assert second["requeued_outbox"] == 1
+        assert second_queue.enqueued == [(pending.job_id, 0)]
 
     async def test_heartbeat_after_scan_prevents_stale_lease_fencing(
             self, repo, backend, monkeypatch):

@@ -39,4 +39,15 @@ locals {
   mode_ok                      = var.ticket_handler_mode == local.expected_ticket_handler_mode
 
   create_services = var.enable_services && var.release_phase != "infra_only"
+
+  # Cloud Run's default URI is provider-computed, so producer/reconciler use
+  # the worker resource output as their HTTP target.  The worker cannot consume
+  # its own URI in its template without a Terraform cycle; use a deterministic
+  # custom audience for OIDC verification instead.
+  worker_oidc_audience = "https://${var.worker_service_name}.${var.project_id}.ticket.internal"
+  producer_baseline_url = local.create_services ? replace(
+    google_cloud_run_v2_service.producer[0].uri,
+    "https://",
+    "https://${var.producer_baseline_tag}---",
+  ) : null
 }

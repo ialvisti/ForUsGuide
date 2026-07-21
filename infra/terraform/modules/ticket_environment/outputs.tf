@@ -7,8 +7,13 @@ output "producer_url" {
   value = local.create_services ? google_cloud_run_v2_service.producer[0].uri : null
 }
 
+output "e2e_secondary_producer_url" {
+  description = "URL taggeada de la revisión baseline; sólo existe para el gate E2E staging."
+  value       = var.e2e_job.enabled ? local.producer_baseline_url : null
+}
+
 output "queue_id" {
-  value = google_cloud_tasks_queue.ticket.id
+  value = "projects/${var.project_id}/locations/${var.region}/queues/${var.queue_name}"
 }
 
 output "firestore_database" {
@@ -16,12 +21,12 @@ output "firestore_database" {
 }
 
 output "custom_queue_role_id" {
-  value = google_project_iam_custom_role.ticket_queue_enqueuer.id
+  value = "projects/${var.project_id}/roles/ticketQueueEnqueuer${title(var.env)}"
 }
 
 output "managed_secret_containers" {
-  description = "IDs de containers gestionados; nunca incluye versiones ni payloads."
-  value       = { for key, secret in google_secret_manager_secret.runtime : key => secret.id }
+  description = "IDs de containers platform referenciados; nunca incluye versiones ni payloads."
+  value       = var.secret_containers.enabled ? var.secret_containers.ids : {}
 }
 
 output "e2e_job_name" {

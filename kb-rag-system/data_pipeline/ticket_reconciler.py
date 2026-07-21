@@ -30,7 +30,10 @@ import argparse
 import asyncio
 import logging
 import uuid
-from typing import Any, Dict, Optional
+from datetime import datetime
+from typing import Callable, Dict, Optional, Protocol, Sequence
+
+from api import metrics as ticket_metrics
 
 from data_pipeline.ticket_job_models import (
     TERMINAL_STATES,
@@ -42,7 +45,7 @@ from data_pipeline.ticket_job_models import (
 from data_pipeline.ticket_job_repository import (
     InvalidStateTransition,
     JobNotFound,
-    PAYLOADS_COLLECTION,
+    Document,
     StaleEnqueueGeneration,
     StaleLeaseEpoch,
     TicketJobRepository,
@@ -51,27 +54,69 @@ from data_pipeline.ticket_job_repository import (
 logger = logging.getLogger(__name__)
 
 DEFAULT_BATCH_SIZE = 25
+ENQUEUED_RECHECK_AFTER_S = 60.0
+
+
+class ReconcilerQueue(Protocol):
+    async def ensure_enqueued(self, job_id: str, generation: int = 0) -> str: ...
+
+    async def task_exists(self, job_id: str, generation: int = 0) -> bool: ...
+
+    async def aclose(self) -> None: ...
 
 
 class TicketReconciler:
 
-    def __init__(self, repo: TicketJobRepository, queue: Any, *,
-                 batch_size: int = DEFAULT_BATCH_SIZE,
-                 owner: Optional[str] = None,
-                 metrics_hook=None):
+    def __init__(
+        self,
+        repo: TicketJobRepository,
+        queue: ReconcilerQueue,
+        *,
+        batch_size: int = DEFAULT_BATCH_SIZE,
+        owner: Optional[str] = None,
+        metrics_hook: Optional[Callable[..., None]] = None,
+    ) -> None:
         self.repo = repo
         self.queue = queue
         self.batch_size = batch_size
         self.owner = owner or f"reconciler-{uuid.uuid4().hex[:10]}"
         self._metrics_hook = metrics_hook
 
-    def _metric(self, name: str, **labels) -> None:
+    def _metric(self, name: str, **labels: int) -> None:
         if self._metrics_hook is not None:
             try:
                 self._metrics_hook(name, **labels)
             except Exception:  # noqa: BLE001 - métricas jamás rompen reparación
-                logger.exception("metrics hook falló")
-        logger.info("reconciler_metric %s %s", name, labels)
+                logger.error("metrics hook falló")
+        for reason, value in labels.items():
+            try:
+                ticket_metrics.emit(
+                    "ticket_reconciler_count", value, reason=reason
+                )
+            except (TypeError, ValueError):
+                logger.error("reconciler metric rejected by telemetry schema")
+
+    async def _emit_active_gauges(self, observed_at: datetime) -> None:
+        """Emit exact post-reconciliation global gauges.
+
+        The bounded scan page is never used as a proxy for global state.  The
+        repository performs a count aggregation plus an oldest-record query.
+        """
+        try:
+            active, oldest_created_at = await self.repo.active_job_stats()
+            oldest_age_s = 0.0
+            if oldest_created_at is not None:
+                oldest_age_s = max(
+                    0.0, (observed_at - oldest_created_at).total_seconds()
+                )
+            ticket_metrics.emit("ticket_jobs_active", active)
+            ticket_metrics.emit(
+                "ticket_jobs_oldest_age_seconds", oldest_age_s
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - observability never blocks repair
+            logger.error("active job gauge collection failed")
 
     async def run_once(self) -> Dict[str, int]:
         """Un lote acotado. Devuelve conteos sanitizados por categoría."""
@@ -106,9 +151,10 @@ class TicketReconciler:
 
                 # 4b) payload ausente no terminal → expired_payload, libera y
                 # NO reejecuta (no queda nada que ejecutar)
-                payload = await self.repo.backend.get_doc(
-                    PAYLOADS_COLLECTION, job_id)
-                if payload is None:
+                _record, payload_present = (
+                    await self.repo.get_with_payload_state(job_id)
+                )
+                if not payload_present:
                     await self._terminalize(
                         job_id, TicketJobState.FAILED, "EXPIRED_PAYLOAD",
                         control=control,
@@ -147,6 +193,38 @@ class TicketReconciler:
                         job_id, name, expected_generation=generation,
                     )
                     counts["requeued_outbox"] += 1
+                    continue
+
+                # A task confirmed in the past can later be ACKed/deleted or
+                # exhaust retries before it ever claims the job. Recheck only
+                # stale QUEUED records, bounded by this page. A live task is
+                # read-only; genuine NotFound burns a new generation by CAS.
+                if control.get("enqueue_state") == "enqueued" \
+                        and state == TicketJobState.QUEUED.value:
+                    updated_at = control.get("updated_at")
+                    try:
+                        stale_for_s = (
+                            (now - updated_at).total_seconds()
+                            if isinstance(updated_at, datetime)
+                            else ENQUEUED_RECHECK_AFTER_S
+                        )
+                    except TypeError:
+                        stale_for_s = ENQUEUED_RECHECK_AFTER_S
+                    if stale_for_s < ENQUEUED_RECHECK_AFTER_S:
+                        continue
+                    generation = control.get("enqueue_generation", 0)
+                    if await self.queue.task_exists(job_id, generation):
+                        continue
+                    generation = await self.repo.bump_enqueue_generation(
+                        job_id,
+                        expected_generation=generation,
+                        expected_state=TicketJobState.QUEUED,
+                    )
+                    name = await self.queue.ensure_enqueued(job_id, generation)
+                    await self.repo.mark_enqueued(
+                        job_id, name, expected_generation=generation,
+                    )
+                    counts["requeued_outbox"] += 1
             except (JobNotFound, InvalidStateTransition, StaleLeaseEpoch,
                     StaleEnqueueGeneration):
                 # otro reconciliador/worker llegó primero: benigno
@@ -155,8 +233,9 @@ class TicketReconciler:
                 raise
             except Exception:  # noqa: BLE001
                 counts["errors"] += 1
-                logger.exception("reconciler falló reparando el job %s", job_id)
+                logger.error("reconciler falló reparando un ticket job")
         self._metric("ticket_reconciler_run", **counts)
+        await self._emit_active_gauges(utcnow())
         return counts
 
     async def _terminalize(
@@ -165,17 +244,27 @@ class TicketReconciler:
         state: TicketJobState,
         code: str,
         *,
-        control: dict,
-        observed_at,
-        expected_deadline_at=None,
+        control: Document,
+        observed_at: datetime,
+        expected_deadline_at: Optional[datetime] = None,
         require_payload_missing: bool = False,
     ) -> None:
+        expected_state = control.get("state")
+        expected_epoch = control.get("lease_epoch", 0)
+        if not isinstance(expected_state, str):
+            raise StaleLeaseEpoch(
+                f"job {job_id}: control sin estado válido"
+            )
+        if isinstance(expected_epoch, bool) or not isinstance(expected_epoch, int):
+            raise StaleLeaseEpoch(
+                f"job {job_id}: control sin lease_epoch válido"
+            )
         await self.repo.terminalize_recovery(
             job_id,
             state=state,
             recovery_owner=self.owner,
-            expected_state=control.get("state"),
-            expected_lease_epoch=control.get("lease_epoch", 0),
+            expected_state=expected_state,
+            expected_lease_epoch=expected_epoch,
             next_action=NextAction.USE_LEGACY_OR_HUMAN,
             public_error_code=code,
             retryable=False,
@@ -186,7 +275,7 @@ class TicketReconciler:
         )
 
 
-def _build_from_settings():
+def _build_from_settings() -> tuple[TicketJobRepository, ReconcilerQueue]:
     """Construcción para el Run Job batch (APP_ROLE=reconciler). No inicia
     Uvicorn ni sirve endpoints."""
     from api.config import settings, validate_settings
@@ -216,6 +305,7 @@ def _build_from_settings():
         location=settings.CLOUD_TASKS_LOCATION,
         queue=settings.CLOUD_TASKS_QUEUE,
         worker_url=settings.TICKET_WORKER_URL,
+        worker_audience=settings.TICKET_WORKER_AUDIENCE,
         service_account=settings.TICKET_WORKER_SERVICE_ACCOUNT,
         dispatch_deadline_s=settings.TICKET_TASK_DISPATCH_DEADLINE_S,
         generation_bumper=None,
@@ -224,7 +314,7 @@ def _build_from_settings():
     return repo, queue
 
 
-def main(argv=None) -> int:
+def main(argv: Optional[Sequence[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Reconciliador batch de ticket jobs (Cloud Run Job)")
     parser.add_argument("--once", action="store_true", required=True,
@@ -236,7 +326,7 @@ def main(argv=None) -> int:
     repo, queue = _build_from_settings()
     reconciler = TicketReconciler(repo, queue, batch_size=args.batch_size)
 
-    async def _run():
+    async def _run() -> int:
         try:
             counts = await reconciler.run_once()
             # exit 0 sólo si completó el lote o no había trabajo

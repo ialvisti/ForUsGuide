@@ -14,5 +14,6 @@ pip-tools>=7.4.0,<8
 # Análisis estático y de seguridad (CI gates de Tarea 12)
 ruff>=0.4.0,<1
 mypy>=1.10.0,<2
+types-protobuf>=7.34.1,<8
 pip-audit>=2.7.0,<3
 detect-secrets>=1.5.0,<2

@@ -42,6 +42,14 @@ class AuthorizedParticipantPlan(BaseModel):
 
 @runtime_checkable
 class ParticipantPlanValidator(Protocol):
+    async def health(self) -> object:
+        """Sonda sin datos ni efectos para readiness.
+
+        Debe fallar si la fuente canónica no puede responder; nunca debe
+        autorizar IDs sintéticos ni incluir datos sensibles en su resultado.
+        """
+        ...
+
     async def authorize(
         self, *, tenant_id: str, participant_id: str, plan_id: str
     ) -> AuthorizedParticipantPlan | None:
@@ -53,7 +61,13 @@ class ParticipantPlanValidator(Protocol):
         ...
 
 
-def build_validator_from_settings(settings) -> ParticipantPlanValidator | None:
+class ParticipantPlanSettings(Protocol):
+    PARTICIPANT_PLAN_SOURCE: str
+
+
+def build_validator_from_settings(
+    settings: ParticipantPlanSettings,
+) -> ParticipantPlanValidator | None:
     """Factory del adaptador concreto según ``PARTICIPANT_PLAN_SOURCE``.
 
     Hoy no existe contrato externo (Tarea 1 pendiente), así que la única
@@ -62,10 +76,10 @@ def build_validator_from_settings(settings) -> ParticipantPlanValidator | None:
     equipo owner entregue endpoint/schema/SLA, este factory construye el
     cliente real; los tests inyectan dobles vía ``app.state``.
     """
-    source = (getattr(settings, "PARTICIPANT_PLAN_SOURCE", "") or "").strip()
+    source = (settings.PARTICIPANT_PLAN_SOURCE or "").strip()
     if not source:
         return None
     raise ValueError(
-        f"PARTICIPANT_PLAN_SOURCE={source!r} no tiene adaptador implementado: "
-        "el contrato canónico de la Tarea 1 sigue pendiente y no se inventa"
+        "PARTICIPANT_PLAN_SOURCE no tiene un adaptador implementado; "
+        "el contrato canónico de la Tarea 1 sigue pendiente"
     )

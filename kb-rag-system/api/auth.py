@@ -20,8 +20,9 @@ from __future__ import annotations
 
 import hmac
 import logging
+import threading
 from dataclasses import dataclass
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Optional, cast
 
 from fastapi import HTTPException, Request, status
 
@@ -37,6 +38,10 @@ FORBIDDEN_SERVERLESS_HEADER = "X-Serverless-Authorization"
 
 _ALLOWED_ISSUERS = ("https://accounts.google.com", "accounts.google.com")
 _ALLOWED_ALGS = ("RS256", "ES256")
+
+_google_auth_request: Any = None
+_google_auth_request_init_lock = threading.Lock()
+_google_auth_verify_lock = threading.Lock()
 
 
 @dataclass(frozen=True)
@@ -55,11 +60,11 @@ def resolve_principal(
     if not api_key:
         return None
     client_keys = settings.API_CLIENT_KEYS or {}
-    for principal, key in client_keys.items():
-        # str(): el dict viene de env JSON; un valor no-string no debe tirar
-        # TypeError en el path de auth.
-        if key and hmac.compare_digest(api_key, str(key)):
-            return str(principal)
+    for principal, configured in client_keys.items():
+        keys = (configured,) if isinstance(configured, str) else tuple(configured)
+        for key in keys:
+            if key and hmac.compare_digest(api_key, key):
+                return str(principal)
     if (allow_legacy and settings.API_KEY
             and hmac.compare_digest(api_key, settings.API_KEY)):
         return LEGACY_PRINCIPAL
@@ -122,22 +127,60 @@ def _decode_unverified_header(token: str) -> Dict[str, Any]:
     de tocar los certificados de Google."""
     from google.auth import jwt as gjwt
 
-    return gjwt.decode_header(token)
+    decoder = cast(Callable[..., object], gjwt.decode_header)
+    decoded = decoder(token)
+    if not isinstance(decoded, dict):
+        raise ValueError("invalid JOSE header")
+    return {str(key): value for key, value in decoded.items()}
 
 
 def _verify_google_id_token(token: str, audience: str) -> Dict[str, Any]:
     """Verificación real contra los certificados públicos de Google
-    (``google-auth`` cachea certs según sus headers HTTP). Seam para tests."""
-    from google.auth.transport import requests as garequests
+    mediante un transporte HTTP singleton con caché. Seam para tests."""
+    global _google_auth_request
+
+    # google-auth fetches the certificate endpoint on every verification; its
+    # Request adapter does not cache by itself.  CacheControl honors Google's
+    # Cache-Control/ETag headers, while the process lock keeps the shared
+    # requests.Session safe under concurrent sync FastAPI dependencies.
+    if _google_auth_request is None:
+        with _google_auth_request_init_lock:
+            if _google_auth_request is None:
+                import requests
+                from cachecontrol import CacheControl
+                from google.auth.transport import requests as garequests
+
+                _google_auth_request = garequests.Request(
+                    session=CacheControl(requests.Session()),
+                )
+
     from google.oauth2 import id_token as gid
 
-    return gid.verify_oauth2_token(token, garequests.Request(), audience=audience)
+    verifier = cast(Callable[..., object], gid.verify_oauth2_token)
+    with _google_auth_verify_lock:
+        verified = verifier(
+            token, _google_auth_request, audience=audience,
+        )
+    if not isinstance(verified, dict):
+        raise ValueError("invalid Google ID token claims")
+    return {str(key): value for key, value in verified.items()}
 
 
 def workload_identity_enforced() -> bool:
-    """La verificación corre cuando está configurada (audiencia + SA). En
-    producción activa, ``validate_settings`` exige ambas: no hay bypass."""
-    return bool(settings.TICKET_WIF_AUDIENCE and settings.TICKET_WIF_EXPECTED_EMAIL)
+    """Return whether audience plus an exact caller set are configured.
+
+    Deployed active environments are required to use the list.  The singular
+    field remains a local migration fallback only; Terraform never injects it.
+    """
+    return bool(settings.TICKET_WIF_AUDIENCE and _allowed_workload_emails())
+
+
+def _allowed_workload_emails() -> tuple[str, ...]:
+    configured = tuple(settings.TICKET_WIF_ALLOWED_EMAILS or ())
+    if configured:
+        return configured
+    legacy = settings.TICKET_WIF_EXPECTED_EMAIL
+    return (legacy,) if legacy else ()
 
 
 def verify_workload_identity_token(request: Request) -> None:
@@ -178,7 +221,7 @@ def verify_workload_identity_token(request: Request) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "WORKLOAD_IDENTITY_INVALID"},
-        )
+        ) from None
     if header.get("alg") not in _ALLOWED_ALGS:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
@@ -195,14 +238,14 @@ def verify_workload_identity_token(request: Request) -> None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"code": "WORKLOAD_IDENTITY_INVALID"},
-        )
-    except Exception:
+        ) from None
+    except Exception as exc:
         # certs inaccesibles u otro fallo del verificador: fail-closed 503
-        logger.exception("verificador de identidad workload no disponible")
+        logger.error("verificador de identidad workload no disponible")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail={"code": "WORKLOAD_IDENTITY_VERIFIER_UNAVAILABLE"},
-        )
+        ) from exc
 
     issuer = claims.get("iss")
     if issuer not in _ALLOWED_ISSUERS:
@@ -215,6 +258,6 @@ def verify_workload_identity_token(request: Request) -> None:
     if claims.get("email_verified") is not True:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail={"code": "WORKLOAD_IDENTITY_INVALID"})
-    if claims.get("email") != settings.TICKET_WIF_EXPECTED_EMAIL:
+    if claims.get("email") not in _allowed_workload_emails():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN,
                             detail={"code": "WORKLOAD_IDENTITY_WRONG_CALLER"})

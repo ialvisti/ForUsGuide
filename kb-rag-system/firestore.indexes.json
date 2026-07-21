@@ -22,6 +22,15 @@
       "collectionGroup": "ticket_jobs",
       "queryScope": "COLLECTION",
       "fields": [
+        {"fieldPath": "state", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "ASCENDING"}
+      ],
+      "__comment": "observabilidad: count queued/running y job activo más antiguo"
+    },
+    {
+      "collectionGroup": "ticket_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
         {"fieldPath": "enqueue_state", "order": "ASCENDING"},
         {"fieldPath": "created_at", "order": "ASCENDING"}
       ],
@@ -52,6 +61,18 @@
       "fieldPath": "expires_at",
       "ttl": true,
       "__comment": "ventanas de tasa: TTL 48h, posterior al horizonte de retry/replay"
+    },
+    {
+      "collectionGroup": "ticket_executions",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "checkpoints sanitizados de ejecución de tickets"
+    },
+    {
+      "collectionGroup": "execution_logs",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "logs estructurados core con retención declarativa"
     }
   ]
 }

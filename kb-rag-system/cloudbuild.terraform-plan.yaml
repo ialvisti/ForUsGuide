@@ -14,7 +14,7 @@ substitutions:
   _SECRET_VERSION_MANIFEST_HASH: "none"
 
 steps:
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'fetch-release-inputs'
     entrypoint: bash
     args:
@@ -118,7 +118,7 @@ steps:
         terraform show -no-color /workspace/plan.tfplan \
           > /workspace/terraform_show.txt
 
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-plan-show'
     entrypoint: bash
     args:
@@ -175,7 +175,7 @@ steps:
           --out /workspace/plan_manifest.json \
           > /workspace/plan_manifest_hash.txt
 
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-manifest'
     entrypoint: bash
     args:

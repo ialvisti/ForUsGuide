@@ -1,6 +1,11 @@
 # Trigger legacy real: el import impide crear un segundo trigger y permite
 # neutralizar c212... in-place conservando su identidad auditada.
 import {
+  to = google_artifact_registry_repository.images
+  id = "projects/${var.project_id}/locations/${var.region}/repositories/kb-rag"
+}
+
+import {
   for_each = var.enable_legacy_trigger_neutralization ? {
     legacy = "projects/rag-kb-system/locations/global/triggers/c2126528-7cd3-4063-9214-5eb82e9f76a6"
   } : {}

@@ -1,0 +1,74 @@
+# Candidate-controlled verification recipe only. It contains no publish or
+# scan path and declares the intended logging-only verifier below. The YAML
+# serviceAccount field is not an enforcement boundary: a trigger identity wins
+# and an authorized manual submitter can select another identity. Enforcement
+# therefore also requires the dormant publisher to remain absent from every
+# recipe/trigger and unreachable through platform-apply actAs. There is no
+# trusted pre-G1B publisher recipe in this tree.
+serviceAccount: 'projects/rag-kb-system/serviceAccounts/ticket-controller-verify@rag-kb-system.iam.gserviceaccount.com'
+
+steps:
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'verify-controller-source'
+    entrypoint: bash
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd /workspace/kb-rag-system
+        python -m pip install --no-cache-dir --require-hashes \
+          -r requirements-dev.lock
+        python -m pytest -q \
+          tests/test_release_controller.py \
+          tests/test_release_manifests.py \
+          tests/test_terraform_pipeline_iam_contract.py \
+          tests/test_cloudbuild_artifact_contract.py \
+          tests/test_container_contract.py \
+          tests/test_deployment_contract.py \
+          tests/test_secrets_baseline.py
+        ruff check \
+          scripts/release_controller.py \
+          scripts/create_evidence_manifest.py \
+          scripts/create_promotion_manifest.py \
+          scripts/verify_evidence_manifest.py \
+          scripts/verify_container_scan.py \
+          scripts/run_staging_gate.py \
+          scripts/smoke_deployed_ticket.py \
+          scripts/verify_secrets_baseline.py
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'build-controller-candidate'
+    args:
+      - 'build'
+      - '--platform=linux/amd64'
+      - '--file=kb-rag-system/Dockerfile.release-controller'
+      - '--tag=release-controller-candidate:$COMMIT_SHA-$BUILD_ID'
+      - 'kb-rag-system'
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'smoke-controller-candidate'
+    args:
+      - 'run'
+      - '--rm'
+      - '--network=none'
+      - '--read-only'
+      - '--cap-drop=ALL'
+      - '--security-opt=no-new-privileges'
+      - '--pids-limit=128'
+      - '--memory=512m'
+      - '--cpus=1'
+      - '--tmpfs=/tmp:rw,noexec,nosuid,size=64m'
+      - '--env=GOOGLE_APPLICATION_CREDENTIALS=/nonexistent/google-adc.json'
+      - '--env=CLOUDSDK_AUTH_CREDENTIAL_FILE_OVERRIDE=/nonexistent/google-adc.json'
+      - '--env=GCE_METADATA_HOST=127.0.0.1:9'
+      - '--entrypoint=python3'
+      - 'release-controller-candidate:$COMMIT_SHA-$BUILD_ID'
+      - '/opt/release-controller/release_controller.py'
+      - '--help'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+  requestedVerifyOption: VERIFIED

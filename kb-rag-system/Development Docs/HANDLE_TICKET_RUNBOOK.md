@@ -40,6 +40,25 @@ Roles de proceso EXCLUYENTES (`APP_ROLE`), misma imagen inmutable:
   - `ticket_rate_windows` — ventana de tasa durable, TTL 48 h.
   TTL/índices declarados en `firestore.indexes.json` + `infra/terraform`.
 
+### Gates remotos observados (2026-07-20)
+
+El inventario read-only confirma que la revisión segura `00048-bkc` continúa
+con el handler `disabled`. Mantener esa baseline y **NO activar servicios**
+hasta que un plan aprobado cierre y vuelva a verificar todos estos bloqueos:
+
+- Firestore `(default)` reporta `DELETE_PROTECTION_DISABLED`; el plan debe
+  mostrar `DELETE_PROTECTION_ENABLED` y `deletion_policy=ABANDON` antes del
+  apply gateado.
+- Cloud Tasks API deshabilitada; habilitarla pertenece al apply declarativo de
+  platform y debe preceder cualquier servicio que use la cola.
+- ForusBots sigue en HTTP; `/readyz` activo falla cerrado hasta disponer de
+  HTTPS con hostname/certificado válido y sin redirects autenticados.
+- Los secretos runtime observados usan versiones `latest`; todo plan de
+  staging/production debe recibir referencias numéricas verificadas.
+
+Estos son gates, no instrucciones para corregir recursos desde la consola. Si
+el estado remoto cambia, regenerar el plan/evidencia y volver a aprobarlo.
+
 ## 2. Estados y acciones de n8n
 
 Contrato congelado en `tests/fixtures/n8n_handle_ticket_*.json`. Regla de
@@ -61,8 +80,7 @@ IDEMPOTENCY_PAYLOAD_MISMATCH` (bug del productor de payloads; no reintentar).
    fencea al worker viejo (incrementa `lease_epoch`), transiciona
    `running→queued` y re-encola con generación nueva. No requiere acción.
 3. Si hace falta forzarlo antes: usar la **CLI auditada** (NO recrear el
-   mismo nombre de task): `APP_ROLE=reconciler python -m
-   scripts.requeue_ticket_job --job-id JOB --operator you@forusall.com`.
+   mismo nombre de task): `APP_ROLE=reconciler python -m scripts.requeue_ticket_job --job-id JOB --operator you@forusall.com`.
    Rechaza jobs terminales y leases activos; incrementa la generación
    transaccionalmente y registra sólo `job_hash`/generación/operador.
 
@@ -73,8 +91,34 @@ terminó, procesar manualmente; si no, reintentar el ticket por legacy. No
 existe contrato de idempotencia upstream — pendiente con el equipo ForusBots.
 
 ### Cancelación
-No hay endpoint público de cancel (v2 lo reserva). Operativo: marcar el doc
-`state=cancelled` en Firestore; el claim del worker rechaza jobs terminales.
+No hay endpoint ni CLI auditada de cancelación. No modificar documentos de
+Firestore desde la consola: saltaría transiciones, fencing, contadores y
+auditoría. Contener primero la entrada en n8n; si ejecutar jobs pendientes es
+inseguro, pausar la cola como se indica abajo y escalar para añadir una
+operación transaccional revisada. Los jobs ya reclamados se dejan drenar o se
+contienen mediante el rollback del worker, nunca mediante edición manual.
+
+### Pausar/reanudar Cloud Tasks (sólo contención del worker)
+Antes y después de cada comando, capturar `gcloud tasks queues describe` y el
+timestamp/operador/ticket de incidente. Pausar no cancela requests ya
+despachados y no sustituye el rollback del producer.
+
+El platform controller pausa y exige queue vacía antes/después de administrar
+containers; nunca reanuda automáticamente. Scheduler y queue deben permanecer
+pausados durante `infra_only`/`dark_*`. Si hay una task pendiente, el apply se
+rechaza y se investiga: no se purga ni consume para hacer pasar el gate.
+
+```bash
+gcloud tasks queues pause ticket-jobs-prod --location us-central1 --project rag-kb-system
+```
+
+Reanudar sólo mediante una operación de rollout separada y aprobada, después
+de confirmar worker digest/config/readiness, receipts del gate aplicable,
+leases y capacidad; n8n permanece en legacy durante la comprobación:
+
+```bash
+gcloud tasks queues resume ticket-jobs-prod --location us-central1 --project rag-kb-system
+```
 
 ### Rollback de rollout (producer vs worker)
 La contención SIEMPRE empieza en **n8n → legacy** (inmediata, sin gate). El
@@ -98,29 +142,52 @@ siguen polleables desde cualquier instancia/revisión.
 
 ## 4. Métricas y alertas
 
-Contadores emitidos como `ticket_metric <nombre>=<valor>` (log-based
-metrics en Cloud Logging):
+La policy preexistente `KB RAG High Error Rate` (umbral absoluto `ALIGN_RATE
+> 5`, pese a su descripción histórica como porcentaje) se importa por ID y
+queda declarativamente como `KB RAG High Error Rate (neutralized)`,
+`enabled=false`. La reemplaza `worker_5xx_ratio`, proporción real 5xx/requests.
+No reactivar la legacy desde consola.
+
+Los contadores legacy se emiten como `ticket_metric <nombre>=<valor>`. Las
+señales nuevas usan `ticket_metric_event` seguido de JSON compacto con schema
+cerrado: `metric`, `value` y sólo labels enum aprobados. `job_hash` y
+`trace_id` son los únicos IDs opcionales y nunca se convierten en labels de
+Monitoring.
 
 ```
 ticket_jobs_accepted / ticket_jobs_replayed / ticket_jobs_conflicted
 ticket_jobs_terminal{state=succeeded|partial|failed|timeout|cancelled}
-ticket_poll_not_found / ticket_poll_forbidden
+ticket_poll_not_found / ticket_poll_forbidden / ticket_poll_gone
 ticket_rate_limited / ticket_outstanding_capped
+
+ticket_queue_delay_seconds
+ticket_jobs_active / ticket_jobs_oldest_age_seconds
+ticket_reconciler_count{reason}
+ticket_step_latency_seconds{step,code}
+ticket_result_count{reason=partial|truncated|unprocessed}
+ticket_forusbots_count{step,code} / ticket_forusbots_circuit_count{state}
+ticket_pinecone_retry_count{reason} / ticket_pinecone_circuit_count{state}
+ticket_llm_parse_count{code} / ticket_llm_fallback_count{code}
+ticket_llm_tokens{reason=input|output} / ticket_llm_cost_usd
+ticket_n8n_poll_count{state}
 ```
 
-Alertar (umbrales iniciales, ajustar con datos):
-- `ticket_jobs_terminal{state=partial|failed|timeout}` > 10 % de accepted / 15 min
+Alertas Terraform iniciales (ajustar sólo con datos y aprobación):
+- terminales incorrectos >10 % de todos los terminales / 15 min
 - `ticket_poll_not_found` > 0 sostenido (jobs perdidos: NO debe ocurrir ya)
 - `ticket_rate_limited`/`ticket_outstanding_capped` sostenidos (capacidad)
 - auth failures 401/403 spike (log_requests)
-- gasto LLM/Pinecone/ForusBots: presupuestos de billing GCP + cuotas provider
+- job activo >120s (lease 90s + gracia), fencing y salud del reconciler
+- circuits ForUsBots/Pinecone abiertos y efectos ambiguos
+- costo LLM estimado + tiempo facturable; confirmar además Billing/provider
 - Cloud Tasks: queue depth / oldest task age (métricas nativas de la cola)
 
 ## 5. Probes
 
 - `/livez` — proceso vivo, sin I/O.
-- `/readyz` — clientes y config críticos inicializados; 503 si no puede
-  aceptar trabajo.
+- `/readyz` — role-aware; ejecuta sondas read-only acotadas de Pinecone,
+  store, cola, ForusBots y validador cuando el rol las necesita. Devuelve sólo
+  nombres de dependencias fallidas, nunca detalles de excepciones.
 - `/health` — incluye dependencia Pinecone real (stats) y modos de rollout;
   un error de stats YA NO se reporta como conectado (HT-24).
 
@@ -141,4 +208,8 @@ Ver `GCP_SERVICES_GUIDE.md` §Ticket Handler Containment: HTTPS/rotación de
 token ForusBots, workflow n8n (consumir `next_action` + guard de shadow,
 poll deadline ≥ 540 s, aceptar 202 en toda ruta), fuente canónica
 participant-plan para `participant_plan_validator`, captura sanitizada del
-despliegue real, TTL policies + cola Cloud Tasks en IaC.
+despliegue real, TTL policies + cola Cloud Tasks en IaC, y receipt inmutable
+`semantic_review` humano/independiente ligado al main SHA, image digest, hash
+de rúbrica, hashes de replies y URI con generation del diferencial exacto. El
+`reviewed_lexical_coverage_min` automático es sólo smoke lexical y siempre
+declara `semantic_quality_verified=false`; no autoriza promoción por sí solo.

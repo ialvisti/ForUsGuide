@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import timedelta
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import HTTPException
@@ -24,6 +25,11 @@ from data_pipeline.ticket_job_repository import (
     InMemoryTicketJobBackend,
     PAYLOADS_COLLECTION,
     TicketJobRepository,
+)
+
+_FIRESTORE_TF = (
+    Path(__file__).resolve().parents[2]
+    / "infra/terraform/modules/ticket_environment/firestore.tf"
 )
 
 
@@ -217,7 +223,11 @@ async def test_ticket_execution_audit_has_ttl_and_no_raw_external_ids() -> None:
         request_id=f"request-{sentinel}",
         ticket_job_id=f"ticket-{sentinel}",
         mode="knowledge_only",
-        route_summary=[{"route": "KNOWLEDGE", "execution_status": "succeeded"}],
+        route_summary=[{
+            "route": f"KNOWLEDGE-{sentinel}",
+            "execution_status": "succeeded",
+            "unexpected": sentinel,
+        }],
         total_inquiries=1,
         forusbots_job_ids=[f"forusbots-{sentinel}"],
         duration_ms=10,
@@ -227,15 +237,104 @@ async def test_ticket_execution_audit_has_ttl_and_no_raw_external_ids() -> None:
 
     assert sentinel not in repr(captured)
     assert captured["forusbots_job_count"] == 1
+    assert captured["route_summary"] == [{
+        "route": "unknown",
+        "execution_status": "succeeded",
+        "scrape_status": None,
+    }]
     assert captured["failed"] is True
     assert captured["expires_at"] > utcnow() + timedelta(days=29)
 
-    terraform = (
-        Path(__file__).resolve().parents[2]
-        / "infra/terraform/modules/ticket_environment/firestore.tf"
-    ).read_text(encoding="utf-8")
+    terraform = await asyncio.to_thread(
+        _FIRESTORE_TF.read_text, encoding="utf-8",
+    )
     assert 'collection = "ticket_executions"' in terraform
     assert 'field      = "expires_at"' in terraform
+
+
+async def test_ticket_execution_audit_tolerates_malformed_telemetry() -> None:
+    from data_pipeline.execution_logger import ExecutionLogger
+
+    captured: dict = {}
+
+    class _Collection:
+        async def add(self, document):
+            captured.update(document)
+
+    class _Database:
+        def collection(self, _name: str):
+            return _Collection()
+
+    audit = ExecutionLogger.__new__(ExecutionLogger)
+    audit.db = _Database()
+    audit.retention_days = 30
+
+    await audit.log_ticket_execution(
+        request_id="request",
+        ticket_job_id="job",
+        mode="caller-controlled-mode",
+        route_summary=["raw", {"route": {"unhashable": "value"}}],
+        total_inquiries="not-a-number",  # type: ignore[arg-type]
+        forusbots_job_ids=[{"unhashable": "id"}, "valid-id"],
+        duration_ms=float("nan"),
+    )
+
+    assert captured["ticket_handler_mode"] == "unknown"
+    assert captured["total_inquiries"] == 0
+    assert captured["duration_ms"] == 0.0
+    assert captured["forusbots_job_count"] == 1
+    assert captured["route_summary"] == [{
+        "route": "unknown",
+        "execution_status": "unknown",
+        "scrape_status": None,
+    }]
+
+
+async def test_core_execution_audit_has_ttl_and_no_raw_payload_or_error() -> None:
+    from data_pipeline.execution_logger import ExecutionLogger
+
+    captured: dict = {}
+
+    class _Collection:
+        async def add(self, document):
+            captured.update(document)
+
+    audit = ExecutionLogger.__new__(ExecutionLogger)
+    audit.collection = _Collection()
+    audit.retention_days = 30
+    sentinel = "sensitive-participant-158948"
+
+    await audit.log_execution(
+        request_id=f"caller-controlled-{sentinel}",
+        endpoint="knowledge_question",
+        duration_ms=12.5,
+        request_data={
+            "question": f"SSN and account for {sentinel}",
+            "topic": sentinel,
+            "record_keeper": sentinel,
+            "plan_type": sentinel,
+        },
+        response_data={
+            "decision": sentinel,
+            "response": {"outcome": sentinel},
+            "coverage_gaps": [sentinel],
+            "source_articles": [{"article_id": sentinel}],
+            "metadata": {"model": sentinel, "chunks_used": 2},
+        },
+        error=f"upstream raw error {sentinel}",
+    )
+
+    assert sentinel not in repr(captured)
+    assert captured["failed"] is True
+    assert captured["expires_at"] > utcnow() + timedelta(days=29)
+    assert captured["request_id_hash"]
+    assert captured["response"]["coverage_gap_count"] == 1
+    assert captured["response"]["source_article_count"] == 1
+
+    terraform = await asyncio.to_thread(
+        _FIRESTORE_TF.read_text, encoding="utf-8",
+    )
+    assert 'collection = "execution_logs"' in terraform
 
 
 class _AllowValidator:
@@ -312,6 +411,14 @@ async def test_producer_rejects_new_job_when_estimated_queue_delay_exceeds_ceili
     monkeypatch.setattr(settings, "TICKET_ADMISSION_QUEUE_DELAY_CEILING_S", 300)
     repo = TicketJobRepository(InMemoryTicketJobBackend())
     queue = _QueueWithDelay(delay=301)
+    emitted = []
+    monkeypatch.setattr(
+        main_module.ticket_metrics,
+        "emit",
+        lambda metric, value, **labels: emitted.append(
+            (metric, value, labels)
+        ),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await main_module._accept_ticket_job(
@@ -325,6 +432,8 @@ async def test_producer_rejects_new_job_when_estimated_queue_delay_exceeds_ceili
     assert exc.value.detail["code"] == "QUEUE_DELAY_EXCEEDED"
     assert await repo.count_active("client-a") == 0
     assert queue.enqueued == []
+    assert ("ticket_queue_delay_seconds", 301, {"code": "rejected"}) \
+        in emitted
 
 
 async def test_producer_fails_closed_when_queue_delay_cannot_be_estimated(
@@ -335,6 +444,14 @@ async def test_producer_fails_closed_when_queue_delay_cannot_be_estimated(
     monkeypatch.setattr(settings, "TICKET_HANDLER_MODE", "full")
     repo = TicketJobRepository(InMemoryTicketJobBackend())
     queue = _QueueWithDelay(error=RuntimeError("stats unavailable"))
+    emitted = []
+    monkeypatch.setattr(
+        main_module.ticket_metrics,
+        "emit",
+        lambda metric, value, **labels: emitted.append(
+            (metric, value, labels)
+        ),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await main_module._accept_ticket_job(
@@ -347,6 +464,9 @@ async def test_producer_fails_closed_when_queue_delay_cannot_be_estimated(
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == "QUEUE_DELAY_ESTIMATE_UNAVAILABLE"
     assert await repo.count_active("client-a") == 0
+    assert emitted == [
+        ("ticket_queue_delay_seconds", 0, {"code": "unavailable"})
+    ]
 
 
 async def test_producer_fails_closed_on_non_finite_queue_delay(monkeypatch) -> None:
@@ -356,6 +476,14 @@ async def test_producer_fails_closed_on_non_finite_queue_delay(monkeypatch) -> N
     monkeypatch.setattr(settings, "TICKET_HANDLER_MODE", "full")
     repo = TicketJobRepository(InMemoryTicketJobBackend())
     queue = _QueueWithDelay(delay=float("nan"))
+    emitted = []
+    monkeypatch.setattr(
+        main_module.ticket_metrics,
+        "emit",
+        lambda metric, value, **labels: emitted.append(
+            (metric, value, labels)
+        ),
+    )
 
     with pytest.raises(HTTPException) as exc:
         await main_module._accept_ticket_job(
@@ -368,3 +496,66 @@ async def test_producer_fails_closed_on_non_finite_queue_delay(monkeypatch) -> N
     assert exc.value.status_code == 503
     assert exc.value.detail["code"] == "QUEUE_DELAY_ESTIMATE_UNAVAILABLE"
     assert await repo.count_active("client-a") == 0
+    assert emitted == [
+        ("ticket_queue_delay_seconds", 0, {"code": "unavailable"})
+    ]
+
+
+async def test_producer_emits_observed_queue_delay_for_accepted_job(
+    monkeypatch,
+) -> None:
+    from api import main as main_module
+    from api.config import settings
+
+    monkeypatch.setattr(settings, "TICKET_HANDLER_MODE", "full")
+    repo = TicketJobRepository(InMemoryTicketJobBackend())
+    queue = _QueueWithDelay(delay=12.5)
+    emitted = []
+    monkeypatch.setattr(
+        main_module.ticket_metrics,
+        "emit",
+        lambda metric, value, **labels: emitted.append(
+            (metric, value, labels)
+        ),
+    )
+
+    record, replayed = await main_module._accept_ticket_job(
+        _ticket_body(),
+        _producer_request(queue),
+        repo,
+        api_version="v1",
+    )
+
+    assert replayed is False
+    assert queue.enqueued == [(record.job_id, 0)]
+    assert ("ticket_queue_delay_seconds", 12.5, {"code": "observed"}) \
+        in emitted
+
+
+async def test_admission_uses_only_atomic_repository_quota_gates(
+    monkeypatch,
+) -> None:
+    from api import main as main_module
+    from api.config import settings
+
+    monkeypatch.setattr(settings, "TICKET_HANDLER_MODE", "full")
+    repo = TicketJobRepository(InMemoryTicketJobBackend())
+    monkeypatch.setattr(
+        repo,
+        "count_active",
+        AsyncMock(side_effect=AssertionError("non-atomic precheck called")),
+    )
+    request = _producer_request(_QueueWithDelay(delay=0))
+
+    class _ExplodingLimiter:
+        def check(self, *_args, **_kwargs):
+            raise AssertionError("in-memory precheck called")
+
+    request.app.state.ticket_rate_limiter = _ExplodingLimiter()
+
+    record, replayed = await main_module._accept_ticket_job(
+        _ticket_body(), request, repo, api_version="v1"
+    )
+
+    assert replayed is False
+    assert record is not None

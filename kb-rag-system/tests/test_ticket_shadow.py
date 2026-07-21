@@ -140,6 +140,35 @@ class TestShadowMode:
         assert summary[0]["error"] == "shadow_pipeline_failed"
         assert final.next_action.value == "use_legacy"
 
+    async def test_shadow_failure_after_submit_intent_requires_reconciliation(
+        self, monkeypatch
+    ):
+        from api.config import settings as app_settings
+        from api.ticket_worker import run_ticket_job
+
+        monkeypatch.setattr(app_settings, "TICKET_SHADOW_SAMPLE_RATE", 1.0)
+
+        class FailsAfterIntentOrch(RecordingOrch):
+            def set_forusbots_intent_guard(self, guard):
+                self._guard = guard
+
+            async def handle_inquiry(self, *args, **kwargs):
+                await self._guard()
+                raise RuntimeError("submit completion unknown")
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed(repo, "shadow")
+
+        final = await run_ticket_job(
+            _app(repo, FailsAfterIntentOrch()), rec.job_id
+        )
+
+        entry = final.per_inquiry_status[0]
+        assert entry["forusbots_submit_intent"] is True
+        assert entry["manual_reconciliation_required"] is True
+        assert entry["degraded"] is True
+        assert entry["error"]["code"] == "FORUSBOTS_NEEDS_RECONCILIATION"
+
 
 class TestKnowledgeOnlyCoercion:
 

@@ -79,7 +79,7 @@ def main() -> None:
     # 3) modelos request/response del contrato instancian
     try:
         from api.models import HandleTicketRequest, TicketJobAcceptedV2
-        from data_pipeline.ticket_job_models import new_job_record
+        from data_pipeline.ticket_job_models import TicketJobState, new_job_record
 
         HandleTicketRequest.model_validate({
             "participant_id": "1", "plan_id": "2", "company_name": "C",
@@ -88,7 +88,9 @@ def main() -> None:
                        "email_subject": "s", "email_body": "b"},
         })
         TicketJobAcceptedV2(
-            ticket_job_id="j", state="queued", status_url="/api/v2/ticket-jobs/j",
+            ticket_job_id="j",
+            state=TicketJobState.QUEUED,
+            status_url="/api/v2/ticket-jobs/j",
             retry_after_seconds=3, idempotency_replayed=False,
         )
         new_job_record(principal_id="smoke", request_fingerprint="0" * 64)

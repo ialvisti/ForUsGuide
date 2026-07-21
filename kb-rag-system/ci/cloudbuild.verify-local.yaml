@@ -1,6 +1,10 @@
 # Authoritative Python 3.12/Linux verification for the pre-gate checkpoint.
-# This controller may compile and run the candidate container, but it cannot
-# publish it, deploy services, touch Terraform state, or write evidence.
+# This configuration contains no publish/deploy/apply/evidence-write command.
+# Its effective GCP boundary still depends on the service account selected by
+# the submitter; use the least-privileged verifier identity and audit the exact
+# source before submission.
+serviceAccount: 'projects/rag-kb-system/serviceAccounts/ticket-controller-verify@rag-kb-system.iam.gserviceaccount.com'
+
 steps:
   - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
     id: 'python-gates'
@@ -15,6 +19,29 @@ steps:
         cd /workspace/kb-rag-system
         python -m pip install --no-cache-dir --require-hashes \
           -r requirements-dev.lock
+        detect-secrets scan --all-files . \
+          --no-verify \
+          --exclude-files '\.venv/.*' \
+          --exclude-files '\.pytest_cache/.*' \
+          --exclude-files '\.mypy_cache/.*' \
+          --exclude-files '\.ruff_cache/.*' \
+          --exclude-files '^\.secrets\.baseline$' \
+          --exclude-files '__pycache__/.*' \
+          --exclude-files 'rag-testing/stress_test_results.*' \
+          | python -m json.tool \
+          > /workspace/candidate-secrets.baseline
+        python scripts/verify_secrets_baseline.py \
+          --approved .secrets.baseline \
+          --candidate /workspace/candidate-secrets.baseline \
+          --scan-root .
+        detect-secrets scan --all-files --no-verify \
+          ../PA "../External agents" \
+          ../docs/verification/handle-ticket/11-incident-drill-template.md \
+          | python -m json.tool \
+          > /workspace/external-input-secrets.json
+        python scripts/verify_secrets_baseline.py \
+          --candidate /workspace/external-input-secrets.json \
+          --require-empty
         python -m pytest -q -rs \
           -m "not live_dependencies and not staging_e2e"
         python -m pytest --collect-only -q >/dev/null
@@ -23,18 +50,12 @@ steps:
         python -m pip check
         pip-audit --strict --require-hashes -r requirements.lock
 
-        cp .secrets.baseline /workspace/scanned-secrets.baseline
-        detect-secrets scan \
-          --baseline /workspace/scanned-secrets.baseline >/dev/null
-        python -m json.tool /workspace/scanned-secrets.baseline \
-          > /workspace/candidate-secrets.baseline
-        python scripts/verify_secrets_baseline.py \
-          --approved .secrets.baseline \
-          --candidate /workspace/candidate-secrets.baseline
-
   - name: 'hashicorp/terraform:1.9.8@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd'
     id: 'terraform-gates'
     entrypoint: '/bin/sh'
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
     args:
       - '-c'
       - |
@@ -53,9 +74,12 @@ steps:
         terraform -chdir=/workspace/infra/terraform/modules/ticket_environment \
           test
 
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0-emulators@sha256:6e91e97e42d58ed28a42e1c660f0495fd7138eb48099daa4881ce8452947f651'
     id: 'firestore-emulator-contract'
     entrypoint: bash
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
     args:
       - '-c'
       - |
@@ -68,13 +92,16 @@ steps:
   - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'firestore-emulator-tests'
     entrypoint: bash
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
     args:
       - '-c'
       - |
         set -euo pipefail
         emulator_name='ticket-firestore-verification'
         network_name='ticket-firestore-network'
-        emulator_image='gcr.io/google.com/cloudsdktool/google-cloud-cli:emulators@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+        emulator_image='gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0-emulators@sha256:6e91e97e42d58ed28a42e1c660f0495fd7138eb48099daa4881ce8452947f651'
         python_image='python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
         cleanup() {
           docker rm -f "$emulator_name" >/dev/null 2>&1 || true
@@ -84,7 +111,10 @@ steps:
         cleanup
         docker network create "$network_name" >/dev/null
         docker run --detach --name "$emulator_name" \
-          --network "$network_name" "$emulator_image" \
+          --network "$network_name" \
+          --env GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json \
+          --env GCE_METADATA_HOST=127.0.0.1:9 \
+          "$emulator_image" \
           gcloud emulators firestore start \
           --host-port=0.0.0.0:8085 --database-mode=firestore-native
 
@@ -94,6 +124,8 @@ steps:
           --env FIRESTORE_EMULATOR_HOST="${emulator_name}:8085" \
           --env FIRESTORE_PROJECT_ID=handle-ticket-emulator \
           --env GCLOUD_PROJECT=handle-ticket-emulator \
+          --env GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json \
+          --env GCE_METADATA_HOST=127.0.0.1:9 \
           "$python_image" bash -c '
             set -euo pipefail
             python - <<"PY"
@@ -120,6 +152,9 @@ steps:
   - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'container-build'
     dir: 'kb-rag-system'
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
     args:
       - 'build'
       - '--platform=linux/amd64'
@@ -129,13 +164,72 @@ steps:
 
   - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
     id: 'container-smoke'
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
     args:
       - 'run'
       - '--rm'
+      - '--network=none'
+      - '--workdir=/app'
+      - '--volume'
+      - '/workspace/kb-rag-system/scripts/container_smoke.py:/opt/container-smoke.py:ro'
+      - '--env'
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - '--env'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
+      - '--env'
+      - 'PYTHONPATH=/app'
       - '--entrypoint'
       - 'python'
       - 'handle-ticket-final:verification'
-      - 'scripts/container_smoke.py'
+      - '/opt/container-smoke.py'
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'ci-image-build'
+    dir: 'kb-rag-system'
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
+    args: ['build', '--file=Dockerfile.ci', '--tag=handle-ticket-ci:verification', '.']
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'e2e-image-build-smoke'
+    dir: 'kb-rag-system'
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        docker build --file=Dockerfile.e2e --tag=handle-ticket-e2e:verification .
+        docker run --rm --network=none \
+          --workdir=/app --env=PYTHONPATH=/app \
+          --env=GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json \
+          --env=GCE_METADATA_HOST=127.0.0.1:9 \
+          --volume=/workspace/kb-rag-system/scripts/container_smoke.py:/opt/container-smoke.py:ro \
+          --entrypoint=python handle-ticket-e2e:verification /opt/container-smoke.py
+
+  - name: 'gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee'
+    id: 'release-controller-build-smoke'
+    dir: 'kb-rag-system'
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        docker build --file=Dockerfile.release-controller \
+          --tag=handle-ticket-release-controller:verification .
+        docker run --rm --network=none \
+          --env=GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json \
+          --env=GCE_METADATA_HOST=127.0.0.1:9 --entrypoint=python3 \
+          handle-ticket-release-controller:verification \
+          /opt/release-controller/release_controller.py --help
 
 options:
   logging: CLOUD_LOGGING_ONLY

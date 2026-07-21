@@ -19,9 +19,9 @@ class FixedWindowRateLimiter:
     def __init__(self, window_s: float = 60.0, max_keys: int = 10_000):
         self._window_s = window_s
         self._max_keys = max_keys
-        self._windows: Dict[Tuple, Tuple[float, int]] = {}
+        self._windows: Dict[Tuple[str, ...], Tuple[float, int]] = {}
 
-    def check(self, key: Tuple, limit: int) -> Tuple[bool, int]:
+    def check(self, key: Tuple[str, ...], limit: int) -> Tuple[bool, int]:
         now = time.monotonic()
         start, count = self._windows.get(key, (now, 0))
         if now - start >= self._window_s:

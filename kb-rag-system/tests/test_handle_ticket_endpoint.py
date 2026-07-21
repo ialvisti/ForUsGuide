@@ -31,6 +31,11 @@ def client(monkeypatch):
     # narrowear (disabled/knowledge_only/shadow).
     from api.config import settings as app_settings
     monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+    monkeypatch.setattr(
+        app_settings,
+        "FORUSBOTS_BASE_URL",
+        "https://forusbots.example.test",
+    )
 
     mock_engine = Mock()
     mock_pinecone = Mock()
@@ -215,6 +220,38 @@ class TestGating:
 # ---------------------------------------------------------------------------
 
 class TestSlowPath:
+
+    def test_successful_poll_emits_observed_state_metric(
+        self, client, monkeypatch,
+    ):
+        outcome = InquiryOutcome(
+            inquiry="cash out 401k",
+            topic="rollover",
+            route="generate_response",
+            scrape_status="ok",
+            generate_result=_gr_result(),
+        )
+        _use_orch(
+            client, FakeOrch([_ext()], _cls("generate_response"), outcome)
+        )
+        emitted = []
+        monkeypatch.setattr(
+            "api.main.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        accepted = client.post("/api/v1/handle-ticket", json=_body())
+        emitted.clear()
+
+        polled = client.get(
+            f"/api/v1/tickets/{accepted.json()['ticket_job_id']}"
+        )
+
+        assert polled.status_code == 200
+        assert emitted == [
+            ("ticket_n8n_poll_count", 1, {"state": "succeeded"})
+        ]
 
     def test_generate_response_returns_202_and_creates_job(self, client):
         outcome = InquiryOutcome(inquiry="cash out 401k", topic="rollover",

@@ -660,21 +660,14 @@
 
     <script>
         const API_URL = window.location.origin;
-        const API_KEY_STORAGE = 'kb_api_key';
 
         document.addEventListener('DOMContentLoaded', () => {
-            const stored = localStorage.getItem(API_KEY_STORAGE);
-            if (stored) document.getElementById('apiKey').value = stored;
             checkHealth();
             setupEventListeners();
         });
 
         function setupEventListeners() {
             document.getElementById('routeForm').addEventListener('submit', handleSubmit);
-
-            document.getElementById('apiKey').addEventListener('change', (e) => {
-                localStorage.setItem(API_KEY_STORAGE, e.target.value);
-            });
 
             document.querySelectorAll('.example-chip').forEach(chip => {
                 chip.addEventListener('click', () => {

@@ -100,6 +100,15 @@ variable "producer_candidate_tag" {
   }
 }
 
+variable "producer_baseline_tag" {
+  type    = string
+  default = "baseline"
+  validation {
+    condition     = can(regex("^[a-z][a-z0-9-]{0,61}[a-z0-9]$", var.producer_baseline_tag))
+    error_message = "producer_baseline_tag debe ser un tag Cloud Run válido."
+  }
+}
+
 variable "producer_ingress" {
   type    = string
   default = "INGRESS_TRAFFIC_ALL"
@@ -207,18 +216,8 @@ variable "producer_liveness_probe" {
   nullable = true
 }
 
-# URL/audiencia estable del worker y segundo factor WIF del producer. Los
-# valores WIF pueden quedar vacíos mientras el handler esté disabled; una fase
-# activa de producción los exige mediante preconditions del servicio.
-variable "worker_url" {
-  type    = string
-  default = ""
-  validation {
-    condition     = var.worker_url == "" || can(regex("^https://", var.worker_url))
-    error_message = "worker_url debe usar https://."
-  }
-}
-
+# Segundo factor WIF del producer. Los valores pueden quedar vacíos mientras el
+# handler esté disabled; cualquier fase activa los exige mediante preconditions.
 variable "ticket_wif_audience" {
   type    = string
   default = ""
@@ -233,6 +232,21 @@ variable "ticket_wif_expected_email" {
       can(regex("^[^@[:space:]]+@[^@[:space:]]+$", var.ticket_wif_expected_email))
     )
     error_message = "ticket_wif_expected_email debe ser un email de service account válido."
+  }
+}
+
+variable "ticket_wif_allowed_emails" {
+  type    = list(string)
+  default = []
+  validation {
+    condition = (
+      length(var.ticket_wif_allowed_emails) == length(toset(var.ticket_wif_allowed_emails)) &&
+      alltrue([
+        for email in var.ticket_wif_allowed_emails :
+        email == trimspace(email) && can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.iam\\.gserviceaccount\\.com$", email))
+      ])
+    )
+    error_message = "ticket_wif_allowed_emails debe contener SAs exactas, únicas y sin espacios."
   }
 }
 
@@ -287,15 +301,6 @@ variable "scheduler_sa_email" {
 
 variable "n8n_invoker_sa_email" {
   type = string
-}
-
-# production/kb-rag-runner pertenece al state platform durante G1C. null usa
-# la ruta segura: staging gestiona producer; production lo excluye para que un
-# mismo binding nunca viva en dos states.
-variable "manage_producer_firestore_iam" {
-  type     = bool
-  default  = null
-  nullable = true
 }
 
 # Preservar la invoker policy existente del producer (no retirar allUsers ni
@@ -382,12 +387,12 @@ variable "secret_containers" {
         ]) &&
         alltrue(flatten([
           for roles in values(var.secret_containers.accessor_roles) : [
-            for role in roles : contains(["producer", "worker", "e2e"], role)
+            for role in roles : contains(["producer", "worker"], role)
           ]
         ]))
       )
     )
-    error_message = "secret_containers habilitado exige IDs válidos, las mismas claves y roles producer/worker/e2e."
+    error_message = "secret_containers habilitado exige IDs válidos, las mismas claves y roles producer/worker."
   }
 }
 
@@ -398,14 +403,14 @@ variable "e2e_job" {
     enabled               = bool
     image_digest          = string
     service_account_email = string
-    producer_url          = string
+    nonsecret_env         = map(string)
     secret_version_refs   = map(string)
   })
   default = {
     enabled               = false
     image_digest          = ""
     service_account_email = ""
-    producer_url          = ""
+    nonsecret_env         = {}
     secret_version_refs   = {}
   }
 
@@ -415,13 +420,72 @@ variable "e2e_job" {
       (
         can(regex("@sha256:[0-9a-f]{64}$", var.e2e_job.image_digest)) &&
         can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.iam\\.gserviceaccount\\.com$", var.e2e_job.service_account_email)) &&
-        can(regex("^https://", var.e2e_job.producer_url)) &&
+        toset(keys(var.e2e_job.nonsecret_env)) == toset([
+          "E2E_PRINCIPAL_ID",
+          "E2E_TENANT_ID",
+          "E2E_PARTICIPANT_ID",
+          "E2E_PLAN_ID",
+          "E2E_MISMATCHED_PARTICIPANT_ID",
+          "E2E_MISMATCHED_PLAN_ID",
+          "E2E_COMPANY_NAME",
+          "E2E_RECORD_KEEPER",
+          "E2E_PARTICIPANT_PLAN_CONTRACT_VERSION",
+          "E2E_N8N_CONTRACT_URL",
+          "E2E_N8N_CONTRACT_VERSION",
+          "E2E_FORUSBOTS_CONTRACT_VERSION",
+          "E2E_FORUSBOTS_LOOKUP_URL",
+          "E2E_DELIVERY_CONTRACT_VERSION",
+          "E2E_DELIVERY_LOOKUP_URL",
+          "E2E_GCP_AUDIT_CONTRACT_URL",
+          "E2E_GCP_AUDIT_CONTRACT_VERSION",
+          "E2E_TTL_SENTINEL_REFERENCE",
+          "E2E_PRODUCTION_NEGATIVE_ATTESTATION",
+          "E2E_PINECONE_INDEX",
+          "E2E_PINECONE_NAMESPACE",
+          "E2E_PINECONE_DIMENSION",
+          "E2E_DIFFERENTIAL_LEGACY_URL",
+          "E2E_DIFFERENTIAL_LEGACY_AUDIENCE",
+          "E2E_DIFFERENTIAL_EVIDENCE_URI",
+          "E2E_MAIN_SHA",
+          "E2E_EVIDENCE_URI",
+        ]) &&
+        alltrue([
+          for value in values(var.e2e_job.nonsecret_env) : trimspace(value) != ""
+        ]) &&
+        toset(keys(var.e2e_job.secret_version_refs)) == toset([
+          "E2E_API_KEY",
+          "E2E_DIFFERENTIAL_LEGACY_API_KEY",
+          "E2E_WRONG_PRINCIPAL_API_KEY",
+          "E2E_WRONG_TENANT_API_KEY",
+          "E2E_RATE_LIMIT_API_KEY",
+          "E2E_FAULT_SIGNING_SECRET",
+          "E2E_N8N_CONTRACT_TOKEN",
+          "E2E_FORUSBOTS_LOOKUP_TOKEN",
+          "E2E_DELIVERY_LOOKUP_TOKEN",
+          "E2E_GCP_AUDIT_TOKEN",
+          "PINECONE_API_KEY",
+        ]) &&
         alltrue([
           for ref in values(var.e2e_job.secret_version_refs) :
           can(regex("^projects/[^/]+/secrets/[^/]+/versions/[0-9]+$", ref))
         ])
       )
     )
-    error_message = "e2e_job habilitado exige digest, SA explícita, URL https y secret versions numéricas."
+    error_message = "e2e_job habilitado exige digest/SA, nonsecret env allowlisted exacto y las once secret versions numéricas."
+  }
+}
+
+# Los once containers externos del runner se pasan por ID, nunca por payload.
+# Deben corresponder uno-a-uno con e2e_job.secret_version_refs; IAM concede
+# secretAccessor únicamente a ticket-e2e-stg sobre esos IDs concretos.
+variable "e2e_secret_containers" {
+  type    = map(string)
+  default = {}
+  validation {
+    condition = alltrue([
+      for secret_id in values(var.e2e_secret_containers) :
+      can(regex("^[a-zA-Z0-9_-]{1,255}$", secret_id))
+    ])
+    error_message = "e2e_secret_containers sólo admite IDs Secret Manager válidos."
   }
 }

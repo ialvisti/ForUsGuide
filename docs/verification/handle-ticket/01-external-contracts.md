@@ -1,6 +1,6 @@
 # 01 — Inventario de contratos externos (Tarea 1)
 
-Estado al 2026-07-13. Este documento registra, por cada uno de los cuatro contratos que
+Estado revisado al 2026-07-21. Este documento registra, por cada uno de los cuatro contratos que
 bloquean la activación, lo que el repositorio ya sabe (con citas), lo que **debe** entregar
 el equipo propietario, y el estado del bloqueo. Ninguna fila contiene valores de secretos.
 
@@ -8,9 +8,8 @@ el equipo propietario, y el estado del bloqueo. Ninguna fila contiene valores de
 de la Tarea 1, el trabajo continúa en modo local/infraestructura desactivada; el E2E activo
 de staging y el despliegue progresivo quedan bloqueados hasta cerrar estos contratos.
 
-Los conectores de mensajería de esta sesión (Slack/Salesforce/Atlassian/Linear/DevRev) no
-están autenticados, por lo que las solicitudes a los equipos deben enviarlas los humanos;
-cada sección incluye la lista exacta de lo que hay que pedir.
+No hay respuesta ni contrato firmado de sus owners en el repositorio; cada
+sección conserva la lista exacta de lo que debe solicitarse.
 
 ---
 
@@ -18,15 +17,18 @@ cada sección incluye la lista exacta de lo que hay que pedir.
 
 **Lo que el repo sabe:**
 
-- El seam existe pero siempre es `None`: `api/main.py:333` (`app.state.participant_plan_validator = None`);
-  el check en `api/main.py:1224-1238` sólo corre `if validator is not None` ⇒ **fail-open hoy**.
-- La firma runtime actual es un callable posicional de 2 args sin tenant
-  (`await validator(participant_id, plan_id)`, `main.py:1227`); el contrato objetivo de la
-  Tarea 4 es tenant-aware (`authorize(*, tenant_id, participant_id, plan_id)`).
-- `validate_settings()` no exige el validador en modos activos (nada fail-closed en config).
-- `TicketJobRecord.tenant_id` existe pero nada lo puebla desde una fuente autorizada.
-- El runbook lo lista como "pendiente operativo (fuera del repo)"
-  (`Development Docs/HANDLE_TICKET_RUNBOOK.md:106-112`).
+- Ya existe un `ParticipantPlanValidator` tenant-aware con
+  `authorize(*, tenant_id, participant_id, plan_id)` y un resultado estricto
+  server-owned (`tenant_id`, participante, plan y record keeper).
+- Admission falla cerrado: validador ausente/timeout/error devuelve 503,
+  mismatch devuelve 403 y sólo el resultado canónico puede poblar los campos
+  autorizados. `validate_settings()` impide arrancar un producer activo sin
+  `PARTICIPANT_PLAN_SOURCE`.
+- El factory deliberadamente **no implementa un adaptador externo**: vacío
+  devuelve `None`; cualquier source no vacío se rechaza al arranque hasta que
+  exista endpoint/schema/SLA real. Los tests sólo inyectan dobles explícitos.
+- Por tanto se cerró el bypass fail-open en código, pero no el contrato
+  operativo: ningún modo activo puede habilitarse todavía.
 
 **Owner:** sin nombre en el repo — "el equipo propietario" del directorio de participantes.
 Aprobador del gate: fila "participant-plan" en G4/G6A/G9.
@@ -45,8 +47,16 @@ Criterio: responder "¿P pertenece a L en T?" sin confiar en texto del ticket ni
 
 **Lo que el repo sabe (cliente `data_pipeline/forusbots_client.py`):**
 
-- Transporte actual: `http://35.224.156.104:10000` (HTTP plano a IP pública). El hostname
-  antiguo de Render (`forusbots-6jyh.onrender.com`) está explícitamente descartado.
+- El valor legacy por defecto sigue documentando
+  `http://35.224.156.104:10000`, pero sólo puede coexistir con el handler
+  desactivado. El worker valida y exige origen HTTPS canónico
+  `https://host[:port]` y token; el producer no construye el cliente ni recibe
+  la inyección/per-secret accessor ForusBots. Terraform conserva la base URL en
+  el inventario core compartido del par desplegado, pero no entrega el token al
+  producer candidato.
+- El cliente rechaza HTTP, userinfo, query, fragment y paths no canónicos;
+  desactiva redirects explícitamente y trata cualquier 3xx como error para no
+  filtrar el token a otro origen.
 - Auth: header `x-auth-token`. Async-only: `POST /forusbot/scrape-participant|scrape-plan`
   → `202 {jobId}` → poll `GET /forusbot/jobs/{id}` (`succeeded|failed|canceled`); no hay
   endpoint separado de result; `/forusbot/health` sólo se ejercita en el test live opt-in.
@@ -57,11 +67,18 @@ Criterio: responder "¿P pertenece a L en T?" sin confiar en texto del ticket ni
 - IDs de prueba usados hoy (158948, 342393, 580) son literales ad-hoc, **no** IDs sintéticos
   sancionados por el equipo.
 
+Límite live: la revisión productiva actual aún usa `kb-rag-runner`, con
+`secretAccessor` project-wide y un grant directo sobre el token. El diseño
+candidato usa una SA productiva separada, pero no puede afirmarse aislamiento
+efectivo hasta aplicar G1B/G6A/G6B y probar producer=DENIED/worker=GRANTED con
+effective IAM. La SA legacy se preserva para el rollback anchor.
+
 **Owner:** equipo ForusBots (sin individuos nombrados en el repo); owner de cert/DNS por identificar.
 
 **Solicitud abierta:** URL base HTTPS verificada + owner de certificado/DNS; contratos de
 `/health`/submit/status/result; capacidad global de concurrencia/tasa; IDs sintéticos;
-procedimiento de rotación del token (el actual debe tratarse como expuesto por viajar en HTTP);
+procedimiento de rotación del token legacy (debe tratarse como potencialmente
+expuesto por el transporte histórico);
 key de idempotencia aceptada por submit **o** búsqueda por correlation ID estable; dedupe
 documentado, retención de keys ≥ horizonte de replay y reconciliación tras timeout/reset.
 
@@ -137,7 +154,7 @@ dedupe downstream, retención rollback)`; hasta entonces rige el default **90d**
 
 ---
 
-## 5. Umbrales diferenciales — **defaults del plan vigentes; aprobación product/ops pendiente**
+## 5. Umbrales diferenciales — **smoke automático; aprobación semántica pendiente**
 
 Hasta que producto/operaciones los cambien explícitamente, rigen los valores seguros del plan:
 
@@ -146,13 +163,37 @@ Hasta que producto/operaciones los cambien explícitamente, rigen los valores se
 | IDs, hechos, módulos y límites de tokens determinísticos | coincidencia exacta 100% |
 | Tasa de publicación insegura | 0% |
 | Tasa de inquiries faltantes | 0% |
-| Aceptabilidad semántica vs casos legacy revisados | ≥95% |
-| Tasa de respuestas duplicadas al participante | 0% |
+| Cobertura léxica de la rúbrica revisada | ≥95% (smoke; no prueba semántica) |
+| Fallos del replay idempotente de admisión | 0% |
 | Tasa de 404 de polling sin explicación | 0% |
 
-El arnés real (`rag-testing/ticket_differential.py` + `ticket_differential_thresholds.json`)
-se crea en la Tarea 9; el `run_ticket_differential()` actual de `test_endpoints_stress.py`
-no llama al sistema legacy ni calcula diferencia (bloqueo #11 confirmado).
+El arnés real (`rag-testing/ticket_differential.py` +
+`ticket_differential_thresholds.json`) llama a ambos sistemas. Su rúbrica es
+deliberadamente **léxica**: una contradicción no enumerada puede contener todos
+los substrings requeridos. Por ello emite `semantic_quality_verified=false` y
+hashes de las respuestas, y no afirma aceptabilidad semántica ni entrega
+exactly-once. El replay inmediato sólo observa que la admisión devuelve el mismo
+job durable; la entrega final continúa bajo el contrato bloqueante de la sección 4.
+
+---
+
+## 6. Receipt independiente de revisión semántica — **PENDIENTE (bloqueante para promoción)**
+
+El evidence manifest exige un artefacto `semantic_review` distinto, write-once y
+seleccionado por URI con generation. Debe provenir de una revisión humana o
+independiente autorizada y quedar ligado exactamente a:
+
+- `main_sha` e image digest del candidato;
+- hash canónico del set de rúbricas;
+- hash canónico de los hashes de replies legacy/v2 por caso;
+- número exacto de casos y URI con generation del diferencial revisado;
+- identidad del reviewer en forma de SHA-256, tipo de revisión, timestamp UTC y
+  veredicto explícito `pass`.
+
+Sin ese receipt, `create_evidence_manifest.py`, su verificador y la promoción
+fallan cerrados aunque todos los smokes automáticos pasen. No existe fallback a
+un juez LLM ni una lista ampliada de frases prohibidas que se presente como
+garantía semántica.
 
 ---
 
@@ -165,6 +206,7 @@ no llama al sistema legacy ni calcula diferencia (bloqueo #11 confirmado).
 | 3 | Export n8n real + AWS ARN/WIF | owner n8n | **BLOQUEADO** — ídem | 2026-07-13 (redactada) | — |
 | 4 | Entrega final idempotente (DevRev vía n8n) | owners n8n/delivery + DevRev | **BLOQUEADO** — ídem | 2026-07-13 (redactada) | — |
 | 5 | Umbrales diferenciales | producto + operaciones | defaults del plan activos; ratificación pendiente | 2026-07-13 | — |
+| 6 | Revisión semántica independiente del diferencial | producto/operaciones + reviewer autorizado | **BLOQUEADO** — falta receipt inmutable ligado al output exacto | 2026-07-21 | — |
 
 **Consecuencia operativa (STOP de Tarea 1):** pueden ejecutarse las Tareas 2–12 (trabajo
 local, mocks, IaC declarativa, CI) y los pasos de infraestructura desactivada gateados por

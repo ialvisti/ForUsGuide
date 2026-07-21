@@ -8,6 +8,7 @@ se cargan por path.
 
 from __future__ import annotations
 
+import fnmatch
 import hashlib
 import importlib.util
 import json
@@ -285,15 +286,123 @@ class TestPlanManifest:
             create_plan.build_manifest(fields)
 
 
+_EVIDENCE_MAIN_SHA = "2" * 40
+_EVIDENCE_IMAGE_DIGEST = "reg/img@sha256:" + "3" * 64
+
+
+def _artifact_document(name):
+    results = {
+        "ci_provenance": {
+            "build_id": "build-main-123",
+            "provenance_verified": True,
+            "source_commit": _EVIDENCE_MAIN_SHA,
+            "subject_digest": _EVIDENCE_IMAGE_DIGEST,
+        },
+        "sbom": {
+            "format": "spdx-json",
+            "document_namespace": "https://evidence.invalid/spdx/build-main-123",
+            "subject_digest": _EVIDENCE_IMAGE_DIGEST,
+            "package_count": 37,
+        },
+        "scan": {
+            "policy_passed": True,
+            "subject_digest": _EVIDENCE_IMAGE_DIGEST,
+            "severity_counts": {"CRITICAL": 0, "HIGH": 0, "MEDIUM": 2},
+            "high_approvals": [],
+        },
+        "staging_revisions": {
+            "release_phase": "disabled",
+            "services": {
+                "api": {
+                    "revision": "kb-rag-system-00049-abc",
+                    "image_digest": _EVIDENCE_IMAGE_DIGEST,
+                    "ready": True,
+                },
+                "worker": {
+                    "revision": "kb-rag-worker-00012-def",
+                    "image_digest": _EVIDENCE_IMAGE_DIGEST,
+                    "ready": True,
+                },
+            },
+        },
+        "e2e": {
+            "tests_collected": 18,
+            "tests_passed": 18,
+            "tests_failed": 0,
+            "tests_skipped": 0,
+        },
+        "differential": {
+            "cases": 25,
+            "passed": True,
+            "failures": [],
+            "semantic_quality_verified": False,
+            "reply_set_sha256": "8" * 64,
+            "per_case": [
+                {
+                    "case_id": f"case-{index}",
+                    "legacy_reply_sha256": f"{index % 10}" * 64,
+                    "v2_reply_sha256": f"{(index + 1) % 10}" * 64,
+                }
+                for index in range(25)
+            ],
+            "semantic_evaluator": {
+                "method": "reviewed-lexical-rubric-v1",
+                "rubric_set_sha256": "7" * 64,
+            },
+            "metrics": {
+                "unsafe_publish_rate": 0.0,
+                "missing_inquiry_rate": 0.0,
+                "idempotency_replay_failure_rate": 0.0,
+                "idempotency_replay_observation_rate": 1.0,
+                "unexplained_poll_404_rate": 0.0,
+                "deterministic_exact_match_rate": 1.0,
+                "reviewed_lexical_coverage_min": 0.95,
+            },
+        },
+        "semantic_review": {
+            "semantic_quality_verified": True,
+            "verdict": "pass",
+            "review_type": "human",
+            "reviewer_identity_sha256": "9" * 64,
+            "reviewed_at": "2026-07-21T12:00:00Z",
+            "reviewed_case_count": 25,
+            "rubric_set_sha256": "7" * 64,
+            "reply_set_sha256": "8" * 64,
+            "differential_uri": "gs://release-evidence/differential.json#106",
+        },
+        "rollback": {
+            "exercise": "staging-rollback",
+            "rollback_succeeded": True,
+            "candidate_image_digest": _EVIDENCE_IMAGE_DIGEST,
+            "candidate_traffic_percent": 0,
+            "restored_revision": "kb-rag-system-00048-bkc",
+            "restored_image_digest": "reg/img@sha256:" + "4" * 64,
+            "poll_preserved": True,
+        },
+    }
+    reply_set_sha256 = hashlib.sha256(json.dumps(
+        results["differential"]["per_case"],
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode()).hexdigest()
+    results["differential"]["reply_set_sha256"] = reply_set_sha256
+    results["semantic_review"]["reply_set_sha256"] = reply_set_sha256
+    return {
+        "schema_version": "1.0",
+        "artifact_type": name,
+        "status": "pass",
+        "main_sha": _EVIDENCE_MAIN_SHA,
+        "image_digest": _EVIDENCE_IMAGE_DIGEST,
+        "result": results[name],
+    }
+
+
 @pytest.fixture
 def evidence_files(tmp_path):
     files = {}
-    for index, name in enumerate((
-        "ci_provenance", "sbom", "scan", "staging_revisions", "e2e",
-        "differential", "rollback",
-    ), start=1):
+    for name in create_evidence.ARTIFACT_NAMES:
         path = tmp_path / f"{name}.json"
-        path.write_text(json.dumps({"artifact": name, "version": index}))
+        path.write_text(json.dumps(_artifact_document(name)))
         files[name] = path
     return files
 
@@ -304,9 +413,6 @@ def _evidence_fields(files, **over):
         main_sha="2" * 40,
         image_digest="reg/img@sha256:" + "3" * 64,
         controller_builder_digest="python@sha256:" + "4" * 64,
-        g2_approval_hash="5" * 64,
-        g4_approval_hash="6" * 64,
-        g5_approval_hash="7" * 64,
     )
     for index, (name, path) in enumerate(files.items(), start=101):
         fields[f"{name}_uri"] = (
@@ -317,13 +423,32 @@ def _evidence_fields(files, **over):
     return fields
 
 
+def _artifact_paths(files):
+    return {name: str(path) for name, path in files.items()}
+
+
+def _build_evidence(files, **over):
+    return create_evidence.build_manifest(
+        _evidence_fields(files, **over),
+        artifact_files=_artifact_paths(files),
+        semantic_attestation_verifier=lambda _fields, _claims: None,
+    )
+
+
 class TestEvidenceManifest:
+
+    def test_formatted_semantic_review_without_trusted_attestation_is_rejected(
+        self, evidence_files,
+    ):
+        with pytest.raises(ValueError, match="attestation externa"):
+            create_evidence.build_manifest(
+                _evidence_fields(evidence_files),
+                artifact_files=_artifact_paths(evidence_files),
+            )
 
     def test_valid_evidence_verifies_artifacts_and_expected_lineage(
             self, evidence_files):
-        manifest = create_evidence.build_manifest(
-            _evidence_fields(evidence_files),
-        )
+        manifest = _build_evidence(evidence_files)
 
         verify_evidence.verify(
             manifest,
@@ -337,22 +462,237 @@ class TestEvidenceManifest:
             },
         )
 
-    def test_approval_hashes_come_from_real_gate_rows(self, tmp_path):
-        approvals = tmp_path / "approvals.md"
-        approvals.write_text(
-            "| Gate | Texto exacto | Usuario | Rol | Fecha | Alcance | Evidencia |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| G2 | APROBADO G2 staging exacto | alice | owner | t | a | e |\n"
-            "| G4 | APROBADO G4 e2e exacto | bob | owner | t | a | e |\n"
-            "| G5 | APROBADO G5 merge exacto | carol | owner | t | a | e |\n"
+        assert set(manifest["artifact_claims"]) == set(
+            create_evidence.ARTIFACT_NAMES
+        )
+        assert all(
+            claim["status"] == "pass"
+            and claim["main_sha"] == manifest["main_sha"]
+            and claim["image_digest"] == manifest["image_digest"]
+            for claim in manifest["artifact_claims"].values()
         )
 
-        hashes = create_evidence.load_approval_hashes(str(approvals))
+    @pytest.mark.parametrize("name", create_evidence.ARTIFACT_NAMES)
+    def test_creation_rejects_non_pass_artifact_status(
+            self, evidence_files, name):
+        document = json.loads(evidence_files[name].read_text())
+        document["status"] = "failed"
+        evidence_files[name].write_text(json.dumps(document))
 
-        assert set(hashes) == {
-            "g2_approval_hash", "g4_approval_hash", "g5_approval_hash",
+        with pytest.raises(ValueError, match=f"{name}.*status"):
+            _build_evidence(evidence_files)
+
+    @pytest.mark.parametrize("name", create_evidence.ARTIFACT_NAMES)
+    @pytest.mark.parametrize(
+        ("field", "wrong"),
+        [
+            ("main_sha", "9" * 40),
+            ("image_digest", "reg/other@sha256:" + "8" * 64),
+        ],
+    )
+    def test_creation_rejects_artifact_with_foreign_lineage(
+            self, evidence_files, name, field, wrong):
+        document = json.loads(evidence_files[name].read_text())
+        document[field] = wrong
+        evidence_files[name].write_text(json.dumps(document))
+
+        with pytest.raises(ValueError, match=f"{name}.*{field}"):
+            _build_evidence(evidence_files)
+
+    def test_creation_rejects_arbitrary_json_artifact(self, evidence_files):
+        evidence_files["e2e"].write_text(json.dumps({"passed": True}))
+
+        with pytest.raises(ValueError, match="e2e"):
+            _build_evidence(evidence_files)
+
+    @pytest.mark.parametrize(
+        "severity_counts",
+        [
+            {"CRITICAL": 1, "HIGH": 0},
+            {"CRITICAL": 0, "HIGH": 1},
+        ],
+    )
+    def test_creation_rejects_critical_or_unapproved_high_scan(
+            self, evidence_files, severity_counts):
+        document = json.loads(evidence_files["scan"].read_text())
+        document["result"]["severity_counts"] = severity_counts
+        evidence_files["scan"].write_text(json.dumps(document))
+
+        with pytest.raises(ValueError, match="scan"):
+            _build_evidence(evidence_files)
+
+    def test_candidate_approval_row_cannot_authorize_high_scan(
+            self, evidence_files):
+        digest = _EVIDENCE_IMAGE_DIGEST
+        row = (
+            f"APROBADO G5V {digest} CVE-2026-12345 security-owner=sec "
+            "release-owner=release requester=requester exploitability=not-reachable "
+            "expires=2026-08-01 compensating-control=network-deny"
+        )
+        document = json.loads(evidence_files["scan"].read_text())
+        document["result"]["severity_counts"]["HIGH"] = 1
+        document["result"]["high_approvals"] = [{
+            "vulnerability_id": "CVE-2026-12345",
+            "approval_hash": hashlib.sha256(row.encode()).hexdigest(),
+        }]
+        evidence_files["scan"].write_text(json.dumps(document))
+
+        with pytest.raises(ValueError, match="extern.*autenticad|quorum"):
+            _build_evidence(evidence_files)
+
+        verified = []
+        manifest = create_evidence.build_manifest(
+            _evidence_fields(evidence_files),
+            artifact_files=_artifact_paths(evidence_files),
+            semantic_attestation_verifier=lambda _fields, _claims: None,
+            vulnerability_attestation_verifier=verified.append,
+        )
+
+        assert verified
+        assert all(
+            item["subject_digest"] == _EVIDENCE_IMAGE_DIGEST
+            and item["high_approvals"] == [{
+                "vulnerability_id": "CVE-2026-12345",
+                "approval_hash": hashlib.sha256(row.encode()).hexdigest(),
+            }]
+            for item in verified
+        )
+        assert manifest["artifact_claims"]["scan"]["result"][
+            "approved_high_count"
+        ] == 1
+
+    def test_creation_accepts_canonical_shadow_staging_evidence(
+            self, evidence_files):
+        document = json.loads(evidence_files["staging_revisions"].read_text())
+        document["result"]["release_phase"] = "shadow"
+        evidence_files["staging_revisions"].write_text(json.dumps(document))
+
+        manifest = _build_evidence(evidence_files)
+
+        assert manifest["artifact_claims"]["staging_revisions"]["result"][
+            "release_phase"
+        ] == "shadow"
+
+    @pytest.mark.parametrize(
+        ("metric", "value"),
+        [
+            ("deterministic_exact_match_rate", 0.99),
+            ("reviewed_lexical_coverage_min", 0.949),
+            ("idempotency_replay_observation_rate", 0.99),
+        ],
+    )
+    def test_creation_rejects_insufficient_differential_quality(
+            self, evidence_files, metric, value):
+        document = json.loads(evidence_files["differential"].read_text())
+        document["result"]["metrics"][metric] = value
+        evidence_files["differential"].write_text(json.dumps(document))
+
+        with pytest.raises(ValueError, match=metric):
+            _build_evidence(evidence_files)
+
+    def test_creation_rejects_offline_lexical_differential_evidence(
+            self, evidence_files):
+        document = json.loads(evidence_files["differential"].read_text())
+        document["result"]["semantic_evaluator"] = {
+            "method": "offline-token-jaccard-v1",
         }
-        assert all(len(value) == 64 for value in hashes.values())
+        evidence_files["differential"].write_text(json.dumps(document))
+
+        with pytest.raises(ValueError, match="semantic_evaluator"):
+            _build_evidence(evidence_files)
+
+    def test_semantic_review_is_a_distinct_required_artifact(self, evidence_files):
+        assert "semantic_review" in create_evidence.ARTIFACT_NAMES
+        del evidence_files["semantic_review"]
+
+        with pytest.raises(ValueError, match="semantic_review"):
+            _build_evidence(evidence_files)
+
+    @pytest.mark.parametrize(
+        ("field", "wrong"),
+        [
+            ("rubric_set_sha256", "a" * 64),
+            ("reply_set_sha256", "b" * 64),
+            ("reviewed_case_count", 24),
+            ("differential_uri", "gs://release-evidence/differential.json#999"),
+        ],
+    )
+    def test_semantic_review_must_bind_exact_differential_evidence(
+        self, evidence_files, field, wrong,
+    ):
+        receipt = json.loads(evidence_files["semantic_review"].read_text())
+        receipt["result"][field] = wrong
+        evidence_files["semantic_review"].write_text(json.dumps(receipt))
+
+        with pytest.raises(ValueError, match="semantic_review"):
+            _build_evidence(evidence_files)
+
+    def test_differential_claim_preserves_quality_thresholds(self, evidence_files):
+        claim = _build_evidence(evidence_files)["artifact_claims"]["differential"]
+
+        assert claim["result"]["metrics"]["deterministic_exact_match_rate"] == 1.0
+        assert claim["result"]["metrics"]["reviewed_lexical_coverage_min"] >= 0.95
+        assert claim["result"]["semantic_quality_verified"] is False
+        assert claim["result"]["semantic_evaluator"]["method"] == (
+            "reviewed-lexical-rubric-v1"
+        )
+
+    def test_rollback_rejects_safe_revision_with_candidate_digest(self, evidence_files):
+        document = json.loads(evidence_files["rollback"].read_text())
+        document["result"]["restored_image_digest"] = _EVIDENCE_IMAGE_DIGEST
+        evidence_files["rollback"].write_text(json.dumps(document))
+
+        with pytest.raises(ValueError, match="restored_image_digest"):
+            _build_evidence(evidence_files)
+
+    def test_verifier_rejects_self_consistent_arbitrary_artifact(
+            self, evidence_files):
+        manifest = _build_evidence(evidence_files)
+        evidence_files["rollback"].write_text(json.dumps({"status": "pass"}))
+        manifest["rollback_hash"] = hashlib.sha256(
+            evidence_files["rollback"].read_bytes()
+        ).hexdigest()
+        _rehash(manifest, create_evidence.REQUIRED_FIELDS, "manifest_hash")
+
+        with pytest.raises(verify_evidence.EvidenceMismatch, match="rollback"):
+            verify_evidence.verify(
+                manifest,
+                expected_manifest_hash=manifest["manifest_hash"],
+                expected_evidence_sha=manifest["evidence_sha"],
+                expected_main_sha=manifest["main_sha"],
+                expected_image_digest=manifest["image_digest"],
+                expected_controller_builder_digest=(
+                    manifest["controller_builder_digest"]
+                ),
+                artifact_files=_artifact_paths(evidence_files),
+            )
+
+    def test_verifier_requires_every_artifact_file(self, evidence_files):
+        manifest = _build_evidence(evidence_files)
+
+        with pytest.raises(
+            verify_evidence.EvidenceMismatch,
+            match="archivos de evidencia",
+        ):
+            verify_evidence.verify(
+                manifest,
+                expected_manifest_hash=manifest["manifest_hash"],
+                expected_evidence_sha=manifest["evidence_sha"],
+                expected_main_sha=manifest["main_sha"],
+                expected_image_digest=manifest["image_digest"],
+                expected_controller_builder_digest=(
+                    manifest["controller_builder_digest"]
+                ),
+            )
+
+    def test_candidate_approval_markdown_has_no_manifest_authority(self):
+        assert not hasattr(create_evidence, "load_approval_hashes")
+        assert all(
+            field not in create_evidence.BASE_REQUIRED_FIELDS
+            for field in (
+                "g2_approval_hash", "g4_approval_hash", "g5_approval_hash",
+            )
+        )
 
     def test_generationless_artifact_uri_is_rejected(self, evidence_files):
         fields = _evidence_fields(
@@ -360,13 +700,13 @@ class TestEvidenceManifest:
             e2e_uri="gs://release-evidence/e2e.json",
         )
         with pytest.raises(ValueError, match="generation"):
-            create_evidence.build_manifest(fields)
+            create_evidence.build_manifest(
+                fields, artifact_files=_artifact_paths(evidence_files),
+            )
 
     def test_verifier_rejects_self_consistent_generationless_artifact(
             self, evidence_files):
-        manifest = create_evidence.build_manifest(
-            _evidence_fields(evidence_files),
-        )
+        manifest = _build_evidence(evidence_files)
         manifest["rollback_uri"] = "gs://release-evidence/rollback.json"
         _rehash(
             manifest, create_evidence.REQUIRED_FIELDS, "manifest_hash",
@@ -385,9 +725,7 @@ class TestEvidenceManifest:
             )
 
     def test_artifact_file_hash_mismatch_is_rejected(self, evidence_files):
-        manifest = create_evidence.build_manifest(
-            _evidence_fields(evidence_files),
-        )
+        manifest = _build_evidence(evidence_files)
         evidence_files["rollback"].write_text("tampered")
         with pytest.raises(verify_evidence.EvidenceMismatch, match="rollback"):
             verify_evidence.verify(
@@ -404,23 +742,14 @@ class TestEvidenceManifest:
                 },
             )
 
-    def test_cli_creates_real_evidence_manifest(
+    def test_cli_rejects_semantic_json_without_external_attestation(
             self, evidence_files, tmp_path):
-        approvals = tmp_path / "approvals.md"
-        approvals.write_text(
-            "| Gate | Texto exacto | Usuario | Rol | Fecha | Alcance | Evidencia |\n"
-            "|---|---|---|---|---|---|---|\n"
-            "| G2 | APROBADO G2 staging | alice | owner | t | a | e |\n"
-            "| G4 | APROBADO G4 e2e | bob | owner | t | a | e |\n"
-            "| G5 | APROBADO G5 merge | carol | owner | t | a | e |\n"
-        )
         out = tmp_path / "evidence_manifest.json"
         argv = [
             "--evidence-sha", "1" * 40,
             "--main-sha", "2" * 40,
             "--image-digest", "reg/img@sha256:" + "3" * 64,
             "--controller-builder-digest", "python@sha256:" + "4" * 64,
-            "--approvals-file", str(approvals),
             "--out", str(out),
         ]
         fields = _evidence_fields(evidence_files)
@@ -430,16 +759,13 @@ class TestEvidenceManifest:
                 f"--{name.replace('_', '-')}-file", str(path),
             ])
 
-        assert create_evidence.main(argv) == 0
-        created = json.loads(out.read_text())
-        assert created["manifest_hash"]
-        assert created["rollback_uri"].endswith("#107")
+        with pytest.raises(ValueError, match="attestation externa"):
+            create_evidence.main(argv)
+        assert not out.exists()
 
     def test_verify_cli_rejects_wrong_expected_manifest_hash(
             self, evidence_files, tmp_path):
-        manifest = create_evidence.build_manifest(
-            _evidence_fields(evidence_files),
-        )
+        manifest = _build_evidence(evidence_files)
         path = tmp_path / "evidence.json"
         path.write_text(json.dumps(manifest))
         argv = [
@@ -520,8 +846,6 @@ class TestPlanManifestExternalExpectations:
 # allowlist del evidence-manifest.
 # ---------------------------------------------------------------------------
 
-import fnmatch
-
 _IGNORED_GLOBS = [
     "docs/verification/**",
     "kb-rag-system/Development Docs/**",
@@ -572,7 +896,7 @@ class TestMainTriggerDocsOnlyFilter:
 
 
 def _promotion(evidence_files):
-    evidence = create_evidence.build_manifest(_evidence_fields(evidence_files))
+    evidence = _build_evidence(evidence_files)
     evidence_uri = "gs://release-evidence/evidence.json#301"
     builder = "python@sha256:" + "8" * 64
     attestation = create_promo.build_promotion_from_evidence(
@@ -607,9 +931,7 @@ class TestPromotionAttestation:
 
     def test_promotion_copies_and_verifies_exact_evidence_lineage(
             self, evidence_files):
-        evidence = create_evidence.build_manifest(
-            _evidence_fields(evidence_files),
-        )
+        evidence = _build_evidence(evidence_files)
         evidence_uri = "gs://release-evidence/evidence.json#301"
         builder = "python@sha256:" + "8" * 64
 
@@ -632,6 +954,7 @@ class TestPromotionAttestation:
                 evidence["controller_builder_digest"]
             ),
         )
+        assert att["artifact_claims"] == evidence["artifact_claims"]
 
     def test_valid_promotion_verifies(self, evidence_files):
         evidence, uri, builder, att = _promotion(evidence_files)
@@ -663,7 +986,9 @@ class TestPromotionAttestation:
         fields = _evidence_fields(evidence_files)
         fields["e2e_hash"] = ""
         with pytest.raises(ValueError):
-            create_evidence.build_manifest(fields)
+            create_evidence.build_manifest(
+                fields, artifact_files=_artifact_paths(evidence_files),
+            )
 
     def test_self_consistent_promotion_tampering_rejected_by_evidence(
             self, evidence_files):
@@ -698,9 +1023,7 @@ class TestPromotionAttestation:
             )
 
     def test_generationless_evidence_uri_rejected(self, evidence_files):
-        evidence = create_evidence.build_manifest(
-            _evidence_fields(evidence_files),
-        )
+        evidence = _build_evidence(evidence_files)
         with pytest.raises(ValueError, match="generation"):
             create_promo.build_promotion_from_evidence(
                 evidence,
@@ -710,9 +1033,7 @@ class TestPromotionAttestation:
 
     def test_promotion_builder_rejects_generationless_artifact_in_evidence(
             self, evidence_files):
-        evidence = create_evidence.build_manifest(
-            _evidence_fields(evidence_files),
-        )
+        evidence = _build_evidence(evidence_files)
         evidence["e2e_uri"] = "gs://release-evidence/e2e.json"
         _rehash(evidence, create_evidence.REQUIRED_FIELDS, "manifest_hash")
 
@@ -738,8 +1059,13 @@ class TestPrivilegedBuildSource:
         "18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd"
     )
     _CLOUDSDK = (
-        "gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:"
-        "38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81"
+        "gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:"
+        "1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a"
+    )
+    _FIRESTORE_EMULATOR = (
+        "gcr.io/google.com/cloudsdktool/google-cloud-cli:"
+        "577.0.0-emulators@sha256:"
+        "6e91e97e42d58ed28a42e1c660f0495fd7138eb48099daa4881ce8452947f651"
     )
     _GIT = (
         "gcr.io/cloud-builders/git@sha256:"
@@ -764,6 +1090,47 @@ class TestPrivilegedBuildSource:
             assert "_PYTHON_IMAGE" not in body
             for image in re.findall(r"(?m)^\s*- name: ['\"]?([^'\"\n]+)", body):
                 assert "@sha256:" in image, f"{filename}: builder mutable {image}"
+
+    def test_google_cli_and_firestore_emulator_use_separate_live_pins(self):
+        generic_consumers = (
+            "Dockerfile.release-controller",
+            "cloudbuild.evidence-manifest.yaml",
+            "cloudbuild.staging-attest.yaml",
+            "cloudbuild.terraform-apply.yaml",
+            "cloudbuild.terraform-plan.yaml",
+            "cloudbuild.test-only.yaml",
+        )
+        for filename in generic_consumers:
+            body = self._read(filename)
+            assert self._CLOUDSDK in body, filename
+            assert self._FIRESTORE_EMULATOR not in body, filename
+
+        controller_verify = self._read("ci/cloudbuild.release-controller.yaml")
+        assert self._CLOUDSDK not in controller_verify
+        assert self._FIRESTORE_EMULATOR not in controller_verify
+
+        verify_local = self._read("ci/cloudbuild.verify-local.yaml")
+        tool_images = self._read("ci/tool-images.env")
+        assert self._FIRESTORE_EMULATOR in verify_local
+        assert self._FIRESTORE_EMULATOR in tool_images
+        assert self._CLOUDSDK in tool_images
+
+    def test_runtime_and_e2e_builds_use_canonical_google_cli_pin(self):
+        tool_images = self._read("ci/tool-images.env")
+        canonical_pin = next(
+            line.split("=", 1)[1]
+            for line in tool_images.splitlines()
+            if line.startswith("GOOGLE_CLOUD_CLI_IMAGE=")
+        )
+
+        for filename in ("cloudbuild.yaml", "cloudbuild.e2e-image.yaml"):
+            body = self._read(filename)
+            google_cli_builders = re.findall(
+                r"(?m)^\s*- name: ['\"]?(gcr\.io/google\.com/cloudsdktool/[^'\"\n]+)",
+                body,
+            )
+            assert google_cli_builders, filename
+            assert set(google_cli_builders) == {canonical_pin}, filename
 
     def test_plan_uses_real_state_backend_plan_path_and_object_generations(self):
         body = self._read("cloudbuild.terraform-plan.yaml")
@@ -821,10 +1188,10 @@ class TestPrivilegedBuildSource:
         assert self._PYTHON in body
         assert "scripts/create_evidence_manifest.py" in body
         assert "scripts/verify_evidence_manifest.py" in body
-        assert "--approvals-file" in body
+        assert "--approvals-file" not in body
         for artifact in (
             "CI_PROVENANCE", "SBOM", "SCAN", "STAGING_REVISIONS",
-            "E2E", "DIFFERENTIAL", "ROLLBACK",
+            "E2E", "DIFFERENTIAL", "SEMANTIC_REVIEW", "ROLLBACK",
         ):
             assert f"_{artifact}_URI" in body
         assert body.index("scripts/create_evidence_manifest.py") \
@@ -839,6 +1206,9 @@ class TestPrivilegedBuildSource:
         assert "_EVIDENCE_MANIFEST_HASH" in body
         assert body.index("id: 'fetch-evidence'") < body.index("id: 'attest'")
         assert body.index("id: 'attest'") < body.index("id: 'upload-promotion'")
+        for artifact in create_evidence.ARTIFACT_NAMES:
+            assert f"/workspace/{artifact}.json" in body
+            assert f"--artifact {artifact}=/workspace/{artifact}.json" in body
 
     def test_test_only_compares_detect_secrets_candidate_fail_closed(self):
         body = self._read("cloudbuild.test-only.yaml")

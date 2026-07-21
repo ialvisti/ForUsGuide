@@ -12,6 +12,7 @@ from create_evidence_manifest import (
     ARTIFACT_NAMES,
     REQUIRED_FIELDS,
     _sha256_file,
+    load_artifact_claims,
     validate_fields,
 )
 
@@ -53,12 +54,21 @@ def verify(
         if manifest.get(key) != value:
             raise EvidenceMismatch(f"{key} distinto")
 
-    if artifact_files is not None:
-        if set(artifact_files) != set(ARTIFACT_NAMES):
-            raise EvidenceMismatch("faltan archivos de evidencia")
-        for name, path in artifact_files.items():
-            if _sha256_file(path) != manifest[f"{name}_hash"]:
-                raise EvidenceMismatch(f"hash de {name} distinto")
+    if artifact_files is None or set(artifact_files) != set(ARTIFACT_NAMES):
+        raise EvidenceMismatch("faltan archivos de evidencia")
+    for name, path in artifact_files.items():
+        if _sha256_file(path) != manifest[f"{name}_hash"]:
+            raise EvidenceMismatch(f"hash de {name} distinto")
+    try:
+        claims = load_artifact_claims(
+            artifact_files,
+            main_sha=expected_main_sha,
+            image_digest=expected_image_digest,
+        )
+    except ValueError as exc:
+        raise EvidenceMismatch(str(exc)) from exc
+    if claims != manifest.get("artifact_claims"):
+        raise EvidenceMismatch("artifact_claims distintos de los archivos")
 
 
 def main(argv=None) -> int:

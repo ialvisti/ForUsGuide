@@ -16,7 +16,6 @@ RUN useradd --create-home --uid 1000 appuser
 
 COPY --chown=appuser:appuser data_pipeline/ ./data_pipeline/
 COPY --chown=appuser:appuser api/ ./api/
-COPY --chown=appuser:appuser scripts/ ./scripts/
 COPY --chown=appuser:appuser ui/ ./ui/
 
 USER 1000
@@ -27,9 +26,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('PORT','8000')+'/health', timeout=5)"]
 
-# Run application — uses ${PORT} so Cloud Run can set it dynamically.
-# Workers: los ticket jobs viven en Firestore + Cloud Tasks (nada
-# process-local), asi que multiples workers/instancias son seguros. Unica
-# configuracion soportada: WEB_CONCURRENCY (default 1: el trabajo es
-# I/O-bound y Cloud Run escala por instancias).
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers ${WEB_CONCURRENCY:-1}"]
+# Shell-free entrypoint: PORT/WEB_CONCURRENCY are parsed as bounded decimal
+# integers before execve, so environment values can never become commands.
+CMD ["python", "-m", "api.entrypoint"]

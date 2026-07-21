@@ -25,7 +25,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Awaitable, Callable, Optional
+from typing import Any, Awaitable, Callable, Optional, cast
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +58,10 @@ class CloudTasksTicketQueue:
         queue: str,
         worker_url: str,
         service_account: str,
+        worker_audience: Optional[str] = None,
         dispatch_deadline_s: int = 540,
         generation_bumper: Optional[Callable[[str], Awaitable[int]]] = None,
-    ):
+    ) -> None:
         from google.cloud import tasks_v2, tasks_v2beta3  # import perezoso
 
         self._tasks_v2 = tasks_v2
@@ -76,6 +77,7 @@ class CloudTasksTicketQueue:
         self._location = location
         self._queue = queue
         self._worker_url = worker_url.rstrip("/")
+        self._worker_audience = (worker_audience or worker_url).rstrip("/")
         self._service_account = service_account
         self._dispatch_deadline_s = dispatch_deadline_s
         # bump transaccional de la generación en el repositorio; sin bumper
@@ -83,7 +85,7 @@ class CloudTasksTicketQueue:
         # persistir la nueva generación.
         self._generation_bumper = generation_bumper
 
-    def _build_task(self, job_id: str, generation: int):
+    def _build_task(self, job_id: str, generation: int) -> Any:
         from google.protobuf import duration_pb2
 
         tasks_v2 = self._tasks_v2
@@ -103,7 +105,7 @@ class CloudTasksTicketQueue:
                       f'"enqueue_generation": {generation}}}').encode("utf-8"),
                 oidc_token=tasks_v2.OidcToken(
                     service_account_email=self._service_account,
-                    audience=self._worker_url,
+                    audience=self._worker_audience,
                 ),
             ),
         )
@@ -120,12 +122,12 @@ class CloudTasksTicketQueue:
             task = self._build_task(job_id, current)
             try:
                 created = await self._client.create_task(parent=parent, task=task)
-                return created.name
+                return str(created.name)
             except gexc.AlreadyExists:
                 # sonda: ¿replay activo o tombstone?
                 try:
                     await self._client.get_task(name=task.name)
-                    return task.name          # task VIVA: replay benigno
+                    return str(task.name)     # task VIVA: replay benigno
                 except gexc.NotFound:
                     # tombstone: la generación actual está quemada
                     if self._generation_bumper is not None:
@@ -133,13 +135,28 @@ class CloudTasksTicketQueue:
                     else:
                         current += 1
                     logger.warning(
-                        "task tombstoned para job %s: creando generación g%d",
-                        job_id, current,
+                        "task tombstoned: creando generación g%d", current,
                     )
                     continue
         raise TicketQueueError(
             f"no se pudo encolar el job tras {current} generaciones"
         )
+
+    async def task_exists(self, job_id: str, generation: int = 0) -> bool:
+        """Read-only liveness check for a previously confirmed task.
+
+        Only a genuine ``NotFound`` means the task can be repaired. IAM,
+        deadline and transport failures propagate so reconciliation cannot
+        mutate generation from an uncertain observation.
+        """
+        from google.api_core import exceptions as gexc
+
+        task = self._build_task(job_id, generation)
+        try:
+            await self._client.get_task(name=task.name)
+        except gexc.NotFound:
+            return False
+        return True
 
     async def estimated_queue_delay_s(self) -> float:
         """Estimate queued work / dispatch rate, failing closed if unknown."""
@@ -177,9 +194,12 @@ class CloudTasksTicketQueue:
     async def aclose(self) -> None:
         for client in (self._client, self._stats_client):
             try:
-                await client.transport.close()
+                close = cast(
+                    Callable[[], Awaitable[None]], client.transport.close
+                )
+                await close()
             except Exception:  # pragma: no cover
-                logger.exception("error cerrando CloudTasksAsyncClient")
+                logger.error("error cerrando CloudTasksAsyncClient")
 
 
 class InlineTicketQueue:
@@ -189,10 +209,10 @@ class InlineTicketQueue:
     (no sobrevive a restarts); validate_settings lo impide.
     """
 
-    def __init__(self, runner: Callable[[str], Awaitable[Any]]):
+    def __init__(self, runner: Callable[[str], Awaitable[Any]]) -> None:
         self._runner = runner
-        self._tasks: set = set()
-        self._enqueued: set = set()
+        self._tasks: set[asyncio.Future[Any]] = set()
+        self._enqueued: set[tuple[str, int]] = set()
 
     async def ensure_enqueued(self, job_id: str, generation: int = 0) -> str:
         name = f"inline/ticket-{job_id}-g{generation}"
@@ -200,13 +220,16 @@ class InlineTicketQueue:
         if key in self._enqueued:
             return name
         self._enqueued.add(key)
-        task = asyncio.create_task(self._runner(job_id))
+        task: asyncio.Future[Any] = asyncio.ensure_future(self._runner(job_id))
         self._tasks.add(task)
         task.add_done_callback(self._tasks.discard)
         return name
 
     async def estimated_queue_delay_s(self) -> float:
         return 0.0
+
+    async def task_exists(self, job_id: str, generation: int = 0) -> bool:
+        return (job_id, generation) in self._enqueued
 
     async def aclose(self) -> None:
         for task in list(self._tasks):

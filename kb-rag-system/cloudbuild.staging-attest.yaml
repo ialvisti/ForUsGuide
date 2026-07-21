@@ -8,7 +8,7 @@ substitutions:
   _EVIDENCE_MANIFEST_HASH: ""
 
 steps:
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'fetch-evidence'
     entrypoint: bash
     args:
@@ -22,6 +22,28 @@ steps:
         [[ "${_EVIDENCE_MANIFEST_HASH}" =~ ^[0-9a-f]{64}$ ]]
         gcloud storage cp "${_EVIDENCE_MANIFEST_URI}" \
           /workspace/evidence_manifest.json
+        python3 - <<'PY' > /workspace/artifact_uris.tsv
+        import json
+
+        names = (
+            "ci_provenance", "sbom", "scan", "staging_revisions", "e2e",
+            "differential", "semantic_review", "rollback",
+        )
+        with open("/workspace/evidence_manifest.json", encoding="utf-8") as fh:
+            manifest = json.load(fh)
+        for name in names:
+            uri = manifest.get(f"{name}_uri")
+            if not isinstance(uri, str):
+                raise SystemExit(f"STOP: falta URI de {name}")
+            print(f"{name}\t{uri}")
+        PY
+        while IFS=$$'\t' read -r name uri; do
+          [[ "$$uri" =~ ^gs://[a-z0-9][a-z0-9._-]*/[^#]+#[1-9][0-9]*$$ ]] || {
+            echo "STOP: $$name no tiene generation numérica" >&2
+            exit 1
+          }
+          gcloud storage cp "$$uri" "/workspace/$$name.json"
+        done < /workspace/artifact_uris.tsv
 
   - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
     id: 'attest'
@@ -38,7 +60,15 @@ steps:
           --expected-main-sha "$COMMIT_SHA" \
           --expected-image-digest "${_IMAGE_DIGEST}" \
           --expected-controller-builder-digest \
-            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce' \
+          --artifact ci_provenance=/workspace/ci_provenance.json \
+          --artifact sbom=/workspace/sbom.json \
+          --artifact scan=/workspace/scan.json \
+          --artifact staging_revisions=/workspace/staging_revisions.json \
+          --artifact e2e=/workspace/e2e.json \
+          --artifact differential=/workspace/differential.json \
+          --artifact semantic_review=/workspace/semantic_review.json \
+          --artifact rollback=/workspace/rollback.json
         python scripts/create_promotion_manifest.py \
           --evidence-manifest /workspace/evidence_manifest.json \
           --evidence-manifest-uri "${_EVIDENCE_MANIFEST_URI}" \
@@ -47,7 +77,7 @@ steps:
           --out /workspace/promotion.json \
           > /workspace/promotion_hash.txt
 
-  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli@sha256:38132a268745db5a1dc2ebfecfe6f935d75de281dddc6922f0fe3780c5552b81'
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-promotion'
     entrypoint: bash
     args:

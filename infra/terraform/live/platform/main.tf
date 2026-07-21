@@ -28,6 +28,22 @@ resource "google_project_service" "enabled" {
   disable_on_destroy = false # APIs compartidas: no desactivar al destruir
 }
 
+# Repositorio existente importado por G1B. Los tres artefactos conservan image
+# names distintos y toda promoción está ligada al digest, nunca a un tag.
+resource "google_artifact_registry_repository" "images" {
+  project       = var.project_id
+  location      = var.region
+  repository_id = "kb-rag"
+  description   = "Runtime, E2E y release-controller de kb-rag-system"
+  format        = "DOCKER"
+
+  docker_config {
+    immutable_tags = true
+  }
+
+  depends_on = [google_project_service.enabled["artifactregistry.googleapis.com"]]
+}
+
 # Bucket de evidencia versionado (reemplaza la referencia inexistente a
 # gs://rag-kb-system-build-artifacts).
 resource "google_storage_bucket" "evidence" {
@@ -41,8 +57,8 @@ resource "google_storage_bucket" "evidence" {
   }
 }
 
-# Service accounts de runtime (staging y producción). kb-rag-runner
-# (producer prod) se preserva y se importa; aquí se crean las NUEVAS.
+# Service accounts de runtime (staging y producción). kb-rag-runner permanece
+# intacta para la revisión rollback legacy; la candidata usa una SA dedicada.
 locals {
   runtime_sas = {
     "ticket-worker-stg"       = "Worker runtime (staging)"
@@ -52,6 +68,7 @@ locals {
     "ticket-producer-stg"     = "Producer runtime (staging)"
     "n8n-ticket-invoker-stg"  = "n8n WIF invoker (staging)"
     "ticket-e2e-stg"          = "E2E runner (staging)"
+    "ticket-producer-prod"    = "Producer runtime (production)"
     "ticket-worker-prod"      = "Worker runtime (production)"
     "ticket-reconciler-prod"  = "Reconciler runtime (production)"
     "ticket-task-signer-prod" = "Task signer (production)"

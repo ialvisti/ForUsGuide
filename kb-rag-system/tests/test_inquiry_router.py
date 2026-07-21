@@ -21,6 +21,7 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from api import metrics as ticket_metrics
 from data_pipeline.inquiry_router import (
     CONFIDENCE_FALLBACK_THRESHOLD,
     KQ_TOP_SCORE_FLOOR,
@@ -790,6 +791,26 @@ class TestCoverageGate:
 
 class TestSafeParser:
 
+    def test_parse_outcome_emits_closed_metrics(self, monkeypatch):
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.inquiry_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+
+        with ticket_metrics.ticket_execution_scope():
+            assert _safe_parse_classifier_json(
+                '{"route":"knowledge_question"}'
+            )[1] is True
+            assert _safe_parse_classifier_json("not-json")[1] is False
+
+        assert emitted == [
+            ("ticket_llm_parse_count", 1, {"code": "success"}),
+            ("ticket_llm_parse_count", 1, {"code": "failed"}),
+        ]
+
     def test_empty_content(self):
         parsed, parse_ok = _safe_parse_classifier_json("")
         assert parse_ok is False
@@ -801,9 +822,10 @@ class TestSafeParser:
         parsed, parse_ok = _safe_parse_classifier_json(
             '{"route": "delete_everything", "confidence": 0.99, "reasoning": "x"}'
         )
-        assert parse_ok is True
+        assert parse_ok is False
         assert parsed["route"] == "needs_more_info"
         assert parsed["coverage_basis"] == "topic_unclear"
+        assert parsed["reasoning"] == "Classifier output invalid"
 
     def test_strips_json_markdown_fence(self):
         content = (
@@ -928,6 +950,7 @@ class TestParseFallback:
         assert result.route == "needs_more_info"
         assert result.confidence == 0.0
         assert result.user_message is not None
+        assert result.metadata["classifier_parse_ok"] is False
 
     @pytest.mark.asyncio
     async def test_parse_failure_with_no_fallback_does_not_crash(

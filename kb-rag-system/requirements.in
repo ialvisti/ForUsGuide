@@ -26,6 +26,7 @@ tqdm>=4.66.0,<5
 python-multipart>=0.0.9,<1
 tiktoken>=0.5.0,<1
 cachetools>=5.3.0,<7
+cachecontrol>=0.14.0,<1       # cache HTTP de certificados Google ID-token
 
 # GCP
 google-auth>=2.29.0,<3        # verificación de ID tokens (OIDC de Cloud Tasks + WIF v2)

@@ -6,22 +6,63 @@ Pydantic BaseSettings reads env vars automatically — no os.getenv needed.
 """
 
 import logging
+import math
 from typing import List
+from urllib.parse import urlsplit
 from pydantic_settings import BaseSettings
+
+from data_pipeline.forusbots_client import (
+    ForusBotsError,
+    validate_forusbots_base_url,
+)
+from data_pipeline.llm_router import (
+    build_routes_from_settings,
+    parse_llm_pricing_json,
+    required_pricing_keys,
+)
 
 logger = logging.getLogger(__name__)
 
 
+def _finite_positive(value: object) -> bool:
+    return (
+        not isinstance(value, bool)
+        and isinstance(value, (int, float))
+        and math.isfinite(float(value))
+        and float(value) > 0
+    )
+
+
+def _is_canonical_https_origin(value: object) -> bool:
+    if not isinstance(value, str) or value != value.strip():
+        return False
+    try:
+        parsed = urlsplit(value)
+        _ = parsed.port
+    except ValueError:
+        return False
+    return bool(
+        parsed.scheme == "https"
+        and parsed.hostname
+        and parsed.username is None
+        and parsed.password is None
+        and parsed.path in {"", "/"}
+        and not parsed.query
+        and not parsed.fragment
+    )
+
+
 class Settings(BaseSettings):
     """Settings de la aplicación."""
-    
+
     # API Configuration
     API_VERSION: str = "1.0.0"
     API_TITLE: str = "KB RAG System API"
     API_DESCRIPTION: str = "API para sistema RAG de Knowledge Base de Participant Advisory"
-    
+
     # Server
-    API_HOST: str = "0.0.0.0"
+    # Cloud Run requires the container to listen on every interface.
+    API_HOST: str = "0.0.0.0"  # noqa: S104
     API_PORT: int = 8000
     ENVIRONMENT: str = "development"
 
@@ -33,11 +74,11 @@ class Settings(BaseSettings):
     #   reconciler → batch (python -m data_pipeline.ticket_reconciler);
     #                ninguna ruta pública salvo probes
     APP_ROLE: str = "producer"
-    
+
     # Security
     API_KEY: str = ""
     ALLOWED_ORIGINS: List[str] = ["*"]
-    
+
     # OpenAI
     OPENAI_API_KEY: str = ""
     # NOTE: OPENAI_MODEL / OPENAI_TEMPERATURE / OPENAI_REASONING_EFFORT remain
@@ -67,6 +108,10 @@ class Settings(BaseSettings):
     LLM_ROUTE_FORUSBOTS_FIELD_MAP: str = "gpt-5.5"
     LLM_ROUTE_GR_BODY_BUILD: str = "gpt-5.5"
     LLM_ROUTE_TICKET_FIELD_EXTRACT: str = "gpt-5.5"
+    # Reviewed USD-per-1M-token estimates for durable ticket telemetry. The
+    # JSON contains pricing_as_of/source metadata plus exact provider:model
+    # entries. Producer/core traffic never depends on this ticket-only gate.
+    TICKET_LLM_PRICING_JSON: str = ""
 
     # Inquiry router rollout flag. Stage 4 reads this to decide whether the
     # /route-inquiry endpoint is exposed and how it behaves:
@@ -141,22 +186,25 @@ class Settings(BaseSettings):
     CLOUD_TASKS_QUEUE: str = "ticket-jobs"
     CLOUD_TASKS_LOCATION: str = "us-central1"
     TICKET_WORKER_URL: str = ""            # URL pública del worker (Cloud Tasks target)
+    # Audiencia OIDC estable configurada como custom audience de Cloud Run. No
+    # puede derivarse de TICKET_WORKER_URL dentro del template del propio worker.
+    TICKET_WORKER_AUDIENCE: str = ""
     TICKET_WORKER_SERVICE_ACCOUNT: str = ""  # SA que firma el OIDC de Cloud Tasks
     TICKET_WORKER_REQUIRE_OIDC: bool = True
     # v1 adapter: espera corta para poder responder 200 inline en rutas rápidas
     # ya terminadas; si el job sigue vivo al vencer, responde 202 + poll.
     TICKET_V1_INLINE_WAIT_S: float = 3.0
 
-    # Identidad de clientes: nombre de principal → API key. La API_KEY legacy
-    # mapea al principal "default". Rotación: agregar la key nueva bajo el
-    # mismo principal con sufijo (p.ej. "n8n" y "n8n_next"), migrar el caller
-    # y retirar la vieja.
-    API_CLIENT_KEYS: dict = {}
+    # Identidad de clientes: principal ESTABLE → una o varias API keys. La
+    # lista permite rotación solapada sin cambiar owner/idempotencia/polling;
+    # crear principals con sufijo para una key nueva está prohibido por diseño.
+    # La API_KEY legacy mapea al principal "default".
+    API_CLIENT_KEYS: dict[str, str | list[str]] = {}
     # Tenant CANÓNICO por principal (Tarea 4 Paso 2): el tenant deriva de la
     # credencial autenticada, nunca del texto del ticket ni de un header sin
     # firmar. En producción este mapping vive en Secret Manager junto a
     # API_CLIENT_KEYS.
-    API_CLIENT_TENANTS: dict = {}
+    API_CLIENT_TENANTS: dict[str, str] = {}
 
     # Fuente canónica participant-plan (Tarea 4 Paso 1 / contrato Tarea 1).
     # "" = no configurada: un modo ACTIVO no puede arrancar así (fail-closed);
@@ -170,9 +218,15 @@ class Settings(BaseSettings):
     # Google-signed en X-ForUs-Workload-Authorization verificado en la app
     # (firma/issuer/audience/SA/exp). Cloud Run elimina la firma de
     # X-Serverless-Authorization antes de entregarlo: ese header se rechaza.
-    # Vacíos = verificación desactivada (SÓLO dev/tests; producción activa
-    # exige ambos configurados — validate_settings falla cerrado).
+    # Vacíos = verificación desactivada sólo en dev/tests; staging/production
+    # activos exigen audiencia + allowlist (validate_settings falla cerrado).
     TICKET_WIF_AUDIENCE: str = ""
+    # Allowlist exacta de service-account emails autorizados. Staging incluye
+    # n8n + el runner E2E; producción sólo n8n. BaseSettings la recibe como
+    # array JSON desde el entorno/Secret Manager.
+    TICKET_WIF_ALLOWED_EMAILS: List[str] = []
+    # Compatibilidad local temporal para fixtures/entornos anteriores. Los
+    # entornos desplegados activos exigen la allowlist y no usan este fallback.
     TICKET_WIF_EXPECTED_EMAIL: str = ""
 
     # Límites de recursos (Task 6, OWASP API4).
@@ -187,19 +241,19 @@ class Settings(BaseSettings):
     PINECONE_API_KEY: str = ""
     INDEX_NAME: str = "kb-articles-production"
     NAMESPACE: str = "kb_articles"
-    
+
     # Logging
     LOG_LEVEL: str = "INFO"
-    
+
     # Rate Limiting (requests per minute)
     RATE_LIMIT_REQUIRED_DATA: int = 60
     RATE_LIMIT_GENERATE_RESPONSE: int = 30
-    
+
     # GCP
     GCP_PROJECT: str = ""
     GCS_BUCKET: str = ""
     ENABLE_EXECUTION_LOGGING: bool = False
-    
+
     model_config = {
         "env_file": ".env",
         "case_sensitive": True,
@@ -220,9 +274,85 @@ class Settings(BaseSettings):
 settings = Settings()
 
 
-def validate_settings():
+def validate_settings() -> bool:
     """Valida que todas las settings críticas estén configuradas."""
     errors = []
+
+    positive_timings = {
+        "TICKET_INQUIRY_BUDGET_S": settings.TICKET_INQUIRY_BUDGET_S,
+        "TICKET_TOTAL_BUDGET_S": settings.TICKET_TOTAL_BUDGET_S,
+        "TICKET_ATTEMPT_BUDGET_S": settings.TICKET_ATTEMPT_BUDGET_S,
+        "TICKET_JOB_DEADLINE_S": settings.TICKET_JOB_DEADLINE_S,
+        "TICKET_WORKER_LEASE_S": settings.TICKET_WORKER_LEASE_S,
+        "TICKET_WORKER_HEARTBEAT_S": settings.TICKET_WORKER_HEARTBEAT_S,
+        "TICKET_TASK_DISPATCH_DEADLINE_S": (
+            settings.TICKET_TASK_DISPATCH_DEADLINE_S
+        ),
+        "TICKET_ADMISSION_QUEUE_DELAY_CEILING_S": (
+            settings.TICKET_ADMISSION_QUEUE_DELAY_CEILING_S
+        ),
+        "TICKET_V1_INLINE_WAIT_S": settings.TICKET_V1_INLINE_WAIT_S,
+        "PARTICIPANT_PLAN_TIMEOUT_S": settings.PARTICIPANT_PLAN_TIMEOUT_S,
+        "FORUSBOTS_POLL_INTERVAL_S": settings.FORUSBOTS_POLL_INTERVAL_S,
+        "FORUSBOTS_POLL_BACKOFF": settings.FORUSBOTS_POLL_BACKOFF,
+        "FORUSBOTS_POLL_MAX_INTERVAL_S": settings.FORUSBOTS_POLL_MAX_INTERVAL_S,
+        "FORUSBOTS_MAX_WAIT_S": settings.FORUSBOTS_MAX_WAIT_S,
+        "FORUSBOTS_HTTP_READ_TIMEOUT_S": settings.FORUSBOTS_HTTP_READ_TIMEOUT_S,
+        "FORUSBOTS_RESULT_CACHE_TTL_S": settings.FORUSBOTS_RESULT_CACHE_TTL_S,
+        "FORUSBOTS_MAX_INFLIGHT": settings.FORUSBOTS_MAX_INFLIGHT,
+    }
+    invalid_timings = [
+        name for name, value in positive_timings.items()
+        if not _finite_positive(value)
+    ]
+    if invalid_timings:
+        errors.append(
+            "runtime timings must be finite positive: "
+            + ", ".join(sorted(invalid_timings))
+        )
+    else:
+        if settings.TICKET_WORKER_HEARTBEAT_S * 3 > settings.TICKET_WORKER_LEASE_S:
+            errors.append("heartbeat*3 debe ser <= worker lease")
+        if settings.TICKET_ATTEMPT_BUDGET_S >= \
+                settings.TICKET_TASK_DISPATCH_DEADLINE_S:
+            errors.append("attempt budget debe ser menor al dispatch deadline")
+        if settings.TICKET_JOB_DEADLINE_S <= max(
+            settings.TICKET_ATTEMPT_BUDGET_S,
+            settings.TICKET_TASK_DISPATCH_DEADLINE_S,
+        ):
+            errors.append("job deadline debe superar attempt y dispatch")
+        if settings.TICKET_TOTAL_BUDGET_S > settings.TICKET_ATTEMPT_BUDGET_S:
+            errors.append("total budget debe caber en attempt budget")
+        if settings.TICKET_INQUIRY_BUDGET_S > settings.TICKET_TOTAL_BUDGET_S:
+            errors.append("inquiry budget debe caber en total budget")
+        if settings.FORUSBOTS_POLL_INTERVAL_S > \
+                settings.FORUSBOTS_POLL_MAX_INTERVAL_S:
+            errors.append("ForUsBots poll interval debe ser <= poll max interval")
+        if settings.FORUSBOTS_HTTP_READ_TIMEOUT_S >= settings.FORUSBOTS_MAX_WAIT_S:
+            errors.append("ForUsBots read timeout debe ser menor al max wait")
+        if settings.FORUSBOTS_POLL_MAX_INTERVAL_S > settings.FORUSBOTS_MAX_WAIT_S:
+            errors.append("ForUsBots poll max interval debe ser <= max wait")
+        if settings.FORUSBOTS_MAX_WAIT_S >= settings.TICKET_INQUIRY_BUDGET_S:
+            errors.append("ForUsBots max wait debe caber en inquiry budget")
+        if settings.FORUSBOTS_POLL_BACKOFF < 1:
+            errors.append("ForUsBots poll backoff debe ser >= 1")
+
+    valid_environments = {"development", "staging", "production"}
+    if settings.ENVIRONMENT not in valid_environments:
+        errors.append(
+            f"ENVIRONMENT={settings.ENVIRONMENT!r} inválido (se esperaba uno "
+            f"de {sorted(valid_environments)})"
+        )
+    if settings.APP_ENV not in valid_environments:
+        errors.append(
+            f"APP_ENV={settings.APP_ENV!r} inválido (se esperaba uno de "
+            f"{sorted(valid_environments)})"
+        )
+    if settings.APP_ENV != settings.ENVIRONMENT:
+        errors.append(
+            f"APP_ENV={settings.APP_ENV!r} debe coincidir exactamente con "
+            f"ENVIRONMENT={settings.ENVIRONMENT!r}"
+        )
 
     valid_roles = {"producer", "worker", "reconciler"}
     role = settings.APP_ROLE
@@ -233,6 +363,26 @@ def validate_settings():
         )
     needs_core_api = role == "producer"
     needs_rag_runtime = role in {"producer", "worker"}
+
+    # Una credencial nunca puede resolver a dos principals. Además, una
+    # rotación se representa como lista bajo el MISMO principal estable.
+    observed_client_keys: dict[str, str] = {}
+    for principal, configured in (settings.API_CLIENT_KEYS or {}).items():
+        keys = [configured] if isinstance(configured, str) else configured
+        if not principal or not keys or any(not key for key in keys):
+            errors.append(
+                "API_CLIENT_KEYS contiene un principal o credencial vacíos"
+            )
+            continue
+        for key in keys:
+            prior = observed_client_keys.get(key)
+            if prior is not None:
+                errors.append(
+                    "API_CLIENT_KEYS contiene una credencial duplicada entre "
+                    "principals o dentro de la rotación"
+                )
+                break
+            observed_client_keys[key] = principal
 
     if needs_core_api and not (settings.API_KEY or settings.API_CLIENT_KEYS):
         errors.append("API_KEY/API_CLIENT_KEYS no está configurado")
@@ -296,10 +446,54 @@ def validate_settings():
     # Rol de proceso cerrado (Tarea 4 Paso 1a). Un rol inválido impide el
     # arranque; cada rol valida sus dependencias específicas.
     active_mode = settings.TICKET_HANDLER_MODE in valid_ticket_modes - {"disabled"}
+    producer_ticket_active = role == "producer" and active_mode
+    worker_runtime = role == "worker"
+    reconciler_runtime = role == "reconciler"
+    deployed_environment = settings.ENVIRONMENT in {"production", "staging"}
+
+    # Cost alerts must be based on an explicit, dated and reviewed table.
+    # Producer/core requests do not emit ticket metrics, so a ticket-pricing
+    # document can never make that public/core process fail startup. Workers
+    # require exact coverage of every primary and fallback model. Reconciler
+    # validates the same deployment evidence even though it performs no LLM
+    # calls itself.
+    if deployed_environment and (worker_runtime or reconciler_runtime):
+        try:
+            llm_pricing = parse_llm_pricing_json(
+                settings.TICKET_LLM_PRICING_JSON
+            )
+        except ValueError:
+            errors.append(
+                "TICKET_LLM_PRICING_JSON debe ser un documento de pricing "
+                "estricto, fechado y revisado"
+            )
+        else:
+            if not llm_pricing:
+                errors.append(
+                    "TICKET_LLM_PRICING_JSON debe contener modelos revisados"
+                )
+            elif worker_runtime:
+                try:
+                    expected_pricing = required_pricing_keys(
+                        build_routes_from_settings(settings)
+                    )
+                except ValueError:
+                    # The route validator already reports the invalid model;
+                    # do not echo arbitrary configuration into this error.
+                    errors.append(
+                        "TICKET_LLM_PRICING_JSON no pudo vincularse a rutas "
+                        "LLM válidas"
+                    )
+                else:
+                    if frozenset(llm_pricing) != expected_pricing:
+                        errors.append(
+                            "TICKET_LLM_PRICING_JSON debe cubrir exactamente "
+                            "cada provider:model primario y fallback"
+                        )
 
     # Autorización participant-plan fail-closed: un producer ACTIVO sin fuente
     # canónica configurada no puede arrancar. `None` nunca es autorización.
-    if settings.APP_ROLE == "producer" and active_mode \
+    if producer_ticket_active \
             and not settings.PARTICIPANT_PLAN_SOURCE:
         errors.append(
             f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} requiere "
@@ -307,10 +501,10 @@ def validate_settings():
             "sin validador la autorización queda abierta"
         )
 
-    # Identidad workload de v2: producción activa exige la verificación
-    # completa configurada (audiencia + SA esperada).
-    if settings.ENVIRONMENT == "production" and active_mode \
-            and settings.APP_ROLE == "producer":
+    # Identidad workload de v2: todo entorno desplegado activo exige
+    # audiencia y una allowlist exacta. El email singular legado no puede
+    # abrir staging/production; sólo queda para compatibilidad local.
+    if deployed_environment and producer_ticket_active:
         client_keys = settings.API_CLIENT_KEYS or {}
         client_tenants = settings.API_CLIENT_TENANTS or {}
         if not client_keys:
@@ -327,11 +521,30 @@ def validate_settings():
                 "API_CLIENT_TENANTS no tiene tenant explícito para: "
                 + ", ".join(missing_tenants)
             )
-        if not settings.TICKET_WIF_AUDIENCE or not settings.TICKET_WIF_EXPECTED_EMAIL:
+        if not settings.TICKET_WIF_AUDIENCE:
             errors.append(
-                "producción con ticket handler activo requiere "
-                "TICKET_WIF_AUDIENCE y TICKET_WIF_EXPECTED_EMAIL (verificación "
-                "del ID token workload de n8n en v2)"
+                f"{settings.ENVIRONMENT} con ticket handler activo requiere "
+                "TICKET_WIF_AUDIENCE"
+            )
+        allowed_wif_emails = settings.TICKET_WIF_ALLOWED_EMAILS or []
+        if not allowed_wif_emails:
+            errors.append(
+                f"{settings.ENVIRONMENT} con ticket handler activo requiere "
+                "TICKET_WIF_ALLOWED_EMAILS no vacía"
+            )
+        elif any(
+            not isinstance(email, str)
+            or not email
+            or email != email.strip()
+            for email in allowed_wif_emails
+        ):
+            errors.append(
+                "TICKET_WIF_ALLOWED_EMAILS contiene un email vacío o con "
+                "espacios; las identidades deben ser exactas"
+            )
+        elif len(set(allowed_wif_emails)) != len(allowed_wif_emails):
+            errors.append(
+                "TICKET_WIF_ALLOWED_EMAILS contiene identidades duplicadas"
             )
 
     # Base Firestore nombrada (Tarea 5 Paso 3): la base es el límite de
@@ -355,30 +568,26 @@ def validate_settings():
                 f"FIRESTORE_DATABASE={settings.FIRESTORE_DATABASE} está prohibido"
             )
 
-    # Contención fail-closed del ticket handler: un modo activo no puede
-    # arrancar sin token, y producción nunca habla con ForusBots por HTTP
-    # plano (el token y PII del participante viajan en cada request).
-    if active_mode and role in {"producer", "worker"}:
+    # ForusBots pertenece exclusivamente a ejecución durable. El producer
+    # sólo autoriza/persiste/encola y no debe necesitar su token ni endpoint.
+    needs_forusbots = worker_runtime
+    if needs_forusbots:
         if not settings.FORUSBOTS_AUTH_TOKEN:
             errors.append(
-                f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} requiere "
-                "FORUSBOTS_AUTH_TOKEN configurado"
+                "APP_ROLE=worker requiere FORUSBOTS_AUTH_TOKEN configurado"
             )
-        is_tls = settings.FORUSBOTS_BASE_URL.lower().startswith("https://")
-        if not is_tls and settings.ENVIRONMENT == "production":
+        try:
+            validate_forusbots_base_url(settings.FORUSBOTS_BASE_URL)
+        except ForusBotsError:
             errors.append(
-                f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} en producción "
-                f"requiere FORUSBOTS_BASE_URL https:// "
-                f"(actual: {settings.FORUSBOTS_BASE_URL.split('://')[0]}://…)"
-            )
-        elif not is_tls:
-            logger.warning(
-                "FORUSBOTS_BASE_URL no usa https:// — permitido sólo fuera de "
-                "producción. El token y PII viajan sin cifrar."
+                f"APP_ROLE=worker en {settings.ENVIRONMENT} "
+                "requiere FORUSBOTS_BASE_URL como origen HTTPS canónico "
+                "(https://host[:port])"
             )
 
-    # Ejecución durable fail-closed: producción con modo activo no puede
-    # depender de memoria de proceso ni de asyncio local (HT-01).
+    # Ejecución durable fail-closed: los roles desplegados no pueden depender
+    # de memoria de proceso ni de asyncio local (HT-01). El rollout flag sólo
+    # controla admisión en producer; no desactiva worker/reconciler.
     if settings.TICKET_JOB_BACKEND not in {"memory", "firestore"}:
         errors.append(
             f"TICKET_JOB_BACKEND={settings.TICKET_JOB_BACKEND} inválido "
@@ -389,35 +598,92 @@ def validate_settings():
             f"TICKET_TASK_QUEUE={settings.TICKET_TASK_QUEUE} inválido "
             "(se esperaba inline|cloudtasks)"
         )
-    if (
-        settings.TICKET_HANDLER_MODE in valid_ticket_modes - {"disabled"}
-        and settings.ENVIRONMENT == "production"
-    ):
+    # El rollout flag sólo detiene nuevas admisiones. Todo producer desplegado
+    # sigue siendo endpoint de polling/rollback para jobs existentes y, por
+    # tanto, jamás puede degradar ese estado a memoria de proceso.
+    needs_durable_repo = deployed_environment and (
+        role == "producer" or worker_runtime or reconciler_runtime
+    )
+    sends_cloud_tasks = deployed_environment and (
+        producer_ticket_active or reconciler_runtime
+    )
+    verifies_task_oidc = deployed_environment and worker_runtime
+
+    if needs_durable_repo:
         if settings.TICKET_JOB_BACKEND != "firestore":
             errors.append(
-                "producción con ticket handler activo requiere "
+                f"APP_ROLE={role} en {settings.ENVIRONMENT} requiere "
                 "TICKET_JOB_BACKEND=firestore (los jobs no pueden vivir en "
                 "memoria de proceso)"
             )
+
+    if sends_cloud_tasks:
         if settings.TICKET_TASK_QUEUE != "cloudtasks":
             errors.append(
-                "producción con ticket handler activo requiere "
+                f"APP_ROLE={role} en {settings.ENVIRONMENT} requiere "
                 "TICKET_TASK_QUEUE=cloudtasks"
             )
-        if settings.TICKET_TASK_QUEUE == "cloudtasks" and not settings.TICKET_WORKER_URL:
-            errors.append("TICKET_TASK_QUEUE=cloudtasks requiere TICKET_WORKER_URL")
-        if settings.TICKET_TASK_QUEUE == "cloudtasks":
-            # No existe una opción production sin OIDC ni sin SA firmante
-            # (Tarea 7 Paso 6): Cloud Tasks debe firmar y el worker verificar.
-            if not settings.TICKET_WORKER_SERVICE_ACCOUNT:
+        for field_name, value in (
+            ("GCP_PROJECT", settings.GCP_PROJECT),
+            ("CLOUD_TASKS_LOCATION", settings.CLOUD_TASKS_LOCATION),
+            ("CLOUD_TASKS_QUEUE", settings.CLOUD_TASKS_QUEUE),
+            ("TICKET_WORKER_URL", settings.TICKET_WORKER_URL),
+        ):
+            if not value:
                 errors.append(
-                    "producción con cloudtasks requiere "
-                    "TICKET_WORKER_SERVICE_ACCOUNT (SA firmante del OIDC)"
+                    f"APP_ROLE={role} con cloudtasks requiere {field_name}"
                 )
-            if not settings.TICKET_WORKER_REQUIRE_OIDC:
+        if settings.TICKET_WORKER_URL and not _is_canonical_https_origin(
+            settings.TICKET_WORKER_URL
+        ):
+            errors.append(
+                "TICKET_WORKER_URL debe ser un origen HTTPS canónico"
+            )
+
+    # Sender y receiver comparten audience/identidad exactas, pero el worker
+    # no necesita proyecto, ubicación, nombre ni URL target de la cola.
+    if sends_cloud_tasks or verifies_task_oidc:
+        if not settings.TICKET_WORKER_AUDIENCE:
+            errors.append(
+                f"APP_ROLE={role} requiere TICKET_WORKER_AUDIENCE estable"
+            )
+        if not settings.TICKET_WORKER_SERVICE_ACCOUNT:
+            errors.append(
+                f"APP_ROLE={role} requiere TICKET_WORKER_SERVICE_ACCOUNT "
+                "(SA firmante del OIDC)"
+            )
+        if not settings.TICKET_WORKER_REQUIRE_OIDC:
+            errors.append(
+                "TICKET_WORKER_REQUIRE_OIDC=false está prohibido en un "
+                "entorno desplegado"
+            )
+        if settings.GCP_PROJECT and settings.ENVIRONMENT in {
+            "staging", "production"
+        }:
+            service_name = (
+                "kb-rag-ticket-worker-staging"
+                if settings.ENVIRONMENT == "staging"
+                else "kb-rag-ticket-worker"
+            )
+            expected_audience = (
+                f"https://{service_name}.{settings.GCP_PROJECT}.ticket.internal"
+            )
+            if settings.TICKET_WORKER_AUDIENCE != expected_audience:
                 errors.append(
-                    "TICKET_WORKER_REQUIRE_OIDC=false está prohibido en "
-                    "producción: el worker sólo acepta tasks OIDC-firmadas"
+                    "TICKET_WORKER_AUDIENCE debe ser la custom audience exacta "
+                    "del worker/environment/project"
+                )
+            signer_suffix = (
+                "stg" if settings.ENVIRONMENT == "staging" else "prod"
+            )
+            expected_signer = (
+                f"ticket-task-signer-{signer_suffix}@{settings.GCP_PROJECT}."
+                "iam.gserviceaccount.com"
+            )
+            if settings.TICKET_WORKER_SERVICE_ACCOUNT != expected_signer:
+                errors.append(
+                    "TICKET_WORKER_SERVICE_ACCOUNT debe ser la task signer "
+                    "exacta del environment/project"
                 )
 
     if errors:

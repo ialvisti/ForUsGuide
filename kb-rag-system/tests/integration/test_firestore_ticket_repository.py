@@ -234,6 +234,57 @@ class TestLeaseFencingLive:
             )
 
 
+class TestReconcilerCursorLive:
+
+    async def test_state_in_document_id_cursor_paginates_without_starvation(
+            self, unique_key):
+        """Exercise the exact reconciler query against the emulator.
+
+        Firestore must accept ``state in [queued, running]`` combined with
+        ``order_by(__name__)`` and a document-ID cursor.  The terminal record
+        is deliberately interleaved by random ID and must never enter either
+        page.
+        """
+        backend = FirestoreTicketJobBackend(
+            project=os.environ.get(
+                "FIRESTORE_PROJECT_ID", "handle-ticket-emulator"
+            ),
+            database="(default)",
+            collection_prefix=f"cursor_{unique_key}_",
+        )
+        repo = TicketJobRepository(backend, rate_limit_per_minute=0)
+        created = []
+        for index in range(5):
+            record, outcome = await _create(
+                repo,
+                f"{unique_key}-{index}",
+                principal=f"cursor-{unique_key}",
+            )
+            assert outcome == CreateOrGetOutcome.CREATED
+            created.append(record.job_id)
+
+        await repo.update(created[1], state=TicketJobState.RUNNING)
+        await repo.update(created[3], state=TicketJobState.RUNNING)
+        await repo.update(created[4], state=TicketJobState.RUNNING)
+        await repo.update(created[4], state=TicketJobState.SUCCEEDED)
+        expected_active = sorted(created[:4])
+
+        first = await repo.scan_control_docs(limit=2)
+        second_process = TicketJobRepository(
+            backend, rate_limit_per_minute=0
+        )
+        second = await second_process.scan_control_docs(limit=2)
+
+        assert [job_id for job_id, _ in first] == expected_active[:2]
+        assert [job_id for job_id, _ in second] == expected_active[2:]
+        assert {
+            document["state"] for _, document in first + second
+        } == {TicketJobState.QUEUED.value, TicketJobState.RUNNING.value}
+        assert created[4] not in {
+            job_id for job_id, _ in first + second
+        }
+
+
 class TestDatabaseSelection:
 
     def test_named_database_is_mandatory(self):

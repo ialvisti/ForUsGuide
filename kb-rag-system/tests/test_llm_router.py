@@ -9,19 +9,22 @@ driven routing table builder. Network / SDK calls are fully mocked.
 from __future__ import annotations
 
 from types import SimpleNamespace
-from unittest.mock import AsyncMock, Mock, patch
+from unittest.mock import AsyncMock, Mock
 
 import pytest
 
+from api import metrics as ticket_metrics
 from data_pipeline.llm_router import (
+    LLMPricing,
     LLMEmptyResponseError,
     LLMProvider,
-    LLMResponse,
     LLMRouter,
     ModelConfig,
     TaskRoute,
     _model_config_from_name,
     build_routes_from_settings,
+    parse_llm_pricing_json,
+    required_pricing_keys,
 )
 
 
@@ -39,10 +42,13 @@ def _make_openai_response(content: str | None, finish_reason: str = "stop"):
     return SimpleNamespace(choices=[choice], usage=usage)
 
 
-def _make_gemini_response(text: str | None):
+def _make_gemini_response(text: str | None, *, thoughts_tokens: int = 0):
     """Build a minimal object that mimics the google-genai response."""
     um = SimpleNamespace(
-        prompt_token_count=7, candidates_token_count=13, total_token_count=20
+        prompt_token_count=7,
+        candidates_token_count=13,
+        thoughts_token_count=thoughts_tokens,
+        total_token_count=20 + thoughts_tokens,
     )
     return SimpleNamespace(text=text, usage_metadata=um, candidates=[])
 
@@ -119,6 +125,68 @@ class TestOpenAIDispatch:
         assert kwargs["max_completion_tokens"] >= LLMRouter.GPT5_MIN_COMPLETION_TOKENS
         assert "temperature" not in kwargs
         assert "max_tokens" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_success_emits_bounded_token_and_no_fallback_metrics(
+        self, router_with_openai, monkeypatch,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"ok": true}')
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI, model="gpt-5.5",
+            )),
+        })
+
+        with ticket_metrics.ticket_execution_scope():
+            await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        assert emitted == [
+            ("ticket_llm_fallback_count", 1, {"code": "not_used"}),
+            ("ticket_llm_tokens", 10, {"reason": "input"}),
+            ("ticket_llm_tokens", 20, {"reason": "output"}),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_success_emits_estimated_cost_from_explicit_model_pricing(
+        self, router_with_openai, monkeypatch,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"ok": true}')
+        router.configure_pricing({
+            ("openai", "gpt-5.5"): LLMPricing(
+                input_usd_per_million=5.0,
+                output_usd_per_million=30.0,
+            ),
+        })
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI, model="gpt-5.5",
+            )),
+        })
+
+        with ticket_metrics.ticket_execution_scope():
+            await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        assert emitted[-1] == (
+            "ticket_llm_cost_usd",
+            pytest.approx((10 * 5.0 + 20 * 30.0) / 1_000_000),
+            {},
+        )
 
     @pytest.mark.asyncio
     async def test_non_gpt5_uses_temperature_and_max_tokens(self, router_with_openai):
@@ -220,6 +288,242 @@ class TestFallback:
         mock_gemini.assert_awaited()
 
     @pytest.mark.asyncio
+    async def test_fallback_emits_used_once_and_only_successful_usage(
+        self, router_with_openai, router_with_gemini, monkeypatch,
+    ):
+        router, mock_openai = router_with_openai
+        _, mock_gemini = router_with_gemini
+        router._gemini_client = Mock()
+        router._gemini_client.aio = Mock()
+        router._gemini_client.aio.models = Mock()
+        router._gemini_client.aio.models.generate_content = mock_gemini
+        mock_openai.side_effect = RuntimeError("sensitive provider body")
+        mock_gemini.return_value = _make_gemini_response('{"ok": true}')
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "gr_outcome": TaskRoute(
+                primary=ModelConfig(
+                    provider=LLMProvider.OPENAI, model="gpt-5.5",
+                ),
+                fallback=ModelConfig(
+                    provider=LLMProvider.GEMINI, model="gemini-2.5-pro",
+                ),
+            ),
+        })
+
+        with ticket_metrics.ticket_execution_scope():
+            await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        assert emitted == [
+            ("ticket_llm_fallback_count", 1, {"code": "used"}),
+            ("ticket_llm_tokens", 7, {"reason": "input"}),
+            ("ticket_llm_tokens", 13, {"reason": "output"}),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_fallback_cost_uses_successful_provider_model_and_thinking_tokens(
+        self, router_with_openai, router_with_gemini, monkeypatch,
+    ):
+        router, mock_openai = router_with_openai
+        _, mock_gemini = router_with_gemini
+        router._gemini_client = Mock()
+        router._gemini_client.aio = Mock()
+        router._gemini_client.aio.models = Mock()
+        router._gemini_client.aio.models.generate_content = mock_gemini
+        mock_openai.side_effect = RuntimeError("provider failure")
+        mock_gemini.return_value = _make_gemini_response(
+            '{"ok": true}', thoughts_tokens=11,
+        )
+        router.configure_pricing({
+            ("gemini", "gemini-2.5-pro"): LLMPricing(
+                input_usd_per_million=1.25,
+                output_usd_per_million=10.0,
+            ),
+        })
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "gr_outcome": TaskRoute(
+                primary=ModelConfig(
+                    provider=LLMProvider.OPENAI, model="gpt-5.5",
+                ),
+                fallback=ModelConfig(
+                    provider=LLMProvider.GEMINI, model="gemini-2.5-pro",
+                ),
+            ),
+        })
+
+        with ticket_metrics.ticket_execution_scope():
+            response = await router.call(
+                "gr_outcome", "sys", "usr", max_tokens=800,
+            )
+
+        assert response.usage["completion_tokens"] == 24
+        assert emitted[-1] == (
+            "ticket_llm_cost_usd",
+            pytest.approx((7 * 1.25 + 24 * 10.0) / 1_000_000),
+            {},
+        )
+
+    @pytest.mark.asyncio
+    async def test_billed_empty_primary_attempts_and_fallback_are_counted_once(
+        self, router_with_openai, router_with_gemini, monkeypatch,
+    ):
+        router, mock_openai = router_with_openai
+        _, mock_gemini = router_with_gemini
+        router._gemini_client = Mock()
+        router._gemini_client.aio = Mock()
+        router._gemini_client.aio.models = Mock()
+        router._gemini_client.aio.models.generate_content = mock_gemini
+        mock_openai.side_effect = [
+            _make_openai_response(None, finish_reason="length"),
+            _make_openai_response(None, finish_reason="length"),
+        ]
+        mock_gemini.return_value = _make_gemini_response('{"ok": true}')
+        router.configure_pricing({
+            ("openai", "gpt-5.5"): LLMPricing(5.0, 30.0),
+            ("gemini", "gemini-2.5-pro"): LLMPricing(1.25, 10.0),
+        })
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "gr_outcome": TaskRoute(
+                primary=ModelConfig(
+                    provider=LLMProvider.OPENAI, model="gpt-5.5",
+                ),
+                fallback=ModelConfig(
+                    provider=LLMProvider.GEMINI, model="gemini-2.5-pro",
+                ),
+            ),
+        })
+
+        with ticket_metrics.ticket_execution_scope():
+            await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        token_events = [event for event in emitted if event[0] == "ticket_llm_tokens"]
+        assert token_events == [
+            ("ticket_llm_tokens", 20, {"reason": "input"}),
+            ("ticket_llm_tokens", 40, {"reason": "output"}),
+            ("ticket_llm_tokens", 7, {"reason": "input"}),
+            ("ticket_llm_tokens", 13, {"reason": "output"}),
+        ]
+        costs = [value for metric, value, _labels in emitted
+                 if metric == "ticket_llm_cost_usd"]
+        assert costs == pytest.approx([
+            (20 * 5.0 + 40 * 30.0) / 1_000_000,
+            (7 * 1.25 + 13 * 10.0) / 1_000_000,
+        ])
+
+    @pytest.mark.asyncio
+    async def test_forced_fallback_is_observable(
+        self, router_with_openai, router_with_gemini, monkeypatch,
+    ):
+        router, _ = router_with_openai
+        _, mock_gemini = router_with_gemini
+        router._gemini_client = Mock()
+        router._gemini_client.aio = Mock()
+        router._gemini_client.aio.models = Mock()
+        router._gemini_client.aio.models.generate_content = mock_gemini
+        mock_gemini.return_value = _make_gemini_response('{"ok": true}')
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "classify_inquiry": TaskRoute(
+                primary=ModelConfig(
+                    provider=LLMProvider.OPENAI, model="gpt-5.5",
+                ),
+                fallback=ModelConfig(
+                    provider=LLMProvider.GEMINI, model="gemini-2.5-pro",
+                ),
+            ),
+        })
+
+        with ticket_metrics.ticket_execution_scope():
+            await router.call(
+                "classify_inquiry", "sys", "usr", max_tokens=800,
+                force_fallback=True,
+            )
+
+        assert emitted[0] == (
+            "ticket_llm_fallback_count", 1, {"code": "used"}
+        )
+
+    @pytest.mark.asyncio
+    async def test_core_llm_call_does_not_emit_ticket_metrics(
+        self, router_with_openai, monkeypatch,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"ok": true}')
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI, model="gpt-5.5",
+            )),
+        })
+
+        await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        assert emitted == []
+
+    @pytest.mark.asyncio
+    async def test_unreviewed_model_never_emits_a_false_cost(
+        self, router_with_openai, monkeypatch,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"ok": true}')
+        router.configure_pricing({
+            ("openai", "gpt-5.5"): LLMPricing(5.0, 30.0),
+        })
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.llm_router.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI, model="gpt-unreviewed",
+            )),
+        })
+
+        with ticket_metrics.ticket_execution_scope():
+            await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        assert [metric for metric, _value, _labels in emitted] == [
+            "ticket_llm_fallback_count",
+            "ticket_llm_tokens",
+            "ticket_llm_tokens",
+        ]
+
+    @pytest.mark.asyncio
     async def test_no_fallback_propagates_exception(self, router_with_openai):
         router, mock_create = router_with_openai
         mock_create.side_effect = RuntimeError("boom")
@@ -279,6 +583,30 @@ class TestGeminiDispatch:
 
         with pytest.raises(LLMEmptyResponseError):
             await router.call("gr_response", "sys", "usr", max_tokens=500)
+
+    @pytest.mark.asyncio
+    async def test_empty_error_and_logs_never_retain_provider_values(
+        self, router_with_gemini, caplog,
+    ):
+        router, mock_generate = router_with_gemini
+        sentinel = "Jane Doe jane@example.com participant-158948"
+        response = _make_gemini_response(None)
+        response.candidates = [SimpleNamespace(finish_reason=sentinel)]
+        response.usage_metadata = SimpleNamespace(secret=sentinel)
+        mock_generate.return_value = response
+        router.configure_routes({
+            "gr_response": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.GEMINI, model="gemini-2.5-flash",
+            )),
+        })
+
+        with caplog.at_level("WARNING"):
+            with pytest.raises(LLMEmptyResponseError) as caught:
+                await router.call("gr_response", "sys", "usr", max_tokens=500)
+
+        assert sentinel not in caplog.text
+        assert sentinel not in str(caught.value)
+        assert sentinel not in repr(caught.value.__dict__)
 
 
 # ---------------------------------------------------------------------------
@@ -387,3 +715,81 @@ class TestRoutingTable:
         for route in routes.values():
             assert route.primary.provider == LLMProvider.OPENAI
             assert route.fallback.provider == LLMProvider.GEMINI
+
+
+class TestExplicitPricing:
+    def test_strict_json_parses_exact_provider_model_map(self):
+        parsed = parse_llm_pricing_json(
+            """{
+              "pricing_as_of": "2026-07-21",
+              "source": "openai-google-official-public-pricing",
+              "models": {
+                "openai:gpt-5.5": {
+                  "input_usd_per_million": 5,
+                  "output_usd_per_million": 30
+                },
+                "gemini:gemini-2.5-pro": {
+                  "input_usd_per_million": 1.25,
+                  "output_usd_per_million": 10
+                }
+              }
+            }"""
+        )
+
+        assert parsed == {
+            ("openai", "gpt-5.5"): LLMPricing(5.0, 30.0),
+            ("gemini", "gemini-2.5-pro"): LLMPricing(1.25, 10.0),
+        }
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "[]",
+            '{"pricing_as_of":"2026-07-21","source":"official","models":'
+            '{"openai:gpt-5.5":{"input_usd_per_million":5}}}',
+            '{"pricing_as_of":"2026-07-21","source":"official","models":'
+            '{"openai:gpt-5.5":{"input_usd_per_million":5,'
+            '"output_usd_per_million":30,"cached":0.5}}}',
+            '{"pricing_as_of":"2026-07-21","source":"official","models":'
+            '{"openai:gpt-5.5":{"input_usd_per_million":NaN,'
+            '"output_usd_per_million":30}}}',
+            '{"pricing_as_of":"2026-07-21","source":"official","models":'
+            '{"openai:gpt-5.5":{"input_usd_per_million":-1,'
+            '"output_usd_per_million":30}}}',
+            '{"pricing_as_of":"2026-07-21","source":"official","models":'
+            '{"OpenAI:gpt-5.5":{"input_usd_per_million":5,'
+            '"output_usd_per_million":30}}}',
+            '{"pricing_as_of":"2026-07-21","source":"official","models":'
+            '{"openai:gemini-2.5-pro":{"input_usd_per_million":5,'
+            '"output_usd_per_million":30}}}',
+            '{"pricing_as_of":"2026-07-21","source":"official","models":'
+            '{"openai:gpt-5.5":{"input_usd_per_million":5,'
+            '"output_usd_per_million":30},"openai:gpt-5.5":'
+            '{"input_usd_per_million":6,"output_usd_per_million":31}}}',
+            '{"pricing_as_of":"2026/07/21","source":"official","models":{}}',
+            '{"pricing_as_of":"2026-07-21","source":"https://secret",'
+            '"models":{}}',
+        ],
+    )
+    def test_strict_json_rejects_ambiguous_or_unbounded_prices(self, raw):
+        with pytest.raises(ValueError, match="pricing"):
+            parse_llm_pricing_json(raw)
+
+    def test_required_keys_include_primary_and_cross_provider_fallback(self):
+        routes = {
+            "classify": TaskRoute(
+                primary=ModelConfig(
+                    provider=LLMProvider.GEMINI,
+                    model="gemini-2.5-flash",
+                ),
+                fallback=ModelConfig(
+                    provider=LLMProvider.OPENAI,
+                    model="gpt-5.5",
+                ),
+            ),
+        }
+
+        assert required_pricing_keys(routes) == frozenset({
+            ("gemini", "gemini-2.5-flash"),
+            ("openai", "gpt-5.5"),
+        })

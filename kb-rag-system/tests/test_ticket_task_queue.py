@@ -9,9 +9,15 @@ determinísticos e idempotencia de ``ensure_enqueued`` en la cola inline.
 from __future__ import annotations
 
 import asyncio
+import inspect
 from types import SimpleNamespace
+from unittest.mock import patch
 
+import pytest
+
+from data_pipeline import ticket_task_queue as ttq_module
 from data_pipeline.ticket_task_queue import (
+    CloudTasksTicketQueue,
     InlineTicketQueue,
     TicketQueueEstimationError,
     task_name_for_job,
@@ -70,15 +76,6 @@ class TestInlineQueue:
 # fail-closed de configuración. RED hasta cerrar la Tarea 7.
 # ---------------------------------------------------------------------------
 
-import inspect
-from unittest.mock import patch
-
-import pytest
-
-from data_pipeline import ticket_task_queue as ttq_module
-from data_pipeline.ticket_task_queue import CloudTasksTicketQueue
-
-
 class _FakeCloudTasksClient:
     """Fake del SDK: captura create_task y simula tombstones/replays."""
 
@@ -106,6 +103,8 @@ class _FakeCloudTasksClient:
         self.get_task_calls += 1
         if self._get_task_result == "live":
             return object()
+        if isinstance(self._get_task_result, Exception):
+            raise self._get_task_result
         raise self._gexc.NotFound("tombstoned")
 
 
@@ -160,11 +159,30 @@ def _queue_with(fake, *, stats_fake=None):
             project="rag-kb-system", location="us-central1",
             queue="ticket-jobs-staging",
             worker_url="https://worker.example.run.app",
+            worker_audience="https://worker.example.run.app",
             service_account="ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com",
         )
 
 
 class TestCloudTasksContract:
+
+    async def test_task_exists_distinguishes_live_from_not_found(self):
+        live = _FakeCloudTasksClient(get_task_result="live")
+        missing = _FakeCloudTasksClient(get_task_result="tombstone")
+
+        assert await _queue_with(live).task_exists("job-live", 3) is True
+        assert await _queue_with(missing).task_exists("job-missing", 4) is False
+        assert live.get_task_calls == 1
+        assert missing.get_task_calls == 1
+
+    async def test_task_exists_propagates_uncertain_lookup_failure(self):
+        failure = TimeoutError("cloud tasks lookup unavailable")
+        fake = _FakeCloudTasksClient(get_task_result=failure)
+
+        with pytest.raises(TimeoutError, match="lookup unavailable"):
+            await _queue_with(fake).task_exists("job-uncertain", 0)
+
+        assert fake.create_calls == 0
 
     async def test_queue_delay_uses_stats_capable_api_surface(self):
         ga_fake = _FakeCloudTasksClient()
@@ -222,6 +240,34 @@ class TestCloudTasksContract:
             "540s (Tarea 7 Paso 2)"
         )
 
+    async def test_task_target_uri_and_oidc_audience_are_independent(self):
+        fake = _FakeCloudTasksClient()
+        with patch(
+            "google.cloud.tasks_v2.CloudTasksAsyncClient", return_value=fake
+        ), patch(
+            "google.cloud.tasks_v2beta3.CloudTasksAsyncClient",
+            return_value=fake,
+        ):
+            queue = CloudTasksTicketQueue(
+                project="rag-kb-system",
+                location="us-central1",
+                queue="ticket-jobs-staging",
+                worker_url="https://worker-generated.run.app",
+                worker_audience="https://ticket-worker-staging.internal",
+                service_account=(
+                    "ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com"
+                ),
+            )
+
+        await queue.ensure_enqueued("job-audience-1")
+        request = fake.created[0].http_request
+        assert request.url == (
+            "https://worker-generated.run.app/internal/tasks/ticket-job"
+        )
+        assert request.oidc_token.audience == (
+            "https://ticket-worker-staging.internal"
+        )
+
     async def test_live_already_exists_is_benign(self):
         """AlreadyExists con task VIVA es replay benigno, pero hay que
         distinguirlo de una tombstone: la cola debe sondear get_task."""
@@ -274,6 +320,45 @@ class TestQueueRoleSurface:
 
 class TestProductionFailClosedConfig:
 
+    def test_worker_uses_stable_audience_without_needing_its_target_uri(
+            self, monkeypatch):
+        from api import config as config_module
+
+        overrides = {
+            "API_KEY": "k",
+            "PINECONE_API_KEY": "p",
+            "OPENAI_API_KEY": "o",
+            "LLM_ROUTE_CLASSIFY": "gpt-5.5",
+            "ENVIRONMENT": "production",
+            "APP_ENV": "production",
+            "APP_ROLE": "worker",
+            "TICKET_HANDLER_MODE": "full",
+            "FORUSBOTS_AUTH_TOKEN": "t",
+            "FORUSBOTS_BASE_URL": "https://forusbots.example.com",
+            "TICKET_JOB_BACKEND": "firestore",
+            "FIRESTORE_DATABASE": "(default)",
+            "TICKET_TASK_QUEUE": "cloudtasks",
+            "TICKET_WORKER_URL": "",
+            "TICKET_WORKER_AUDIENCE": "https://ticket-worker-prod.internal",
+            "TICKET_WORKER_SERVICE_ACCOUNT": (
+                "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
+            ),
+            "TICKET_WORKER_REQUIRE_OIDC": True,
+            "TICKET_LLM_PRICING_JSON": (
+                '{"pricing_as_of":"2026-07-21","source":"official",'
+                '"models":{"openai:gpt-5.5":{'
+                '"input_usd_per_million":5.0,'
+                '"output_usd_per_million":30.0},'
+                '"gemini:gemini-2.5-pro":{'
+                '"input_usd_per_million":1.25,'
+                '"output_usd_per_million":10.0}}}'
+            ),
+        }
+        for name, value in overrides.items():
+            monkeypatch.setattr(config_module.settings, name, value)
+
+        assert config_module.validate_settings() is True
+
     @pytest.mark.parametrize("overrides,reason", [
         ({"TICKET_WORKER_SERVICE_ACCOUNT": ""}, "SA firmante vacía"),
         ({"TICKET_WORKER_REQUIRE_OIDC": False}, "OIDC desactivado"),
@@ -285,12 +370,14 @@ class TestProductionFailClosedConfig:
         base = {
             "API_KEY": "k", "PINECONE_API_KEY": "p", "OPENAI_API_KEY": "o",
             "ENVIRONMENT": "production",
+            "APP_ENV": "production",
             "TICKET_HANDLER_MODE": "full",
             "FORUSBOTS_AUTH_TOKEN": "t",
             "FORUSBOTS_BASE_URL": "https://forusbots.example.com",
             "TICKET_JOB_BACKEND": "firestore",
             "TICKET_TASK_QUEUE": "cloudtasks",
             "TICKET_WORKER_URL": "https://worker.example.run.app",
+            "TICKET_WORKER_AUDIENCE": "https://ticket-worker-prod.internal",
             "TICKET_WORKER_SERVICE_ACCOUNT":
                 "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com",
             "TICKET_WORKER_REQUIRE_OIDC": True,

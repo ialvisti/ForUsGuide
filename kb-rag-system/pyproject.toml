@@ -9,10 +9,25 @@ line-length = 100
 include = [
     "api/**/*.py",
     "data_pipeline/ticket_*.py",
+    "data_pipeline/article_processor.py",
+    "data_pipeline/execution_logger.py",
     "data_pipeline/forusbots_*.py",
+    "data_pipeline/inquiry_router.py",
+    "data_pipeline/json_parsing.py",
+    "data_pipeline/llm_router.py",
+    "data_pipeline/pinecone_uploader.py",
+    "data_pipeline/rag_engine.py",
+    "data_pipeline/retrieval_privacy.py",
     "data_pipeline/staging_fault_injection.py",
     "scripts/container_smoke.py",
+    "scripts/create_*manifest.py",
+    "scripts/release_controller.py",
     "scripts/requeue_ticket_job.py",
+    "scripts/run_staging_gate.py",
+    "scripts/smoke_deployed_ticket.py",
+    "scripts/verify_container_scan.py",
+    "scripts/verify_*manifest.py",
+    "scripts/verify_secrets_baseline.py",
 ]
 
 [tool.ruff.lint]
@@ -23,6 +38,9 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
+# Imports follow load_dotenv() intentionally, and Depends() defaults are the
+# canonical FastAPI declaration pattern.
+"api/main.py" = ["E402", "B008"]
 # Los seams de test inyectan credenciales sintéticas.
 "tests/**" = ["S105", "S106", "S311"]
 
@@ -44,6 +62,10 @@ files = [
     "data_pipeline/ticket_reconciler.py",
     "data_pipeline/staging_fault_injection.py",
     "scripts/container_smoke.py",
+    "scripts/create_e2e_image_manifest.py",
+    "scripts/smoke_deployed_ticket.py",
+    "scripts/verify_container_scan.py",
+    "scripts/verify_secrets_baseline.py",
 ]
 
 # Sólo SDKs sin stubs publicados; nunca ignore_errors.
@@ -56,3 +78,21 @@ module = [
     "pinecone.*",
 ]
 ignore_missing_imports = true
+
+# Keep the strict gate scoped to the files listed above. These legacy RAG
+# modules are consumed through typed ticket-facing seams but have their own
+# gradual-typing backlog; importing them must not silently expand this gate.
+[[tool.mypy.overrides]]
+module = [
+    "api.main",
+    "data_pipeline.execution_logger",
+    "data_pipeline.forusbots_client",
+    "data_pipeline.gr_payload_builder",
+    "data_pipeline.llm_router",
+    "data_pipeline.pinecone_uploader",
+    "data_pipeline.prompts",
+    "data_pipeline.rag_engine",
+    "data_pipeline.ticket_orchestrator",
+    "data_pipeline.token_manager",
+]
+follow_imports = "skip"

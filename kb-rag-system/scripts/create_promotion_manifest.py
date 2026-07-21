@@ -18,9 +18,7 @@ EVIDENCE_COPY_FIELDS = (
     *(field for name in ARTIFACT_NAMES for field in (
         f"{name}_uri", f"{name}_hash",
     )),
-    "g2_approval_hash",
-    "g4_approval_hash",
-    "g5_approval_hash",
+    "artifact_claims",
 )
 
 REQUIRED_FIELDS = (

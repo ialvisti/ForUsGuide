@@ -553,7 +553,6 @@ class TestGenerateBranch:
         ]
 
     async def test_gr_unmapped_flows_to_body_builder(self):
-        import json as _json
         llm = self._gr_llm(extra={
             "forusbots_field_map": '{"modules": [], "_unmapped": '
                 '[{"field": "hardship_reason", "reason": "No extractor available"}]}'
@@ -674,6 +673,53 @@ class TestGenerateBranch:
             assert "StarWars Inc." not in query
             assert "158948" not in query
 
+    async def test_gr_preserves_enriched_intent_but_redacts_pii_and_logs(
+        self, caplog,
+    ):
+        sensitive = (
+            "jane@example.com SSN 123 45 6789 "
+            "account number 1234 5678 9012 date of birth July 4, 1980"
+        )
+        enriched = f"enriched OUT rollover options; {sensitive}"
+        llm = self._gr_llm(extra={
+            "gr_body_build": json.dumps({
+                "inquiry": enriched,
+                "topic": "rollover",
+                "collected_data": {},
+            }),
+        })
+        deps, rag, _router, _forusbots = _deps(
+            llm=llm, classify_route="generate_response"
+        )
+        rag.get_required_data.return_value = SimpleNamespace(required_fields={})
+        rag.generate_response.return_value = SimpleNamespace(
+            decision="uncertain", confidence=0.4
+        )
+        orch = TicketOrchestrator(deps, _settings())
+
+        await orch.handle_inquiry(
+            ExtractedInquiry(
+                enriched, "LT Trust", "401(k)", "rollover"
+            ),
+            _req(),
+            total_inquiries=1,
+        )
+
+        queries = (
+            rag.get_required_data.await_args.kwargs["inquiry"],
+            rag.generate_response.await_args.kwargs["inquiry"],
+        )
+        for query in queries:
+            assert "enriched OUT rollover options" in query
+            for sentinel in (
+                "jane@example.com",
+                "123 45 6789",
+                "1234 5678 9012",
+                "July 4, 1980",
+            ):
+                assert sentinel.lower() not in query.lower()
+                assert sentinel.lower() not in caplog.text.lower()
+
     async def test_gr_timeout_degrades(self):
         llm = self._gr_llm()
         deps, rag, _r, forusbots = _deps(llm=llm, classify_route="generate_response")
@@ -688,6 +734,12 @@ class TestGenerateBranch:
         assert out.scrape_status == "timeout"
         assert out.generate_result is not None
         assert out.diagnostics["forusbots_participant_job_id"] == "job-x"
+        assert out.diagnostics["manual_reconciliation_required"] is True
+        assert out.diagnostics["scrape_meta"]["participant"] == {
+            "error_code": "FORUSBOTS_TIMEOUT",
+            "job_id": "job-x",
+            "manual_reconciliation_required": True,
+        }
 
     async def test_gr_ambiguous_submit_requires_manual_reconciliation(self):
         llm = self._gr_llm()
@@ -781,6 +833,66 @@ class TestGenerateBranch:
         assert "jane@example.com" not in serialized_boundaries
         assert "123 45 6789" not in serialized_boundaries
         assert "FORUSBOTS_JOB_FAILED" in serialized_boundaries
+
+    async def test_forusbots_partial_diagnostics_never_reach_llm_checkpoint_or_api(
+        self, caplog,
+    ):
+        from api.ticket_worker import (
+            _entry_from_outcome,
+            outcome_to_inquiry_result,
+        )
+
+        raw = "UPSTREAM-PRIVATE jane@example.com SSN 123-45-6789"
+        scrape = _scrape_ok()
+        scrape.elapsed_seconds = raw
+        scrape.result[0]["warnings"] = [raw]
+        scrape.result[0]["errors"] = [{"detail": raw}]
+        llm = self._gr_llm()
+        deps, rag, _router, forusbots = _deps(
+            llm=llm, classify_route="generate_response"
+        )
+        rag.get_required_data.return_value = SimpleNamespace(required_fields={
+            "participant_data": [
+                {"field": "account_balance", "required": True}
+            ]
+        })
+        forusbots.scrape_participant.return_value = scrape
+        rag.generate_response.return_value = SimpleNamespace(
+            decision="uncertain",
+            confidence=0.4,
+            response={"outcome": "blocked_missing_data"},
+            source_articles=[],
+            used_chunks=[],
+            coverage_gaps=[],
+            metadata={},
+        )
+        orch = TicketOrchestrator(deps, _settings())
+
+        with caplog.at_level("WARNING"):
+            outcome = await orch.handle_inquiry(
+                ExtractedInquiry(
+                    "cash out", "LT Trust", "401(k)", "rollover"
+                ),
+                _req(),
+                total_inquiries=1,
+            )
+
+        checkpoint = _entry_from_outcome(0, outcome)
+        v1_payload = outcome_to_inquiry_result(outcome).model_dump(mode="json")
+        serialized_boundaries = json.dumps({
+            "checkpoint": checkpoint,
+            "v1": v1_payload,
+            "v2": {
+                "result": checkpoint.get("result"),
+                "error": checkpoint.get("error"),
+            },
+        })
+
+        assert raw not in llm.user_prompts["gr_body_build"]
+        assert raw not in caplog.text
+        assert raw not in serialized_boundaries
+        assert "warningCount" in llm.user_prompts["gr_body_build"]
+        assert '"warning_count": 1' in serialized_boundaries
 
     async def test_gr_no_required_fields_skips_scrape(self):
         llm = self._gr_llm()
@@ -977,8 +1089,11 @@ class TestHelpers:
     def test_flatten_required_fields_dict_and_object(self):
         class RF:
             def __init__(self):
-                self.field = "vested_balance"; self.description = "d"
-                self.why_needed = "w"; self.data_type = "currency"; self.required = True
+                self.field = "vested_balance"
+                self.description = "d"
+                self.why_needed = "w"
+                self.data_type = "currency"
+                self.required = True
         rf = {
             "participant_data": [{"field": "account_balance", "description": "b",
                                   "why_needed": "n", "data_type": "currency", "required": True}],

@@ -29,10 +29,16 @@ locals {
     "LLM_ROUTE_GR_RESPONSE",
     "LLM_ROUTE_KNOWLEDGE",
     "LLM_ROUTE_REQUIRED_DATA",
+    "LLM_ROUTE_EXTRACT_INQUIRIES",
+    "LLM_ROUTE_KB_QUESTION_SYNTHESIS",
+    "LLM_ROUTE_FORUSBOTS_FIELD_MAP",
+    "LLM_ROUTE_GR_BODY_BUILD",
+    "LLM_ROUTE_TICKET_FIELD_EXTRACT",
     "LOG_LEVEL",
     "NAMESPACE",
     "OPENAI_MODEL",
     "OPENAI_REASONING_EFFORT",
+    "TICKET_LLM_PRICING_JSON",
     "USE_VERTEX_AI",
   ])
   required_producer_secret_env = toset([
@@ -41,15 +47,174 @@ locals {
     "OPENAI_API_KEY",
     "PINECONE_API_KEY",
   ])
+  active_producer_secret_env = setunion(toset([
+    "API_KEY",
+    "API_CLIENT_KEYS",
+    "API_CLIENT_TENANTS",
+    "PARTICIPANT_PLAN_SOURCE",
+    "FORUSBOTS_AUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "PINECONE_API_KEY",
+    ]), var.env == "staging" ? toset([
+    "TICKET_FAULT_SIGNING_SECRET",
+  ]) : toset([]))
+  worker_runtime_secret_env = setunion(toset([
+    "FORUSBOTS_AUTH_TOKEN",
+    "OPENAI_API_KEY",
+    "PINECONE_API_KEY",
+    ]), var.env == "staging" && var.ticket_handler_mode != "disabled" ? toset([
+    "TICKET_FAULT_SIGNING_SECRET",
+  ]) : toset([]))
+
+  # Todo servicio creado debe poder arrancar, incluso en dark: el producer
+  # sigue sirviendo core/polling y el worker puede terminar jobs ya admitidos.
+  # Production conserva desde el primer import sus siete secrets completos;
+  # staging dark usa el mínimo de arranque y una fase activa añade v2/fault.
+  expected_runtime_secret_env = (
+    var.env == "production" || var.ticket_handler_mode != "disabled" ?
+    local.active_producer_secret_env : local.required_producer_secret_env
+  )
+  expected_secret_accessor_roles_all = {
+    API_KEY                     = toset(["producer"])
+    API_CLIENT_KEYS             = toset(["producer"])
+    API_CLIENT_TENANTS          = toset(["producer"])
+    PARTICIPANT_PLAN_SOURCE     = toset(["producer"])
+    FORUSBOTS_AUTH_TOKEN        = toset(["worker"])
+    OPENAI_API_KEY              = toset(["producer", "worker"])
+    PINECONE_API_KEY            = toset(["producer", "worker"])
+    TICKET_FAULT_SIGNING_SECRET = toset(["producer", "worker"])
+  }
+  expected_secret_accessor_roles = {
+    for key in local.expected_runtime_secret_env :
+    key => local.expected_secret_accessor_roles_all[key]
+  }
+  runtime_secret_ref_prefixes = {
+    for key, secret_id in var.secret_containers.ids :
+    key => "projects/${var.project_id}/secrets/${secret_id}/versions/"
+  }
+  runtime_secret_refs_exact = (
+    var.secret_containers.enabled &&
+    toset(keys(var.secret_version_refs)) == local.expected_runtime_secret_env &&
+    toset(keys(var.secret_containers.ids)) == local.expected_runtime_secret_env &&
+    alltrue([
+      for key in local.expected_runtime_secret_env :
+      startswith(
+        lookup(var.secret_version_refs, key, ""),
+        lookup(local.runtime_secret_ref_prefixes, key, "__invalid__"),
+        ) && can(regex(
+          "^[0-9]+$",
+          trimprefix(
+            lookup(var.secret_version_refs, key, ""),
+            lookup(local.runtime_secret_ref_prefixes, key, "__invalid__"),
+          ),
+      ))
+    ])
+  )
+  runtime_secret_accessors_exact = (
+    var.secret_containers.enabled &&
+    toset(keys(var.secret_containers.accessor_roles)) == local.expected_runtime_secret_env &&
+    alltrue([
+      for key in local.expected_runtime_secret_env :
+      lookup(var.secret_containers.accessor_roles, key, toset([])) ==
+      local.expected_secret_accessor_roles[key]
+    ])
+  )
+  pricing_manifest = try(
+    jsondecode(lookup(var.producer_core_env, "TICKET_LLM_PRICING_JSON", "")),
+    {},
+  )
+  pricing_rate_fields = toset([
+    "input_usd_per_million",
+    "output_usd_per_million",
+  ])
+  pricing_manifest_is_reviewed = try(
+    toset(keys(local.pricing_manifest)) == toset([
+      "pricing_as_of", "source", "models",
+    ]) &&
+    local.pricing_manifest.pricing_as_of == "2026-07-21" &&
+    local.pricing_manifest.source == "openai-google-official-public-pricing" &&
+    toset(keys(local.pricing_manifest.models)) == local.expected_pricing_model_keys &&
+    alltrue([
+      for model in values(local.pricing_manifest.models) :
+      toset(keys(model)) == local.pricing_rate_fields && alltrue([
+        for field in local.pricing_rate_fields :
+        # jsonencode distingue un JSON number de un string numérico aunque
+        # tonumber acepte ambos. El bound además rechaza magnitudes no
+        # revisadas/no finitas antes de que arranque el runtime.
+        jsonencode(model[field]) == jsonencode(tonumber(model[field])) &&
+        tonumber(model[field]) >= 0 && tonumber(model[field]) <= 500
+      ])
+    ]),
+    false,
+  )
+  runtime_core_env_complete = (
+    toset(keys(var.producer_core_env)) == local.required_producer_core_env &&
+    alltrue([
+      for key in local.required_producer_core_env :
+      trimspace(lookup(var.producer_core_env, key, "")) != ""
+    ])
+  )
+  reviewed_route_env_names = toset([
+    "LLM_ROUTE_CLASSIFY", "LLM_ROUTE_DECOMPOSE", "LLM_ROUTE_GR_OUTCOME",
+    "LLM_ROUTE_GR_RESPONSE", "LLM_ROUTE_KNOWLEDGE", "LLM_ROUTE_REQUIRED_DATA",
+    "LLM_ROUTE_EXTRACT_INQUIRIES", "LLM_ROUTE_KB_QUESTION_SYNTHESIS",
+    "LLM_ROUTE_FORUSBOTS_FIELD_MAP", "LLM_ROUTE_GR_BODY_BUILD",
+    "LLM_ROUTE_TICKET_FIELD_EXTRACT",
+  ])
+  runtime_route_models_valid = alltrue([
+    for key in local.reviewed_route_env_names : can(regex(
+      "^(gpt-|gemini-)",
+      lower(trimspace(lookup(var.producer_core_env, key, ""))),
+    ))
+  ])
+  configured_route_pricing_keys = toset([
+    for key in local.reviewed_route_env_names :
+    "${startswith(lower(lookup(var.producer_core_env, key, "")), "gpt-") ? "openai" : "gemini"}:${lower(lookup(var.producer_core_env, key, ""))}"
+  ])
+  expected_pricing_model_keys = setunion(
+    local.configured_route_pricing_keys,
+    length([
+      for key in local.configured_route_pricing_keys : key
+      if startswith(key, "openai:")
+    ]) > 0 ? toset(["gemini:gemini-2.5-pro"]) : toset([]),
+    length([
+      for key in local.configured_route_pricing_keys : key
+      if startswith(key, "gemini:")
+    ]) > 0 ? toset(["openai:gpt-5.5"]) : toset([]),
+  )
+  forusbots_origin_is_canonical = can(regex(
+    "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$",
+    trimspace(lookup(var.producer_core_env, "FORUSBOTS_BASE_URL", "")),
+  ))
   producer_managed_env_names = setunion(toset(keys(local.common_env)), toset([
     "APP_ROLE",
     "TICKET_HANDLER_MODE",
     "TICKET_SHADOW_SAMPLE_RATE",
     "TICKET_WORKER_URL",
+    "TICKET_WORKER_AUDIENCE",
     "TICKET_WORKER_SERVICE_ACCOUNT",
     "TICKET_WIF_AUDIENCE",
-    "TICKET_WIF_EXPECTED_EMAIL",
+    "TICKET_WIF_ALLOWED_EMAILS",
   ]))
+  # El worker no sirve APIs de cliente y no necesita API_KEY. No inyectar una
+  # referencia que su SA no puede resolver; el resto sí es runtime RAG/LLM y
+  # ForusBots requerido por ese rol.
+  worker_secret_version_refs = {
+    for key, ref in var.secret_version_refs : key => ref
+    if contains(local.worker_runtime_secret_env, key)
+  }
+  producer_runtime_secret_env = setsubtract(
+    local.expected_runtime_secret_env,
+    toset(["FORUSBOTS_AUTH_TOKEN"]),
+  )
+  producer_secret_version_refs = {
+    for key, ref in var.secret_version_refs : key => ref
+    if contains(local.producer_runtime_secret_env, key)
+  }
+  production_producer_identity_is_dedicated = (
+    var.env != "production" ||
+    var.producer_sa_email == "ticket-producer-prod@${var.project_id}.iam.gserviceaccount.com"
+  )
 }
 
 # --- Producer: API COMPLETA existente (v1/v2/status + core no-ticket) -------
@@ -59,6 +224,10 @@ resource "google_cloud_run_v2_service" "producer" {
   location = var.region
   name     = var.producer_service_name
   ingress  = var.producer_ingress
+  depends_on = [
+    google_secret_manager_secret_iam_member.runtime_accessor,
+    google_storage_bucket_iam_member.producer_core_objects,
+  ]
 
   template {
     service_account                  = var.producer_sa_email
@@ -99,7 +268,11 @@ resource "google_cloud_run_v2_service" "producer" {
       }
       env {
         name  = "TICKET_WORKER_URL"
-        value = var.worker_url
+        value = local.worker_target_url
+      }
+      env {
+        name  = "TICKET_WORKER_AUDIENCE"
+        value = local.worker_oidc_audience
       }
       env {
         name  = "TICKET_WORKER_SERVICE_ACCOUNT"
@@ -110,8 +283,8 @@ resource "google_cloud_run_v2_service" "producer" {
         value = var.ticket_wif_audience
       }
       env {
-        name  = "TICKET_WIF_EXPECTED_EMAIL"
-        value = var.ticket_wif_expected_email
+        name  = "TICKET_WIF_ALLOWED_EMAILS"
+        value = jsonencode(var.ticket_wif_allowed_emails)
       }
       dynamic "env" {
         for_each = local.common_env
@@ -128,7 +301,7 @@ resource "google_cloud_run_v2_service" "producer" {
         }
       }
       dynamic "env" {
-        for_each = var.secret_version_refs
+        for_each = local.producer_secret_version_refs
         content {
           name = env.key
           value_source {
@@ -177,6 +350,7 @@ resource "google_cloud_run_v2_service" "producer" {
       type     = "TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"
       revision = var.producer_baseline_revision
       percent  = 100
+      tag      = var.producer_baseline_tag
     }
   }
 
@@ -190,10 +364,21 @@ resource "google_cloud_run_v2_service" "producer" {
   }
 
   dynamic "traffic" {
+    for_each = var.release_phase != "dark_no_traffic" && var.e2e_job.enabled ? [var.producer_baseline_revision] : []
+    content {
+      type     = "TRAFFIC_TARGET_ALLOCATION_TYPE_REVISION"
+      revision = var.producer_baseline_revision
+      percent  = 0
+      tag      = var.producer_baseline_tag
+    }
+  }
+
+  dynamic "traffic" {
     for_each = var.release_phase != "dark_no_traffic" ? [1] : []
     content {
       type    = "TRAFFIC_TARGET_ALLOCATION_TYPE_LATEST"
       percent = 100
+      tag     = var.producer_candidate_tag
     }
   }
 
@@ -213,6 +398,10 @@ resource "google_cloud_run_v2_service" "producer" {
       error_message = "las fases dark_* exigen ticket_handler_mode=disabled."
     }
     precondition {
+      condition     = local.production_producer_identity_is_dedicated
+      error_message = "todo producer production exige la SA dedicada ticket-producer-prod, incluso en dark."
+    }
+    precondition {
       condition = (
         var.release_phase != "dark_no_traffic" ||
         trimspace(var.producer_baseline_revision) != ""
@@ -221,23 +410,31 @@ resource "google_cloud_run_v2_service" "producer" {
     }
     precondition {
       condition = (
-        var.env != "production" ||
-        alltrue([
-          for key in local.required_producer_core_env :
-          trimspace(lookup(var.producer_core_env, key, "")) != ""
-        ])
+        !var.e2e_job.enabled ||
+        (trimspace(var.producer_baseline_revision) != "" &&
+        var.producer_baseline_tag != var.producer_candidate_tag)
       )
-      error_message = "producción exige el mapa completo de variables core observadas del producer."
+      error_message = "E2E exige revisión baseline inmutable y tags baseline/candidate distintos."
     }
     precondition {
       condition = (
-        var.env != "production" ||
-        alltrue([
-          for key in local.required_producer_secret_env :
-          trimspace(lookup(var.secret_version_refs, key, "")) != ""
-        ])
+        local.runtime_core_env_complete &&
+        local.runtime_route_models_valid &&
+        local.pricing_manifest_is_reviewed
       )
-      error_message = "producción exige versiones numéricas de todos los secretos observados."
+      error_message = "todo producer/worker desplegado exige core env exacto, pricing revisado y rutas LLM con proveedor válido."
+    }
+    precondition {
+      condition     = local.forusbots_origin_is_canonical
+      error_message = "FORUSBOTS_BASE_URL debe ser un origen HTTPS canónico sin credenciales, path, query ni fragment."
+    }
+    precondition {
+      condition     = local.runtime_secret_refs_exact
+      error_message = "cada secret_version_ref debe coincidir con project/key/container y versión numérica exactos."
+    }
+    precondition {
+      condition     = local.runtime_secret_accessors_exact
+      error_message = "los accessors de secrets deben coincidir exactamente con el rol runtime que los consume."
     }
     precondition {
       condition = (
@@ -253,30 +450,43 @@ resource "google_cloud_run_v2_service" "producer" {
       error_message = "producer_core_env no puede sobrescribir env gestionado ni secretos."
     }
     precondition {
-      condition     = can(regex("^https://", var.worker_url))
-      error_message = "worker_url https es obligatorio al crear servicios."
-    }
-    precondition {
       condition = (
-        var.env != "production" ||
         var.ticket_handler_mode == "disabled" ||
         (
           trimspace(var.ticket_wif_audience) != "" &&
-          trimspace(var.ticket_wif_expected_email) != ""
+          (
+            var.env == "staging" ?
+            toset(var.ticket_wif_allowed_emails) == toset([
+              var.n8n_invoker_sa_email,
+              "ticket-e2e-stg@${var.project_id}.iam.gserviceaccount.com",
+            ]) :
+            toset(var.ticket_wif_allowed_emails) == toset([
+              var.n8n_invoker_sa_email,
+            ])
+          )
         )
       )
-      error_message = "un producer activo en producción exige audiencia y SA esperada WIF."
+      error_message = "un producer activo exige audience y allowlist WIF exacta (staging n8n+E2E; production sólo n8n)."
+    }
+    precondition {
+      condition = (
+        var.ticket_handler_mode == "disabled" ||
+        toset(keys(var.secret_version_refs)) == local.active_producer_secret_env
+      )
+      error_message = "un producer activo exige el set exacto de secretos de cliente/tenant/participant-plan y dependencias; fault sólo staging."
     }
   }
 }
 
 # --- Worker PRIVADO: sólo health + ruta interna de Cloud Tasks -------------
 resource "google_cloud_run_v2_service" "worker" {
-  count    = local.create_services ? 1 : 0
-  project  = var.project_id
-  location = var.region
-  name     = var.worker_service_name
-  ingress  = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  count            = local.create_services ? 1 : 0
+  project          = var.project_id
+  location         = var.region
+  name             = var.worker_service_name
+  ingress          = "INGRESS_TRAFFIC_INTERNAL_ONLY"
+  custom_audiences = [local.worker_oidc_audience]
+  depends_on       = [google_secret_manager_secret_iam_member.runtime_accessor]
 
   template {
     service_account                  = var.worker_sa_email
@@ -310,8 +520,8 @@ resource "google_cloud_run_v2_service" "worker" {
         value = var.task_signer_sa_email
       }
       env {
-        name  = "TICKET_WORKER_URL"
-        value = var.worker_url
+        name  = "TICKET_WORKER_AUDIENCE"
+        value = local.worker_oidc_audience
       }
       dynamic "env" {
         for_each = local.common_env
@@ -331,7 +541,7 @@ resource "google_cloud_run_v2_service" "worker" {
         }
       }
       dynamic "env" {
-        for_each = var.secret_version_refs
+        for_each = local.worker_secret_version_refs
         content {
           name = env.key
           value_source {
@@ -354,10 +564,6 @@ resource "google_cloud_run_v2_service" "worker" {
     precondition {
       condition     = local.image_is_immutable
       error_message = "un digest @sha256 es obligatorio al crear servicios."
-    }
-    precondition {
-      condition     = can(regex("^https://", var.worker_url))
-      error_message = "worker_url https es obligatorio al crear el worker."
     }
   }
 }
@@ -388,11 +594,19 @@ resource "google_cloud_run_v2_job" "reconciler" {
         }
         env {
           name  = "TICKET_WORKER_URL"
-          value = var.worker_url
+          value = local.worker_target_url
+        }
+        env {
+          name  = "TICKET_WORKER_AUDIENCE"
+          value = local.worker_oidc_audience
         }
         env {
           name  = "TICKET_WORKER_SERVICE_ACCOUNT"
           value = var.task_signer_sa_email
+        }
+        env {
+          name  = "TICKET_LLM_PRICING_JSON"
+          value = lookup(var.producer_core_env, "TICKET_LLM_PRICING_JSON", "")
         }
         dynamic "env" {
           for_each = local.common_env
@@ -410,31 +624,9 @@ resource "google_cloud_run_v2_job" "reconciler" {
       condition     = local.image_is_immutable
       error_message = "un digest @sha256 es obligatorio al crear servicios."
     }
-    precondition {
-      condition     = can(regex("^https://", var.worker_url))
-      error_message = "worker_url https es obligatorio al crear el reconciliador."
-    }
   }
 }
 
-# --- Scheduler → Run Job cada minuto ---------------------------------------
-resource "google_cloud_scheduler_job" "reconciler_tick" {
-  count     = local.create_services ? 1 : 0
-  project   = var.project_id
-  region    = var.region
-  name      = "${var.reconciler_job_name}-tick"
-  schedule  = "* * * * *"
-  time_zone = "Etc/UTC"
-
-  http_target {
-    http_method = "POST"
-    uri         = "https://${var.region}-run.googleapis.com/apis/run.googleapis.com/v1/namespaces/${var.project_id}/jobs/${var.reconciler_job_name}:run"
-    oauth_token {
-      service_account_email = var.scheduler_sa_email
-    }
-  }
+locals {
+  worker_target_url = local.create_services ? google_cloud_run_v2_service.worker[0].uri : ""
 }
-
-# worker_url es una entrada gateada porque usar el output del propio servicio
-# como env produciría una dependencia circular. Debe ser la URL/audiencia
-# estable que Cloud Tasks y el verificador OIDC comparten.

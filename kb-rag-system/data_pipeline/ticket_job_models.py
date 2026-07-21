@@ -51,7 +51,7 @@ TERMINAL_STATES = frozenset({
 
 # QUEUED←RUNNING permite re-encolar un intento interrumpido (retry de Cloud
 # Tasks tras crash). Un estado terminal no admite ninguna transición.
-VALID_TRANSITIONS: Dict[TicketJobState, frozenset] = {
+VALID_TRANSITIONS: Dict[TicketJobState, frozenset[TicketJobState]] = {
     TicketJobState.QUEUED: frozenset({
         TicketJobState.RUNNING, TicketJobState.CANCELLED, TicketJobState.FAILED,
     }),

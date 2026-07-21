@@ -10,18 +10,22 @@ tolerancia a delivery duplicado.
 
 from __future__ import annotations
 
+import asyncio
+import secrets
 from types import SimpleNamespace
-from unittest.mock import Mock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
+from data_pipeline.ticket_job_models import TicketJobRecord
 from data_pipeline.ticket_orchestrator import ExtractedInquiry, InquiryOutcome
 
 
-def _request_with_bearer(token: str = "signed-token"):
+def _request_with_bearer(token: str | None = None):
     from starlette.requests import Request
 
+    token = token or secrets.token_hex(16)
     return Request({
         "type": "http",
         "method": "POST",
@@ -44,6 +48,11 @@ def client(monkeypatch):
         app_settings,
         "TICKET_WORKER_SERVICE_ACCOUNT",
         "task-signer@example.iam.gserviceaccount.com",
+    )
+    monkeypatch.setattr(
+        app_settings,
+        "FORUSBOTS_BASE_URL",
+        "https://forusbots.example.test",
     )
     # Estos tests ejercitan la superficie HTTP del worker: el rol de proceso
     # debe ser `worker` para que /internal/tasks/ticket-job exista (Tarea 4
@@ -109,14 +118,22 @@ class TestWorkerEndpointAuth:
         monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", True)
         monkeypatch.setattr(app_settings, "TICKET_WORKER_URL", "https://worker")
         monkeypatch.setattr(
+            app_settings,
+            "TICKET_WORKER_AUDIENCE",
+            "https://ticket-worker-staging.internal",
+        )
+        monkeypatch.setattr(
             app_settings, "TICKET_WORKER_SERVICE_ACCOUNT",
             "task-signer@example.iam.gserviceaccount.com",
         )
         event_loop_thread = threading.get_ident()
         verifier_threads = []
 
-        def fake_verify(*_args, **_kwargs):
+        verified_audiences = []
+
+        def fake_verify(*_args, **kwargs):
             verifier_threads.append(threading.get_ident())
+            verified_audiences.append(kwargs["audience"])
             return {
                 "email": "task-signer@example.iam.gserviceaccount.com",
                 "email_verified": True,
@@ -127,6 +144,7 @@ class TestWorkerEndpointAuth:
         await verify_task_oidc(_request_with_bearer())
 
         assert verifier_threads[0] != event_loop_thread
+        assert verified_audiences == ["https://ticket-worker-staging.internal"]
 
     async def test_worker_rejects_unverified_email_claim(self, monkeypatch):
         from fastapi import HTTPException
@@ -169,6 +187,82 @@ class TestWorkerEndpointAuth:
 
 class TestWorkerEndpointExecution:
 
+    @pytest.mark.parametrize(
+        "body",
+        (
+            {"job_id": "not-a-job", "enqueue_generation": 0},
+            {"job_id": "a" * 32, "enqueue_generation": -1},
+            {"job_id": "a" * 32, "enqueue_generation": 2_147_483_648},
+        ),
+    )
+    def test_authenticated_permanent_task_schema_errors_are_acked_204(
+        self, client, monkeypatch, body
+    ):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", False)
+        response = client.post("/internal/tasks/ticket-job", json=body)
+        assert response.status_code == 204
+
+    def test_task_headers_are_validated_then_hashed_before_worker_claim(
+        self, client, monkeypatch
+    ):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", False)
+        record = client.portal.call(_seed, client)
+        observed = {}
+
+        async def fake_run(_app, _job_id, **kwargs):
+            observed.update(kwargs)
+            return record
+
+        monkeypatch.setattr("api.ticket_worker.run_ticket_job", fake_run)
+        raw_name = "projects/p/locations/l/queues/q/tasks/private-task-name"
+        response = client.post(
+            "/internal/tasks/ticket-job",
+            json={"job_id": record.job_id, "enqueue_generation": 0},
+            headers={
+                "X-CloudTasks-TaskName": raw_name,
+                "X-CloudTasks-TaskRetryCount": "7",
+            },
+        )
+
+        assert response.status_code == 200
+        assert raw_name not in observed["worker_id"]
+        assert observed["worker_id"].startswith("task-")
+        assert len(observed["worker_id"]) == 37
+
+    @pytest.mark.parametrize(
+        "headers",
+        (
+            {"X-CloudTasks-TaskName": "x" * 1025,
+             "X-CloudTasks-TaskRetryCount": "0"},
+            {"X-CloudTasks-TaskName": "valid/task",
+             "X-CloudTasks-TaskRetryCount": "-1"},
+            {"X-CloudTasks-TaskName": "valid/task",
+             "X-CloudTasks-TaskRetryCount": "not-a-number"},
+        ),
+    )
+    def test_invalid_task_headers_are_acked_without_lookup(
+        self, client, monkeypatch, headers
+    ):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_REQUIRE_OIDC", False)
+        repo = client.app.state.ticket_repo
+        get_spy = AsyncMock(wraps=repo.get)
+        monkeypatch.setattr(repo, "get", get_spy)
+
+        response = client.post(
+            "/internal/tasks/ticket-job",
+            json={"job_id": "a" * 32, "enqueue_generation": 0},
+            headers=headers,
+        )
+
+        assert response.status_code == 204
+        get_spy.assert_not_awaited()
+
     def test_unknown_job_is_204_not_retried(self, client, monkeypatch):
         """Contrato Tarea 7 Paso 3: un job desconocido devuelve 204 sin
         efecto. Cloud Tasks reintenta CUALQUIER non-2xx (también 404), así
@@ -207,11 +301,6 @@ class TestWorkerEndpointExecution:
 # Producción (plan de finalización, Tarea 2 Paso 2) — fallos del extractor/
 # síntesis y reanudación sin repetir efectos. RED hasta Tareas 6/7.
 # ---------------------------------------------------------------------------
-
-import asyncio
-
-from data_pipeline.ticket_job_models import TicketJobRecord
-
 
 def _worker_app(repo, orch):
     return SimpleNamespace(state=SimpleNamespace(
@@ -483,6 +572,230 @@ class TestRetryResumesWithoutRepeatingEffects:
         assert app_settings.TICKET_JOB_DEADLINE_S + 30 <= 2700 - 240
 
 
+class _HeartbeatBlockingOrchestrator:
+
+    def __init__(self, delay_s=1.0):
+        self.delay_s = delay_s
+        self.cancelled = asyncio.Event()
+        self.completed_effect = False
+
+    async def extract_inquiries(self, req):
+        return [ExtractedInquiry(
+            "What are rollover rules?", "LT Trust", "401(k)", "rollover"
+        )]
+
+    async def classify(self, inquiry):
+        return SimpleNamespace(
+            route="knowledge_question", confidence=0.9,
+            reasoning="knowledge", user_message=None,
+        )
+
+    async def handle_inquiry(
+        self, ext, req, *, total_inquiries, classification=None
+    ):
+        try:
+            await asyncio.sleep(self.delay_s)
+        except asyncio.CancelledError:
+            self.cancelled.set()
+            raise
+        self.completed_effect = True
+        return InquiryOutcome(
+            inquiry=ext.inquiry,
+            topic=ext.topic,
+            route="knowledge_question",
+            knowledge_result=SimpleNamespace(
+                answer="Safe answer",
+                key_points=[],
+                source_articles=[],
+                used_chunks=[],
+                confidence_note="well_covered",
+                metadata={},
+            ),
+        )
+
+
+async def _wait_for_supervised_attempt(task, timeout_s=0.5):
+    done, _ = await asyncio.wait({task}, timeout=timeout_s)
+    completed_in_time = task in done
+    if not completed_in_time:
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    return completed_in_time
+
+
+class TestHeartbeatSupervision:
+
+    async def test_transient_renewal_error_recovers_without_cancelling_attempt(
+        self, monkeypatch
+    ):
+        from api.config import settings as app_settings
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_HEARTBEAT_S", 0.005)
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_LEASE_S", 1.0)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        orchestrator = _HeartbeatBlockingOrchestrator(delay_s=0.04)
+        original_renew = repo.renew_lease
+        renew_calls = 0
+
+        async def flaky_renew(*args, **kwargs):
+            nonlocal renew_calls
+            renew_calls += 1
+            if renew_calls == 1:
+                raise RuntimeError("transient firestore transport failure")
+            return await original_renew(*args, **kwargs)
+
+        monkeypatch.setattr(repo, "renew_lease", flaky_renew)
+
+        final = await asyncio.wait_for(
+            run_ticket_job(
+                _worker_app(repo, orchestrator), rec.job_id,
+                worker_id="heartbeat-recovery-worker",
+            ),
+            timeout=0.5,
+        )
+
+        assert renew_calls >= 2, "el heartbeat no reintentó el fallo transitorio"
+        assert orchestrator.cancelled.is_set() is False
+        assert orchestrator.completed_effect is True
+        assert final is not None
+        assert final.state.value == "succeeded"
+
+    async def test_sustained_renewal_uncertainty_cancels_and_requeues_attempt(
+        self, monkeypatch
+    ):
+        from api.config import settings as app_settings
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_HEARTBEAT_S", 0.005)
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_LEASE_S", 1.0)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        orchestrator = _HeartbeatBlockingOrchestrator()
+        renew_calls = 0
+
+        async def hanging_renew(*args, **kwargs):
+            nonlocal renew_calls
+            renew_calls += 1
+            await asyncio.Event().wait()
+
+        monkeypatch.setattr(repo, "renew_lease", hanging_renew)
+        attempt = asyncio.create_task(run_ticket_job(
+            _worker_app(repo, orchestrator), rec.job_id,
+            worker_id="heartbeat-uncertain-worker",
+        ))
+
+        completed_in_time = await _wait_for_supervised_attempt(attempt)
+        current = await repo.get(rec.job_id)
+
+        assert completed_in_time, "la incertidumbre dejó _execute corriendo"
+        assert attempt.cancelled()
+        assert renew_calls >= 2
+        assert orchestrator.cancelled.is_set() is True
+        assert orchestrator.completed_effect is False
+        assert current.state.value == "queued"
+        assert current.public_error_code == "WORKER_CANCELLED"
+        assert current.lease_owner is None
+
+    async def test_definitive_lease_loss_cancels_without_overwriting_new_owner(
+        self, monkeypatch
+    ):
+        from datetime import timedelta
+
+        from api.config import settings as app_settings
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_models import utcnow
+        from data_pipeline.ticket_job_repository import (
+            JOBS_COLLECTION,
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_HEARTBEAT_S", 0.005)
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_LEASE_S", 1.0)
+        backend = InMemoryTicketJobBackend()
+        repo = TicketJobRepository(backend)
+        rec = await _seed_repo_job(repo)
+        orchestrator = _HeartbeatBlockingOrchestrator()
+        replacement_epoch = None
+
+        async def lose_lease(*args, **kwargs):
+            nonlocal replacement_epoch
+            control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+            control["lease_expires_at"] = utcnow() - timedelta(seconds=1)
+            backend._data[JOBS_COLLECTION][rec.job_id] = control
+            replacement_epoch = await repo.claim(
+                rec.job_id, worker_id="replacement-worker", lease_s=1.0,
+            )
+            return False
+
+        monkeypatch.setattr(repo, "renew_lease", lose_lease)
+        attempt = asyncio.create_task(run_ticket_job(
+            _worker_app(repo, orchestrator), rec.job_id,
+            worker_id="stale-heartbeat-worker",
+        ))
+
+        completed_in_time = await _wait_for_supervised_attempt(attempt)
+        current = await repo.get(rec.job_id)
+
+        assert completed_in_time, "el worker siguió tras perder su lease"
+        assert attempt.cancelled()
+        assert orchestrator.cancelled.is_set() is True
+        assert orchestrator.completed_effect is False
+        assert replacement_epoch is not None
+        assert current.lease_epoch == replacement_epoch
+        assert current.lease_owner == "replacement-worker"
+        assert current.state.value == "running"
+
+    async def test_false_renewal_with_unavailable_followup_read_cancels_attempt(
+        self, monkeypatch
+    ):
+        from api.config import settings as app_settings
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_HEARTBEAT_S", 0.005)
+        monkeypatch.setattr(app_settings, "TICKET_WORKER_LEASE_S", 1.0)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        orchestrator = _HeartbeatBlockingOrchestrator()
+        original_get = repo.get
+
+        async def unavailable_get(*args, **kwargs):
+            await asyncio.Event().wait()
+
+        async def false_then_unavailable_read(*args, **kwargs):
+            monkeypatch.setattr(repo, "get", unavailable_get)
+            return False
+
+        monkeypatch.setattr(repo, "renew_lease", false_then_unavailable_read)
+        attempt = asyncio.create_task(run_ticket_job(
+            _worker_app(repo, orchestrator), rec.job_id,
+            worker_id="heartbeat-followup-read-worker",
+        ))
+
+        completed_in_time = await _wait_for_supervised_attempt(attempt)
+        monkeypatch.setattr(repo, "get", original_get)
+        current = await repo.get(rec.job_id)
+
+        assert completed_in_time, "el follow-up read bloqueó el supervisor"
+        assert attempt.cancelled()
+        assert orchestrator.cancelled.is_set() is True
+        assert orchestrator.completed_effect is False
+        assert current.state.value == "queued"
+        assert current.public_error_code == "WORKER_CANCELLED"
+
+
 class _ForusBotsLeaseRaceState:
     def __init__(self):
         self.submit_started = asyncio.Event()
@@ -715,7 +1028,6 @@ class TestForusBotsIdTraceabilityOnDegraded:
         """P1 (review): un scrape que produjo job_id pero cuya inquiry terminó
         en timeout DEBE conservar el ID en forusbots_job_ids (reconciliación).
         Hoy el checkpoint timeout no tiene 'result' y el ID se pierde."""
-        from api.ticket_worker import run_ticket_job
         from data_pipeline.ticket_job_repository import (
             InMemoryTicketJobBackend, TicketJobRepository,
         )
@@ -752,6 +1064,375 @@ class TestAggregatePublicationSafety:
 
         assert state.value != "succeeded"
         assert next_action.value == "use_legacy_or_human"
+
+    def test_unparseable_classifier_fallback_is_never_publishable(self):
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
+        from data_pipeline.ticket_orchestrator import TicketOrchestrator
+
+        classification = SimpleNamespace(
+            route="needs_more_info",
+            confidence=0.0,
+            reasoning="Classifier output unparseable",
+            metadata={"classifier_parse_ok": False},
+        )
+        diagnostics = TicketOrchestrator._classifier_diag(classification)
+        outcome = InquiryOutcome(
+            inquiry="ambiguous request",
+            topic="general",
+            route="needs_more_info",
+            needs_more_info_message="Could you share more detail?",
+            diagnostics=diagnostics,
+        )
+
+        entry = _entry_from_outcome(0, outcome)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+
+        assert entry["participant_reply_safe"] is False
+        assert entry["error"]["code"] == "LLM_FAILURE"
+        assert state.value != "succeeded"
+        assert next_action.value == "use_legacy_or_human"
+
+    @pytest.mark.parametrize(
+        ("outcome", "expected_code", "result_key"),
+        [
+            (
+                InquiryOutcome(
+                    inquiry="What are rollover rules?",
+                    topic="rollover",
+                    route="knowledge_question",
+                    knowledge_result=SimpleNamespace(
+                        answer="Temporary fallback answer",
+                        key_points=[],
+                        source_articles=[],
+                        used_chunks=[],
+                        confidence_note="uncertain",
+                        metadata={
+                            "error": "vector retrieval unavailable",
+                            "error_type": "PineconeException",
+                        },
+                    ),
+                ),
+                "PINECONE_TRANSIENT_FAILURE",
+                "knowledge_answer",
+            ),
+            (
+                InquiryOutcome(
+                    inquiry="Can I take a distribution?",
+                    topic="distribution",
+                    route="generate_response",
+                    scrape_status="ok",
+                    generate_result=SimpleNamespace(
+                        decision="uncertain",
+                        confidence=0.0,
+                        response={"response_to_participant": "Temporary fallback"},
+                        source_articles=[],
+                        used_chunks=[],
+                        coverage_gaps=[],
+                        metadata={
+                            "error": "generation provider unavailable",
+                            "error_type": "TimeoutError",
+                        },
+                    ),
+                ),
+                "LLM_FAILURE",
+                "generate_response",
+            ),
+        ],
+    )
+    def test_rag_metadata_error_is_structured_and_never_publishable(
+        self, outcome, expected_code, result_key
+    ):
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
+
+        entry = _entry_from_outcome(0, outcome)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+
+        assert entry["participant_reply_safe"] is False
+        assert entry["degraded"] is True
+        assert entry["error"]["code"] == expected_code
+        assert entry["result"][result_key]["metadata"]["error"]
+        assert state.value != "succeeded"
+        assert next_action.value == "use_legacy_or_human"
+
+    def test_field_mapping_llm_failure_is_never_publishable(self):
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
+
+        outcome = InquiryOutcome(
+            inquiry="Please process my request",
+            topic="general",
+            route="needs_more_info",
+            needs_more_info_message="Please provide the missing fields.",
+            diagnostics={"field_mapping": {"llm_failed": True}},
+        )
+
+        entry = _entry_from_outcome(0, outcome)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+
+        assert entry["participant_reply_safe"] is False
+        assert entry["error"]["code"] == "LLM_FAILURE"
+        assert state.value != "succeeded"
+        assert next_action.value == "use_legacy_or_human"
+
+    def test_failed_classifier_retrieval_is_preserved_and_never_publishable(self):
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
+        from data_pipeline.ticket_orchestrator import TicketOrchestrator
+
+        classification = SimpleNamespace(
+            route="needs_more_info",
+            confidence=0.8,
+            reasoning="Retrieval failed; fail closed.",
+            metadata={
+                "classifier_parse_ok": True,
+                "coverage_signals": {
+                    "retrieval_status": "failed",
+                    "pinecone_error": "ServiceUnavailable",
+                },
+            },
+        )
+        diagnostics = TicketOrchestrator._classifier_diag(classification)
+        outcome = InquiryOutcome(
+            inquiry="What are my plan rules?",
+            topic="plan_rules",
+            route="needs_more_info",
+            needs_more_info_message="Please try again later.",
+            diagnostics=diagnostics,
+        )
+
+        entry = _entry_from_outcome(0, outcome)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+
+        assert diagnostics["classifier"]["coverage_signals"] == {
+            "retrieval_status": "failed",
+            "pinecone_error": "ServiceUnavailable",
+        }
+        assert entry["participant_reply_safe"] is False
+        assert entry["error"]["code"] == "PINECONE_TRANSIENT_FAILURE"
+        assert state.value != "succeeded"
+        assert next_action.value == "use_legacy_or_human"
+
+    def test_failed_classifier_retrieval_survives_execution_plan_round_trip(self):
+        from api.ticket_worker import (
+            _build_execution_plan,
+            _entry_from_outcome,
+            _rehydrate_plan,
+        )
+        from data_pipeline.ticket_orchestrator import TicketOrchestrator
+
+        ext = ExtractedInquiry(
+            "What are my plan rules?", "LT Trust", "401(k)", "plan_rules"
+        )
+        classification = SimpleNamespace(
+            route="needs_more_info",
+            confidence=0.8,
+            reasoning="Retrieval failed; fail closed.",
+            user_message="Please try again later.",
+            metadata={
+                "classifier_parse_ok": True,
+                "coverage_signals": {
+                    "retrieval_status": "failed",
+                    "pinecone_error": "ServiceUnavailable",
+                },
+            },
+        )
+        plan = _build_execution_plan(
+            [ext], [classification], [("needs_more_info", None)], 1, 0
+        )
+
+        _, restored, _ = _rehydrate_plan(plan)
+        diagnostics = TicketOrchestrator._classifier_diag(restored[0])
+        entry = _entry_from_outcome(0, InquiryOutcome(
+            inquiry=ext.inquiry,
+            topic=ext.topic,
+            route="needs_more_info",
+            needs_more_info_message="Please try again later.",
+            diagnostics=diagnostics,
+        ))
+
+        assert diagnostics["classifier"]["coverage_signals"][
+            "retrieval_status"
+        ] == "failed"
+        assert entry["participant_reply_safe"] is False
+        assert entry["error"]["code"] == "PINECONE_TRANSIENT_FAILURE"
+
+
+class _RagMetadataFailureOrchestrator:
+
+    async def extract_inquiries(self, req):
+        return [ExtractedInquiry(
+            "What are rollover rules?", "LT Trust", "401(k)", "rollover"
+        )]
+
+    async def classify(self, inquiry):
+        return SimpleNamespace(
+            route="knowledge_question", confidence=0.9,
+            reasoning="Knowledge question", user_message=None,
+        )
+
+    async def handle_inquiry(
+        self, ext, req, *, total_inquiries, classification=None
+    ):
+        return InquiryOutcome(
+            inquiry=ext.inquiry,
+            topic=ext.topic,
+            route="knowledge_question",
+            knowledge_result=SimpleNamespace(
+                answer="Temporary fallback answer",
+                key_points=[],
+                source_articles=[],
+                used_chunks=[],
+                confidence_note="uncertain",
+                metadata={
+                    "error": "vector retrieval unavailable",
+                    "error_type": "PineconeException",
+                },
+            ),
+        )
+
+
+class TestWorkerOperationalMetrics:
+
+    @staticmethod
+    def _capture(monkeypatch):
+        from api import ticket_worker
+
+        calls = []
+        monkeypatch.setattr(
+            ticket_worker.ticket_metrics,
+            "emit",
+            lambda metric, value, **labels: calls.append(
+                (metric, value, labels)
+            ),
+        )
+        return calls
+
+    async def test_success_emits_validate_route_and_finalize_latencies(
+        self, monkeypatch,
+    ):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        calls = self._capture(monkeypatch)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        final = await run_ticket_job(
+            _worker_app(repo, _HeartbeatBlockingOrchestrator(delay_s=0)),
+            rec.job_id,
+        )
+
+        assert final.state.value == "succeeded"
+        steps = [
+            (labels["step"], labels["code"])
+            for metric, value, labels in calls
+            if metric == "ticket_step_latency_seconds" and value >= 0
+        ]
+        assert ("validate", "success") in steps
+        assert ("retrieve", "success") in steps
+        assert ("finalize", "success") in steps
+
+    async def test_worker_scope_enables_shared_parser_ticket_metric(
+        self, monkeypatch,
+    ):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.json_parsing import parse_json_object
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        class _ScopedParserOrchestrator(_HeartbeatBlockingOrchestrator):
+            async def handle_inquiry(
+                self, ext, req, *, total_inquiries, classification=None,
+            ):
+                assert parse_json_object('{"safe": true}') == {"safe": True}
+                return await super().handle_inquiry(
+                    ext,
+                    req,
+                    total_inquiries=total_inquiries,
+                    classification=classification,
+                )
+
+        calls = self._capture(monkeypatch)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        await run_ticket_job(
+            _worker_app(repo, _ScopedParserOrchestrator(delay_s=0)), rec.job_id,
+        )
+
+        assert (
+            "ticket_llm_parse_count", 1, {"code": "success"}
+        ) in calls
+
+    async def test_partial_job_emits_partial_result_count(
+        self, monkeypatch,
+    ):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        calls = self._capture(monkeypatch)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        final = await run_ticket_job(
+            _worker_app(repo, _RagMetadataFailureOrchestrator()), rec.job_id,
+        )
+
+        assert final.state.value == "partial"
+        assert (
+            "ticket_result_count", 1, {"reason": "partial"}
+        ) in calls
+
+    def test_unprocessed_result_metrics_distinguish_job_and_item_counts(
+        self, monkeypatch,
+    ):
+        from api import ticket_worker
+        from data_pipeline.ticket_job_models import (
+            TicketJobState, new_job_record,
+        )
+
+        calls = self._capture(monkeypatch)
+        record = new_job_record(
+            principal_id="principal",
+            request_fingerprint="f" * 64,
+            state=TicketJobState.PARTIAL,
+            total_inquiries=5,
+            unprocessed_inquiries=3,
+        )
+
+        ticket_worker._emit_result_metrics(record)
+
+        results = [event for event in calls if event[0] == "ticket_result_count"]
+        assert results == [
+            ("ticket_result_count", 1, {"reason": "partial"}),
+            ("ticket_result_count", 1, {"reason": "truncated"}),
+            ("ticket_result_count", 3, {"reason": "unprocessed"}),
+        ]
+
+
+class TestTechnicalFailurePublicationIntegration:
+
+    async def test_rag_metadata_failure_cannot_terminalize_as_publishable(self):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        final = await run_ticket_job(
+            _worker_app(repo, _RagMetadataFailureOrchestrator()), rec.job_id
+        )
+
+        entry = final.per_inquiry_status[0]
+        assert entry["participant_reply_safe"] is False
+        assert entry["error"]["code"] == "PINECONE_TRANSIENT_FAILURE"
+        assert final.state.value != "succeeded"
+        assert final.next_action.value != "send_participant_reply"
 
 
 class TestUnprocessedResumesOnRetry:
@@ -823,7 +1504,7 @@ class TestManualReconciliationMetric:
         assert args == ("ticket_manual_reconciliation_required", 2)
         assert kwargs["trace_id"] == "trace-safe"
         assert kwargs["code"] == "manual_reconciliation"
-        assert len(kwargs["job_hash"]) == 16
+        assert len(kwargs["job_hash"]) == 64
         emitted = repr(calls)
         assert "raw-job-id-must-not-leak" not in emitted
         assert "raw-principal-must-not-leak" not in emitted
@@ -871,7 +1552,7 @@ class TestTerminalMetricPopulation:
         assert args == ("ticket_job_terminal", 1)
         assert kwargs["state"] == final.state.value == "failed"
         assert kwargs["code"] == final.public_error_code
-        assert len(kwargs["job_hash"]) == 16
+        assert len(kwargs["job_hash"]) == 64
         assert rec.job_id not in repr(terminal)
 
     async def test_generic_terminal_failure_emits_exactly_once(self, monkeypatch):

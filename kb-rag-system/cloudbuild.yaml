@@ -113,8 +113,8 @@ steps:
       - '-c'
       - |
         set -eu
-        DIGEST=$(cat /workspace/image_digest.txt)
-        syft "$DIGEST" -o spdx-json > /workspace/sbom.spdx.json
+        DIGEST=$$(cat /workspace/image_digest.txt)
+        syft "$$DIGEST" -o spdx-json > /workspace/sbom.spdx.json
 
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-sbom'
@@ -136,18 +136,18 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        DIGEST=$(cat /workspace/image_digest.txt)
-        SCAN_NAME=$(gcloud artifacts docker images scan "$DIGEST" \
+        DIGEST=$$(cat /workspace/image_digest.txt)
+        SCAN_NAME=$$(gcloud artifacts docker images scan "$$DIGEST" \
           --remote --location="${_SCAN_LOCATION}" \
           --format='value(response.scan)')
-        test -n "$SCAN_NAME"
-        printf '%s' "$SCAN_NAME" > /workspace/scan_id.txt
-        gcloud artifacts docker images list-vulnerabilities "$SCAN_NAME" \
+        test -n "$$SCAN_NAME"
+        printf '%s' "$$SCAN_NAME" > /workspace/scan_id.txt
+        gcloud artifacts docker images list-vulnerabilities "$$SCAN_NAME" \
           --location="${_SCAN_LOCATION}" --format=json \
           > /workspace/scan-vulnerabilities.json
         python3 kb-rag-system/scripts/verify_container_scan.py \
           --scan-json /workspace/scan-vulnerabilities.json \
-          --image-digest "$DIGEST" \
+          --image-digest "$$DIGEST" \
           --report-out /workspace/scan-policy.json
 
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'

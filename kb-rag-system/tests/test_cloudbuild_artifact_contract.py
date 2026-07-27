@@ -3,6 +3,7 @@
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 
 import pytest
@@ -79,6 +80,14 @@ def test_runtime_build_resolves_the_registry_digest_not_local_docker_state() -> 
     assert "gcloud artifacts docker images describe" in controller
     assert "image_summary.fully_qualified_digest" in controller
     assert "x-goog-if-generation-match:0" in controller
+
+
+def test_runtime_build_escapes_shell_only_variables_from_cloud_build_substitution() -> None:
+    controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+
+    for variable in ("DIGEST", "DIGEST_PART", "REPOSITORY", "SCAN_NAME", "TAG"):
+        assert re.search(rf"(?<!\$)\${variable}\b", controller) is None, variable
+    assert re.search(r"(?<!\$)\$\(", controller) is None
 
 
 def test_release_controller_candidate_recipe_declares_verifier_and_is_verify_only() -> None:

@@ -121,7 +121,7 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        gsutil -h "x-goog-if-generation-match:0" cp \
+        gcloud storage cp --if-generation-match=0 \
           /workspace/sbom.spdx.json \
           gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/sbom.spdx.json
 
@@ -155,10 +155,10 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        gsutil -h "x-goog-if-generation-match:0" cp \
+        gcloud storage cp --if-generation-match=0 \
           /workspace/scan-vulnerabilities.json \
           gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/scan-vulnerabilities.json
-        gsutil -h "x-goog-if-generation-match:0" cp \
+        gcloud storage cp --if-generation-match=0 \
           /workspace/scan-policy.json \
           gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/scan-policy.json
 

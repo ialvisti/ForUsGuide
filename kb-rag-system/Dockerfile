@@ -1,24 +1,26 @@
-# Builder and distroless runtime are fixed to reviewed manifest digests in
-# ci/tool-images.env. Debian 12 is used in both stages so copied Python native
-# extensions link against the same runtime ABI.
-FROM python:3.12-slim-bookworm@sha256:d50fb7611f86d04a3b0471b46d7557818d88983fc3136726336b2a4c657aa30b AS python-runtime
+# Builder and minimal runtime use the same reviewed Chainguard snapshot from
+# ci/tool-images.env, so Python and native-wheel ABIs remain identical.
+FROM cgr.dev/chainguard/python:latest-dev@sha256:7a568bcee42666f73f041645a41c913ce1d442f4c24cf6019bc543a90820e531 AS python-runtime
 
+USER 0
 WORKDIR /build
 
-# Runtime dependencies are resolved on Linux/Python 3.12 and every artifact is
+# Runtime dependencies are resolved on Linux and every artifact is
 # hash-verified.  The pip bundled in the pinned base image is intentionally not
 # upgraded implicitly.
 COPY requirements.lock ./
-RUN python -m pip install --no-cache-dir --require-hashes -r requirements.lock
+RUN python -m pip install --no-cache-dir --target=/opt/python \
+    --require-hashes -r requirements.lock
 
-FROM gcr.io/distroless/python3-debian12:nonroot@sha256:7d1042ce588ab97019fe95c24ffca7bc5a82ccdac572511d5e09bda4435c89c5
+FROM cgr.dev/chainguard/python:latest@sha256:a0365f7b90bf7b78a5e35f2709efb7c9263acf9c7b1905e0ec4c3e943c88e64d
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/opt/python \
     PORT=8000
 
-COPY --from=python-runtime /usr/local /usr/local
+COPY --from=python-runtime /opt/python /opt/python
 COPY --chown=65532:65532 data_pipeline/ ./data_pipeline/
 COPY --chown=65532:65532 api/ ./api/
 COPY --chown=65532:65532 ui/ ./ui/

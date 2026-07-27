@@ -43,7 +43,7 @@ def test_router_keeps_api_key_in_dom_memory_only() -> None:
 
 def test_runtime_dockerfile_uses_pinned_base_and_hashed_runtime_lock() -> None:
     dockerfile = _read(KB_ROOT / "Dockerfile")
-    pinned_base = _tool_image("PYTHON_RUNTIME_BUILDER_IMAGE")
+    pinned_base = _tool_image("PYTHON_CHAINGUARD_BUILDER_IMAGE")
 
     assert f"FROM {pinned_base}" in dockerfile
     assert "COPY requirements.lock" in dockerfile
@@ -52,19 +52,33 @@ def test_runtime_dockerfile_uses_pinned_base_and_hashed_runtime_lock() -> None:
     assert "pip install --no-cache-dir --upgrade pip" not in dockerfile
 
 
-def test_runtime_dockerfile_finishes_on_a_pinned_distroless_nonroot_stage() -> None:
+def test_runtime_dockerfile_finishes_on_a_pinned_minimal_nonroot_stage() -> None:
     dockerfile = _read(KB_ROOT / "Dockerfile")
-    builder = _tool_image("PYTHON_RUNTIME_BUILDER_IMAGE")
-    runtime = _tool_image("PYTHON_DISTROLESS_RUNTIME_IMAGE")
+    builder = _tool_image("PYTHON_CHAINGUARD_BUILDER_IMAGE")
+    runtime = _tool_image("PYTHON_CHAINGUARD_RUNTIME_IMAGE")
 
     assert f"FROM {builder} AS python-runtime" in dockerfile
     assert f"FROM {runtime}" in dockerfile
-    assert "COPY --from=python-runtime /usr/local /usr/local" in dockerfile
+    assert "COPY --from=python-runtime /opt/python /opt/python" in dockerfile
     assert "ENTRYPOINT []" in dockerfile
     assert "USER 65532" in dockerfile
     assert dockerfile.index(f"FROM {runtime}") > dockerfile.index(
         "--require-hashes -r requirements.lock"
     )
+
+
+def test_runtime_uses_pinned_chainguard_build_and_minimal_runtime_pair() -> None:
+    dockerfile = _read(KB_ROOT / "Dockerfile")
+    builder = _tool_image("PYTHON_CHAINGUARD_BUILDER_IMAGE")
+    runtime = _tool_image("PYTHON_CHAINGUARD_RUNTIME_IMAGE")
+
+    assert builder.startswith("cgr.dev/chainguard/python:latest-dev@sha256:")
+    assert runtime.startswith("cgr.dev/chainguard/python:latest@sha256:")
+    assert f"FROM {builder} AS python-runtime" in dockerfile
+    assert f"FROM {runtime}" in dockerfile
+    assert "--target=/opt/python" in dockerfile
+    assert "PYTHONPATH=/opt/python" in dockerfile
+    assert "gcr.io/distroless/python3-debian12" not in dockerfile
 
 
 def test_dev_lock_is_self_contained_for_a_fresh_python_image() -> None:

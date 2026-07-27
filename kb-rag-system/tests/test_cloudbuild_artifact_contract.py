@@ -90,6 +90,17 @@ def test_runtime_build_escapes_shell_only_variables_from_cloud_build_substitutio
     assert re.search(r"(?<!\$)\$\(", controller) is None
 
 
+def test_runtime_sbom_uses_the_distroless_syft_entrypoint() -> None:
+    controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+    sbom_step = controller[controller.index("id: 'sbom'"):]
+    sbom_step = sbom_step[:sbom_step.index("id: 'upload-sbom'")]
+
+    assert "entrypoint: '/syft'" in sbom_step
+    assert "entrypoint: sh" not in sbom_step
+    assert "spdx-json=/workspace/sbom.spdx.json" in sbom_step
+    assert "kb-rag-system:$COMMIT_SHA" in sbom_step
+
+
 def test_release_controller_candidate_recipe_declares_verifier_and_is_verify_only() -> None:
     controller = (
         KB_ROOT / "ci" / "cloudbuild.release-controller.yaml"

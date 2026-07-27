@@ -121,17 +121,15 @@ resource "google_logging_metric" "terminal_incorrect" {
 }
 
 resource "google_logging_metric" "reconciler_run" {
-  project         = var.project_id
-  name            = "${local.metric_prefix}_reconciler_run"
-  description     = "Heartbeat de cada ejecución del reconciliador."
-  filter          = <<-EOT
+  project     = var.project_id
+  name        = "${local.metric_prefix}_reconciler_run"
+  description = "Heartbeat de cada ejecución del reconciliador."
+  filter      = <<-EOT
     ${local.reconciler_log_filter}
     textPayload:"ticket_metric_event"
     textPayload:"\"metric\":\"ticket_reconciler_count\""
     textPayload:"\"reason\":\"scanned\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?)\")"
-
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
@@ -140,17 +138,15 @@ resource "google_logging_metric" "reconciler_run" {
 }
 
 resource "google_logging_metric" "reconciler_fenced_leases" {
-  project         = var.project_id
-  name            = "${local.metric_prefix}_reconciler_fenced_leases"
-  description     = "Leases vencidos fenceados y reencolados."
-  filter          = <<-EOT
+  project     = var.project_id
+  name        = "${local.metric_prefix}_reconciler_fenced_leases"
+  description = "Leases vencidos fenceados y reencolados."
+  filter      = <<-EOT
     ${local.reconciler_log_filter}
     textPayload:"ticket_metric_event"
     textPayload:"\"metric\":\"ticket_reconciler_count\""
     textPayload:"\"reason\":\"fenced_leases\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?)\")"
-
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
@@ -159,17 +155,15 @@ resource "google_logging_metric" "reconciler_fenced_leases" {
 }
 
 resource "google_logging_metric" "reconciler_errors" {
-  project         = var.project_id
-  name            = "${local.metric_prefix}_reconciler_errors"
-  description     = "Errores sanitizados reportados por el reconciliador."
-  filter          = <<-EOT
+  project     = var.project_id
+  name        = "${local.metric_prefix}_reconciler_errors"
+  description = "Errores sanitizados reportados por el reconciliador."
+  filter      = <<-EOT
     ${local.reconciler_log_filter}
     textPayload:"ticket_metric_event"
     textPayload:"\"metric\":\"ticket_reconciler_count\""
     textPayload:"\"reason\":\"errors\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?)\")"
-
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
@@ -178,17 +172,15 @@ resource "google_logging_metric" "reconciler_errors" {
 }
 
 resource "google_logging_metric" "deadline_terminalized" {
-  project         = var.project_id
-  name            = "${local.metric_prefix}_deadline_terminalized"
-  description     = "Jobs terminalizados por deadline absoluto."
-  filter          = <<-EOT
+  project     = var.project_id
+  name        = "${local.metric_prefix}_deadline_terminalized"
+  description = "Jobs terminalizados por deadline absoluto."
+  filter      = <<-EOT
     ${local.reconciler_log_filter}
     textPayload:"ticket_metric_event"
     textPayload:"\"metric\":\"ticket_reconciler_count\""
     textPayload:"\"reason\":\"deadline_terminalized\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?)\")"
-
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
@@ -291,7 +283,7 @@ resource "google_logging_metric" "queue_delay" {
 resource "google_logging_metric" "jobs_active" {
   project         = var.project_id
   name            = "${local.metric_prefix}_jobs_active"
-  description     = "Gauge del número de jobs no terminales."
+  description     = "Distribución del número de jobs no terminales observado."
   filter          = <<-EOT
     ${local.reconciler_log_filter}
     textPayload:"ticket_metric_event"
@@ -300,16 +292,23 @@ resource "google_logging_metric" "jobs_active" {
   value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
 
   metric_descriptor {
-    metric_kind = "GAUGE"
-    value_type  = "INT64"
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
     unit        = "1"
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 24
+      growth_factor      = 2
+      scale              = 1
+    }
   }
 }
 
 resource "google_logging_metric" "jobs_oldest_age" {
   project         = var.project_id
   name            = "${local.metric_prefix}_jobs_oldest_age_seconds"
-  description     = "Gauge de antigüedad del job activo más antiguo."
+  description     = "Distribución de antigüedad del job activo más antiguo."
   filter          = <<-EOT
     ${local.reconciler_log_filter}
     textPayload:"ticket_metric_event"
@@ -318,9 +317,16 @@ resource "google_logging_metric" "jobs_oldest_age" {
   value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
 
   metric_descriptor {
-    metric_kind = "GAUGE"
-    value_type  = "DOUBLE"
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
     unit        = "s"
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 24
+      growth_factor      = 2
+      scale              = 1
+    }
   }
 }
 
@@ -560,12 +566,19 @@ resource "google_logging_metric" "llm_tokens" {
 
   metric_descriptor {
     metric_kind = "DELTA"
-    value_type  = "INT64"
+    value_type  = "DISTRIBUTION"
     unit        = "1"
     labels {
       key         = "reason"
       value_type  = "STRING"
       description = "input u output."
+    }
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 31
+      growth_factor      = 2
+      scale              = 1
     }
   }
 }
@@ -583,8 +596,15 @@ resource "google_logging_metric" "llm_cost" {
 
   metric_descriptor {
     metric_kind = "DELTA"
-    value_type  = "DOUBLE"
+    value_type  = "DISTRIBUTION"
     unit        = "{USD}"
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 40
+      growth_factor      = 2
+      scale              = 0.000001
+    }
   }
 }
 
@@ -915,7 +935,7 @@ resource "google_monitoring_alert_policy" "ticket_oldest_active_job" {
       duration        = "120s"
       aggregations {
         alignment_period     = "60s"
-        per_series_aligner   = "ALIGN_MAX"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
         cross_series_reducer = "REDUCE_MAX"
       }
     }
@@ -1140,12 +1160,12 @@ resource "google_monitoring_alert_policy" "ticket_billable_time_budget" {
 resource "google_monitoring_alert_policy" "ticket_llm_cost_budget" {
   count        = local.monitoring_policy_count
   project      = var.project_id
-  display_name = "[${var.env}] LLM hourly cost guardrail"
+  display_name = "[${var.env}] LLM per-call cost guardrail"
   combiner     = "OR"
   user_labels  = local.alert_labels
 
   conditions {
-    display_name = "estimated LLM USD per hour"
+    display_name = "p99 estimated LLM USD per call"
     condition_threshold {
       filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.llm_cost.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
       comparison      = "COMPARISON_GT"
@@ -1153,7 +1173,7 @@ resource "google_monitoring_alert_policy" "ticket_llm_cost_budget" {
       duration        = "0s"
       aggregations {
         alignment_period     = "3600s"
-        per_series_aligner   = "ALIGN_SUM"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
         cross_series_reducer = "REDUCE_SUM"
       }
     }
@@ -1161,7 +1181,7 @@ resource "google_monitoring_alert_policy" "ticket_llm_cost_budget" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Costo estimado por tokens; contener cohort/admisión y confirmar el presupuesto de Billing con su owner."
+    content   = "Costo estimado p99 por llamada; contener cohort/admisión y confirmar el presupuesto agregado de Billing con su owner."
   }
   notification_channels = var.notification_channels
 }
@@ -1347,7 +1367,7 @@ resource "google_monitoring_dashboard" "ticket_operations" {
                   plotType = "LINE"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${metric_name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
-                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MAX" }
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_PERCENTILE_99" }
                   } }
                 }
               ]
@@ -1523,7 +1543,7 @@ resource "google_monitoring_dashboard" "ticket_operations" {
                     filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.llm_tokens.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = {
                       alignmentPeriod    = "3600s"
-                      perSeriesAligner   = "ALIGN_SUM"
+                      perSeriesAligner   = "ALIGN_PERCENTILE_99"
                       crossSeriesReducer = "REDUCE_SUM"
                       groupByFields      = ["metric.label.reason"]
                     }
@@ -1533,11 +1553,11 @@ resource "google_monitoring_dashboard" "ticket_operations" {
                   plotType = "LINE"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.llm_cost.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
-                    aggregation = { alignmentPeriod = "3600s", perSeriesAligner = "ALIGN_SUM", crossSeriesReducer = "REDUCE_SUM" }
+                    aggregation = { alignmentPeriod = "3600s", perSeriesAligner = "ALIGN_PERCENTILE_99", crossSeriesReducer = "REDUCE_SUM" }
                   } }
                 }
               ]
-              yAxis = { label = "tokens / USD per hour", scale = "LINEAR" }
+              yAxis = { label = "p99 tokens / USD per call", scale = "LINEAR" }
             }
           }
         },

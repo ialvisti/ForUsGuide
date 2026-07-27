@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Mapping
 
 
@@ -33,6 +34,8 @@ def main(environment: Mapping[str, str] | None = None) -> None:
         source, "WEB_CONCURRENCY", default=1, minimum=1, maximum=64,
     )
     argv = [
+        sys.executable,
+        "-m",
         "uvicorn",
         "api.main:app",
         "--host", "0.0.0.0",  # noqa: S104 - required by Cloud Run

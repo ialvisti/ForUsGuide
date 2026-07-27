@@ -130,19 +130,31 @@ def test_task11_structured_signals_are_backed_by_log_metrics() -> None:
         assert "value_extractor" in block
         assert "value" in block
 
-    # api.metrics preserves the declared numeric kind for extracted values.
-    # Count/token metrics therefore remain INT64 instead of silently becoming
-    # an incompatible DOUBLE descriptor.
+    # Log-based counter metrics count matching entries and therefore omit a
+    # value extractor. Google Cloud only accepts value extraction for
+    # DELTA/DISTRIBUTION log-based metrics.
     for resource_name in (
-        "jobs_active",
         "reconciler_run",
         "reconciler_fenced_leases",
         "reconciler_errors",
         "deadline_terminalized",
-        "llm_tokens",
     ):
         block = _resource(monitoring, "google_logging_metric", resource_name)
         assert re.search(r'value_type\s*=\s*"INT64"', block)
+        assert "value_extractor" not in block
+
+    for resource_name in (
+        "queue_delay",
+        "jobs_active",
+        "jobs_oldest_age",
+        "step_latency",
+        "llm_tokens",
+        "llm_cost",
+    ):
+        block = _resource(monitoring, "google_logging_metric", resource_name)
+        assert re.search(r'metric_kind\s*=\s*"DELTA"', block)
+        assert re.search(r'value_type\s*=\s*"DISTRIBUTION"', block)
+        assert "bucket_options" in block
 
     # Stable low-cardinality dimensions are useful operationally. Raw IDs are
     # intentionally not extracted into metric labels.
@@ -224,7 +236,30 @@ def test_filters_and_extractors_match_the_real_compact_runtime_event(caplog) -> 
     assert '"metric":"ticket_jobs_active"' in count_event
     assert '"value":1' in count_event
     assert '"value":1.0' not in count_event
-    assert re.search(r'value_type\s*=\s*"INT64"', count_block)
+    assert re.search(r'value_type\s*=\s*"DISTRIBUTION"', count_block)
+
+
+def test_distribution_alerts_and_charts_convert_to_numeric_percentiles() -> None:
+    monitoring = _read(MONITORING)
+    oldest = _resource(
+        monitoring, "google_monitoring_alert_policy", "ticket_oldest_active_job"
+    )
+    cost = _resource(
+        monitoring, "google_monitoring_alert_policy", "ticket_llm_cost_budget"
+    )
+    dashboard = _resource(
+        monitoring, "google_monitoring_dashboard", "ticket_operations"
+    )
+
+    assert 'per_series_aligner   = "ALIGN_PERCENTILE_99"' in oldest
+    assert 'per_series_aligner   = "ALIGN_PERCENTILE_99"' in cost
+    assert dashboard.count('perSeriesAligner = "ALIGN_PERCENTILE_99"') >= 3
+
+    queue_depth = dashboard[
+        dashboard.index("cloudtasks.googleapis.com/queue/depth"):
+        dashboard.index("cloudtasks.googleapis.com/queue/task_attempt_delays")
+    ]
+    assert 'perSeriesAligner = "ALIGN_MAX"' in queue_depth
 
 
 def test_forusbots_open_circuit_is_alerted_and_visible() -> None:

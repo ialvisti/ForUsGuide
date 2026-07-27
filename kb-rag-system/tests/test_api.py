@@ -1237,14 +1237,20 @@ class TestRoleAwareReadiness:
         assert response.status_code == 503
         assert "ticket_repo" in response.json()["missing"]
 
-    def test_producer_active_requires_validator(self, client, monkeypatch):
+    def test_producer_active_preserves_n8n_without_optional_validator(
+            self, client, monkeypatch):
         from api.config import settings as app_settings
         monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
         monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
         client.app.state.participant_plan_validator = None
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(return_value=0.0),
+            aclose=AsyncMock(),
+        )
         r = client.get("/readyz")
-        assert r.status_code == 503
-        assert "participant_plan_validator" in r.json()["missing"]
+        assert r.status_code == 200
+        assert "participant_plan_validator" not in r.json().get("missing", [])
 
     def test_producer_active_does_not_require_forusbots_client(
             self, client, monkeypatch):

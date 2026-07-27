@@ -79,7 +79,7 @@ def test_runtime_build_resolves_the_registry_digest_not_local_docker_state() -> 
     assert "docker image inspect" not in controller
     assert "gcloud artifacts docker images describe" in controller
     assert "image_summary.fully_qualified_digest" in controller
-    assert "x-goog-if-generation-match:0" in controller
+    assert "--if-generation-match=0" in controller
 
 
 def test_runtime_evidence_uses_the_ticket_ci_authorized_bucket_prefix() -> None:
@@ -98,6 +98,15 @@ def test_runtime_evidence_uses_the_ticket_ci_authorized_bucket_prefix() -> None:
         "gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/"
     ) == 3
     assert "gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/" not in controller
+
+
+def test_runtime_evidence_upload_does_not_require_bucket_listing() -> None:
+    controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+    upload_steps = controller[controller.index("id: 'upload-sbom'"):]
+
+    assert upload_steps.count("gcloud storage cp") == 3
+    assert upload_steps.count("--if-generation-match=0") == 3
+    assert "gsutil " not in upload_steps
 
 
 def test_runtime_build_escapes_shell_only_variables_from_cloud_build_substitution() -> None:

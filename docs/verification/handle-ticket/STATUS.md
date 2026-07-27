@@ -29,12 +29,15 @@ La corrección de compatibilidad preserva el sistema existente:
 - `kb-rag-client` permanece como invocador IAM declarativo;
 - el verificador mínimo de Cloud Build y su lectura `objectViewer` del bucket
   de source están declarados/importables; no posee publish/deploy/state;
+- Cloud Build `1ab86e09-1a95-4695-96e2-6bbcba82d083`: **SUCCESS** sobre el
+  commit de código `0405bf32fdf93cc44041dd4539428740a45fc25a`; pasaron los
+  nueve steps de Python 3.12, Terraform, emulador Firestore, imagen runtime,
+  imagen CI, E2E y release-controller con sus smokes;
 - producción no fue mutada: no hubo apply, deploy, cambio de secretos,
   tráfico ni n8n.
 
-El build remoto del nuevo SHA debe confirmar Python 3.12/Linux, el emulador
-Firestore y los builds/smokes de contenedor. Sus resultados sustituyen las
-cifras remotas históricas al preparar el merge.
+Este build fue verify-only: no contiene push de imágenes, deploy, Terraform
+apply, escritura de evidencia ni cambios de tráfico.
 
 ## Estado de tareas
 
@@ -44,8 +47,8 @@ cifras remotas históricas al preparar el merge.
 | Compatibilidad n8n | resuelta con el contrato existente |
 | Contrato ForUsBots | resuelto contra docs y código 2.5 |
 | Contratos externos que bloqueen merge | ninguno |
-| CI/Terraform remoto del SHA actual | pendiente de ejecutar |
-| Merge | pendiente de build remoto verde y revisión del diff |
+| CI/Terraform remoto del código actual | completo y verde |
+| Merge | pendiente únicamente de push y revisión/aprobación del PR |
 | Staging/producción | no iniciado; requiere gates de mutación explícitos |
 
 ## Definition of Done

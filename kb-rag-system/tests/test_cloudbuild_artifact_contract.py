@@ -82,6 +82,24 @@ def test_runtime_build_resolves_the_registry_digest_not_local_docker_state() -> 
     assert "x-goog-if-generation-match:0" in controller
 
 
+def test_runtime_evidence_uses_the_ticket_ci_authorized_bucket_prefix() -> None:
+    controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+    platform_iam = (
+        KB_ROOT.parent
+        / "infra"
+        / "terraform"
+        / "live"
+        / "platform"
+        / "pipeline_iam.tf"
+    ).read_text(encoding="utf-8")
+
+    assert 'prefix = "runtime/"' in platform_iam
+    assert controller.count(
+        "gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/"
+    ) == 3
+    assert "gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/" not in controller
+
+
 def test_runtime_build_escapes_shell_only_variables_from_cloud_build_substitution() -> None:
     controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
 

@@ -75,7 +75,7 @@ steps:
       - '--volume'
       - '/workspace/kb-rag-system/scripts/container_smoke.py:/opt/container-smoke.py:ro'
       - '--env'
-      - 'PYTHONPATH=/app'
+      - 'PYTHONPATH=/app:/opt/python'
       - '--entrypoint'
       - 'python'
       - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$COMMIT_SHA'

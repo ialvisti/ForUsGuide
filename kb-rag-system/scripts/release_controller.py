@@ -4886,7 +4886,7 @@ class ReleaseController:
         )
         self.tools.run([
             "docker", "run", "--rm", "--network=none",
-            "--workdir=/app", "--env=PYTHONPATH=/app",
+            "--workdir=/app", "--env=PYTHONPATH=/app:/opt/python",
             f"--volume={smoke_path}:/opt/container-smoke.py:ro",
             "--entrypoint=python", immutable, "/opt/container-smoke.py",
         ])

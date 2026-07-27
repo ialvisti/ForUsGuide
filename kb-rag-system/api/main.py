@@ -810,7 +810,9 @@ async def livez():
 
 
 _READINESS_PROBE_TIMEOUT_S = 3.0
-_READINESS_SENTINEL_JOB_ID = "__readyz_nonexistent__"
+# Firestore reserva IDs que coinciden con ``__.*__``. El formato productivo
+# de job es hex de 32 caracteres, así que la sonda usa un ID legal e inerte.
+_READINESS_SENTINEL_JOB_ID = "0" * 32
 
 
 async def _readiness_probe(

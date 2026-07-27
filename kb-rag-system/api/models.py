@@ -6,9 +6,15 @@ Define la estructura de datos para los endpoints:
 - /api/v1/generate-response
 """
 
+import re
+from datetime import datetime
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from enum import Enum
+
+# Enums CERRADOS del job durable: n8n nunca interpreta strings arbitrarios
+# (Tarea 4 Paso 7 — OpenAPI declara los valores exactos).
+from data_pipeline.ticket_job_models import NextAction, TicketJobState
 
 
 # ============================================================================
@@ -35,14 +41,14 @@ class PlanType(str, Enum):
 
 class RequiredDataRequest(BaseModel):
     """Request para el endpoint /required-data."""
-    
+
     inquiry: str = Field(
         ...,
         min_length=10,
         max_length=1000,
         description="La consulta del participante"
     )
-    
+
     record_keeper: Optional[str] = Field(
         default=None,
         max_length=100,
@@ -53,13 +59,13 @@ class RequiredDataRequest(BaseModel):
         ),
         examples=["LT Trust", "Vanguard", "Fidelity"]
     )
-    
+
     plan_type: str = Field(
         ...,
         description="Tipo de plan",
         examples=["401(k)", "403(b)", "457"]
     )
-    
+
     topic: str = Field(
         ...,
         min_length=2,
@@ -67,12 +73,12 @@ class RequiredDataRequest(BaseModel):
         description="Tema principal de la consulta",
         examples=["rollover", "distribution", "loan", "hardship"]
     )
-    
+
     related_inquiries: Optional[List[str]] = Field(
         default=None,
         description="Otras inquiries relacionadas en el mismo ticket"
     )
-    
+
     @field_validator('inquiry')
     @classmethod
     def validate_inquiry(cls, v: str) -> str:
@@ -80,7 +86,7 @@ class RequiredDataRequest(BaseModel):
         if not v.strip():
             raise ValueError("Inquiry cannot be empty")
         return v.strip()
-    
+
     @field_validator('record_keeper')
     @classmethod
     def validate_record_keeper(cls, v: Optional[str]) -> Optional[str]:
@@ -89,7 +95,7 @@ class RequiredDataRequest(BaseModel):
             return None
         v = v.strip()
         return v if v else None
-    
+
     @field_validator('topic')
     @classmethod
     def validate_topic(cls, v: str) -> str:
@@ -99,14 +105,14 @@ class RequiredDataRequest(BaseModel):
 
 class GenerateResponseRequest(BaseModel):
     """Request para el endpoint /generate-response."""
-    
+
     inquiry: str = Field(
         ...,
         min_length=10,
         max_length=1000,
         description="La consulta del participante"
     )
-    
+
     record_keeper: Optional[str] = Field(
         default=None,
         max_length=100,
@@ -115,43 +121,43 @@ class GenerateResponseRequest(BaseModel):
             "When omitted, global articles are searched first."
         )
     )
-    
+
     plan_type: str = Field(
         ...,
         description="Tipo de plan"
     )
-    
+
     topic: str = Field(
         ...,
         min_length=2,
         max_length=100,
         description="Tema principal"
     )
-    
+
     collected_data: Dict[str, Any] = Field(
         ...,
         description="Datos recolectados del participante y plan"
     )
-    
+
     context: Optional[Dict[str, Any]] = Field(
         default=None,
         description="Contexto adicional del ticket"
     )
-    
+
     max_response_tokens: Optional[int] = Field(
         default=5500,
         ge=500,
         le=5500,
         description="Máximo de tokens para la respuesta (default: 5500)"
     )
-    
+
     total_inquiries_in_ticket: Optional[int] = Field(
         default=1,
         ge=1,
         le=10,
         description="Total de inquiries en el ticket"
     )
-    
+
     @field_validator('inquiry')
     @classmethod
     def validate_inquiry(cls, v: str) -> str:
@@ -159,7 +165,7 @@ class GenerateResponseRequest(BaseModel):
         if not v.strip():
             raise ValueError("Inquiry cannot be empty")
         return v.strip()
-    
+
     @field_validator('record_keeper')
     @classmethod
     def validate_record_keeper(cls, v: Optional[str]) -> Optional[str]:
@@ -168,7 +174,7 @@ class GenerateResponseRequest(BaseModel):
             return None
         v = v.strip()
         return v if v else None
-    
+
     @field_validator('topic')
     @classmethod
     def validate_topic(cls, v: str) -> str:
@@ -182,7 +188,7 @@ class GenerateResponseRequest(BaseModel):
 
 class RequiredField(BaseModel):
     """Campo de datos requerido."""
-    
+
     field: str = Field(..., description="Nombre del campo")
     description: str = Field(..., description="Descripción del campo")
     why_needed: str = Field(..., description="Por qué se necesita este campo")
@@ -192,7 +198,7 @@ class RequiredField(BaseModel):
 
 class ArticleReference(BaseModel):
     """Referencia al artículo fuente."""
-    
+
     article_id: Optional[str] = Field(None, description="ID del artículo")
     title: Optional[str] = Field(None, description="Título del artículo")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score")
@@ -200,7 +206,7 @@ class ArticleReference(BaseModel):
 
 class SourceArticle(BaseModel):
     """Artículo fuente referenciado en la respuesta (deduplicated by article_id)."""
-    
+
     article_id: Optional[str] = Field(None, description="ID del artículo")
     article_title: Optional[str] = Field(None, description="Título del artículo")
     chunk_types_used: Optional[str] = Field(
@@ -220,7 +226,7 @@ class SourceArticle(BaseModel):
 
 class UsedChunk(BaseModel):
     """Individual chunk used by the LLM to generate the answer."""
-    
+
     chunk_id: str = Field(..., description="Pinecone vector ID")
     score: float = Field(..., description="Pinecone similarity score")
     chunk_type: str = Field(..., description="Chunk type (faqs, business_rules, steps, etc.)")
@@ -233,36 +239,36 @@ class UsedChunk(BaseModel):
 
 class RequiredDataResponse(BaseModel):
     """Response del endpoint /required-data."""
-    
+
     article_reference: ArticleReference = Field(..., description="Artículo de referencia")
-    
+
     required_fields: Dict[str, List[RequiredField]] = Field(
         ...,
         description="Campos requeridos organizados por categoría"
     )
-    
+
     confidence: float = Field(
         ...,
         ge=0.0,
         le=1.0,
         description="Confidence score general"
     )
-    
+
     source_articles: List[SourceArticle] = Field(
         default_factory=list,
         description="Artículos fuente consultados para la respuesta"
     )
-    
+
     used_chunks: List[UsedChunk] = Field(
         default_factory=list,
         description="Individual chunks fed to the LLM, ordered by score descending"
     )
-    
+
     coverage_gaps: List[str] = Field(
         default_factory=list,
         description="Core topics the inquiry asks about that are entirely absent from KB context"
     )
-    
+
     metadata: Dict[str, Any] = Field(
         ...,
         description="Metadata del procesamiento"
@@ -271,7 +277,7 @@ class RequiredDataResponse(BaseModel):
 
 class ResponseStep(BaseModel):
     """Un paso en la respuesta."""
-    
+
     step_number: int = Field(..., description="Número del paso")
     action: str = Field(..., description="Acción a realizar")
     detail: Optional[str] = Field(None, description="Contexto adicional o sub-instrucciones")
@@ -279,21 +285,21 @@ class ResponseStep(BaseModel):
 
 class QuestionToAsk(BaseModel):
     """Pregunta para el participante cuando faltan datos."""
-    
+
     question: str = Field(..., description="Texto de la pregunta")
     why: str = Field(..., description="Por qué se necesita esta información")
 
 
 class Escalation(BaseModel):
     """Info de escalación a Support."""
-    
+
     needed: bool = Field(..., description="Si se requiere escalación a Support")
     reason: Optional[str] = Field(None, description="Razón de la escalación")
 
 
 class ResponseToParticipant(BaseModel):
     """Contenido de la respuesta al participante."""
-    
+
     opening: str = Field(..., description="Resumen personalizado en 1-2 oraciones")
     key_points: List[str] = Field(
         default_factory=list,
@@ -320,24 +326,24 @@ class OutcomeType(str, Enum):
 class GenerateResponseResult(BaseModel):
     """
     Response del endpoint /generate-response.
-    
+
     Dos niveles de determinación:
     - decision/confidence: Calidad del retrieval RAG (calculado por el engine).
     - response.outcome: Determinación del caso del participante (calculado por el LLM).
     """
-    
+
     decision: DecisionType = Field(
         ...,
         description="Calidad del retrieval RAG: can_proceed, uncertain, out_of_scope"
     )
-    
+
     confidence: float = Field(
         ...,
         ge=0.0,
         le=1.0,
         description="Confidence score del retrieval"
     )
-    
+
     response: Dict[str, Any] = Field(
         ...,
         description=(
@@ -346,22 +352,22 @@ class GenerateResponseResult(BaseModel):
             "guardrails_applied, data_gaps"
         )
     )
-    
+
     source_articles: List[SourceArticle] = Field(
         default_factory=list,
         description="Artículos fuente consultados para la respuesta"
     )
-    
+
     used_chunks: List[UsedChunk] = Field(
         default_factory=list,
         description="Individual chunks fed to the LLM, ordered by score descending"
     )
-    
+
     coverage_gaps: List[str] = Field(
         default_factory=list,
         description="Core topics the inquiry asks about that are entirely absent from KB context"
     )
-    
+
     metadata: Dict[str, Any] = Field(
         ...,
         description="Metadata del procesamiento (chunks_used, tokens, modelo)"
@@ -392,7 +398,7 @@ class HealthResponse(BaseModel):
 
 class ErrorResponse(BaseModel):
     """Response de error estándar."""
-    
+
     error: str = Field(..., description="Tipo de error")
     message: str = Field(..., description="Mensaje de error")
     detail: Optional[str] = Field(None, description="Detalles adicionales")
@@ -405,7 +411,7 @@ class ErrorResponse(BaseModel):
 
 class ChunkMetadata(BaseModel):
     """Metadata de un chunk."""
-    
+
     # Metadata del artículo
     article_id: str
     article_title: str
@@ -414,11 +420,11 @@ class ChunkMetadata(BaseModel):
     plan_type: Optional[str] = None
     scope: Optional[str] = None
     tags: Optional[List[str]] = None
-    
+
     # Topics
     topic: Optional[str] = None
     subtopics: Optional[List[str]] = None
-    
+
     # Metadata del chunk
     chunk_tier: str
     chunk_type: str
@@ -427,7 +433,7 @@ class ChunkMetadata(BaseModel):
     content: str
     content_hash: Optional[str] = None
     specific_topics: Optional[List[str]] = None
-    
+
     # Fechas (disponibles cuando el artículo las incluye)
     source_last_updated: Optional[str] = None
     transformed_at: Optional[str] = None
@@ -435,7 +441,7 @@ class ChunkMetadata(BaseModel):
 
 class Chunk(BaseModel):
     """Modelo de un chunk."""
-    
+
     id: str
     score: float
     metadata: ChunkMetadata
@@ -443,22 +449,22 @@ class Chunk(BaseModel):
 
 class ListChunksRequest(BaseModel):
     """Request para listar chunks."""
-    
+
     article_id: Optional[str] = Field(
         None,
         description="Filtrar por article_id específico"
     )
-    
+
     tier: Optional[str] = Field(
         None,
         description="Filtrar por tier: critical, high, medium, low"
     )
-    
+
     chunk_type: Optional[str] = Field(
         None,
         description="Filtrar por tipo de chunk"
     )
-    
+
     limit: Optional[int] = Field(
         default=100,
         ge=1,
@@ -469,7 +475,7 @@ class ListChunksRequest(BaseModel):
 
 class ListChunksResponse(BaseModel):
     """Response del endpoint /chunks."""
-    
+
     chunks: List[Chunk] = Field(..., description="Lista de chunks encontrados")
     total: int = Field(..., description="Total de chunks retornados")
     filters_applied: Dict[str, Any] = Field(..., description="Filtros aplicados")
@@ -477,7 +483,7 @@ class ListChunksResponse(BaseModel):
 
 class IndexStatsResponse(BaseModel):
     """Response de estadísticas del índice."""
-    
+
     total_vectors: int = Field(..., description="Total de vectores en el índice")
     namespaces: Dict[str, Any] = Field(..., description="Información de namespaces")
 
@@ -488,14 +494,14 @@ class IndexStatsResponse(BaseModel):
 
 class KnowledgeQuestionRequest(BaseModel):
     """Request para el endpoint /knowledge-question."""
-    
+
     question: str = Field(
         ...,
         min_length=10,
         max_length=2000,
         description="General knowledge question about 401(k) plans, processes, or rules"
     )
-    
+
     @field_validator('question')
     @classmethod
     def validate_question(cls, v: str) -> str:
@@ -506,24 +512,24 @@ class KnowledgeQuestionRequest(BaseModel):
 
 class KnowledgeQuestionResponse(BaseModel):
     """Response del endpoint /knowledge-question."""
-    
+
     answer: str = Field(..., description="Respuesta completa basada en la KB")
-    
+
     key_points: List[str] = Field(
         default_factory=list,
         description="Puntos clave extraídos de la respuesta"
     )
-    
+
     source_articles: List[SourceArticle] = Field(
         default_factory=list,
         description="Artículos fuente usados para la respuesta"
     )
-    
+
     used_chunks: List[UsedChunk] = Field(
         default_factory=list,
         description="Individual chunks fed to the LLM, ordered by score descending"
     )
-    
+
     confidence_note: str = Field(
         ...,
         description="Nivel de cobertura: well_covered, partially_covered, limited_coverage"
@@ -627,39 +633,60 @@ class RouteInquiryResponse(BaseModel):
 # ============================================================================
 
 class TicketInput(BaseModel):
-    """Datos del ticket. Hoy la lógica usa solo subject + body; los demás campos
-    son opcionales para forward-compat (no se requieren ni se asumen)."""
+    """Datos del ticket. Fuente de verdad ÚNICA del contenido: ``email_subject``
+    + ``email_body`` (decisión Task 1 del plan de remediación). n8n puede
+    seguir enviando ``ticket_messages``/``tag`` en el wire (``extra="ignore"``
+    los descarta), pero el runtime no los modela ni los pasa a ningún prompt:
+    un hilo histórico sin autoría verificable amplía la superficie de prompt
+    injection y contradecía la documentación."""
 
-    model_config = ConfigDict(extra="ignore")
+    # extra="ignore" es deliberado (wire-compat con n8n: ticket_messages/tag
+    # se aceptan y descartan); los campos modelados sí tienen bounds duros.
+    model_config = ConfigDict(extra="ignore", str_strip_whitespace=True)
 
-    username: str = Field(..., description="Nombre del participante/usuario del ticket")
-    user_email: str = Field(..., description="Email del participante/usuario del ticket")
-    email_subject: str = Field(..., description="Asunto del email/ticket")
+    username: str = Field(..., min_length=1, max_length=200,
+                          description="Nombre del participante/usuario del ticket")
+    user_email: str = Field(..., min_length=3, max_length=254,
+                            description="Email del participante/usuario del ticket")
+    email_subject: str = Field(..., max_length=1000,
+                               description="Asunto del email/ticket")
     email_body: Optional[str] = Field(
-        default=None, description="Cuerpo del email/ticket (puede ser null/vacío)"
+        default=None, max_length=100_000,
+        description="Cuerpo del email/ticket (puede ser null/vacío)"
     )
-    # Forward-compat (no usados por la lógica LLM-first actual):
-    ticket_messages: Optional[Dict[str, str]] = Field(
-        default=None, description="Hilo de mensajes {message_1: ..., ...} (opcional)"
-    )
-    tag: Optional[str] = Field(default=None, description="Tag de DevRev (opcional)")
-    ticket_id: Optional[str] = Field(default=None, description="ID del ticket (opcional)")
+    ticket_id: Optional[str] = Field(default=None, max_length=64,
+                                     description="ID del ticket (opcional)")
     first_contact: Optional[bool] = Field(
         default=None, description="Si es el primer contacto (opcional)"
     )
+
+    @field_validator("user_email")
+    @classmethod
+    def _email_shape(cls, v: str) -> str:
+        # Validación ligera de formato (sin dependencia email-validator).
+        if not re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", v):
+            raise ValueError("user_email no tiene formato de email")
+        return v
 
 
 class HandleTicketRequest(BaseModel):
     """Request para el endpoint end-to-end /api/v1/handle-ticket."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
-    participant_id: str = Field(..., description="ID del participante")
-    plan_id: str = Field(..., description="ID del plan")
-    company_name: str = Field(..., description="Nombre de la empresa")
-    company_status: str = Field(..., description="Estado de la empresa (e.g. Ongoing)")
+    participant_id: str = Field(..., min_length=1, max_length=32,
+                                pattern=r"^[A-Za-z0-9_-]+$",
+                                description="ID del participante")
+    plan_id: str = Field(..., min_length=1, max_length=32,
+                         pattern=r"^[A-Za-z0-9_-]+$",
+                         description="ID del plan")
+    company_name: str = Field(..., min_length=1, max_length=200,
+                              description="Nombre de la empresa")
+    company_status: str = Field(..., min_length=1, max_length=50,
+                                description="Estado de la empresa (e.g. Ongoing)")
     company_status_detail: Optional[str] = Field(
-        default=None, description="Detalle del estado de la empresa (puede ser null)"
+        default=None, max_length=500,
+        description="Detalle del estado de la empresa (puede ser null)"
     )
     ticket: TicketInput = Field(..., description="Datos del ticket")
     record_keeper: Optional[str] = Field(
@@ -671,11 +698,49 @@ class HandleTicketRequest(BaseModel):
     )
     ticket_handler_mode: Optional[Literal["disabled", "shadow", "knowledge_only", "full"]] = Field(
         default=None,
-        description="Override per-request de settings.TICKET_HANDLER_MODE.",
+        description=(
+            "Override per-request de settings.TICKET_HANDLER_MODE. Sólo puede "
+            "RESTRINGIR el modo del servidor (disabled < shadow < "
+            "knowledge_only < full); un valor más permisivo se ignora."
+        ),
     )
     idempotency_key: Optional[str] = Field(
-        default=None, description="Clave de idempotencia (alternativa al header Idempotency-Key)"
+        default=None, min_length=1, max_length=128,
+        description=(
+            "DEPRECADO: usar el header Idempotency-Key. v2 rechaza este campo."
+        ),
     )
+
+    @field_validator("record_keeper")
+    @classmethod
+    def _normalize_record_keeper(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        if not v or v.upper() == "N/A":
+            return None
+        return v
+
+
+class HandleTicketV2Request(BaseModel):
+    """Request estricto de POST /api/v2/handle-ticket (Tarea 4 Paso 4).
+
+    NO contiene ``idempotency_key`` (viaja SÓLO en el header obligatorio
+    ``Idempotency-Key``) ni ``ticket_handler_mode`` (el rollout es
+    exclusivamente server-side). ``extra="forbid"`` rechaza ambos con 422."""
+
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    participant_id: str = Field(..., min_length=1, max_length=32,
+                                pattern=r"^[A-Za-z0-9_-]+$")
+    plan_id: str = Field(..., min_length=1, max_length=32,
+                         pattern=r"^[A-Za-z0-9_-]+$")
+    company_name: str = Field(..., min_length=1, max_length=200)
+    company_status: str = Field(..., min_length=1, max_length=50)
+    company_status_detail: Optional[str] = Field(default=None, max_length=500)
+    ticket: TicketInput = Field(...)
+    record_keeper: Optional[str] = Field(default=None, max_length=100)
+    max_response_tokens: int = Field(default=5500, ge=500, le=5500)
 
     @field_validator("record_keeper")
     @classmethod
@@ -737,11 +802,99 @@ class TicketStatusResponse(BaseModel):
     """Respuesta de GET /api/v1/tickets/{ticket_job_id}."""
 
     ticket_job_id: str = Field(...)
-    state: str = Field(..., description="running | succeeded | partial | failed | timeout")
+    state: str = Field(
+        ...,
+        description=(
+            "queued | running | succeeded | partial | failed | timeout | "
+            "cancelled (set CERRADO; n8n debe tener rama para todos)"
+        ),
+    )
     route_taken: Optional[RouteDecision] = Field(default=None)
     primary: Optional[InquiryResult] = Field(default=None)
     related: List[InquiryResult] = Field(default_factory=list)
     total_inquiries_in_ticket: Optional[int] = Field(default=None)
     forusbots_job_ids: List[str] = Field(default_factory=list)
     elapsed_s: Optional[float] = Field(default=None)
-    error: Optional[str] = Field(default=None)
+    error: Optional[str] = Field(
+        default=None,
+        description="Código machine-readable (PublicErrorCode), nunca texto raw",
+    )
+    metadata: Dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Metadata del job (ticket_handler_mode, fallback/shadow_routes). "
+            "n8n DEBE tratar fallback=true como no-publicable."
+        ),
+    )
+    next_action: str = Field(
+        default="poll",
+        description=(
+            "Acción tipada para n8n: send_participant_reply | poll | "
+            "use_legacy | use_legacy_or_human | human_review | retry. "
+            "Fuente de verdad del fallback (no inferir de needs_more_info)."
+        ),
+    )
+
+
+# ============================================================================
+# Ticket Handler v2 — contrato uniforme 202 + polling sobre el job durable
+# ============================================================================
+
+class TicketJobAcceptedV2(BaseModel):
+    """Respuesta 202 de POST /api/v2/handle-ticket."""
+
+    schema_version: str = Field(default="2.0")
+    ticket_job_id: str = Field(...)
+    state: TicketJobState = Field(..., description="enum cerrado del job durable")
+    status_url: str = Field(..., description="GET /api/v2/ticket-jobs/{id}")
+    retry_after_seconds: int = Field(default=3, ge=1)
+    idempotency_replayed: bool = Field(default=False)
+
+
+class InquiryStatusV2(BaseModel):
+    """Estado por inquiry en el poll v2."""
+
+    index: int = Field(..., ge=0)
+    route: Optional[str] = Field(default=None)
+    execution_status: Literal[
+        "pending", "running", "succeeded", "timeout", "failed", "unprocessed"
+    ] = Field(..., description="estado cerrado por inquiry")
+    participant_reply_safe: bool = Field(default=False)
+    manual_reconciliation_required: bool = Field(
+        default=False,
+        description="True when an upstream effect may exist but lacks a "
+                    "confirmed terminal result; never retry blindly.",
+    )
+    result: Optional[Dict[str, Any]] = Field(default=None)
+    error: Optional[Dict[str, Any]] = Field(
+        default=None, description="{code, retryable, trace_id} machine-readable"
+    )
+
+
+class TicketJobStatusV2(BaseModel):
+    """Respuesta de GET /api/v2/ticket-jobs/{ticket_job_id}."""
+
+    schema_version: str = Field(default="2.0")
+    ticket_job_id: str = Field(...)
+    state: TicketJobState = Field(...)
+    created_at: Optional[datetime] = Field(default=None)
+    started_at: Optional[datetime] = Field(default=None)
+    completed_at: Optional[datetime] = Field(default=None)
+    elapsed_s: Optional[float] = Field(default=None)
+    total_inquiries: Optional[int] = Field(default=None)
+    processed_inquiries: int = Field(default=0)
+    unprocessed_inquiries: int = Field(default=0)
+    forusbots_job_ids: List[str] = Field(
+        default_factory=list,
+        description=(
+            "Identificadores opacos de efectos ForusBots ya observados; se "
+            "conservan para reconciliación y nunca implican por sí solos que "
+            "el efecto haya terminado correctamente."
+        ),
+    )
+    inquiries: List[InquiryStatusV2] = Field(default_factory=list)
+    next_action: NextAction = Field(
+        ..., description="enum cerrado: send_participant_reply | poll | "
+                         "use_legacy | use_legacy_or_human | human_review | retry"
+    )
+    error: Optional[Dict[str, Any]] = Field(default=None)

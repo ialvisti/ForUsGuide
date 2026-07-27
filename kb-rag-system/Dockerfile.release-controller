@@ -1,0 +1,42 @@
+# Immutable trusted controller used only by Terraform-managed privileged builds.
+FROM hashicorp/terraform:1.9@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd AS terraform
+COPY ci/terraform-provider-mirror.tf /provider-config/main.tf
+COPY ci/reviewed.terraform.lock.hcl /provider-config/.terraform.lock.hcl
+RUN terraform -chdir=/provider-config providers mirror -platform=linux_amd64 /provider-mirror
+FROM anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb AS syft
+FROM gcr.io/cloud-builders/docker@sha256:6c9b879570fe1c63a78af0b575ca5ac52f6c2c7e25f76f91ae1f2d6cb2a872ee AS docker
+FROM gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a
+
+COPY --from=terraform /bin/terraform /usr/local/bin/terraform
+COPY --from=terraform /provider-mirror /opt/release-controller/provider-mirror
+COPY --from=syft /syft /usr/local/bin/syft
+COPY --from=docker /usr/bin/docker /usr/bin/docker
+
+WORKDIR /opt/release-controller
+COPY scripts/release_controller.py ./release_controller.py
+COPY scripts/create_plan_manifest.py scripts/verify_plan_manifest.py ./
+COPY scripts/create_promotion_manifest.py scripts/verify_promotion_manifest.py ./
+COPY scripts/create_evidence_manifest.py scripts/verify_evidence_manifest.py ./
+COPY scripts/verify_container_scan.py ./
+COPY scripts/verify_secrets_baseline.py ./
+COPY scripts/container_smoke.py ./trusted-context/container_smoke.py
+COPY Dockerfile ./trusted-context/Dockerfile.runtime
+COPY .dockerignore ./trusted-context/Dockerfile.runtime.dockerignore
+COPY Dockerfile.ci Dockerfile.ci.dockerignore ./trusted-context/
+COPY Dockerfile.e2e Dockerfile.e2e.dockerignore ./trusted-context/
+COPY .secrets.baseline ./trusted-context/reviewed.secrets.baseline
+COPY scripts/verify_secrets_baseline.py ./trusted-context/verify_secrets_baseline.py
+COPY requirements.lock requirements-dev.lock ./trusted-context/
+COPY ci/reviewed.terraform.lock.hcl ./trusted-context/reviewed.terraform.lock.hcl
+COPY ci/terraform-cli.tfrc ./terraform-cli.tfrc
+COPY cloudbuild.terraform-plan.yaml cloudbuild.terraform-apply.yaml ./trusted-config/
+COPY cloudbuild.staging-attest.yaml cloudbuild.evidence-manifest.yaml ./trusted-config/
+COPY cloudbuild.test-only.yaml cloudbuild.e2e-image.yaml ./trusted-config/
+
+RUN chmod 0555 /opt/release-controller/release_controller.py \
+    && chmod -R a-w /opt/release-controller
+
+ENV TF_CLI_CONFIG_FILE=/opt/release-controller/terraform-cli.tfrc \
+    CHECKPOINT_DISABLE=1
+
+ENTRYPOINT ["python3", "/opt/release-controller/release_controller.py"]

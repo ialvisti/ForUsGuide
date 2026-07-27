@@ -228,6 +228,31 @@ kb-rag-system/
 
 ---
 
+## 📮 Contrato consumidor de handle-ticket (n8n)
+
+El contrato que n8n consume está **congelado** en fixtures + tests:
+
+- `tests/fixtures/n8n_handle_ticket_request.json` — payload, headers, retries,
+  política de poll. **Reconstruido** desde el repo (2026-07-10); reemplazar por
+  el export sanitizado real del workflow cuando exista.
+- `tests/fixtures/n8n_handle_ticket_polling.json` — acción de n8n por cada
+  estado/HTTP status, y qué campos son publicables al participante.
+- `tests/test_handle_ticket_contract.py` — valida ambos fixtures contra los
+  modelos y settings del servidor. Cambios de contrato deben pasar por aquí.
+
+Decisiones fijadas (Task 1 del plan de remediación):
+
+1. **Fuente de verdad del input:** `ticket.email_subject` + `ticket.email_body`.
+   `ticket_messages`/`tag` se aceptan en el wire pero el runtime los ignora.
+2. **Versionado:** v2 será `202 + polling` uniforme sobre un job durable
+   (Firestore + Cloud Tasks); v1 se conserva como adapter sobre el MISMO motor.
+   Nunca dos motores de ejecución en paralelo.
+3. **Publicación fail-safe:** sólo `succeeded` publica; `partial|failed|timeout`
+   y errores técnicos van a legacy/humano.
+4. **Poll deadline de n8n** > `TICKET_TOTAL_BUDGET_S` del servidor.
+
+---
+
 ## 🧪 Testing
 
 ```bash

@@ -20,6 +20,7 @@
 16. [Code Changes Required](#code-changes-required)
 17. [Environment Variables Reference](#environment-variables-reference)
 18. [Cost Estimates](#cost-estimates)
+19. [Ticket Handler Containment (2026-07)](#ticket-handler-containment-2026-07)
 
 ---
 
@@ -939,3 +940,112 @@ on fallback rate >1% over 15 min.
 | **Grand Total** | | | **$1,500-2,420/month** |
 
 The dominant cost is OpenAI. GCP infrastructure is practically free at this scale. See [HYBRID_LLM_ARCHITECTURE.md](./HYBRID_LLM_ARCHITECTURE.md) for how to reduce LLM costs with the Gemini hybrid approach.
+
+---
+
+## Ticket Handler Containment (2026-07)
+
+Estado de contención del flujo `POST /api/v1/handle-ticket` mientras se
+completa la remediación (ver `HANDLE_TICKET_AUDIT_AND_REMEDIATION_PLAN.md` en
+la raíz del repo).
+
+### Controles fail-closed ya activos en el código
+
+- `validate_settings()` **no arranca** con `TICKET_HANDLER_MODE` activo
+  (`shadow|knowledge_only|full`) si falta `FORUSBOTS_AUTH_TOKEN`.
+- En `ENVIRONMENT=production`, un modo activo **exige** `FORUSBOTS_BASE_URL`
+  con `https://`. Fuera de producción, HTTP plano sólo emite warning.
+- El campo `ticket_handler_mode` del body sólo puede **restringir** el modo
+  del servidor (`disabled < shadow < knowledge_only < full`); un valor más
+  permisivo se ignora. El kill switch del servidor no puede ser bypasseado
+  por el caller.
+
+### Acciones operativas pendientes (fuera del repo)
+
+| Acción | Estado | Notas |
+|---|---|---|
+| Endpoint HTTPS o conectividad privada para ForusBots | **Pendiente** | Hoy `http://35.224.156.104:10000`. Producción no arrancará en modo activo hasta resolverlo. |
+| Rotar `FORUSBOTS_AUTH_TOKEN` | **Pendiente** | Rotar DESPUÉS de retirar HTTP; el token actual debe considerarse expuesto en tránsito. |
+| n8n fail-safe | **Pendiente** | Hasta terminar la remediación: cualquier estado `partial|failed|timeout`, error técnico, JSON inválido o poll `404` → legacy/humano. Nunca publicar automáticamente un fallback interno. |
+| Mantener legacy de n8n para `generate_response` | **Pendiente** | Hasta completar HT-01/02/03/05 del plan. |
+| Captura sanitizada del despliegue real | **Hecha 2026-07-12** | Ver "Snapshot sanitizado del despliegue real" abajo. |
+| **Apagar `TICKET_HANDLER_MODE=full` en prod** | **HECHO 2026-07-13** | Aplicado `gcloud run services update kb-rag-system --update-env-vars TICKET_HANDLER_MODE=disabled`. Revisión `kb-rag-system-00048-bkc` sirve 100 %; `/health` autenticado confirma `ticket_handler_mode=disabled`. El camino de alto riesgo (LLM sobre datos financieros, PII por HTTP, jobs efímeros) queda cortado. n8n recibe 503 en `/api/v1/handle-ticket` → debe usar legacy. Reactivar SÓLO tras desplegar la rama remediada con el checklist de abajo. |
+
+### Snapshot sanitizado del despliegue real (2026-07-12)
+
+| Parámetro | Valor |
+|---|---|
+| Revisión sirviendo tráfico | `kb-rag-system-00047-vkd` (100 %) |
+| Imagen | `…/kb-rag/kb-rag-system:66f8350` (commit auditado, PRE-remediación) |
+| Instancias | min 0 / max 5 |
+| Concurrency por instancia | 80 |
+| CPU billing | request-based (`cpu-throttling=true`) → **ningún trabajo fuera del request tiene CPU garantizada** (confirma HT-01) |
+| Timeout | 300 s (< `TICKET_TOTAL_BUDGET_S`=480 — el worker durable lo resuelve manteniendo el task request abierto; ajustar timeout del servicio al desplegar) |
+| Recursos | 1 CPU / 512 Mi |
+| Ingress | `all` (la org policy exige IAM igualmente) |
+| IAM invoker | sólo `kb-rag-client@rag-kb-system.iam.gserviceaccount.com` (n8n) |
+| Runtime SA | `kb-rag-runner@rag-kb-system.iam.gserviceaccount.com` |
+| Env (nombres) | ENABLE_EXECUTION_LOGGING, ENVIRONMENT=production, FORUSBOTS_BASE_URL (http:// — **pendiente TLS**), GCP_LOCATION, GCP_PROJECT, GCS_BUCKET, INDEX_NAME, LLM_ROUTE_* (6), LOG_LEVEL, NAMESPACE, OPENAI_MODEL, OPENAI_REASONING_EFFORT, TICKET_HANDLER_MODE=**full**, USE_VERTEX_AI |
+| Secret refs | API_KEY←`api-key`, FORUSBOTS_AUTH_TOKEN←`FORUSBOTS_AUTH_TOKEN`, OPENAI_API_KEY←`openai-api-key`, PINECONE_API_KEY←`pinecone-api-key` |
+
+**Checklist ANTES de desplegar la rama remediada a este servicio** (el boot es
+fail-closed y se negará a arrancar si falta algo):
+
+1. `TICKET_HANDLER_MODE=disabled` (o `shadow` sólo cuando ForusBots tenga
+   `https://`), porque `ENVIRONMENT=production` + modo activo exige TLS.
+2. Nuevas vars: `TICKET_JOB_BACKEND=firestore`, `TICKET_TASK_QUEUE=cloudtasks`,
+   `TICKET_WORKER_URL`, `TICKET_WORKER_SERVICE_ACCOUNT`, `CLOUD_TASKS_QUEUE`,
+   `CLOUD_TASKS_LOCATION` + cola/TTL/SA del apartado IaC.
+3. `API_CLIENT_KEYS` (secret) si n8n va a tener principal propio; la
+   `API_KEY` legacy sigue funcionando como principal `default`.
+4. Subir `--timeout` del servicio (≥ 500 s) para el endpoint del worker.
+
+### Reglas de logging durante la contención
+
+- No registrar `FORUSBOTS_AUTH_TOKEN` ni bodies de error upstream (pueden
+  contener PII scrapeada).
+- No copiar valores de secretos a planes, documentación ni logs.
+
+### Infraestructura del ticket handler durable (declarar en IaC)
+
+`cloudbuild.yaml` ya corre suite completa + `pip-audit` + `pip check` antes
+de build/deploy y publica `requirements.lock` (generado dentro de
+python:3.12) como artifact. Lo siguiente debe versionarse con el mecanismo
+IaC del equipo (no depender de drift de consola):
+
+> Verificado 2026-07-12: `cloudtasks.googleapis.com` NO está habilitada en
+> `rag-kb-system` — paso 0: `gcloud services enable cloudtasks.googleapis.com`.
+
+```bash
+# Cola de ejecución (límites GLOBALES según capacidad ForusBots/cuotas LLM)
+gcloud tasks queues create ticket-jobs \
+  --location us-central1 \
+  --max-dispatches-per-second=2 \
+  --max-concurrent-dispatches=4 \
+  --max-attempts=5 --min-backoff=30s --max-backoff=300s
+
+# SA que firma el OIDC de los tasks hacia el worker
+gcloud iam service-accounts create ticket-tasks-invoker
+gcloud run services add-iam-policy-binding kb-rag-system \
+  --region us-central1 \
+  --member serviceAccount:ticket-tasks-invoker@rag-kb-system.iam.gserviceaccount.com \
+  --role roles/run.invoker
+
+# TTL de Firestore (retención de PII gobernada por expires_at)
+gcloud firestore fields ttls update expires_at \
+  --collection-group=ticket_jobs --enable-ttl
+gcloud firestore fields ttls update expires_at \
+  --collection-group=ticket_idempotency --enable-ttl
+```
+
+Variables nuevas del servicio (por NOMBRE; valores via Secret Manager/env):
+`TICKET_JOB_BACKEND=firestore`, `TICKET_TASK_QUEUE=cloudtasks`,
+`CLOUD_TASKS_QUEUE`, `CLOUD_TASKS_LOCATION`, `TICKET_WORKER_URL`,
+`TICKET_WORKER_SERVICE_ACCOUNT`, `TICKET_WORKER_REQUIRE_OIDC=true`,
+`TICKET_JOB_RETENTION_S`, `TICKET_SHADOW_SAMPLE_RATE`, `API_CLIENT_KEYS`
+(secret), `WEB_CONCURRENCY`, `MAX_REQUEST_BODY_BYTES`,
+`TICKET_MAX_OUTSTANDING_JOBS`.
+
+Promoción: deploy → staging/revision sin tráfico → smoke + contract tests →
+`gcloud run services update-traffic` canary → 100 %. Mantener la revisión
+anterior para rollback inmediato (los jobs durables sobreviven el cambio).

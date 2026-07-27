@@ -1,0 +1,204 @@
+# Trusted source for the inline *-plan controllers. The protected trigger
+# fixes _ROOT per environment; every release artifact input is either `none`
+# outside production or a generation-qualified URI (`gs://...#<generation>`)
+# plus an independently approved hash.
+substitutions:
+  _ROOT: ""
+  _RELEASE_PHASE: "infra_only"
+  _IMAGE_DIGEST: ""
+  _PROMOTION_URI: "none"
+  _PROMOTION_HASH: "none"
+  _EVIDENCE_MANIFEST_URI: "none"
+  _EVIDENCE_MANIFEST_HASH: "none"
+  _SECRET_VERSION_MANIFEST_URI: "none"
+  _SECRET_VERSION_MANIFEST_HASH: "none"
+
+steps:
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
+    id: 'fetch-release-inputs'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        case "${_ROOT}" in
+          platform|staging|production) ;;
+          *) echo "STOP: Terraform root fuera del allowlist" >&2; exit 1 ;;
+        esac
+        printf '%s\n' "rag-kb-system-tfstate-${_ROOT}-900340137010" \
+          > /workspace/expected_backend_bucket.txt
+        if [[ -n "${_IMAGE_DIGEST}" ]]; then
+          printf '%s\n' "${_IMAGE_DIGEST}" > /workspace/image_digest.txt
+        else
+          printf '%s\n' none > /workspace/image_digest.txt
+        fi
+
+        require_generation_uri() {
+          [[ "$$1" =~ ^gs://[a-z0-9][a-z0-9._-]*/[^#]+#[1-9][0-9]*$ ]] || {
+            echo "STOP: URI sin generation numérica: $$1" >&2
+            exit 1
+          }
+        }
+        fetch_raw_hash() {
+          local uri="$$1" expected="$$2" destination="$$3"
+          require_generation_uri "$$uri"
+          [[ "$$expected" =~ ^[0-9a-f]{64}$ ]] || {
+            echo "STOP: SHA-256 externo inválido" >&2
+            exit 1
+          }
+          gcloud storage cp "$$uri" "$$destination"
+          printf '%s  %s\n' "$$expected" "$$destination" | sha256sum -c -
+        }
+
+        if [[ "${_ROOT}" == production ]]; then
+          require_generation_uri "${_PROMOTION_URI}"
+          require_generation_uri "${_EVIDENCE_MANIFEST_URI}"
+          gcloud storage cp "${_PROMOTION_URI}" /workspace/promotion.json
+          gcloud storage cp "${_EVIDENCE_MANIFEST_URI}" \
+            /workspace/evidence_manifest.json
+        else
+          [[ "${_PROMOTION_URI}" == none && "${_PROMOTION_HASH}" == none ]]
+          [[ "${_EVIDENCE_MANIFEST_URI}" == none && \
+             "${_EVIDENCE_MANIFEST_HASH}" == none ]]
+        fi
+        if [[ "${_SECRET_VERSION_MANIFEST_URI}" != none || \
+              "${_SECRET_VERSION_MANIFEST_HASH}" != none ]]; then
+          fetch_raw_hash "${_SECRET_VERSION_MANIFEST_URI}" \
+            "${_SECRET_VERSION_MANIFEST_HASH}" \
+            /workspace/secret_version_manifest.json
+        elif [[ "${_ROOT}" == production ]]; then
+          echo "STOP: production exige secret-version manifest" >&2
+          exit 1
+        fi
+
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'verify-promotion'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        if [[ "${_ROOT}" != production ]]; then
+          exit 0
+        fi
+        cd /workspace/kb-rag-system
+        python scripts/verify_promotion_manifest.py \
+          --attestation /workspace/promotion.json \
+          --evidence-manifest /workspace/evidence_manifest.json \
+          --expected-attestation-hash "${_PROMOTION_HASH}" \
+          --expected-evidence-manifest-uri "${_EVIDENCE_MANIFEST_URI}" \
+          --expected-evidence-manifest-hash "${_EVIDENCE_MANIFEST_HASH}" \
+          --expected-main-sha "$COMMIT_SHA" \
+          --expected-image-digest "${_IMAGE_DIGEST}" \
+          --expected-controller-builder-digest \
+            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce' \
+          --expected-evidence-controller-builder-digest \
+            'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+
+  - name: 'hashicorp/terraform:1.9@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd'
+    id: 'plan'
+    entrypoint: sh
+    args:
+      - '-c'
+      - |
+        set -eu
+        cd "/workspace/infra/terraform/live/${_ROOT}"
+        terraform init -input=false
+        terraform state pull > /workspace/prior_state.json
+        cp .terraform/terraform.tfstate /workspace/backend_metadata.json
+        if [ "${_ROOT}" = platform ]; then
+          terraform plan -input=false -lock-timeout=120s \
+            -out=/workspace/plan.tfplan
+        else
+          terraform plan -input=false -lock-timeout=120s \
+            -var="image_digest=${_IMAGE_DIGEST}" \
+            -var="release_phase=${_RELEASE_PHASE}" \
+            -out=/workspace/plan.tfplan
+        fi
+        terraform show -no-color /workspace/plan.tfplan \
+          > /workspace/terraform_show.txt
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
+    id: 'upload-plan-show'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        bucket='rag-kb-system-ticket-evidence-900340137010'
+        prefix="plans/${_ROOT}/$BUILD_ID"
+        plan_object="gs://$$bucket/$$prefix/plan.tfplan"
+        show_object="gs://$$bucket/$$prefix/terraform_show.txt"
+        gcloud storage cp --if-generation-match=0 \
+          /workspace/plan.tfplan "$$plan_object"
+        gcloud storage cp --if-generation-match=0 \
+          /workspace/terraform_show.txt "$$show_object"
+        plan_generation="$(gcloud storage objects describe "$$plan_object" \
+          --format='value(generation)')"
+        show_generation="$(gcloud storage objects describe "$$show_object" \
+          --format='value(generation)')"
+        [[ "$$plan_generation" =~ ^[1-9][0-9]*$ ]]
+        [[ "$$show_generation" =~ ^[1-9][0-9]*$ ]]
+        printf '%s#%s\n' "$$plan_object" "$$plan_generation" \
+          > /workspace/plan_uri.txt
+        printf '%s#%s\n' "$$show_object" "$$show_generation" \
+          > /workspace/show_uri.txt
+
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'manifest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd /workspace/kb-rag-system
+        python scripts/create_plan_manifest.py \
+          --root "live/${_ROOT}" \
+          --backend-metadata-file /workspace/backend_metadata.json \
+          --state-file /workspace/prior_state.json \
+          --commit "$COMMIT_SHA" \
+          --image-digest "$(cat /workspace/image_digest.txt)" \
+          --release-phase "${_RELEASE_PHASE}" \
+          --provider-lock "/workspace/infra/terraform/live/${_ROOT}/.terraform.lock.hcl" \
+          --plan-file /workspace/plan.tfplan \
+          --show-file /workspace/terraform_show.txt \
+          --plan-uri "$(cat /workspace/plan_uri.txt)" \
+          --show-uri "$(cat /workspace/show_uri.txt)" \
+          --builder-digest \
+            'hashicorp/terraform:1.9@sha256:18f9986038bbaf02cf49db9c09261c778161c51dcc7fb7e355ae8938459428cd' \
+          --promotion-uri "${_PROMOTION_URI}" \
+          --promotion-hash "${_PROMOTION_HASH}" \
+          --evidence-manifest-uri "${_EVIDENCE_MANIFEST_URI}" \
+          --evidence-manifest-hash "${_EVIDENCE_MANIFEST_HASH}" \
+          --secret-version-manifest-uri "${_SECRET_VERSION_MANIFEST_URI}" \
+          --secret-version-manifest-hash "${_SECRET_VERSION_MANIFEST_HASH}" \
+          --out /workspace/plan_manifest.json \
+          > /workspace/plan_manifest_hash.txt
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
+    id: 'upload-manifest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        object="gs://rag-kb-system-ticket-evidence-900340137010/plans/${_ROOT}/$BUILD_ID/plan_manifest.json"
+        gcloud storage cp --if-generation-match=0 \
+          /workspace/plan_manifest.json "$$object"
+        generation="$(gcloud storage objects describe "$$object" \
+          --format='value(generation)')"
+        [[ "$$generation" =~ ^[1-9][0-9]*$ ]]
+        printf 'PLAN_URI=%s\n' "$(cat /workspace/plan_uri.txt)"
+        printf 'PLAN_SHA256=%s\n' \
+          "$(sha256sum /workspace/plan.tfplan | cut -d' ' -f1)"
+        printf 'SHOW_URI=%s\n' "$(cat /workspace/show_uri.txt)"
+        printf 'SHOW_SHA256=%s\n' \
+          "$(sha256sum /workspace/terraform_show.txt | cut -d' ' -f1)"
+        printf 'PROVIDER_LOCK_SHA256=%s\n' \
+          "$(sha256sum /workspace/infra/terraform/live/${_ROOT}/.terraform.lock.hcl | cut -d' ' -f1)"
+        printf 'PLAN_MANIFEST_URI=%s#%s\n' "$$object" "$$generation"
+        printf 'PLAN_MANIFEST_HASH=%s\n' \
+          "$(cat /workspace/plan_manifest_hash.txt)"
+
+options:
+  logging: CLOUD_LOGGING_ONLY

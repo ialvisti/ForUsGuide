@@ -18,20 +18,77 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import re
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
-from data_pipeline import forusbots_catalog, prompts
+from pydantic import ValidationError
+
+from data_pipeline import forusbots_catalog, gr_payload_builder, prompts
+from data_pipeline.retrieval_privacy import (
+    UnsafeRetrievalQuery,
+    redact_retrieval_context,
+    sanitize_retrieval_query,
+)
 from data_pipeline.forusbots_client import (
     ForusBotsError,
     ForusBotsJobFailed,
     ForusBotsTimeout,
 )
 from data_pipeline.json_parsing import parse_json_array, parse_json_object
+from data_pipeline.llm_output_models import (
+    ExtractedInquiryOut,
+    FieldMapOut,
+    GRBodyDraftOut,
+    KBQuestionSynthesisOut,
+    TicketFieldExtractOut,
+)
 
 logger = logging.getLogger(__name__)
+
+_SAFE_FORUSBOTS_ERROR_CODES = frozenset({
+    "FORUSBOTS_ERROR",
+    "FORUSBOTS_TIMEOUT",
+    "FORUSBOTS_JOB_FAILED",
+    "FORUSBOTS_AMBIGUOUS_SUBMIT",
+    "FORUSBOTS_POLL_FAILED",
+    "FORUSBOTS_CIRCUIT_OPEN",
+})
+
+
+def _safe_nonnegative_number(value: Any) -> Optional[float]:
+    """Accept numeric upstream metadata without reflecting arbitrary values."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    numeric = float(value)
+    return numeric if numeric >= 0 and math.isfinite(numeric) else None
+
+
+# ---------------------------------------------------------------------------
+# Errores tipificados de la extracción (plan Tarea 6 Paso 1): un fallo del
+# proveedor o un output fuera de contrato NUNCA se degrada a "[]" — eso
+# convertía un incidente técnico en un saludo publicable (bloqueo 4).
+# ---------------------------------------------------------------------------
+
+class ExtractionError(Exception):
+    """Base de fallos técnicos de extract_inquiries."""
+
+
+class ExtractionUnavailable(ExtractionError):
+    """El proveedor LLM falló o expiró: retryable, jamás publicable."""
+
+
+class ExtractionInvalidOutput(ExtractionError):
+    """El proveedor respondió algo que no es el JSON del contrato."""
+
+
+class KQSynthesisError(Exception):
+    """Fallo técnico (proveedor/parseo/schema) en la síntesis KQ: el
+    resultado debe degradar a legacy/humano, nunca a un NMI publicable."""
+
 
 # Per-agent completion budgets (the router scales these for GPT-5 reasoning).
 _EXTRACT_MAX_TOKENS = 1500
@@ -42,7 +99,55 @@ _TICKET_EXTRACT_MAX_TOKENS = 1500
 
 _DEFAULT_PLAN_TYPE = "401(k)"
 _DEFAULT_GREETING = "Could you share a bit more detail about what you'd like help with?"
-_FORM_SUBMISSION_SUBJECT = "Participant Advisory - Form Submission"
+
+# ---------------------------------------------------------------------------
+# Validación semántica de evidencia (Task 5 Step 4)
+# ---------------------------------------------------------------------------
+
+_NUM_TOKEN_RE = re.compile(r"-?\$?\d[\d,]*(?:\.\d+)?")
+_MONTHS = {
+    "january": 1, "february": 2, "march": 3, "april": 4, "may": 5, "june": 6,
+    "july": 7, "august": 8, "september": 9, "october": 10, "november": 11,
+    "december": 12,
+}
+
+
+def _numbers_in(text: str) -> set[float]:
+    values: set[float] = set()
+    for token in _NUM_TOKEN_RE.findall(text):
+        try:
+            values.add(float(token.replace("$", "").replace(",", "")))
+        except ValueError:
+            continue
+    return values
+
+
+def _evidence_supports_value(value: Any, evidence: str,
+                             data_type: Optional[str]) -> bool:
+    """La presencia literal de una cita no prueba que el VALOR corresponda.
+    Para tipos numéricos/fecha el valor debe derivarse de la evidencia; lo no
+    verificable se trata como no extraído (fail-closed)."""
+    dt = str(data_type or "").lower()
+    if dt in ("currency", "number") or dt.startswith("list[currency]") \
+            or dt.startswith("list[number]"):
+        try:
+            numeric = float(str(value).replace("$", "").replace(",", ""))
+        except (TypeError, ValueError):
+            return False
+        candidates = _numbers_in(evidence)
+        return any(abs(numeric - c) < 0.005 for c in candidates)
+    if dt == "date":
+        value_nums = {int(t) for t in re.findall(r"\d+", str(value))}
+        if not value_nums:
+            return False
+        ev_lower = evidence.lower()
+        ev_nums = {int(t) for t in re.findall(r"\d+", evidence)}
+        ev_nums.update(num for name, num in _MONTHS.items() if name in ev_lower)
+        ev_nums.update(num for name, num in _MONTHS.items()
+                       if name[:3] in re.findall(r"[a-z]{3,}", ev_lower))
+        return value_nums <= ev_nums
+    # boolean/text: la capa literal (cita presente en el ticket) es el gate.
+    return True
 
 
 # ============================================================================
@@ -236,42 +341,85 @@ class TicketOrchestrator:
         self.deps = deps
         self._max_related = getattr(settings, "TICKET_MAX_RELATED", 3)
         self._inquiry_budget_s = getattr(settings, "TICKET_INQUIRY_BUDGET_S", 300.0)
+        self._forusbots_intent_guard: Optional[
+            Callable[[], Awaitable[None]]
+        ] = None
+        # ForusBotsClient es singleton de proceso, pero cada orchestrator
+        # pertenece a un ticket job. El scope aleatorio impide que caché o
+        # in-flight dedupe crucen tickets/tenants con IDs coincidentes.
+        self._forusbots_dedupe_scope = uuid.uuid4().hex
+
+    def set_forusbots_intent_guard(
+        self, guard: Callable[[], Awaitable[None]]
+    ) -> None:
+        """Instala el fence durable que el worker liga a job/inquiry/lease.
+
+        El orquestador lo invoca sólo cuando el mapping produjo módulos que
+        realmente pueden disparar ForusBots, inmediatamente antes del submit.
+        """
+        self._forusbots_intent_guard = guard
 
     # ------------------------------------------------------------------
     # Step 1 — extraction
     # ------------------------------------------------------------------
 
     async def extract_inquiries(self, req: Any) -> List[ExtractedInquiry]:
+        """Extracción con fallos TIPIFICADOS (Tarea 6 Paso 1): un fallo del
+        proveedor lanza ``ExtractionUnavailable``; un output no-JSON lanza
+        ``ExtractionInvalidOutput``. Sólo un array JSON válido y vacío
+        devuelve ``[]`` (extracción legítimamente vacía)."""
         agent_input = self._build_case_data(req)
         system, user = prompts.build_extract_inquiries_prompt(agent_input)
         try:
             resp = await self.deps.llm_router.call(
                 "extract_inquiries", system, user, max_tokens=_EXTRACT_MAX_TOKENS
             )
-        except Exception:
-            logger.exception("extract_inquiries LLM call failed")
-            return []
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            logger.error("extract_inquiries LLM call failed")
+            raise ExtractionUnavailable(str(type(exc).__name__)) from exc
 
         items = parse_json_array(resp.content)
+        if items is None:
+            # None = no parseable (contrato roto); [] = array válido vacío
+            raise ExtractionInvalidOutput("extract_inquiries devolvió no-JSON")
         if not items:
             return []
 
         extracted: List[ExtractedInquiry] = []
+        dropped = 0
         for it in items:
             if not isinstance(it, dict):
+                dropped += 1
                 continue
-            inquiry = (it.get("inquiry") or "").strip()
-            if not inquiry:
+            # normalización tolerante ANTES del schema estricto: defaults que
+            # el contrato permite omitir
+            normalized = {
+                "inquiry": (it.get("inquiry") or "").strip(),
+                "topic": (str(it.get("topic") or "general").strip() or "general"),
+                "record_keeper": it.get("record_keeper"),
+                "plan_type": it.get("plan_type") or _DEFAULT_PLAN_TYPE,
+                "related_inquiries": it.get("related_inquiries") or [],
+            }
+            try:
+                out = ExtractedInquiryOut.model_validate(normalized)
+            except ValidationError:
+                dropped += 1
                 continue
-            rk = it.get("record_keeper")
-            rk = rk if (rk not in (None, "", "N/A")) else req.record_keeper
+            # Identity-adjacent fields are server-owned. The extractor may
+            # paraphrase the inquiry/topic, but cannot replace the canonical
+            # record keeper or invent a plan type from untrusted ticket text.
+            rk = req.record_keeper
             extracted.append(ExtractedInquiry(
-                inquiry=inquiry,
+                inquiry=out.inquiry,
                 record_keeper=rk,
-                plan_type=(it.get("plan_type") or _DEFAULT_PLAN_TYPE),
-                topic=(it.get("topic") or "general").strip() or "general",
-                related_inquiries=it.get("related_inquiries"),
+                plan_type=_DEFAULT_PLAN_TYPE,
+                topic=out.topic,
+                related_inquiries=out.related_inquiries or None,
             ))
+        if dropped:
+            logger.warning("extract_inquiries: %d items inválidos descartados", dropped)
         return _inject_account_access_guard(extracted, req)
 
     # ------------------------------------------------------------------
@@ -300,28 +448,21 @@ class TicketOrchestrator:
         return self._needs_more_info(ext, classification)
 
     async def run_ticket(self, req: Any) -> List[InquiryOutcome]:
-        """Convenience full run: extract → handle each (capped). Returns []
-        when no actionable inquiry was found (caller emits needs_more_info)."""
+        """Conveniencia para tests/harness: extract → handle each (capped).
+
+        NO es un motor de ejecución de producción: la ÚNICA implementación
+        con budgets, checkpoints y agregación es ``api.ticket_worker`` (Task
+        7). Por eso aquí no hay timeouts: un timeout técnico jamás debe
+        disfrazarse de needs_more_info (invariante 6)."""
         extracted = await self.extract_inquiries(req)
         if not extracted:
             return []
         total = len(extracted)
         outcomes: List[InquiryOutcome] = []
         for ext in extracted[: 1 + self._max_related]:
-            try:
-                outcome = await asyncio.wait_for(
-                    self.handle_inquiry(ext, req, total_inquiries=total),
-                    self._inquiry_budget_s,
-                )
-            except asyncio.TimeoutError:
-                logger.warning("inquiry budget exceeded for topic=%s", ext.topic)
-                outcome = InquiryOutcome(
-                    inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
-                    record_keeper=ext.record_keeper, plan_type=ext.plan_type,
-                    needs_more_info_message=_DEFAULT_GREETING,
-                    diagnostics={"error": "inquiry_budget_exceeded"},
-                )
-            outcomes.append(outcome)
+            outcomes.append(
+                await self.handle_inquiry(ext, req, total_inquiries=total)
+            )
         return outcomes
 
     # ------------------------------------------------------------------
@@ -345,23 +486,68 @@ class TicketOrchestrator:
         agent_input = {"ticketData": focused}
         system, user = prompts.build_kb_question_synthesis_prompt(agent_input)
         diag = self._classifier_diag(classification)
+        synthesis_failed = False
+        parsed = None
         try:
             resp = await self.deps.llm_router.call(
                 "kb_question_synthesis", system, user, max_tokens=_KB_SYNTH_MAX_TOKENS
             )
             parsed = parse_json_object(resp.content)
+            if parsed is None:
+                synthesis_failed = True
+                diag["kb_synthesis_invalid_output"] = True
+        except asyncio.CancelledError:
+            raise
         except Exception:
-            logger.exception("kb_question_synthesis failed")
-            parsed = None
+            logger.error("kb_question_synthesis failed")
+            synthesis_failed = True
+            diag["kb_synthesis_provider_failed"] = True
 
-        question = (parsed or {}).get("question")
-        if not parsed or parsed.get("insufficient_inquiry") or not question:
+        synthesis: Optional[KBQuestionSynthesisOut] = None
+        if isinstance(parsed, dict):
+            try:
+                synthesis = KBQuestionSynthesisOut.model_validate(parsed)
+            except ValidationError:
+                synthesis_failed = True
+                diag["kb_synthesis_invalid_output"] = True
+
+        if synthesis_failed:
+            # Fallo TÉCNICO (proveedor/parseo/schema): degradado a legacy/
+            # humano, jamás un needs_more_info publicable (Tarea 6 Paso 2).
+            return InquiryOutcome(
+                inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
+                record_keeper=ext.record_keeper, plan_type=ext.plan_type,
+                needs_more_info_message=None,
+                diagnostics={**diag, "kq_synthesis_failed": True,
+                             "error": "KQ_SYNTHESIS_FAILED"},
+            )
+
+        question = synthesis.question if synthesis else None
+        if synthesis is None or synthesis.insufficient_inquiry or not question:
+            # Resultado de NEGOCIO válido: la síntesis funcionó y declaró la
+            # inquiry insuficiente — un NMI legítimo sí es publicable.
             return InquiryOutcome(
                 inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
                 record_keeper=ext.record_keeper, plan_type=ext.plan_type,
                 needs_more_info_message=getattr(classification, "user_message", None) or _DEFAULT_GREETING,
                 diagnostics={**diag, "kb_insufficient": True},
             )
+
+        question = redact_retrieval_context(
+            question,
+            sensitive_literals=self._participant_sensitive_literals(req),
+        )
+        # The rich redacted question is useful to the answer LLM.  Prove that
+        # the final Pinecone boundary can derive a reviewed concept from it;
+        # only when synthesis produced no domain signal do we append a neutral,
+        # server-owned fallback instead of forwarding arbitrary text alone.
+        try:
+            sanitize_retrieval_query(question)
+        except UnsafeRetrievalQuery:
+            fallback = sanitize_retrieval_query(
+                f"{ext.topic} {ext.plan_type} retirement plan guidance"
+            )
+            question = f"{question} ({fallback})"
 
         kq = await self.deps.rag_engine.ask_knowledge_question(question=question)
         return InquiryOutcome(
@@ -377,8 +563,12 @@ class TicketOrchestrator:
         diag: Dict[str, Any] = self._classifier_diag(classification)
 
         # 1) required data → flatten → field map → modules
+        safe_inquiry = redact_retrieval_context(
+            ext.inquiry,
+            sensitive_literals=self._participant_sensitive_literals(req),
+        )
         rd = await self.deps.rag_engine.get_required_data(
-            inquiry=ext.inquiry, record_keeper=ext.record_keeper,
+            inquiry=safe_inquiry, record_keeper=ext.record_keeper,
             plan_type=ext.plan_type, topic=ext.topic,
             related_inquiries=ext.related_inquiries,
         )
@@ -389,12 +579,21 @@ class TicketOrchestrator:
             modules, extraction_candidates = await self._map_fields(flat_fields, diag)
         diag["mapped_modules"] = modules
 
+        # El dedupe in-memory del cliente no cruza instancias ni sobrevive a
+        # un lease perdido. El worker persiste este intent después de saber
+        # que habrá scrape y justo antes del primer POST. Sin contrato
+        # upstream idempotente, un intent previo bloquea cualquier resubmit.
+        if modules and self._forusbots_intent_guard is not None:
+            await self._forusbots_intent_guard()
+
         # 2) ForusBots scrapes AND ticket-field extraction, in PARALLEL — the
         # extraction only needs the ticket text, not the scrape result.
-        async def _noop_scrape():
+        async def _noop_scrape(
+        ) -> Tuple[Dict[str, Any], Dict[str, Any], Dict[str, Any], str]:
             return {}, {}, {}, "skipped"
 
-        async def _noop_extract():
+        async def _noop_extract(
+        ) -> Tuple[Dict[str, Dict[str, Any]], List[str]]:
             return {}, []
 
         scrape_coro = (
@@ -423,29 +622,56 @@ class TicketOrchestrator:
             if diag.get("unmapped_fields"):
                 diag["unmapped_fields"] = fm["unmapped"]
 
-        # 3) build /generate-response body via the body-builder agent
-        body = await self._build_gr_body(
+        # 3) collected_data DETERMINÍSTICO (Task 5, HT-03): los hechos vienen
+        # del scrape normalizado + extracción evidence-gated; el LLM no puede
+        # aportar ni alterar valores.
+        collected_data = gr_payload_builder.build_collected_data(
+            ppt_modules, plan_modules, extracted,
+            company_name=req.company_name, company_status=req.company_status,
+        )
+
+        # 4) el body-builder queda como agente de REDACCIÓN: enriquece la
+        # inquiry y afina el topic. Nada más de su output se usa.
+        draft = await self._build_gr_body(
             ppt_modules, plan_modules, scrape_meta, scrape_status,
             req, ext, total_inquiries, diag, ticket_extracted=extracted,
         )
 
-        collected_data = body.get("collected_data") if isinstance(body, dict) else None
-        collected_data = collected_data if isinstance(collected_data, dict) else {}
-
+        # 5) campos server-owned SIEMPRE fijados desde fuentes confiables
+        # (invariante 4 / HT-22): el LLM no controla límites ni conteos.
+        response_inquiry = redact_retrieval_context(
+            draft.inquiry or ext.inquiry,
+            sensitive_literals=self._participant_sensitive_literals(req),
+        )
         gr = await self.deps.rag_engine.generate_response(
-            inquiry=(body.get("inquiry") or ext.inquiry),
-            record_keeper=body.get("record_keeper", ext.record_keeper),
-            plan_type=(body.get("plan_type") or ext.plan_type),
-            topic=(body.get("topic") or ext.topic),
+            inquiry=response_inquiry,
+            record_keeper=ext.record_keeper,
+            # ``draft`` es salida LLM no confiable. El plan_type canónico se
+            # fijó al extraer la inquiry desde el request autorizado y no se
+            # puede sobrescribir en la fase de redacción.
+            plan_type=ext.plan_type,
+            topic=(draft.topic or ext.topic),
             collected_data=collected_data,
-            max_response_tokens=int(body.get("max_response_tokens") or req.max_response_tokens),
-            total_inquiries_in_ticket=int(body.get("total_inquiries_in_ticket") or total_inquiries),
+            max_response_tokens=req.max_response_tokens,
+            total_inquiries_in_ticket=total_inquiries,
         )
         return InquiryOutcome(
             inquiry=ext.inquiry, topic=ext.topic, route="generate_response",
             record_keeper=ext.record_keeper, plan_type=ext.plan_type,
             scrape_status=scrape_status, generate_result=gr, diagnostics=diag,
         )
+
+    @staticmethod
+    def _participant_sensitive_literals(req: Any) -> Tuple[str, ...]:
+        """Known request values that must not enter semantic-search text."""
+        ticket = getattr(req, "ticket", None)
+        return tuple(filter(None, (
+            getattr(req, "participant_id", None),
+            getattr(req, "plan_id", None),
+            getattr(req, "company_name", None),
+            getattr(ticket, "username", None),
+            getattr(ticket, "user_email", None),
+        )))
 
     def _needs_more_info(self, ext: ExtractedInquiry, classification: Any) -> InquiryOutcome:
         return InquiryOutcome(
@@ -499,12 +725,22 @@ class TicketOrchestrator:
                 )
                 mapping = parse_json_object(resp.content) or {}
             except Exception:
-                logger.exception("forusbots_field_map failed")
+                logger.error("forusbots_field_map failed")
                 mapping = {}
-            raw_modules = mapping.get("modules")
-            llm_modules = raw_modules if isinstance(raw_modules, list) else []
-            llm_unmapped = mapping.get("_unmapped") or []
-            if not mapping:
+            # Schema estricto (HT-12): output fuera de contrato = mapper failure
+            field_map: Optional[FieldMapOut] = None
+            if mapping:
+                try:
+                    field_map = FieldMapOut.model_validate(mapping)
+                except ValidationError:
+                    logger.warning("forusbots_field_map: output inválido descartado")
+            if field_map is not None:
+                llm_modules = [
+                    {"key": m.key, "fields": list(m.fields)}
+                    for m in field_map.modules
+                ]
+                llm_unmapped = list(field_map.unmapped)
+            else:
                 llm_failed = True
                 llm_unmapped = [
                     {"field": it.get("field"), "reason": "mapper_parse_failure"}
@@ -563,13 +799,20 @@ class TicketOrchestrator:
         scrape dominates, and a plan-side failure downgrades to "partial"."""
         p_modules, plan_modules = forusbots_catalog.split_modules_by_target(modules)
 
-        async def _one(coro_label: str, coro) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
+        async def _one(
+            coro_label: str,
+            coro: Awaitable[Any],
+        ) -> Tuple[Dict[str, Any], Dict[str, Any], str]:
             try:
                 scrape = await coro
                 diag[f"forusbots_{coro_label}_job_id"] = scrape.job_id
-                diag[f"forusbots_{coro_label}_elapsed_s"] = scrape.elapsed_seconds
+                elapsed_seconds = _safe_nonnegative_number(
+                    scrape.elapsed_seconds
+                )
+                if elapsed_seconds is not None:
+                    diag[f"forusbots_{coro_label}_elapsed_s"] = elapsed_seconds
                 flat, meta = forusbots_catalog.normalize_scrape_result(scrape.result)
-                if meta.get("module_errors") or meta.get("errors"):
+                if meta.get("module_error_count") or meta.get("error_count"):
                     status = "partial"
                 elif not flat:
                     # Job succeeded but the normalizer found no usable module data
@@ -581,19 +824,47 @@ class TicketOrchestrator:
                     status = "ok"
                 return flat, meta, status
             except ForusBotsTimeout as e:
-                logger.warning("ForusBots %s timeout: %s", coro_label, e)
-                return {}, {"error": str(e)}, "timeout"
+                logger.warning(
+                    "ForusBots %s timeout code=%s", coro_label, e.code,
+                )
+                diag[f"forusbots_{coro_label}_job_id"] = e.job_id
+                diag["manual_reconciliation_required"] = True
+                return {}, {
+                    "error_code": e.code,
+                    "job_id": e.job_id,
+                    "manual_reconciliation_required": True,
+                }, "timeout"
             except (ForusBotsJobFailed, ForusBotsError) as e:
-                logger.warning("ForusBots %s failed: %s", coro_label, e)
-                return {}, {"error": str(e)}, "failed"
+                error_code = e.code
+                job_id = getattr(e, "job_id", None)
+                logger.warning(
+                    "ForusBots %s failed code=%s", coro_label, error_code,
+                )
+                if job_id:
+                    diag[f"forusbots_{coro_label}_job_id"] = job_id
+                meta = {"error_code": error_code}
+                if getattr(e, "needs_reconciliation", False):
+                    diag["manual_reconciliation_required"] = True
+                    meta["manual_reconciliation_required"] = True
+                if job_id:
+                    meta["job_id"] = job_id
+                return {}, meta, "failed"
 
         tasks = []
         if p_modules:
             tasks.append(_one("participant",
-                              self.deps.forusbots.scrape_participant(participant_id, p_modules)))
+                              self.deps.forusbots.scrape_participant(
+                                  participant_id,
+                                  p_modules,
+                                  dedupe_scope=self._forusbots_dedupe_scope,
+                              )))
         if plan_modules:
             tasks.append(_one("plan",
-                              self.deps.forusbots.scrape_plan(plan_id, plan_modules)))
+                              self.deps.forusbots.scrape_plan(
+                                  plan_id,
+                                  plan_modules,
+                                  dedupe_scope=self._forusbots_dedupe_scope,
+                              )))
         results = await asyncio.gather(*tasks) if tasks else []
 
         idx = 0
@@ -631,7 +902,11 @@ class TicketOrchestrator:
         # legacy single-job diagnostics keys (kept for dashboards)
         if "forusbots_participant_job_id" in diag:
             diag.setdefault("forusbots_job_id", diag["forusbots_participant_job_id"])
-            diag.setdefault("forusbots_elapsed_s", diag["forusbots_participant_elapsed_s"])
+        if "forusbots_participant_elapsed_s" in diag:
+            diag.setdefault(
+                "forusbots_elapsed_s",
+                diag["forusbots_participant_elapsed_s"],
+            )
         return ppt_flat, plan_flat, meta, status
 
     async def _extract_ticket_fields(
@@ -645,8 +920,11 @@ class TicketOrchestrator:
         where ``extracted`` is keyed by normalized slug →
         ``{"field", "value", "evidence"}``.
 
-        Hard anti-hallucination gate: an extraction whose ``evidence`` quote is
-        not actually present in the ticket text is demoted to not_found."""
+        Hard anti-hallucination gate (dos capas, Task 5):
+        1. literal — la cita de ``evidence`` debe existir en el ticket;
+        2. semántica — para tipos currency/number/date el valor debe poder
+           derivarse de la evidencia (``evidence="$5"`` con ``value=999999999``
+           se demote). Lo no verificable queda como not_found."""
         fields_payload = [
             {"field": it.get("field"), "description": it.get("description"),
              "why_needed": it.get("why_needed"), "required": it.get("required")}
@@ -663,31 +941,59 @@ class TicketOrchestrator:
             )
             parsed = parse_json_object(resp.content) or {}
         except Exception:
-            logger.exception("ticket_field_extract failed")
+            logger.error("ticket_field_extract failed")
             parsed = {}
 
+        extraction: Optional[TicketFieldExtractOut] = None
+        if isinstance(parsed, dict) and parsed:
+            try:
+                extraction = TicketFieldExtractOut.model_validate(parsed)
+            except ValidationError:
+                logger.warning("ticket_field_extract: output inválido descartado")
+
+        data_types = {
+            forusbots_catalog._normalize_slug(str(it.get("field"))): it.get("data_type")
+            for it in candidates
+        }
+        # Allowlist CERRADA de slugs: el extractor sólo puede devolver los
+        # campos que se le PIDIERON. Una clave inventada por el LLM (prompt
+        # injection) se rechaza — si no está en candidates no tiene data_type
+        # y saltaría la validación semántica, permitiendo fabricar hechos
+        # (P1/P2 del review final).
+        allowed_slugs = set(data_types)
         ticket_text = " ".join(
             str(t or "") for t in (req.ticket.email_subject, req.ticket.email_body)
         ).lower()
         extracted: Dict[str, Dict[str, Any]] = {}
         demoted: List[str] = []
-        raw_extracted = parsed.get("extracted")
-        if isinstance(raw_extracted, dict):
-            for field_name, entry in raw_extracted.items():
-                if not isinstance(entry, dict):
+        rejected_keys: List[str] = []
+        if extraction is not None:
+            for field_name, entry in extraction.extracted.items():
+                slug = forusbots_catalog._normalize_slug(field_name)
+                if slug not in allowed_slugs:
+                    rejected_keys.append(field_name)
                     continue
-                evidence = str(entry.get("evidence") or "").strip()
+                evidence = entry.evidence.strip()
                 if not evidence or evidence.lower() not in ticket_text:
                     demoted.append(field_name)
                     continue
-                extracted[forusbots_catalog._normalize_slug(field_name)] = {
+                if not _evidence_supports_value(entry.value, evidence,
+                                                data_types.get(slug)):
+                    demoted.append(field_name)
+                    continue
+                extracted[slug] = {
                     "field": field_name,
-                    "value": entry.get("value"),
+                    "value": entry.value,
                     "evidence": evidence,
                 }
+        if rejected_keys:
+            logger.warning(
+                "ticket_field_extract: %d non-candidate keys rejected",
+                len(rejected_keys),
+            )
 
-        not_found = [str(f) for f in (parsed.get("not_found") or [])] + demoted
-        if not parsed:
+        not_found = ([str(f) for f in extraction.not_found] if extraction else []) + demoted
+        if extraction is None:
             not_found = [str(it.get("field")) for it in candidates]
 
         fm = diag.setdefault("field_mapping", {})
@@ -695,6 +1001,8 @@ class TicketOrchestrator:
         fm["ticket_not_found"] = not_found
         if demoted:
             fm["ticket_evidence_demoted"] = demoted
+        if rejected_keys:
+            fm["ticket_non_candidate_rejected"] = rejected_keys
         return extracted, not_found
 
     async def _build_gr_body(
@@ -708,7 +1016,11 @@ class TicketOrchestrator:
         total_inquiries: int,
         diag: Dict[str, Any],
         ticket_extracted: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+    ) -> GRBodyDraftOut:
+        """Agente de REDACCIÓN (Task 5): sólo se consumen ``inquiry``/``topic``/
+        ``plan_type`` de su output; collected_data, límites, conteos e IDs los
+        fija el código (gr_payload_builder + request). Un fallo aquí degrada la
+        redacción, nunca los hechos."""
         entry: Dict[str, Any] = {
             "pptDataModules": ppt_modules,
             "caseData": self._build_case_data(req),
@@ -733,40 +1045,27 @@ class TicketOrchestrator:
             )
             body = parse_json_object(resp.content)
         except Exception:
-            logger.exception("gr_body_build failed")
+            logger.error("gr_body_build failed")
             body = None
-        if not isinstance(body, dict):
-            # degraded fallback: minimal body so generate_response still runs
-            diag["gr_body_build_failed"] = True
-            body = {
-                "inquiry": ext.inquiry, "record_keeper": ext.record_keeper,
-                "plan_type": ext.plan_type, "topic": ext.topic,
-                "collected_data": {}, "total_inquiries_in_ticket": total_inquiries,
-            }
-        # Defensive merge: every ticket-extracted value must survive into
-        # collected_data even if the body-builder dropped it.
-        if ticket_extracted:
-            cd = body.setdefault("collected_data", {})
-            if isinstance(cd, dict):
-                pd = cd.setdefault("participant_data", {})
-                if isinstance(pd, dict):
-                    for v in ticket_extracted.values():
-                        pd.setdefault(v["field"], v["value"])
-        return body
+        if isinstance(body, dict):
+            try:
+                return GRBodyDraftOut.model_validate(body)
+            except ValidationError:
+                diag["gr_body_build_invalid_output"] = True
+        diag["gr_body_build_failed"] = True
+        return GRBodyDraftOut(inquiry=ext.inquiry, topic=ext.topic,
+                              plan_type=ext.plan_type)
 
     # ------------------------------------------------------------------
     # Input shaping
     # ------------------------------------------------------------------
 
     def _build_ticket_data(self, req: Any) -> Dict[str, Any]:
+        # Fuente de verdad única: subject + body (Task 1 del plan). El hilo
+        # histórico y el tag ya no existen en runtime; los prompts reciben las
+        # claves con valores neutrales porque su protocolo ya define ese caso
+        # ("empty {} → use emailBody").
         t = req.ticket
-        ticket_messages = t.ticket_messages or {}
-        tag = t.tag
-        # Form-submission rule (defensive): the system-generated subject has no
-        # relation to the question — force the agents to rely on the body only.
-        if (t.email_subject or "").strip() == _FORM_SUBMISSION_SUBJECT:
-            ticket_messages = {}
-            tag = None
         return {
             "userId": None,
             "userName": t.username,
@@ -774,9 +1073,9 @@ class TicketOrchestrator:
             "ticketId": t.ticket_id,
             "emailSubject": t.email_subject,
             "emailBody": t.email_body,
-            "tag": tag,
+            "tag": None,
             "firstContact": t.first_contact,
-            "ticket_messages": ticket_messages,
+            "ticket_messages": {},
         }
 
     def _build_case_data(self, req: Any) -> Dict[str, Any]:
@@ -794,13 +1093,18 @@ class TicketOrchestrator:
 
     @staticmethod
     def _classifier_diag(classification: Any) -> Dict[str, Any]:
-        return {
-            "classifier": {
-                "route": getattr(classification, "route", None),
-                "confidence": getattr(classification, "confidence", None),
-                "reasoning": getattr(classification, "reasoning", None),
-            }
+        classifier: Dict[str, Any] = {
+            "route": getattr(classification, "route", None),
+            "confidence": getattr(classification, "confidence", None),
+            "reasoning": getattr(classification, "reasoning", None),
         }
+        metadata = getattr(classification, "metadata", None) or {}
+        if metadata.get("classifier_parse_ok") is False:
+            classifier["parse_ok"] = False
+        coverage_signals = metadata.get("coverage_signals")
+        if isinstance(coverage_signals, dict):
+            classifier["coverage_signals"] = dict(coverage_signals)
+        return {"classifier": classifier}
 
 
 # ============================================================================
@@ -852,16 +1156,20 @@ def _build_data_collection(
     for side in ("participant", "plan"):
         side_meta = scrape_meta.get(side) or {}
         for src, dst in (
-            ("module_errors", "moduleErrors"),
-            ("unknown_fields", "unknownFields"),
-            ("warnings", "warnings"),
-            ("errors", "errors"),
-            ("error", "errors"),
+            ("module_error_count", "moduleErrorCount"),
+            ("unknown_field_count", "unknownFieldCount"),
+            ("extractor_warning_count", "extractorWarningCount"),
+            ("warning_count", "warningCount"),
+            ("error_count", "errorCount"),
         ):
             val = side_meta.get(src)
-            if val:
+            if isinstance(val, int) and not isinstance(val, bool) and val > 0:
                 bucket = out.setdefault(dst, {})
                 bucket[side] = val
+        error_code = side_meta.get("error_code")
+        if error_code in _SAFE_FORUSBOTS_ERROR_CODES:
+            bucket = out.setdefault("errorCodes", {})
+            bucket[side] = error_code
     if field_mapping.get("unmapped"):
         out["unmappedFields"] = field_mapping["unmapped"]
     if field_mapping.get("rejected"):

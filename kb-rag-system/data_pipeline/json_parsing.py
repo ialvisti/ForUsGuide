@@ -15,6 +15,8 @@ import logging
 import re
 from typing import Any, Dict, List, Optional
 
+from api import metrics as ticket_metrics
+
 logger = logging.getLogger(__name__)
 
 _MARKDOWN_FENCE_RE = re.compile(
@@ -37,9 +39,23 @@ def _try_loads(text: str) -> Any:
         return None
 
 
+def _emit_parse_outcome(success: bool) -> None:
+    if not ticket_metrics.ticket_execution_active():
+        return
+    try:
+        ticket_metrics.emit(
+            "ticket_llm_parse_count",
+            1,
+            code="success" if success else "failed",
+        )
+    except (TypeError, ValueError):
+        logger.error("LLM parse metric rejected by telemetry schema")
+
+
 def parse_json_object(content: Optional[str]) -> Optional[Dict[str, Any]]:
     """Parse ``content`` into a dict, or return ``None``."""
     if not content or not content.strip():
+        _emit_parse_outcome(False)
         return None
     text = _strip_fence(content.strip())
     parsed = _try_loads(text)
@@ -48,8 +64,10 @@ def parse_json_object(content: Optional[str]) -> Optional[Dict[str, Any]]:
         if m:
             parsed = _try_loads(m.group(0))
     if isinstance(parsed, dict):
+        _emit_parse_outcome(True)
         return parsed
-    logger.warning("Expected a JSON object; got %r", content[:300])
+    logger.warning("Expected a JSON object; output rejected (length=%d)", len(content))
+    _emit_parse_outcome(False)
     return None
 
 
@@ -59,6 +77,7 @@ def parse_json_array(content: Optional[str]) -> Optional[List[Any]]:
     Tolerates a single object returned instead of an array by wrapping it.
     """
     if not content or not content.strip():
+        _emit_parse_outcome(False)
         return None
     text = _strip_fence(content.strip())
     parsed = _try_loads(text)
@@ -67,10 +86,13 @@ def parse_json_array(content: Optional[str]) -> Optional[List[Any]]:
         if m:
             parsed = _try_loads(m.group(0))
     if isinstance(parsed, list):
+        _emit_parse_outcome(True)
         return parsed
     if isinstance(parsed, dict):
         # An agent that should emit a one-element array sometimes emits the
         # bare object; normalize rather than fail.
+        _emit_parse_outcome(True)
         return [parsed]
-    logger.warning("Expected a JSON array; got %r", content[:300])
+    logger.warning("Expected a JSON array; output rejected (length=%d)", len(content))
+    _emit_parse_outcome(False)
     return None

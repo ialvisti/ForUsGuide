@@ -28,6 +28,19 @@ def mock_env(test_api_key, monkeypatch):
     # /api/v1/route-inquiry now gates on ROUTER_MODE; default 'disabled' would
     # 503 the whole endpoint suite. Keep tests honoring routes by default.
     monkeypatch.setenv("ROUTER_MODE", "full")
+    # El singleton de settings se crea en el PRIMER import de api.config; si
+    # otro archivo de tests lo importó antes con otro entorno, los setenv de
+    # arriba no lo afectan. Fijar también el singleton hace a esta suite
+    # independiente del orden de ejecución.
+    import sys
+    if "api.config" in sys.modules:
+        from api.config import settings as _settings
+        monkeypatch.setattr(_settings, "API_KEY", test_api_key)
+        monkeypatch.setattr(_settings, "PINECONE_API_KEY", "test-pinecone-key")
+        monkeypatch.setattr(_settings, "OPENAI_API_KEY", "test-openai-key")
+        monkeypatch.setattr(_settings, "INDEX_NAME", "test-index")
+        monkeypatch.setattr(_settings, "NAMESPACE", "test-namespace")
+        monkeypatch.setattr(_settings, "ROUTER_MODE", "full")
 
 
 @pytest.fixture
@@ -821,3 +834,535 @@ class TestCoveragePackBuilder:
         assert pack.distinct_articles == ["Hardship Article"]
         assert pack.chunk_types_present == ["business_rules", "steps"]
         assert len(pack.chunks) == 2
+
+
+class TestTicketHandlerContainment:
+    """Task 0 (contención HT-02/HT-10): la configuración del ticket handler es
+    fail-closed for unreviewed origins and missing credentials, while preserving
+    the exact live ForUsBots origin."""
+
+    def _pin_settings(self, monkeypatch, **overrides):
+        """Fija en el singleton una configuración base válida y aplica overrides."""
+        from api.config import settings as app_settings
+        base = dict(
+            APP_ROLE="producer",
+            API_KEY="k",
+            API_CLIENT_KEYS={"n8n": "mapped-k"},
+            API_CLIENT_TENANTS={"n8n": "tenant-a"},
+            PINECONE_API_KEY="p",
+            OPENAI_API_KEY="o",
+            GEMINI_API_KEY="g",
+            ENVIRONMENT="production",
+            APP_ENV="production",
+            TICKET_HANDLER_MODE="full",
+            FORUSBOTS_BASE_URL="https://forusbots.internal.example",
+            FORUSBOTS_AUTH_TOKEN="tok",
+            LLM_ROUTE_CLASSIFY="gpt-5.5",
+            LLM_ROUTE_DECOMPOSE="gpt-5.5",
+            LLM_ROUTE_GR_OUTCOME="gpt-5.5",
+            LLM_ROUTE_GR_RESPONSE="gpt-5.5",
+            LLM_ROUTE_KNOWLEDGE="gpt-5.5",
+            LLM_ROUTE_REQUIRED_DATA="gpt-5.5",
+            LLM_ROUTE_EXTRACT_INQUIRIES="gpt-5.5",
+            LLM_ROUTE_KB_QUESTION_SYNTHESIS="gpt-5.5",
+            LLM_ROUTE_FORUSBOTS_FIELD_MAP="gpt-5.5",
+            LLM_ROUTE_GR_BODY_BUILD="gpt-5.5",
+            LLM_ROUTE_TICKET_FIELD_EXTRACT="gpt-5.5",
+            PARTICIPANT_PLAN_SOURCE="",
+            TICKET_WIF_AUDIENCE="",
+            TICKET_WIF_ALLOWED_EMAILS=[],
+            TICKET_WIF_EXPECTED_EMAIL="",
+            TICKET_LLM_PRICING_JSON=(
+                '{"pricing_as_of":"2026-07-21",'
+                '"source":"openai-google-official-public-pricing","models":{'
+                '"openai:gpt-5.5":{"input_usd_per_million":5.0,'
+                '"output_usd_per_million":30.0},'
+                '"gemini:gemini-2.5-pro":{"input_usd_per_million":1.25,'
+                '"output_usd_per_million":10.0}}}'
+            ),
+            TICKET_JOB_BACKEND="firestore",
+            FIRESTORE_DATABASE="(default)",
+            TICKET_TASK_QUEUE="cloudtasks",
+            GCP_PROJECT="rag-kb-system",
+            CLOUD_TASKS_LOCATION="us-central1",
+            CLOUD_TASKS_QUEUE="ticket-jobs",
+            TICKET_WORKER_URL="https://worker.example.run.app",
+            TICKET_WORKER_AUDIENCE=(
+                "https://kb-rag-ticket-worker."
+                "rag-kb-system.ticket.internal"
+            ),
+            TICKET_WORKER_SERVICE_ACCOUNT=(
+                "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
+            ),
+            TICKET_WORKER_REQUIRE_OIDC=True,
+        )
+        base.update(overrides)
+        for key, value in base.items():
+            monkeypatch.setattr(app_settings, key, value)
+
+    def test_full_mode_accepts_reviewed_live_forusbots_origin(self, monkeypatch):
+        from api.config import validate_settings
+        self._pin_settings(
+            monkeypatch,
+            APP_ROLE="worker",
+            FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
+        )
+        assert validate_settings() is True
+
+    def test_staging_active_accepts_reviewed_live_forusbots_origin(self, monkeypatch):
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch,
+            APP_ROLE="worker",
+            ENVIRONMENT="staging",
+            APP_ENV="staging",
+            FIRESTORE_DATABASE="ticket-staging",
+            FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
+            TICKET_WORKER_AUDIENCE=(
+                "https://kb-rag-ticket-worker-staging."
+                "rag-kb-system.ticket.internal"
+            ),
+            TICKET_WORKER_SERVICE_ACCOUNT=(
+                "ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com"
+            ),
+        )
+        assert validate_settings() is True
+
+    @pytest.mark.parametrize("base_url", [
+        "https://user:raw-secret@forusbots.internal.example",
+        "https://forusbots.internal.example?token=raw-secret",
+        "https://forusbots.internal.example#raw-secret",
+        "https://forusbots.internal.example/unreviewed-prefix",
+    ])
+    def test_active_mode_rejects_noncanonical_forusbots_origin_without_echoing_it(
+        self, monkeypatch, base_url,
+    ):
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch, APP_ROLE="worker", FORUSBOTS_BASE_URL=base_url
+        )
+        with pytest.raises(
+            ValueError, match="origen canónico revisado"
+        ) as captured:
+            validate_settings()
+
+        assert "raw-secret" not in str(captured.value)
+
+    def test_reconciler_validation_does_not_require_api_pinecone_or_llm_credentials(
+            self, monkeypatch):
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch,
+            APP_ROLE="reconciler",
+            TICKET_HANDLER_MODE="disabled",
+            API_KEY="",
+            API_CLIENT_KEYS={},
+            API_CLIENT_TENANTS={},
+            PINECONE_API_KEY="",
+            OPENAI_API_KEY="",
+            GEMINI_API_KEY="",
+            USE_VERTEX_AI=False,
+            TICKET_LLM_PRICING_JSON=(
+                '{"pricing_as_of":"2026-07-21","source":"official",'
+                '"models":{"openai:gpt-5.5":{'
+                '"input_usd_per_million":5.0,'
+                '"output_usd_per_million":30.0}}}'
+            ),
+            TICKET_JOB_BACKEND="firestore",
+            FIRESTORE_DATABASE="(default)",
+            TICKET_TASK_QUEUE="cloudtasks",
+            GCP_PROJECT="rag-kb-system",
+            CLOUD_TASKS_LOCATION="us-central1",
+            CLOUD_TASKS_QUEUE="ticket-jobs",
+            TICKET_WORKER_URL="https://worker.example.run.app",
+            TICKET_WORKER_AUDIENCE=(
+                "https://kb-rag-ticket-worker."
+                "rag-kb-system.ticket.internal"
+            ),
+            TICKET_WORKER_SERVICE_ACCOUNT=(
+                "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
+            ),
+            TICKET_WORKER_REQUIRE_OIDC=True,
+        )
+        assert validate_settings() is True
+
+    def test_active_production_preserves_legacy_api_key_without_tenant_mapping(
+            self, monkeypatch):
+        from api.config import validate_settings
+
+        self._pin_settings(
+            monkeypatch,
+            API_CLIENT_KEYS={"n8n": "mapped-k"},
+            API_CLIENT_TENANTS={},
+        )
+        assert validate_settings() is True
+
+    def test_full_mode_requires_forusbots_token(self, monkeypatch):
+        """Un modo activo sin FORUSBOTS_AUTH_TOKEN no arranca (antes era warning)."""
+        from api.config import validate_settings
+        self._pin_settings(
+            monkeypatch, APP_ROLE="worker", FORUSBOTS_AUTH_TOKEN=""
+        )
+        with pytest.raises(ValueError, match="FORUSBOTS_AUTH_TOKEN"):
+            validate_settings()
+
+    def test_non_production_accepts_same_reviewed_forusbots_origin(self, monkeypatch):
+        from api.config import validate_settings
+        self._pin_settings(
+            monkeypatch,
+            APP_ROLE="worker",
+            ENVIRONMENT="development",
+            APP_ENV="development",
+            FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
+        )
+        assert validate_settings() is True
+
+    def test_request_cannot_expand_server_mode(self, client, test_api_key, monkeypatch):
+        """Servidor disabled + body ticket_handler_mode=full → sigue 503."""
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "API_KEY", test_api_key)
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        response = client.post(
+            "/api/v1/handle-ticket",
+            json={
+                "participant_id": "158948",
+                "plan_id": "580",
+                "company_name": "StarWars Inc.",
+                "company_status": "Ongoing",
+                "ticket": {
+                    "username": "Ivan",
+                    "user_email": "i@f.com",
+                    "email_subject": "401k",
+                    "email_body": "quiero retirar mi 401k",
+                },
+                "ticket_handler_mode": "full",
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+        assert response.status_code == 503
+
+    def test_request_can_narrow_server_mode(self, client, test_api_key, monkeypatch):
+        """Servidor full + body ticket_handler_mode=disabled → 503 (narrowing sí)."""
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "API_KEY", test_api_key)
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        response = client.post(
+            "/api/v1/handle-ticket",
+            json={
+                "participant_id": "158948",
+                "plan_id": "580",
+                "company_name": "StarWars Inc.",
+                "company_status": "Ongoing",
+                "ticket": {
+                    "username": "Ivan",
+                    "user_email": "i@f.com",
+                    "email_subject": "401k",
+                    "email_body": "quiero retirar mi 401k",
+                },
+                "ticket_handler_mode": "disabled",
+            },
+            headers={"X-API-Key": test_api_key},
+        )
+        assert response.status_code == 503
+
+
+# ---------------------------------------------------------------------------
+# Producción (plan de finalización, Tarea 2 Pasos 1/4) — contrato de auth de
+# rutas no-ticket y roles de proceso excluyentes. RED hasta Tarea 4 Paso 1a.
+# ---------------------------------------------------------------------------
+
+class TestNonTicketAuthContract:
+    """El endurecimiento de tickets NO puede alterar la autenticación de las
+    rutas core existentes (regresión guard)."""
+
+    def test_non_ticket_routes_keep_existing_auth_contract(self, client, test_api_key, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "API_KEY", test_api_key)
+
+        # /health es público (probe de Cloud Run)
+        assert client.get("/health").status_code == 200
+
+        # el contrato EXISTENTE: required-data/generate-response/route-inquiry
+        # exigen X-API-Key (sin header → 401, key inválida → 403); el
+        # endurecimiento de tickets no debe alterarlo.
+        body = {"inquiry": "cash out my 401k please", "record_keeper": "LT Trust"}
+        r_missing = client.post("/api/v1/required-data", json=body)
+        assert r_missing.status_code == 401
+        r_wrong = client.post("/api/v1/required-data", json=body,
+                              headers={"X-API-Key": "wrong-key"})
+        assert r_wrong.status_code == 403
+        # con la key válida la ruta NO devuelve error de autenticación
+        client.app.state.rag_engine.get_required_data = AsyncMock(
+            side_effect=RuntimeError("engine stub"))
+        r_ok = client.post("/api/v1/required-data", json=body,
+                           headers={"X-API-Key": test_api_key})
+        assert r_ok.status_code not in (401, 403)
+
+
+class TestAppRoleSeparation:
+    """APP_ROLE=producer|worker|reconciler con rutas excluyentes (plan
+    Tarea 4 Paso 1a). El producer conserva la API completa no-ticket."""
+
+    def test_producer_role_preserves_non_ticket_routes_and_core_readiness(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        assert hasattr(app_settings, "APP_ROLE"), (
+            "RED: settings.APP_ROLE no existe — los roles de proceso "
+            "excluyentes no están implementados (Tarea 4 Paso 1a)"
+        )
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        paths = {getattr(r, "path", None) for r in client.app.routes}
+        core = {"/health", "/livez", "/readyz", "/api/v1/knowledge-question",
+                "/api/v1/generate-response", "/api/v1/required-data",
+                "/api/v1/route-inquiry", "/api/v1/chunks", "/api/v1/index-stats"}
+        assert core <= paths, f"faltan rutas core: {core - paths}"
+        # el producer NUNCA sirve la ruta interna del worker (404: no revela)
+        r = client.post("/internal/tasks/ticket-job", json={"job_id": "x"})
+        assert r.status_code == 404, (
+            f"el producer respondió {r.status_code} en la ruta interna del "
+            "worker; debe ocultarla con 404"
+        )
+        # el rol worker sólo sirve la ruta interna + probes
+        monkeypatch.setattr(app_settings, "APP_ROLE", "worker")
+        assert client.get("/livez").status_code == 200
+        r_core = client.post("/api/v1/knowledge-question", json={"question": "q"})
+        assert r_core.status_code == 404, (
+            f"el worker respondió {r_core.status_code} en una ruta del "
+            "producer; los roles no son excluyentes"
+        )
+
+    def test_openapi_contains_only_routes_served_by_each_role(
+        self, client, monkeypatch,
+    ):
+        from api.config import settings as app_settings
+
+        expected = {
+            "producer": {
+                "/api/v1/knowledge-question",
+                "/api/v2/handle-ticket",
+            },
+            # The internal task endpoint deliberately has
+            # include_in_schema=False; probes are excluded as well.
+            "worker": set(),
+            "reconciler": set(),
+        }
+        forbidden = {
+            "producer": {"/internal/tasks/ticket-job"},
+            "worker": {"/api/v1/knowledge-question", "/api/v2/handle-ticket"},
+            "reconciler": {
+                "/internal/tasks/ticket-job",
+                "/api/v1/knowledge-question",
+                "/api/v2/handle-ticket",
+            },
+        }
+
+        # Do not clear the cache between roles: this also proves a schema from
+        # one process role cannot bleed into another role's documentation.
+        client.app.openapi_schema = None
+        for role in ("producer", "worker", "reconciler"):
+            monkeypatch.setattr(app_settings, "APP_ROLE", role)
+            paths = set(client.app.openapi()["paths"])
+            assert expected[role] <= paths
+            assert paths.isdisjoint(forbidden[role])
+
+
+# ---------------------------------------------------------------------------
+# Producción (Tarea 11) — readiness role-aware y sanitización de métricas
+# ---------------------------------------------------------------------------
+
+class TestRoleAwareReadiness:
+
+    def test_participant_plan_validator_contract_requires_safe_health_probe(self):
+        from api.participant_plan import ParticipantPlanValidator
+
+        class _AuthorizeOnly:
+            async def authorize(self, **_kwargs):
+                return None
+
+        assert not isinstance(_AuthorizeOnly(), ParticipantPlanValidator)
+
+    def test_producer_disabled_actually_probes_core_pinecone(
+            self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        client.app.state.pinecone_uploader.get_index_stats.side_effect = (
+            RuntimeError("secret upstream detail")
+        )
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert response.json()["unhealthy"] == ["pinecone"]
+        assert "secret upstream detail" not in response.text
+
+    def test_producer_disabled_ready_without_admission_deps(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        # Sin validador/cola/ForusBots: disabled sigue READY, pero conserva el
+        # repositorio durable para polling de trabajos ya admitidos.
+        client.app.state.participant_plan_validator = None
+        r = client.get("/readyz")
+        assert r.status_code == 200
+        assert r.json()["role"] == "producer"
+
+    def test_producer_disabled_requires_polling_repository(self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        client.app.state.ticket_repo = None
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert "ticket_repo" in response.json()["missing"]
+
+    def test_producer_active_requires_validator(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.participant_plan_validator = None
+        r = client.get("/readyz")
+        assert r.status_code == 503
+        assert "participant_plan_validator" in r.json()["missing"]
+
+    def test_producer_active_does_not_require_forusbots_client(
+            self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.participant_plan_validator = Mock(
+            authorize=AsyncMock(),
+            health=AsyncMock(return_value={"status": "ok"}),
+        )
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(return_value=0.0),
+            aclose=AsyncMock(),
+        )
+        client.app.state.forusbots_client = None
+        r = client.get("/readyz")
+        assert r.status_code == 200
+        assert "forusbots_client" not in r.json().get("missing", [])
+
+    def test_producer_active_probes_only_admission_dependencies(
+            self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.participant_plan_validator = Mock(
+            authorize=AsyncMock(),
+            health=AsyncMock(return_value={"status": "ok"}),
+        )
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(return_value=0.0),
+            aclose=AsyncMock(),
+        )
+        client.app.state.forusbots_client = None
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 200
+        client.app.state.ticket_repo.get.assert_awaited_once()
+        client.app.state.ticket_queue.estimated_queue_delay_s.assert_awaited_once()
+
+    def test_reconciler_fails_readiness_when_queue_probe_fails(
+            self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "reconciler")
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(
+                side_effect=RuntimeError("credential material")
+            ),
+            aclose=AsyncMock(),
+        )
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert response.json()["unhealthy"] == ["ticket_queue"]
+        assert "credential material" not in response.text
+
+    def test_worker_probes_execution_dependencies(self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "worker")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "full")
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.forusbots_client = Mock(
+            health=AsyncMock(side_effect=RuntimeError("private upstream")),
+            aclose=AsyncMock(),
+        )
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 503
+        assert response.json()["unhealthy"] == ["forusbots"]
+        assert "private upstream" not in response.text
+        client.app.state.ticket_repo.get.assert_awaited_once()
+        client.app.state.pinecone_uploader.get_index_stats.assert_called()
+
+    def test_reconciler_ready_without_llm_provider(self, client, monkeypatch):
+        from api.config import settings as app_settings
+        monkeypatch.setattr(app_settings, "APP_ROLE", "reconciler")
+        # sin proveedor LLM el reconciliador sigue READY (no lo usa)
+        monkeypatch.setattr(app_settings, "OPENAI_API_KEY", "")
+        monkeypatch.setattr(app_settings, "GEMINI_API_KEY", "")
+        monkeypatch.setattr(app_settings, "USE_VERTEX_AI", False)
+        # This test mutates the role after the fixture's producer startup, so
+        # inject the reconciler's own healthy dependencies explicitly. Actual
+        # role-specific construction is covered by test_app_role_startup.py.
+        client.app.state.ticket_repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_queue = Mock(
+            estimated_queue_delay_s=AsyncMock(return_value=0.0),
+            aclose=AsyncMock(),
+        )
+        r = client.get("/readyz")
+        assert r.status_code == 200
+        assert r.json()["role"] == "reconciler"
+
+    def test_livez_has_no_external_io(self, client):
+        assert client.get("/livez").json() == {"status": "ok"}
+
+
+class TestMetricsSanitization:
+
+    def test_emit_drops_non_allowlisted_labels(self):
+        from api import metrics
+        import logging
+
+        records = []
+
+        class _Cap(logging.Handler):
+            def emit(self, record):
+                records.append(record.getMessage())
+
+        h = _Cap()
+        h.setLevel(logging.INFO)
+        metrics.logger.addHandler(h)
+        prev_level = metrics.logger.level
+        metrics.logger.setLevel(logging.INFO)
+        job_hash = "a" * 64
+        try:
+            metrics.emit("ticket_job_terminal", 1, job_hash=job_hash,
+                         trace_id="t1", state="succeeded", code="none",
+                         participant_id="158948",  # PROHIBIDO: debe filtrarse
+                         email="luke@example.com")  # PROHIBIDO
+        finally:
+            metrics.logger.removeHandler(h)
+            metrics.logger.setLevel(prev_level)
+
+        blob = "\n".join(records)
+        assert "158948" not in blob, "un ID de participante llegó a las métricas"
+        assert "luke@example.com" not in blob
+        assert "succeeded" in blob and job_hash in blob

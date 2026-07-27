@@ -1,0 +1,101 @@
+"""
+Probes de dependencias en VIVO (plan de finalización, Tarea 8 Paso 4).
+
+Marcadas ``live_dependencies``: CI las excluye
+(``-m "not live_dependencies and not staging_e2e"``); corren sólo en su gate.
+Separación de efectos:
+
+- Health/origin de ForusBots y la probe read-only de Pinecone pueden ejecutarse
+  con credenciales aprobadas (sin efectos participant-facing);
+- submit/poll de ForusBots o CUALQUIER efecto sólo DESPUÉS de G4 y con
+  identidades sintéticas.
+
+Ningún resultado contiene participantes, tokens, bodies upstream ni texto LLM.
+"""
+
+from __future__ import annotations
+
+import os
+
+import pytest
+
+pytestmark = pytest.mark.live_dependencies
+
+_G4_ENV = "FORUSBOTS_G4_APPROVAL"
+
+
+def _require(*env_vars):
+    missing = [v for v in env_vars if not os.getenv(v)]
+    if missing:
+        pytest.skip(f"faltan variables live: {missing}")
+
+
+class TestForusBotsTransportLive:
+
+    async def test_health_on_reviewed_origin(self):
+        """Exact reviewed origin + /health, without participant data."""
+        _require("FORUSBOTS_BASE_URL")
+        from data_pipeline.forusbots_client import ForusBotsClient
+
+        base = os.environ["FORUSBOTS_BASE_URL"]
+        client = ForusBotsClient(base_url=base,
+                                 auth_token=os.getenv("FORUSBOTS_AUTH_TOKEN", ""))
+        try:
+            result = await client.health()
+            assert result["tls"] is base.lower().startswith("https://")
+            assert result["status_code"] == 200
+        finally:
+            await client.aclose()
+
+
+class TestPineconeReadOnlyLive:
+
+    def test_pinecone_stats_and_probe_readonly(self):
+        """describe_index_stats + consulta sanitizada; sin writes. NO requiere
+        G4 (sólo lectura contra kb-articles-production/kb_articles)."""
+        _require("PINECONE_API_KEY")
+        from data_pipeline.pinecone_uploader import PineconeUploader
+
+        uploader = PineconeUploader(
+            index_name=os.getenv("INDEX_NAME", "kb-articles-production"),
+            namespace=os.getenv("NAMESPACE", "kb_articles"),
+        )
+        out = uploader.verify_readonly()
+        assert out["namespace"] == os.getenv("NAMESPACE", "kb_articles")
+        assert out["total_vectors"] is not None
+
+
+class TestForusBotsEffectfulLive:
+    """Submit/poll con efectos: SÓLO tras G4 y con identidades sintéticas
+    Requiere un texto de gate explícito; valores ambiguos como ``0``,
+    ``false`` o ``1`` nunca habilitan efectos."""
+
+    pytestmark = [pytest.mark.live_dependencies, pytest.mark.effectful_live]
+
+    async def test_synthetic_submit_poll_reconciles_on_ambiguous(self):
+        approval = os.getenv(_G4_ENV, "").strip()
+        if not approval.startswith("APROBADO G4 "):
+            pytest.skip("submit/poll con efectos requiere G4 aprobado")
+        _require("FORUSBOTS_BASE_URL", "FORUSBOTS_AUTH_TOKEN",
+                 "FORUSBOTS_SYNTHETIC_PARTICIPANT")
+        from data_pipeline.forusbots_client import (
+            ForusBotsAmbiguousSubmit,
+            ForusBotsClient,
+        )
+
+        from api.config import settings
+
+        client = ForusBotsClient.from_settings(settings)  # pragma: no cover
+        try:
+            try:
+                result = await client.scrape_participant(
+                    os.environ["FORUSBOTS_SYNTHETIC_PARTICIPANT"],
+                    [{"key": "balance", "fields": ["total"]}],
+                )
+                assert result.job_id
+            except ForusBotsAmbiguousSubmit as amb:
+                # POST ambiguo: reconciliar por correlation/key, jamás
+                # reenviar a ciegas; si no se puede, manual_reconciliation
+                assert amb.needs_reconciliation is True
+        finally:
+            await client.aclose()

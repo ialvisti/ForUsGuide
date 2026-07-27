@@ -8,7 +8,10 @@ The normalization fixtures reproduce the REAL payloads confirmed in production
 
 from __future__ import annotations
 
+import json
 import re
+
+import pytest
 
 from data_pipeline import prompts
 from data_pipeline.forusbots_catalog import (
@@ -246,10 +249,22 @@ class TestBuildMergeValidate:
         assert res.modules == [{"key": "census", "fields": ["First Name"]}]
         assert res.rejected[0]["reason"] == "full_ssn_not_permitted"
 
-    def test_validate_unknown_field_warn_and_pass(self):
+    def test_validate_unknown_field_is_rejected(self):
+        """HT-13: allowlist CERRADA — un campo fuera del catálogo (p.ej.
+        inventado por el LLM mapper) se rechaza, nunca se reenvía a ForusBots.
+        Si el servicio real agrega campos, se versiona el catálogo."""
         res = validate_modules([{"key": "savings_rate", "fields": ["Mystery Field"]}])
-        assert res.modules == [{"key": "savings_rate", "fields": ["Mystery Field"]}]
-        assert res.warnings[0]["reason"] == "unverified_field"
+        assert res.modules == []
+        assert res.rejected[0]["reason"] == "unknown_field"
+
+    def test_validate_rejects_ssn_variants(self):
+        """El denylist cubre variantes, no sólo el string exacto 'SSN'."""
+        res = validate_modules([{
+            "key": "census",
+            "fields": ["Social Security Number", "Partial SSN"],
+        }])
+        assert res.modules == [{"key": "census", "fields": ["Partial SSN"]}]
+        assert res.rejected[0]["reason"] == "full_ssn_not_permitted"
 
     def test_validate_payroll_tokens(self):
         res = validate_modules([{"key": "payroll",
@@ -381,10 +396,93 @@ class TestNormalizeScrapeResult:
         assert meta["shape"] == "envelope"
         assert flat["census"]["Termination Date"] == "2026-02-01"
         assert "payroll" not in flat                      # error module excluded
-        assert meta["module_errors"] == {"payroll": "panel_not_found"}
-        assert meta["unknown_fields"] == {"census": ["Vested Balance"]}
-        assert meta["extractor_warnings"] == {"census": ["slow panel"]}
-        assert meta["warnings"] == ["w1"]
+        assert meta["module_error_count"] == 1
+        assert meta["unknown_field_count"] == 1
+        assert meta["extractor_warning_count"] == 1
+        assert meta["warning_count"] == 1
+
+    def test_upstream_diagnostics_are_reduced_to_closed_statuses_and_counts(self):
+        raw = "UPSTREAM-PRIVATE jane@example.com SSN 123-45-6789"
+        payload = {
+            "data": {
+                "modules": [
+                    {
+                        "key": "census",
+                        "status": "ok",
+                        "data": {"Termination Date": "2026-02-01"},
+                        "unknownFields": [raw],
+                        "extractorWarnings": [{"detail": raw}],
+                    },
+                    {
+                        "key": "payroll",
+                        "status": raw,
+                        "error": {"detail": raw},
+                    },
+                ],
+            },
+            "warnings": [raw],
+            "errors": [{"detail": raw}],
+        }
+
+        flat, meta = normalize_scrape_result(payload)
+
+        assert flat == {"census": {"Termination Date": "2026-02-01"}}
+        assert meta["module_status"] == {"census": "ok", "payroll": "unknown"}
+        assert meta["module_error_count"] == 1
+        assert meta["unknown_field_count"] == 1
+        assert meta["extractor_warning_count"] == 1
+        assert meta["warning_count"] == 1
+        assert meta["error_count"] == 1
+        assert raw not in json.dumps(meta)
+
+    @pytest.mark.parametrize(
+        "payload",
+        [
+            {
+                "data": {
+                    "census": {
+                        "Termination Date": "2026-02-01",
+                        "errors": [{"detail": "RAW"}],
+                        "extractorWarnings": ["RAW"],
+                    },
+                },
+            },
+            {
+                "data": {
+                    "modules": [{
+                        "key": "census",
+                        "status": "ok",
+                        "data": {
+                            "Termination Date": "2026-02-01",
+                            "moduleErrors": [{"detail": "RAW"}],
+                            "nested": {"unknownFields": ["RAW"]},
+                        },
+                    }],
+                },
+            },
+            {
+                "census": {
+                    "Termination Date": "2026-02-01",
+                    "warnings": ["RAW"],
+                },
+            },
+        ],
+    )
+    def test_diagnostics_nested_inside_module_data_are_removed(self, payload):
+        """Moving a diagnostic under a known module must not bypass redaction."""
+        raw = "UPSTREAM-PRIVATE jane@example.com SSN 123-45-6789"
+        serialized_payload = json.dumps(payload).replace("RAW", raw)
+
+        flat, meta = normalize_scrape_result(json.loads(serialized_payload))
+
+        assert flat["census"]["Termination Date"] == "2026-02-01"
+        serialized_result = json.dumps({"flat": flat, "meta": meta})
+        assert raw not in serialized_result
+        for diagnostic_key in (
+            "errors", "warnings", "extractorWarnings", "moduleErrors",
+            "unknownFields",
+        ):
+            assert diagnostic_key not in serialized_result
 
     def test_already_flat_passthrough(self):
         flat, meta = normalize_scrape_result({"census": {"First Name": "A"}})
@@ -401,3 +499,29 @@ class TestNormalizeScrapeResult:
         payload = {"data": {"modules": [{"key": "census", "status": "ok"}]}}
         flat, meta = normalize_scrape_result(payload)
         assert flat == {"census": {}}    # data undefined → {}
+
+
+class TestFirstContributionMapping:
+    """Task 9: el slug se resuelve determinísticamente a payroll — jamás se
+    le pregunta al participante por un hecho del portal."""
+
+    def test_slug_maps_to_payroll(self):
+        from data_pipeline.forusbots_catalog import map_slug
+        entries = map_slug(
+            {"field": "first_contribution_posted_status",
+             "description": "Whether the participant's first positive contribution has posted",
+             "why_needed": "beneficiaries gate"},
+            current_year=2026,
+        )
+        assert entries is not None
+        modules = {m for m, _f in entries}
+        assert modules == {"payroll"}
+
+    def test_beneficiary_flow_never_asks_participant_for_portal_fact(self):
+        from data_pipeline.forusbots_catalog import is_request_provided, map_slug
+        item = {"field": "first_contribution_posted_status",
+                "description": "posted contribution gate", "why_needed": "w"}
+        # se scrapea (map_slug), no viene del request ni queda unmapped para
+        # que la capa de extracción se lo pregunte al participante
+        assert not is_request_provided(item)
+        assert map_slug(item, current_year=2026) is not None

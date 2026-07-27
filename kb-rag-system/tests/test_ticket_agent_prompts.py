@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
+from api import metrics as ticket_metrics
 from data_pipeline.json_parsing import parse_json_array, parse_json_object
 from data_pipeline.llm_router import build_routes_from_settings
 from data_pipeline.prompts import (
@@ -113,6 +114,50 @@ class TestPromptBuilders:
 # ---------------------------------------------------------------------------
 
 class TestJsonParsing:
+
+    def test_object_parse_emits_success_and_failure_metrics(self, monkeypatch):
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.json_parsing.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+
+        with ticket_metrics.ticket_execution_scope():
+            assert parse_json_object('{"question": "x"}') == {"question": "x"}
+            assert parse_json_object("not json") is None
+
+        assert emitted == [
+            ("ticket_llm_parse_count", 1, {"code": "success"}),
+            ("ticket_llm_parse_count", 1, {"code": "failed"}),
+        ]
+
+    def test_array_parse_metric_failure_never_changes_safe_result(
+        self, monkeypatch,
+    ):
+        def reject_metric(*_args, **_kwargs):
+            raise ValueError("telemetry rejected")
+
+        monkeypatch.setattr(
+            "data_pipeline.json_parsing.ticket_metrics.emit", reject_metric,
+        )
+
+        with ticket_metrics.ticket_execution_scope():
+            assert parse_json_array('[{"inquiry": "x"}]') == [
+                {"inquiry": "x"}
+            ]
+
+    def test_core_parser_does_not_emit_ticket_metrics(self, monkeypatch):
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.json_parsing.ticket_metrics.emit",
+            lambda *args, **kwargs: emitted.append((args, kwargs)),
+        )
+
+        assert parse_json_object('{"question": "x"}') == {"question": "x"}
+
+        assert emitted == []
 
     def test_object_plain(self):
         assert parse_json_object('{"question": "x"}') == {"question": "x"}

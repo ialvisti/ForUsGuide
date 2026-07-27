@@ -1,0 +1,44 @@
+# Reproducible lock generation. This build writes only lock artifacts to the
+# existing Cloud Build bucket; it has no deploy/state permissions.
+steps:
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'compile-python-locks'
+    dir: 'kb-rag-system'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        # Bootstrap the resolver from the already-reviewed, hash-locked dev
+        # environment.  Installing pip-tools directly from an unhashed index
+        # would make the lock generator itself an unverified supply-chain hop.
+        python -m pip install --no-cache-dir --require-hashes \
+          -r requirements-dev.lock
+        python -m piptools compile \
+          --generate-hashes \
+          --resolver=backtracking \
+          --strip-extras \
+          --output-file=requirements.lock \
+          requirements.in
+        python -m piptools compile \
+          --generate-hashes \
+          --resolver=backtracking \
+          --allow-unsafe \
+          --strip-extras \
+          --output-file=requirements-dev.lock \
+          requirements-dev.in
+        python -m venv /tmp/lock-verification
+        /tmp/lock-verification/bin/python -m pip install \
+          --no-cache-dir --require-hashes \
+          -r requirements-dev.lock
+        /tmp/lock-verification/bin/python -m pip check
+        cp requirements.lock /workspace/requirements.lock
+        cp requirements-dev.lock /workspace/requirements-dev.lock
+artifacts:
+  objects:
+    location: 'gs://rag-kb-system_cloudbuild/handle-ticket-locks/$BUILD_ID/'
+    paths:
+      - 'requirements.lock'
+      - 'requirements-dev.lock'
+options:
+  logging: CLOUD_LOGGING_ONLY

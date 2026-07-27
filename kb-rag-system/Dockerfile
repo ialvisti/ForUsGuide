@@ -1,48 +1,31 @@
-# Dockerfile for KB RAG System API
-# 
-# Build: docker build -t kb-rag-system .
-# Run: docker run -p 8000:8000 --env-file .env kb-rag-system
+# Runtime image fixed to the reviewed manifest digest in ci/tool-images.env.
+FROM python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce
 
-FROM python:3.12-slim
-
-# Set working directory
 WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    PORT=8000
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+# Runtime dependencies are resolved on Linux/Python 3.12 and every artifact is
+# hash-verified.  The pip bundled in the pinned base image is intentionally not
+# upgraded implicitly.
+COPY requirements.lock ./
+RUN python -m pip install --no-cache-dir --require-hashes -r requirements.lock
 
-# Copy requirements first (for better caching)
-COPY requirements.txt .
+RUN useradd --create-home --uid 1000 appuser
 
-# Install Python dependencies
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+COPY --chown=appuser:appuser data_pipeline/ ./data_pipeline/
+COPY --chown=appuser:appuser api/ ./api/
+COPY --chown=appuser:appuser ui/ ./ui/
 
-# Copy application code
-COPY data_pipeline/ ./data_pipeline/
-COPY api/ ./api/
-COPY scripts/ ./scripts/
-COPY ui/ ./ui/
-
-# Create non-root user
-RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
-
-USER appuser
-
-# Cloud Run sets PORT; default to 8000 for local Docker use
-ENV PORT=8000
+USER 1000
 EXPOSE 8000
 
-# Health check (uses fixed port for local Docker; Cloud Run ignores HEALTHCHECK)
+# Cloud Run ignores this Docker healthcheck, but it remains useful for the
+# immutable-image smoke gate without adding curl to the runtime image.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD ["python", "-c", "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:'+os.getenv('PORT','8000')+'/health', timeout=5)"]
 
-# Run application — uses ${PORT} so Cloud Run can set it dynamically.
-# NOTE: single worker. The /handle-ticket hybrid contract keeps slow (data-path)
-# jobs in an in-process store that the GET /tickets/{id} poll must see; the work
-# is I/O-bound (ForusBots + LLM awaits) so one async worker is sufficient. Move
-# to a Firestore-backed job store before raising the worker count.
-CMD ["sh", "-c", "uvicorn api.main:app --host 0.0.0.0 --port ${PORT} --workers 1"]
+# Shell-free entrypoint: PORT/WEB_CONCURRENCY are parsed as bounded decimal
+# integers before execve, so environment values can never become commands.
+CMD ["python", "-m", "api.entrypoint"]

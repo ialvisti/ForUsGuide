@@ -1,0 +1,390 @@
+"""
+Tests de la cola durable de ticket jobs (Task 4 del plan).
+
+CloudTasksTicketQueue es una capa delgada sobre el SDK (verificada en
+staging, no aquí); estos tests cubren el contrato local: nombres de task
+determinísticos e idempotencia de ``ensure_enqueued`` en la cola inline.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import inspect
+from types import SimpleNamespace
+from unittest.mock import patch
+
+import pytest
+
+from data_pipeline import ticket_task_queue as ttq_module
+from data_pipeline.ticket_task_queue import (
+    CloudTasksTicketQueue,
+    InlineTicketQueue,
+    TicketQueueEstimationError,
+    task_name_for_job,
+)
+
+
+class TestTaskNaming:
+
+    def test_task_name_is_deterministic_per_job(self):
+        a = task_name_for_job("proj", "us-central1", "ticket-jobs", "abc123")
+        b = task_name_for_job("proj", "us-central1", "ticket-jobs", "abc123")
+        assert a == b
+        # los nombres incluyen la generación (Tarea 7 Paso 3)
+        assert a.endswith("/tasks/ticket-abc123-g0")
+
+    def test_different_jobs_get_different_tasks(self):
+        a = task_name_for_job("proj", "us-central1", "ticket-jobs", "abc")
+        b = task_name_for_job("proj", "us-central1", "ticket-jobs", "xyz")
+        assert a != b
+
+
+class TestInlineQueue:
+
+    async def test_ensure_enqueued_runs_worker_once(self):
+        runs = []
+
+        async def runner(job_id):
+            runs.append(job_id)
+
+        queue = InlineTicketQueue(runner)
+        name1 = await queue.ensure_enqueued("job-1")
+        name2 = await queue.ensure_enqueued("job-1")   # retry del productor
+        await asyncio.sleep(0.05)
+
+        assert name1 == name2
+        assert runs == ["job-1"], "un retry de enqueue no puede duplicar ejecución"
+
+    async def test_aclose_cancels_pending_tasks(self):
+        started = asyncio.Event()
+
+        async def runner(job_id):
+            started.set()
+            await asyncio.sleep(30)
+
+        queue = InlineTicketQueue(runner)
+        await queue.ensure_enqueued("job-1")
+        await asyncio.wait_for(started.wait(), timeout=2)
+        await queue.aclose()
+        await asyncio.sleep(0.05)
+        assert not queue._tasks
+
+
+# ---------------------------------------------------------------------------
+# Producción (plan de finalización, Tarea 2 Paso 3) — dispatch deadline
+# explícito, sonda de AlreadyExists, generaciones ante tombstones y
+# fail-closed de configuración. RED hasta cerrar la Tarea 7.
+# ---------------------------------------------------------------------------
+
+class _FakeCloudTasksClient:
+    """Fake del SDK: captura create_task y simula tombstones/replays."""
+
+    def __init__(self, *, create_raises=None, get_task_result="live"):
+        from google.api_core import exceptions as gexc
+        self._gexc = gexc
+        self.created = []
+        self.create_calls = 0
+        self.get_task_calls = 0
+        self._create_raises = create_raises
+        self._get_task_result = get_task_result
+        self.transport = type("T", (), {"close": staticmethod(_noop_async)})()
+
+    def queue_path(self, project, location, queue):
+        return f"projects/{project}/locations/{location}/queues/{queue}"
+
+    async def create_task(self, parent=None, task=None):
+        self.create_calls += 1
+        if self._create_raises and self.create_calls == 1:
+            raise self._create_raises
+        self.created.append(task)
+        return task
+
+    async def get_task(self, name=None, **kw):
+        self.get_task_calls += 1
+        if self._get_task_result == "live":
+            return object()
+        if isinstance(self._get_task_result, Exception):
+            raise self._get_task_result
+        raise self._gexc.NotFound("tombstoned")
+
+
+class _FakeQueueStatsClient(_FakeCloudTasksClient):
+    def __init__(self, *, tasks_count=120, dispatch_rate=2.0, error=None):
+        super().__init__()
+        self.tasks_count = tasks_count
+        self.dispatch_rate = dispatch_rate
+        self.error = error
+        self.get_queue_request = None
+
+    async def get_queue(self, request=None, **kw):
+        self.get_queue_request = request
+        if self.error is not None:
+            raise self.error
+        return SimpleNamespace(
+            stats=SimpleNamespace(tasks_count=self.tasks_count),
+            rate_limits=SimpleNamespace(
+                max_dispatches_per_second=self.dispatch_rate,
+            ),
+        )
+
+
+class _StrictBetaQueueStatsClient(_FakeQueueStatsClient):
+    async def get_queue(self, request=None, **kw):
+        from google.cloud import tasks_v2beta3
+
+        # Reproduce la validación del transport real: GetQueue GA no acepta
+        # read_mask ni expone Queue.stats; la superficie beta3 sí.
+        parsed = tasks_v2beta3.GetQueueRequest(request)
+        self.get_queue_request = parsed
+        return SimpleNamespace(
+            stats=SimpleNamespace(tasks_count=self.tasks_count),
+            rate_limits=SimpleNamespace(
+                max_dispatches_per_second=self.dispatch_rate,
+            ),
+        )
+
+
+async def _noop_async():
+    return None
+
+
+def _queue_with(fake, *, stats_fake=None):
+    stats_fake = stats_fake or fake
+    with patch("google.cloud.tasks_v2.CloudTasksAsyncClient",
+               return_value=fake), patch(
+                   "google.cloud.tasks_v2beta3.CloudTasksAsyncClient",
+                   return_value=stats_fake,
+               ):
+        return CloudTasksTicketQueue(
+            project="rag-kb-system", location="us-central1",
+            queue="ticket-jobs-staging",
+            worker_url="https://worker.example.run.app",
+            worker_audience="https://worker.example.run.app",
+            service_account="ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com",
+        )
+
+
+class TestCloudTasksContract:
+
+    async def test_task_exists_distinguishes_live_from_not_found(self):
+        live = _FakeCloudTasksClient(get_task_result="live")
+        missing = _FakeCloudTasksClient(get_task_result="tombstone")
+
+        assert await _queue_with(live).task_exists("job-live", 3) is True
+        assert await _queue_with(missing).task_exists("job-missing", 4) is False
+        assert live.get_task_calls == 1
+        assert missing.get_task_calls == 1
+
+    async def test_task_exists_propagates_uncertain_lookup_failure(self):
+        failure = TimeoutError("cloud tasks lookup unavailable")
+        fake = _FakeCloudTasksClient(get_task_result=failure)
+
+        with pytest.raises(TimeoutError, match="lookup unavailable"):
+            await _queue_with(fake).task_exists("job-uncertain", 0)
+
+        assert fake.create_calls == 0
+
+    async def test_queue_delay_uses_stats_capable_api_surface(self):
+        ga_fake = _FakeCloudTasksClient()
+        stats_fake = _StrictBetaQueueStatsClient(
+            tasks_count=120, dispatch_rate=2,
+        )
+        queue = _queue_with(ga_fake, stats_fake=stats_fake)
+
+        assert await queue.estimated_queue_delay_s() == 60
+        assert stats_fake.get_queue_request is not None
+        assert set(stats_fake.get_queue_request.read_mask.paths) == {
+            "stats.tasks_count",
+            "rate_limits.max_dispatches_per_second",
+        }
+
+    async def test_queue_delay_reads_stats_and_rate_limits(self):
+        fake = _FakeQueueStatsClient(tasks_count=120, dispatch_rate=2)
+        queue = _queue_with(fake)
+
+        delay = await queue.estimated_queue_delay_s()
+
+        assert delay == 60
+        assert set(fake.get_queue_request.read_mask.paths) == {
+            "stats.tasks_count",
+            "rate_limits.max_dispatches_per_second",
+        }
+
+    async def test_queue_delay_estimation_failure_is_not_treated_as_zero(self):
+        fake = _FakeQueueStatsClient(error=RuntimeError("stats unavailable"))
+        queue = _queue_with(fake)
+
+        with pytest.raises(TicketQueueEstimationError, match="stats unavailable"):
+            await queue.estimated_queue_delay_s()
+
+    async def test_queue_delay_rejects_missing_dispatch_capacity(self):
+        fake = _FakeQueueStatsClient(tasks_count=10, dispatch_rate=0)
+        queue = _queue_with(fake)
+
+        with pytest.raises(TicketQueueEstimationError, match="dispatch rate"):
+            await queue.estimated_queue_delay_s()
+
+    async def test_task_has_oidc_audience_and_explicit_dispatch_deadline(self):
+        """Bloqueo 6 del plan: la task no fija dispatch_deadline; el default
+        (10 min) es inconsistente con lease/retry. Debe ser explícito (540s)."""
+        fake = _FakeCloudTasksClient()
+        queue = _queue_with(fake)
+        await queue.ensure_enqueued("job-dd-1")
+        assert fake.created, "no se creó la task"
+        task = fake.created[0]
+        assert task.http_request.oidc_token.audience, "OIDC sin audiencia"
+        assert task.http_request.oidc_token.service_account_email
+        deadline_s = getattr(task.dispatch_deadline, "seconds", 0)
+        assert deadline_s == 540, (
+            f"dispatch_deadline={deadline_s}s; debe fijarse explícitamente en "
+            "540s (Tarea 7 Paso 2)"
+        )
+
+    async def test_task_target_uri_and_oidc_audience_are_independent(self):
+        fake = _FakeCloudTasksClient()
+        with patch(
+            "google.cloud.tasks_v2.CloudTasksAsyncClient", return_value=fake
+        ), patch(
+            "google.cloud.tasks_v2beta3.CloudTasksAsyncClient",
+            return_value=fake,
+        ):
+            queue = CloudTasksTicketQueue(
+                project="rag-kb-system",
+                location="us-central1",
+                queue="ticket-jobs-staging",
+                worker_url="https://worker-generated.run.app",
+                worker_audience="https://ticket-worker-staging.internal",
+                service_account=(
+                    "ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com"
+                ),
+            )
+
+        await queue.ensure_enqueued("job-audience-1")
+        request = fake.created[0].http_request
+        assert request.url == (
+            "https://worker-generated.run.app/internal/tasks/ticket-job"
+        )
+        assert request.oidc_token.audience == (
+            "https://ticket-worker-staging.internal"
+        )
+
+    async def test_live_already_exists_is_benign(self):
+        """AlreadyExists con task VIVA es replay benigno, pero hay que
+        distinguirlo de una tombstone: la cola debe sondear get_task."""
+        from google.api_core import exceptions as gexc
+        fake = _FakeCloudTasksClient(create_raises=gexc.AlreadyExists("dup"),
+                                     get_task_result="live")
+        queue = _queue_with(fake)
+        name = await queue.ensure_enqueued("job-ae-1")
+        assert name, "ensure_enqueued no devolvió nombre"
+        assert fake.get_task_calls >= 1, (
+            "RED: tras AlreadyExists la cola no llamó get_task — no puede "
+            "distinguir un replay activo de una tombstone (Tarea 7 Paso 3)"
+        )
+
+    async def test_tombstoned_task_name_uses_next_generation(self):
+        """Bloqueo 7 del plan: una tombstone (create=AlreadyExists,
+        get=NotFound) se confunde con una task activa y el job muere sin
+        ejecutar. Debe crearse una generación nueva ticket-{job}-g{n+1}."""
+        from google.api_core import exceptions as gexc
+        fake = _FakeCloudTasksClient(create_raises=gexc.AlreadyExists("dup"),
+                                     get_task_result="tombstone")
+        queue = _queue_with(fake)
+        name = await queue.ensure_enqueued("job-ts-1")
+        assert fake.create_calls >= 2, (
+            "RED: tras una tombstone no se intentó crear una generación "
+            "nueva; el job queda encolado-fantasma para siempre"
+        )
+        assert "-g" in name.rsplit("/", 1)[-1], (
+            f"el nombre {name!r} no incluye sufijo de generación"
+        )
+
+
+class TestQueueRoleSurface:
+
+    def test_queue_role_allows_create_task_get_and_queue_get_but_not_admin(self):
+        """El custom role queda limitado a tasks.create/tasks.get/queues.get;
+        el código no puede depender de operaciones admin."""
+        src = inspect.getsource(ttq_module)
+        for forbidden in ("delete_task", "pause_queue", "purge_queue",
+                          "resume_queue", "update_queue", "delete_queue",
+                          "list_tasks"):
+            assert forbidden not in src, (
+                f"la cola usa {forbidden}: excede el rol queue-scoped"
+            )
+        assert "get_task" in src, (
+            "RED: la cola nunca usa get_task; la sonda de AlreadyExists y el "
+            "rol cloudtasks.tasks.get son parte del contrato (Tarea 7 Paso 3)"
+        )
+
+
+class TestProductionFailClosedConfig:
+
+    def test_worker_uses_stable_audience_without_needing_its_target_uri(
+            self, monkeypatch):
+        from api import config as config_module
+
+        overrides = {
+            "API_KEY": "k",
+            "PINECONE_API_KEY": "p",
+            "OPENAI_API_KEY": "o",
+            "LLM_ROUTE_CLASSIFY": "gpt-5.5",
+            "ENVIRONMENT": "production",
+            "APP_ENV": "production",
+            "APP_ROLE": "worker",
+            "TICKET_HANDLER_MODE": "full",
+            "FORUSBOTS_AUTH_TOKEN": "t",
+            "FORUSBOTS_BASE_URL": "https://forusbots.example.com",
+            "TICKET_JOB_BACKEND": "firestore",
+            "FIRESTORE_DATABASE": "(default)",
+            "TICKET_TASK_QUEUE": "cloudtasks",
+            "TICKET_WORKER_URL": "",
+            "TICKET_WORKER_AUDIENCE": "https://ticket-worker-prod.internal",
+            "TICKET_WORKER_SERVICE_ACCOUNT": (
+                "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
+            ),
+            "TICKET_WORKER_REQUIRE_OIDC": True,
+            "TICKET_LLM_PRICING_JSON": (
+                '{"pricing_as_of":"2026-07-21","source":"official",'
+                '"models":{"openai:gpt-5.5":{'
+                '"input_usd_per_million":5.0,'
+                '"output_usd_per_million":30.0},'
+                '"gemini:gemini-2.5-pro":{'
+                '"input_usd_per_million":1.25,'
+                '"output_usd_per_million":10.0}}}'
+            ),
+        }
+        for name, value in overrides.items():
+            monkeypatch.setattr(config_module.settings, name, value)
+
+        assert config_module.validate_settings() is True
+
+    @pytest.mark.parametrize("overrides,reason", [
+        ({"TICKET_WORKER_SERVICE_ACCOUNT": ""}, "SA firmante vacía"),
+        ({"TICKET_WORKER_REQUIRE_OIDC": False}, "OIDC desactivado"),
+    ])
+    def test_production_rejects_empty_worker_sa_or_oidc_disabled(
+            self, monkeypatch, overrides, reason):
+        """No existe una opción production sin OIDC ni sin SA firmante."""
+        from api import config as config_module
+        base = {
+            "API_KEY": "k", "PINECONE_API_KEY": "p", "OPENAI_API_KEY": "o",
+            "ENVIRONMENT": "production",
+            "APP_ENV": "production",
+            "TICKET_HANDLER_MODE": "full",
+            "FORUSBOTS_AUTH_TOKEN": "t",
+            "FORUSBOTS_BASE_URL": "https://forusbots.example.com",
+            "TICKET_JOB_BACKEND": "firestore",
+            "TICKET_TASK_QUEUE": "cloudtasks",
+            "TICKET_WORKER_URL": "https://worker.example.run.app",
+            "TICKET_WORKER_AUDIENCE": "https://ticket-worker-prod.internal",
+            "TICKET_WORKER_SERVICE_ACCOUNT":
+                "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com",
+            "TICKET_WORKER_REQUIRE_OIDC": True,
+        }
+        base.update(overrides)
+        for name, value in base.items():
+            monkeypatch.setattr(config_module.settings, name, value)
+        with pytest.raises(ValueError, match="."):
+            config_module.validate_settings()
+        del reason

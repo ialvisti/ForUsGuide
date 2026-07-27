@@ -1,0 +1,85 @@
+# Keep Cloud Build source uploads reproducible and free of local runtime state.
+# The verification/build configs only consume the application and Terraform.
+# Default-deny every other top-level path.  Two reviewed test inputs are
+# reopened below by exact type/path: canonical KB JSON metadata/content and the
+# incident-drill contract.  Business exports, planning notes and unrelated
+# worktree content remain excluded.
+**
+!.gcloudignore
+!kb-rag-system/
+!kb-rag-system/**
+!infra/
+!infra/terraform/
+!infra/terraform/**
+!PA/
+!PA/**/
+!PA/Loans/Vanguard: How to Submit a Loan Request.json
+!PA/Loans/LT: 401(k) Loan Complete Guide — Submission, Repayment & Support.json
+!PA/Loans/401(k) Loan Basics and Support Guide.json
+!PA/Participant Dashboard/LT: Managing Your 401(k) Statements and Beneficiaries.json
+!PA/Participant Dashboard/Multi-Factor Authentication (MFA) for Your ForUsAll 401(k) Account.json
+!PA/Participant Dashboard/LT: How to Set Up Your ForUsAll 401(k) Account.json
+!PA/Distributions/ForUsAll 401(k) Hardship Withdrawal — Complete Guide (Rules, Fees, Steps, Timelines).json
+!PA/Distributions/401(k) Required Minimum Distributions (RMDs): Rules, Deadlines, Penalties, Exceptions, and Roth Conversion Impact.json
+!PA/Distributions/Can I Take Money From My 401(k) While Employed? Your Options Explained.json
+!PA/Distributions/ADP-ACP Refund Checks: Unexpected Checks, Taxes, Timing, and Prevention.json
+!PA/Distributions/EACA Refunds After 401(k) Auto-Enrollment: 90-Day Deadline, Eligibility, Fees, and Tax Reporting.json
+!PA/Distributions/401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax.json
+!PA/Distributions/The 401(k) Force-Out Process: Clean Up Your Plan, Cut Risk, Stay Compliant.json
+!PA/Distributions/401(k) Force-Out Process: Sponsor FAQ — Eligibility, Thresholds, Notice Requirements, and Compliance.json
+!PA/Distributions/LT: Can I Split My 401(k) Rollover Between Multiple Providers?.json
+!PA/Distributions/LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover.json
+!PA/Distributions/Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional.json
+!PA/Distributions/How Do I Cancel or Change a Pending Distribution Request?.json
+!docs/
+!docs/verification/
+!docs/verification/handle-ticket/
+!docs/verification/handle-ticket/11-incident-drill-template.md
+!External agents/
+!External agents/Inquiry Extraction & Required-Data Builder agent .md
+!External agents/Knowledge Question Inquiry Generator.md
+!External agents/Generate Response Body Builder.md
+!External agents/Forusbots field mapper.md
+
+.git
+.git/**
+
+# Python environments and generated caches.
+**/.venv/**
+**/venv/**
+**/__pycache__/**
+**/.pytest_cache/**
+**/.mypy_cache/**
+**/.ruff_cache/**
+**/*.py[cod]
+
+# Terraform working directories are regenerated from the provider locks.
+**/.terraform/**
+
+# Local credentials and environment overrides must never enter build context.
+**/.env
+**/.env.*
+**/sa-key.json
+**/*.tfstate
+**/*.tfstate.*
+**/*.tfplan
+**/*.pem
+**/*.key
+**/*credentials*.json
+
+# Historical live/stress captures contain prompts, model replies and financial
+# examples.  They are not inputs to the authoritative test suite; only the
+# deterministic differential harness is uploaded.
+kb-rag-system/rag-testing/**
+!kb-rag-system/rag-testing/
+!kb-rag-system/rag-testing/ground_truth.py
+!kb-rag-system/rag-testing/ticket_differential.py
+!kb-rag-system/rag-testing/ticket_differential_thresholds.json
+kb-rag-system/STRESS_TEST_COMPARISON_REPORT.md
+kb-rag-system/Development Docs/**
+!kb-rag-system/Development Docs/
+!kb-rag-system/Development Docs/HANDLE_TICKET_RUNBOOK.md
+
+# Desktop/editor noise.
+**/.DS_Store
+**/*~

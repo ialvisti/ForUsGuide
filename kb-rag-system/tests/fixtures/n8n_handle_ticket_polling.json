@@ -1,0 +1,51 @@
+{
+  "_meta": {
+    "provenance": "RECONSTRUIDO desde el repo el 2026-07-10 (no hay export del workflow real de n8n). Define la política de consumo que n8n DEBE implementar; verificar contra el workflow efectivo antes de retirar el fallback legacy.",
+    "fail_safe_rule": "Hasta terminar la remediación: cualquier estado partial|failed|timeout|cancelled, error técnico, JSON inválido o poll 404 va a legacy/humano. Nunca publicar automáticamente un fallback interno del servidor."
+  },
+  "poll": {
+    "interval_s": 3,
+    "max_interval_s": 30,
+    "deadline_s": 2700,
+    "workflow_timeout_s": 3000,
+    "resume_mode": "durable_wait"
+  },
+  "on_http_status": {
+    "200": "inspect_state",
+    "202": "continue_polling",
+    "401": "alert_ops_and_use_legacy",
+    "403": "alert_ops_and_use_legacy",
+    "404": "use_legacy_or_human",
+    "410": "use_legacy_or_human",
+    "429": "backoff_and_retry",
+    "5xx": "retry_then_use_legacy",
+    "invalid_json": "use_legacy_or_human"
+  },
+  "on_state": {
+    "queued": { "action": "continue_polling", "publishable": false },
+    "running": { "action": "continue_polling", "publishable": false },
+    "succeeded": {
+      "action": "publish_participant_reply",
+      "publishable": true,
+      "guard": "SOLO si state == succeeded AND next_action == send_participant_reply AND metadata.fallback != true AND TODAS inquiries[].participant_reply_safe == true AND NINGUNA inquiry.manual_reconciliation_required == true"
+    },
+    "partial": { "action": "use_legacy_or_human", "publishable": false },
+    "failed": { "action": "use_legacy_or_human", "publishable": false },
+    "timeout": { "action": "use_legacy_or_human", "publishable": false },
+    "cancelled": { "action": "use_legacy_or_human", "publishable": false }
+  },
+  "publishable_fields": [
+    "primary.needs_more_info_message",
+    "primary.knowledge_answer.answer",
+    "primary.generate_response.response.response_to_participant"
+  ],
+  "never_publishable_prefixes": [
+    "error",
+    "state",
+    "diagnostics",
+    "metadata",
+    "primary.diagnostics",
+    "primary.generate_response.metadata",
+    "primary.knowledge_answer.metadata"
+  ]
+}

@@ -1,0 +1,78 @@
+{
+  "__comment": "Índices y TTL del flujo de tickets (Tarea 5 Paso 3). La fuente autoritativa de despliegue es infra/terraform (modules/ticket_environment/firestore.tf); este archivo es la declaración canónica que la IaC refleja. Se declara POR base (ticket-staging y (default)); los collection IDs son idénticos porque la base — no un prefijo — es el límite de aislamiento.",
+  "indexes": [
+    {
+      "collectionGroup": "ticket_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "principal_id", "order": "ASCENDING"},
+        {"fieldPath": "state", "order": "ASCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "ticket_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "state", "order": "ASCENDING"},
+        {"fieldPath": "lease_expires_at", "order": "ASCENDING"}
+      ],
+      "__comment": "reconciliador: leases vencidos por estado (running + lease_expires_at < now)"
+    },
+    {
+      "collectionGroup": "ticket_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "state", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "ASCENDING"}
+      ],
+      "__comment": "observabilidad: count queued/running y job activo más antiguo"
+    },
+    {
+      "collectionGroup": "ticket_jobs",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "enqueue_state", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "ASCENDING"}
+      ],
+      "__comment": "reconciliador: outbox pending en orden FIFO acotado"
+    }
+  ],
+  "fieldOverrides": [
+    {
+      "collectionGroup": "ticket_job_payloads",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "fail-safe de privacidad: PII expira a 24h de la aceptación"
+    },
+    {
+      "collectionGroup": "ticket_jobs",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "SÓLO terminales llevan expires_at (retención = TICKET_IDEMPOTENCY_RETENTION_DAYS); un control no terminal no tiene TTL"
+    },
+    {
+      "collectionGroup": "ticket_idempotency_receipts",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "receipts expiran JUNTO con su control/tombstone (>=90d)"
+    },
+    {
+      "collectionGroup": "ticket_rate_windows",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "ventanas de tasa: TTL 48h, posterior al horizonte de retry/replay"
+    },
+    {
+      "collectionGroup": "ticket_executions",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "checkpoints sanitizados de ejecución de tickets"
+    },
+    {
+      "collectionGroup": "execution_logs",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "logs estructurados core con retención declarativa"
+    }
+  ]
+}

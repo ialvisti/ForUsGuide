@@ -78,3 +78,28 @@ Mirror de `ROUTER_MODE`. Default `TICKET_HANDLER_MODE=disabled`.
    `GET /api/v1/tickets/{id}` a `succeeded`; confirmar `jobId` real de ForusBots en diagnostics y
    `collected_data` poblado desde el scrape.
 5. Sandbox ForusBots (`/docs/sandbox/`): validar submit+poll del cliente contra el contrato live.
+
+---
+
+## Actualización 2026-07 (remediación Task 10)
+
+El rollout quedó implementado sobre el job durable (ver
+`HANDLE_TICKET_AUDIT_AND_REMEDIATION_PLAN.md`):
+
+- **`next_action` tipado** en ambos contratos (v1 `GET /api/v1/tickets/{id}`
+  y v2): `send_participant_reply | poll | use_legacy | use_legacy_or_human |
+  human_review | retry`. n8n decide el fallback por este campo, nunca
+  infiriéndolo de `needs_more_info`.
+- **Shadow real muestreado**: `TICKET_HANDLER_MODE=shadow` clasifica siempre;
+  con `TICKET_SHADOW_SAMPLE_RATE>0` ejecuta el pipeline completo sin exponer
+  la respuesta (resumen sanitizado en `metadata.shadow_summary`: rutas,
+  scrape_status, decision — sin texto). El diff contra legacy se corre
+  offline con el harness.
+- **knowledge_only**: las inquiries GR coercidas quedan `coerced_by_mode` y
+  el job entero devuelve `next_action=use_legacy`; el NMI de gating jamás se
+  publica al participante.
+- **Differential harness ejecutable**:
+  `python rag-testing/test_endpoints_stress.py --endpoint ticket
+  [--ticket-payload caso.json]` — poll deadline alineado a 540 s (>
+  `TICKET_TOTAL_BUDGET_S`=480 s; el valor histórico de 240 s abandonaba jobs
+  vivos).

@@ -53,10 +53,11 @@ echo ""
 # Iniciar servidor
 if [ "$MODE" = "production" ]; then
     echo "🚀 Iniciando servidor (production mode)..."
+    # Unica configuracion soportada: WEB_CONCURRENCY (igual que Dockerfile).
     uvicorn api.main:app \
         --host 0.0.0.0 \
         --port 8000 \
-        --workers 4 \
+        --workers "${WEB_CONCURRENCY:-1}" \
         --log-level info \
         --no-access-log
 else

@@ -1,0 +1,59 @@
+{
+  "_meta": {
+    "provenance": "RECONSTRUIDO desde el repo (HandleTicketRequest, ticket-handler-planning/stage-5, rag-testing/test_endpoints_stress.py, GCP_SERVICES_GUIDE auth flow) el 2026-07-10. NO es un export sanitizado del workflow real de n8n: el repositorio no contiene uno (limitación registrada en la auditoría). Antes de retirar el fallback legacy, verificar cada campo/casing/null contra el workflow efectivo y reemplazar este fixture por el export sanitizado real.",
+    "sanitization": "IDs, emails, nombres y tokens son valores ficticios que conservan el schema.",
+    "auth": {
+      "authorization": "Bearer <IAM identity token de kb-rag-client@rag-kb-system.iam.gserviceaccount.com>",
+      "x_api_key": "<credencial de cliente en Secret Manager>",
+      "idempotency_key_header": "Idempotency-Key: <stable-logical-ticket-event-id> (idéntica en todos los reintentos v1/v2)"
+    },
+    "http": {
+      "post_timeout_s": 60,
+      "post_retries": 2,
+      "retry_on_status": [429, 500, 502, 503, 504],
+      "note_409": "409 IDEMPOTENCY_PAYLOAD_MISMATCH no se reintenta: indica bug del productor de payloads.",
+      "on_status": {
+        "202": {"action": "poll", "publishable": false, "note": "todo request v2 aceptado devuelve 202; seguir status_url."},
+        "409": {"action": "alert_ops_and_use_legacy", "publishable": false, "note": "IDEMPOTENCY_PAYLOAD_MISMATCH: la misma Idempotency-Key con otro payload; investigación del operador, NO reintentar."},
+        "413": {"action": "use_legacy_or_human", "publishable": false, "note": "REQUEST_BODY_TOO_LARGE: el ticket excede 1 MiB; no reintentar, derivar."},
+        "429": {"action": "backoff_and_retry", "publishable": false, "note": "RATE_LIMITED / TOO_MANY_OUTSTANDING_JOBS: respetar Retry-After."},
+        "401": {"action": "alert_ops_and_use_legacy", "publishable": false, "note": "falta/incorrecta X-API-Key o identidad workload; incidente de credenciales."},
+        "403": {"action": "alert_ops_and_use_legacy", "publishable": false, "note": "PARTICIPANT_PLAN_MISMATCH o SA workload inesperada; NO reintentar."},
+        "503": {"action": "backoff_and_retry", "publishable": false, "note": "handler disabled / validador o verificador no disponible; reintentar acotado y si persiste, legacy."}
+      }
+    },
+    "polling": {
+      "interval_s": 3,
+      "deadline_s": 2700,
+      "workflow_timeout_s": 3000,
+      "deadline_rationale": "Watch durable de 2700 s, mayor que TICKET_JOB_DEADLINE_S=2400 y con timeout de workflow >=3000 s; no abandona jobs que el servidor aún considera vivos.",
+      "terminal_states": ["succeeded", "partial", "failed", "timeout", "cancelled"]
+    }
+  },
+  "request": {
+    "participant_id": "158948",
+    "plan_id": "580",
+    "company_name": "StarWars Inc.",
+    "company_status": "Ongoing",
+    "company_status_detail": null,
+    "record_keeper": "LT Trust",
+    "max_response_tokens": 5500,
+    "ticket": {
+      "username": "Luke Participant",
+      "user_email": "luke.participant@example.com",
+      "email_subject": "401(k) withdrawal question",
+      "email_body": "Hi, I no longer work at StarWars Inc. and I want to cash out my 401(k). What is my current balance and how do I request the withdrawal?",
+      "ticket_id": "TKT-12345",
+      "first_contact": true,
+      "ticket_messages": {
+        "message_1": "Hi, I no longer work at StarWars Inc. and I want to cash out my 401(k)."
+      },
+      "tag": "NOT FOUND"
+    }
+  },
+  "wire_compat_notes": {
+    "ticket.ticket_messages": "n8n puede seguir enviándolo; el runtime lo IGNORA (fuente de verdad: email_subject + email_body).",
+    "ticket.tag": "n8n puede seguir enviándolo; el runtime lo IGNORA.",
+    "idempotency_key": "Preferir el header Idempotency-Key; el campo del body está deprecado y se retirará en v2."
+  }
+}

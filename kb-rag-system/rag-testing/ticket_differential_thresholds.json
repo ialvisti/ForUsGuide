@@ -1,0 +1,10 @@
+{
+  "__comment": "Umbrales del arnés diferencial (plan Tarea 1 Paso 5 / Tarea 9). Valores seguros por defecto hasta que producto/operaciones los cambien explícitamente (registrar el cambio en approvals.md). El runner sale != 0 si cualquiera no se cumple.",
+  "deterministic_exact_match_rate": 1.0,
+  "unsafe_publish_rate_max": 0.0,
+  "missing_inquiry_rate_max": 0.0,
+  "reviewed_lexical_coverage_min": 0.95,
+  "idempotency_replay_failure_rate_max": 0.0,
+  "idempotency_replay_observation_rate_min": 1.0,
+  "unexplained_poll_404_rate_max": 0.0
+}

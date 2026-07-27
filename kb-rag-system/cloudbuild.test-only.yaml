@@ -1,0 +1,65 @@
+# Canonical-SHA test controller. It runs local quality/security gates and only
+# revalidates an already-built digest; it has no deploy or state operation.
+substitutions:
+  _IMAGE_DIGEST: ""
+
+steps:
+  - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
+    id: 'gates'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd /workspace/kb-rag-system
+        python -m pip install --no-cache-dir --require-hashes \
+          -r requirements-dev.lock
+        detect-secrets scan --all-files . \
+          --no-verify \
+          --exclude-files '\.venv/.*' \
+          --exclude-files '\.pytest_cache/.*' \
+          --exclude-files '\.mypy_cache/.*' \
+          --exclude-files '\.ruff_cache/.*' \
+          --exclude-files '^\.secrets\.baseline$' \
+          --exclude-files '__pycache__/.*' \
+          --exclude-files 'rag-testing/stress_test_results.*' \
+          | python -m json.tool \
+          > /workspace/candidate-secrets.baseline
+        python scripts/verify_secrets_baseline.py \
+          --approved .secrets.baseline \
+          --candidate /workspace/candidate-secrets.baseline \
+          --scan-root .
+        detect-secrets scan --all-files --no-verify \
+          ../PA "../External agents" \
+          ../docs/verification/handle-ticket/11-incident-drill-template.md \
+          | python -m json.tool \
+          > /workspace/external-input-secrets.json
+        python scripts/verify_secrets_baseline.py \
+          --candidate /workspace/external-input-secrets.json \
+          --require-empty
+        python -m pytest -q -rs \
+          -m "not live_dependencies and not staging_e2e"
+        python -m pytest --collect-only -q >/dev/null
+        ruff check .
+        mypy
+        python -m pip check
+        pip-audit --strict --require-hashes -r requirements.lock
+
+  - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
+    id: 'revalidate-digest'
+    entrypoint: bash
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        [[ "${_IMAGE_DIGEST}" =~ @sha256:[0-9a-f]{64}$ ]] || {
+          echo "STOP: image digest no es inmutable" >&2
+          exit 1
+        }
+        resolved="$(gcloud artifacts docker images describe \
+          "${_IMAGE_DIGEST}" --show-provenance \
+          --format='value(image_summary.digest)')"
+        [[ "${_IMAGE_DIGEST}" == *@"$$resolved" ]]
+
+options:
+  logging: CLOUD_LOGGING_ONLY

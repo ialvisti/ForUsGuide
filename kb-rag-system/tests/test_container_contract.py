@@ -16,6 +16,7 @@ OpenAPI/roles) y 5 (base Firestore nombrada y retenciones separadas):
 from __future__ import annotations
 
 import fnmatch
+import sys
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -62,6 +63,32 @@ class TestRuntimeEntrypoint:
             entrypoint.main(environment)
 
         exec_call.assert_not_called()
+
+    def test_entrypoint_executes_uvicorn_via_current_interpreter(
+        self, monkeypatch,
+    ):
+        from api import entrypoint
+
+        exec_call = Mock()
+        monkeypatch.setattr(entrypoint.os, "execvp", exec_call)
+
+        entrypoint.main({"PORT": "8080", "WEB_CONCURRENCY": "2"})
+
+        exec_call.assert_called_once_with(
+            sys.executable,
+            [
+                sys.executable,
+                "-m",
+                "uvicorn",
+                "api.main:app",
+                "--host",
+                "0.0.0.0",  # noqa: S104 - exact Cloud Run bind contract
+                "--port",
+                "8080",
+                "--workers",
+                "2",
+            ],
+        )
 
 
 # ---------------------------------------------------------------------------

@@ -876,7 +876,8 @@ async def readyz(request: Request):
 
     - producer disabled: core + repositorio durable de polling; NO depende de
       validador/cola/ForusBots de admisión/ejecución.
-    - producer activo: además validador participant-plan, repo, cola.
+    - producer activo: además cola y, si está configurado, el directorio
+      participant-plan opcional; el contrato n8n existente no depende de él.
     - worker: repo + dependencias de ejecución (LLM/Pinecone).
     - reconciler: repo + cola (sin LLM/Pinecone/ForusBots)."""
     st = request.app.state
@@ -912,9 +913,7 @@ async def readyz(request: Request):
         if active:
             _need("ticket_queue")
             validator = getattr(st, "participant_plan_validator", None)
-            if validator is None:
-                missing.append("participant_plan_validator")
-            else:
+            if validator is not None:
                 probes.append((
                     "participant_plan_validator",
                     lambda: _probe_participant_plan_validator(validator),

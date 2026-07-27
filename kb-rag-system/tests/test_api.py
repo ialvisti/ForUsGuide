@@ -1210,6 +1210,21 @@ class TestRoleAwareReadiness:
         assert r.status_code == 200
         assert r.json()["role"] == "producer"
 
+    def test_readiness_uses_a_firestore_legal_job_id(self, client, monkeypatch):
+        from api.config import settings as app_settings
+
+        monkeypatch.setattr(app_settings, "APP_ROLE", "producer")
+        monkeypatch.setattr(app_settings, "TICKET_HANDLER_MODE", "disabled")
+        repo = Mock(get=AsyncMock(return_value=None))
+        client.app.state.ticket_repo = repo
+
+        response = client.get("/readyz")
+
+        assert response.status_code == 200
+        job_id = repo.get.await_args.args[0]
+        assert len(job_id) == 32
+        assert set(job_id) <= set("0123456789abcdef")
+
     def test_producer_disabled_requires_polling_repository(self, client, monkeypatch):
         from api.config import settings as app_settings
 

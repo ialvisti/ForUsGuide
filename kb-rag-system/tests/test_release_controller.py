@@ -3492,7 +3492,7 @@ def test_runtime_image_uses_trusted_build_and_isolated_candidate_execution(contr
         if call[:2] == ("docker", "run") and "/opt/container-smoke.py" in call
     )
     assert "--workdir=/app" in smoke
-    assert "--env=PYTHONPATH=/app" in smoke
+    assert "--env=PYTHONPATH=/app:/opt/python" in smoke
 
 
 def test_release_controller_embeds_offline_reviewed_provider_mirror():

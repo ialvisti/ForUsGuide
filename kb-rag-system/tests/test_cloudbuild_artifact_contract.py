@@ -226,7 +226,7 @@ def test_verify_local_build_denies_adc_and_metadata_to_every_step_and_smoke() ->
     assert "'/opt/container-smoke.py'" in smoke
     runtime_smoke = smoke[:smoke.index("id: 'ci-image-build'")]
     assert "--workdir=/app" in runtime_smoke
-    assert "PYTHONPATH=/app" in runtime_smoke
+    assert "PYTHONPATH=/app:/opt/python" in runtime_smoke
     e2e_smoke = controller[controller.index("id: 'e2e-image-build-smoke'"):]
     e2e_smoke = e2e_smoke[:e2e_smoke.index("id: 'release-controller-build-smoke'")]
     assert "--workdir=/app" in e2e_smoke
@@ -250,7 +250,7 @@ def test_runtime_smoke_is_mounted_because_admin_scripts_are_not_in_image() -> No
     assert "'scripts/container_smoke.py'" not in smoke
     smoke = smoke[:smoke.index("id: 'push'")]
     assert "--workdir=/app" in smoke
-    assert "PYTHONPATH=/app" in smoke
+    assert "PYTHONPATH=/app:/opt/python" in smoke
 
 
 def test_e2e_image_smoke_imports_application_from_app_workdir() -> None:

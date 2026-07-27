@@ -43,13 +43,28 @@ def test_router_keeps_api_key_in_dom_memory_only() -> None:
 
 def test_runtime_dockerfile_uses_pinned_base_and_hashed_runtime_lock() -> None:
     dockerfile = _read(KB_ROOT / "Dockerfile")
-    pinned_base = _tool_image("PYTHON_BASE_IMAGE")
+    pinned_base = _tool_image("PYTHON_RUNTIME_BUILDER_IMAGE")
 
     assert f"FROM {pinned_base}" in dockerfile
     assert "COPY requirements.lock" in dockerfile
     assert "--require-hashes -r requirements.lock" in dockerfile
     assert "requirements.txt" not in dockerfile
     assert "pip install --no-cache-dir --upgrade pip" not in dockerfile
+
+
+def test_runtime_dockerfile_finishes_on_a_pinned_distroless_nonroot_stage() -> None:
+    dockerfile = _read(KB_ROOT / "Dockerfile")
+    builder = _tool_image("PYTHON_RUNTIME_BUILDER_IMAGE")
+    runtime = _tool_image("PYTHON_DISTROLESS_RUNTIME_IMAGE")
+
+    assert f"FROM {builder} AS python-runtime" in dockerfile
+    assert f"FROM {runtime}" in dockerfile
+    assert "COPY --from=python-runtime /usr/local /usr/local" in dockerfile
+    assert "ENTRYPOINT []" in dockerfile
+    assert "USER 65532" in dockerfile
+    assert dockerfile.index(f"FROM {runtime}") > dockerfile.index(
+        "--require-hashes -r requirements.lock"
+    )
 
 
 def test_dev_lock_is_self_contained_for_a_fresh_python_image() -> None:

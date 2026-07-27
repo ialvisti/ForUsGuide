@@ -123,7 +123,7 @@ steps:
         set -euo pipefail
         gsutil -h "x-goog-if-generation-match:0" cp \
           /workspace/sbom.spdx.json \
-          gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/sbom.spdx.json
+          gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/sbom.spdx.json
 
   # 10) analizar ESE digest con On-Demand Scanning; CRITICAL bloquea sin
   # excepción; cada HIGH requiere G5V por digest+CVE aún vigente.
@@ -157,10 +157,10 @@ steps:
         set -euo pipefail
         gsutil -h "x-goog-if-generation-match:0" cp \
           /workspace/scan-vulnerabilities.json \
-          gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/scan-vulnerabilities.json
+          gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/scan-vulnerabilities.json
         gsutil -h "x-goog-if-generation-match:0" cp \
           /workspace/scan-policy.json \
-          gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/scan-policy.json
+          gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/scan-policy.json
 
 options:
   logging: CLOUD_LOGGING_ONLY

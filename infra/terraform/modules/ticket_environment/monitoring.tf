@@ -1191,20 +1191,20 @@ resource "google_monitoring_alert_policy" "ticket_llm_cost_budget" {
 # service/job/queue exactos y no agrupan por identificadores de negocio.
 # ---------------------------------------------------------------------------
 
-resource "google_monitoring_dashboard" "ticket_operations" {
-  project = var.project_id
-  dashboard_json = jsonencode({
+locals {
+  ticket_operations_dashboard_json = jsonencode({
     displayName = "[${var.env}] Ticket handler operations"
     mosaicLayout = {
       columns = 12
       tiles = [
         {
-          xPos = 0, yPos = 0, width = 6, height = 4
+          width = 6, height = 4
           widget = {
             title = "Worker requests by response class"
             xyChart = {
               dataSets = [{
-                plotType = "LINE"
+                plotType   = "LINE"
+                targetAxis = "Y1"
                 timeSeriesQuery = { timeSeriesFilter = {
                   filter = "metric.type=\"run.googleapis.com/request_count\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                   aggregation = {
@@ -1220,20 +1220,22 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 6, yPos = 0, width = 6, height = 4
+          xPos = 6, width = 6, height = 4
           widget = {
             title = "Queue depth and dispatch delay"
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"cloudtasks.googleapis.com/queue/depth\" AND resource.type=\"cloud_tasks_queue\" AND resource.label.location=\"${var.region}\" AND resource.label.queue_id=\"${var.queue_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_MAX" }
                   } }
                 },
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"cloudtasks.googleapis.com/queue/task_attempt_delays\" AND resource.type=\"cloud_tasks_queue\" AND resource.label.location=\"${var.region}\" AND resource.label.queue_id=\"${var.queue_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_PERCENTILE_99" }
@@ -1245,13 +1247,14 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 4, width = 6, height = 4
+          yPos = 4, width = 6, height = 4
           widget = {
             title = "Terminal outcomes"
             xyChart = {
               dataSets = [
                 for metric_name in [google_logging_metric.terminal_total.name, google_logging_metric.terminal_incorrect.name] : {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${metric_name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_RATE" }
@@ -1269,7 +1272,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
             xyChart = {
               dataSets = [
                 for metric_name in [google_logging_metric.poll_not_found.name, google_logging_metric.poll_gone.name] : {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${metric_name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.producer_service_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_RATE" }
@@ -1281,13 +1285,14 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 8, width = 6, height = 4
+          yPos = 8, width = 6, height = 4
           widget = {
             title = "Lease fencing and reconciler errors"
             xyChart = {
               dataSets = [
                 for metric_name in [google_logging_metric.reconciler_fenced_leases.name, google_logging_metric.reconciler_errors.name] : {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${metric_name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_SUM" }
@@ -1305,7 +1310,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
             xyChart = {
               dataSets = [
                 for metric_name in [google_logging_metric.forusbots_failure.name, google_logging_metric.manual_reconciliation.name, google_logging_metric.pinecone_circuit_open.name] : {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${metric_name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_RATE" }
@@ -1317,20 +1323,22 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 12, width = 6, height = 4
+          yPos = 12, width = 6, height = 4
           widget = {
             title = "Task delivery failures and deadline terminalizations"
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"cloudtasks.googleapis.com/queue/task_attempt_count\" AND resource.type=\"cloud_tasks_queue\" AND resource.label.location=\"${var.region}\" AND resource.label.queue_id=\"${var.queue_name}\" AND metric.label.response_code!=\"ok\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_RATE", crossSeriesReducer = "REDUCE_SUM" }
                   } }
                 },
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.deadline_terminalized.name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_SUM" }
@@ -1347,7 +1355,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
             title = "Billable worker instance time"
             xyChart = {
               dataSets = [{
-                plotType = "LINE"
+                plotType   = "LINE"
+                targetAxis = "Y1"
                 timeSeriesQuery = { timeSeriesFilter = {
                   filter      = "metric.type=\"run.googleapis.com/container/billable_instance_time\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                   aggregation = { alignmentPeriod = "3600s", perSeriesAligner = "ALIGN_SUM", crossSeriesReducer = "REDUCE_SUM" }
@@ -1358,13 +1367,14 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 16, width = 6, height = 4
+          yPos = 16, width = 6, height = 4
           widget = {
             title = "Active jobs and oldest age"
             xyChart = {
               dataSets = [
                 for metric_name in [google_logging_metric.jobs_active.name, google_logging_metric.jobs_oldest_age.name] : {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${metric_name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
                     aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_PERCENTILE_99" }
@@ -1381,7 +1391,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
             title = "Application queue delay"
             xyChart = {
               dataSets = [{
-                plotType = "LINE"
+                plotType   = "LINE"
+                targetAxis = "Y1"
                 timeSeriesQuery = { timeSeriesFilter = {
                   filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.queue_delay.name}\""
                   aggregation = {
@@ -1397,12 +1408,13 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 20, width = 6, height = 4
+          yPos = 20, width = 6, height = 4
           widget = {
             title = "Step latency by step and code"
             xyChart = {
               dataSets = [{
-                plotType = "LINE"
+                plotType   = "LINE"
+                targetAxis = "Y1"
                 timeSeriesQuery = { timeSeriesFilter = {
                   filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.step_latency.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                   aggregation = {
@@ -1423,7 +1435,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
             title = "Partial, truncated and unprocessed results"
             xyChart = {
               dataSets = [{
-                plotType = "LINE"
+                plotType   = "LINE"
+                targetAxis = "Y1"
                 timeSeriesQuery = { timeSeriesFilter = {
                   filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.result_count.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                   aggregation = {
@@ -1439,13 +1452,14 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 24, width = 6, height = 4
+          yPos = 24, width = 6, height = 4
           widget = {
             title = "ForUsBots submit/poll/ambiguous and circuit"
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.forusbots_count.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = {
@@ -1457,7 +1471,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
                   } }
                 },
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.forusbots_circuit.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = {
@@ -1480,7 +1495,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.pinecone_retry.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = {
@@ -1492,7 +1508,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
                   } }
                 },
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.pinecone_circuit.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = {
@@ -1509,13 +1526,14 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 28, width = 6, height = 4
+          yPos = 28, width = 6, height = 4
           widget = {
             title = "LLM parse and fallback"
             xyChart = {
               dataSets = [
                 for metric_name in [google_logging_metric.llm_parse.name, google_logging_metric.llm_fallback.name] : {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter = "metric.type=\"logging.googleapis.com/user/${metric_name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = {
@@ -1538,7 +1556,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
             xyChart = {
               dataSets = [
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.llm_tokens.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = {
@@ -1550,7 +1569,8 @@ resource "google_monitoring_dashboard" "ticket_operations" {
                   } }
                 },
                 {
-                  plotType = "LINE"
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {
                     filter      = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.llm_cost.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
                     aggregation = { alignmentPeriod = "3600s", perSeriesAligner = "ALIGN_PERCENTILE_99", crossSeriesReducer = "REDUCE_SUM" }
@@ -1562,12 +1582,13 @@ resource "google_monitoring_dashboard" "ticket_operations" {
           }
         },
         {
-          xPos = 0, yPos = 32, width = 12, height = 4
+          yPos = 32, width = 12, height = 4
           widget = {
             title = "n8n poll state"
             xyChart = {
               dataSets = [{
-                plotType = "LINE"
+                plotType   = "LINE"
+                targetAxis = "Y1"
                 timeSeriesQuery = { timeSeriesFilter = {
                   filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.n8n_poll.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.producer_service_name}\""
                   aggregation = {
@@ -1585,4 +1606,9 @@ resource "google_monitoring_dashboard" "ticket_operations" {
       ]
     }
   })
+}
+
+resource "google_monitoring_dashboard" "ticket_operations" {
+  project        = var.project_id
+  dashboard_json = local.ticket_operations_dashboard_json
 }

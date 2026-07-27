@@ -53,6 +53,12 @@ def _resource(text: str, kind: str, name: str) -> str:
     return block.replace('\\"', '"')
 
 
+def _dashboard_definition(text: str) -> str:
+    start = text.index("ticket_operations_dashboard_json")
+    end = text.index('\nresource "google_monitoring_dashboard"', start)
+    return text[start:end].replace('\\"', '"')
+
+
 def test_logging_metrics_are_real_environment_scoped_and_privacy_safe() -> None:
     monitoring = _read(MONITORING)
     required = {
@@ -247,9 +253,7 @@ def test_distribution_alerts_and_charts_convert_to_numeric_percentiles() -> None
     cost = _resource(
         monitoring, "google_monitoring_alert_policy", "ticket_llm_cost_budget"
     )
-    dashboard = _resource(
-        monitoring, "google_monitoring_dashboard", "ticket_operations"
-    )
+    dashboard = _dashboard_definition(monitoring)
 
     assert 'per_series_aligner   = "ALIGN_PERCENTILE_99"' in oldest
     assert 'per_series_aligner   = "ALIGN_PERCENTILE_99"' in cost
@@ -262,6 +266,22 @@ def test_distribution_alerts_and_charts_convert_to_numeric_percentiles() -> None
     assert 'perSeriesAligner = "ALIGN_MAX"' in queue_depth
 
 
+def test_dashboard_api_normalization_does_not_cause_perpetual_drift() -> None:
+    monitoring = _read(MONITORING)
+    definition = _dashboard_definition(monitoring)
+    dashboard = _resource(
+        monitoring, "google_monitoring_dashboard", "ticket_operations"
+    )
+
+    assert len(re.findall(r'targetAxis\s*=\s*"Y1"', definition)) == len(
+        re.findall(r'plotType\s*=\s*"LINE"', definition)
+    )
+    assert "xPos = 0" not in definition
+    assert "yPos = 0" not in definition
+    assert "ignore_changes" not in dashboard
+    assert "replace_triggered_by" not in dashboard
+
+
 def test_forusbots_open_circuit_is_alerted_and_visible() -> None:
     monitoring = _read(MONITORING)
     alert = _resource(
@@ -269,9 +289,7 @@ def test_forusbots_open_circuit_is_alerted_and_visible() -> None:
         "google_monitoring_alert_policy",
         "ticket_forusbots_reconciliation",
     )
-    dashboard = _resource(
-        monitoring, "google_monitoring_dashboard", "ticket_operations"
-    )
+    dashboard = _dashboard_definition(monitoring)
 
     assert "google_logging_metric.forusbots_circuit.name" in alert
     assert 'metric.label.state="open"' in alert
@@ -406,9 +424,7 @@ def test_runbook_records_remote_preflight_blockers_as_hard_gates() -> None:
 
 def test_dashboard_covers_runtime_queue_recovery_and_dependencies() -> None:
     monitoring = _read(MONITORING)
-    dashboard = _resource(
-        monitoring, "google_monitoring_dashboard", "ticket_operations"
-    )
+    dashboard = _dashboard_definition(monitoring)
 
     for title in (
         "Worker requests by response class",

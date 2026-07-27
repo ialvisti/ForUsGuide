@@ -176,27 +176,29 @@ _PRESEND_SAFE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 _TERMINAL_OK = "succeeded"
 _TERMINAL_BAD = {"failed", "canceled"}
+_LEGACY_HTTP_ORIGIN = "http://35.224.156.104:10000"
 
 
 def validate_forusbots_base_url(base_url: str) -> str:
-    """Return a canonical credential-safe HTTPS origin.
+    """Return a canonical reviewed ForUsBots origin.
 
-    ForUsBots receives an authentication token on every request, so the
-    configured base must be an origin rather than an arbitrary URL.  Error
-    text deliberately never echoes the untrusted value because it may contain
-    embedded credentials.
+    The deployed ForUsBots 2.5 contract is currently served from one legacy
+    HTTP origin. Preserve that exact integration while continuing to reject
+    every other plaintext origin and every URL containing credentials, paths,
+    queries or fragments. Error text deliberately never echoes the untrusted
+    value because it may contain embedded credentials.
     """
     try:
         parsed = urlsplit(base_url)
         port = parsed.port
     except (TypeError, ValueError):
         raise ForusBotsError(
-            "ForusBots base_url debe ser un origen HTTPS canónico"
+            "ForusBots base_url debe ser un origen canónico revisado"
         ) from None
     if (
         not isinstance(base_url, str)
         or base_url != base_url.strip()
-        or parsed.scheme != "https"
+        or parsed.scheme not in {"http", "https"}
         or not parsed.hostname
         or parsed.username is not None
         or parsed.password is not None
@@ -205,12 +207,17 @@ def validate_forusbots_base_url(base_url: str) -> str:
         or parsed.path not in {"", "/"}
     ):
         raise ForusBotsError(
-            "ForusBots base_url debe ser un origen HTTPS canónico"
+            "ForusBots base_url debe ser un origen canónico revisado"
+        )
+    normalized = base_url.rstrip("/")
+    if parsed.scheme == "http" and normalized != _LEGACY_HTTP_ORIGIN:
+        raise ForusBotsError(
+            "ForusBots base_url debe ser un origen canónico revisado"
         )
     # Accessing ``parsed.port`` above validates the port syntax.  Preserve an
     # explicit non-default port while normalizing the one permitted root path.
     _ = port
-    return base_url.rstrip("/")
+    return normalized
 
 
 # ============================================================================
@@ -286,19 +293,14 @@ class ForusBotsClient:
         await self._client.aclose()
 
     def requires_tls(self) -> bool:
-        return True
+        return self._base.startswith("https://")
 
     async def health(self) -> Dict[str, Any]:
-        """Probe de salud (plan Tarea 8 Paso 3). Verifica que el transporte
-        sea HTTPS (no downgrade) y que /health responda. NO envía datos de
-        participante. Un base_url no-HTTPS lanza: el token viajaría en claro."""
-        if not self.requires_tls():
-            raise ForusBotsError(
-                "ForusBots base_url no es HTTPS: el token viajaría sin cifrar")
+        """Probe the documented health endpoint without participant data."""
         resp = await self._http_request(
             "GET", f"{self._base}/forusbot/health", idempotent=True)
         self._raise_for_status(resp, context="health")
-        return {"status_code": resp.status_code, "tls": True}
+        return {"status_code": resp.status_code, "tls": self.requires_tls()}
 
     # ------------------------------------------------------------------
     # Public scrape API

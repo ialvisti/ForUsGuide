@@ -176,36 +176,36 @@ class TestOpenAPIContract:
             "RED: Idempotency-Key declarado pero no obligatorio"
         )
 
-    def test_openapi_declares_both_auth_schemes(self, openapi_spec):
+    def test_openapi_declares_existing_n8n_auth_schemes(self, openapi_spec):
         schemes = openapi_spec.get("components", {}).get("securitySchemes", {})
         blob = str(schemes)
         assert "X-API-Key" in blob, (
             "RED: OpenAPI no declara el esquema X-API-Key"
         )
-        assert "X-ForUs-Workload-Authorization" in blob or "Bearer" in blob, (
-            "RED: OpenAPI no declara la identidad workload de v2 "
-            "(X-ForUs-Workload-Authorization / bearer de Cloud Run)"
-        )
+        assert "CloudRunIAM" in schemes
+        assert "X-ForUs-Workload-Authorization" not in blob
         for path, method in (
             ("/api/v2/handle-ticket", "post"),
             ("/api/v2/ticket-jobs/{ticket_job_id}", "get"),
         ):
             security = openapi_spec["paths"][path][method].get("security", [])
             flattened = {name for option in security for name in option}
-            assert {"ApiKeyAuth", "WorkloadIdentity"} <= flattened
+            assert {"ApiKeyAuth", "CloudRunIAM"} <= flattened
+            assert security == [{"ApiKeyAuth": [], "CloudRunIAM": []}]
 
-    def test_openapi_declares_workload_identity_on_v1_post_and_poll(
+    def test_openapi_declares_existing_auth_on_v1_post_and_poll(
             self, openapi_spec):
-        """La documentación no debe anunciar el bypass que runtime rechaza."""
+        """v1 documents the same IAM + API key contract used by n8n."""
         for path, method in (
             ("/api/v1/handle-ticket", "post"),
             ("/api/v1/tickets/{ticket_job_id}", "get"),
         ):
             security = openapi_spec["paths"][path][method].get("security", [])
             flattened = {name for option in security for name in option}
-            assert {"ApiKeyAuth", "WorkloadIdentity"} <= flattened, (
-                f"{method.upper()} {path} no declara el segundo factor workload"
+            assert {"ApiKeyAuth", "CloudRunIAM"} <= flattened, (
+                f"{method.upper()} {path} no declara el contrato n8n existente"
             )
+            assert security == [{"ApiKeyAuth": [], "CloudRunIAM": []}]
 
     def test_openapi_states_and_actions_are_enums(self, openapi_spec):
         schemas = openapi_spec.get("components", {}).get("schemas", {})

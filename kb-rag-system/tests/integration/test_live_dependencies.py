@@ -5,7 +5,7 @@ Marcadas ``live_dependencies``: CI las excluye
 (``-m "not live_dependencies and not staging_e2e"``); corren sólo en su gate.
 Separación de efectos:
 
-- TLS/health de ForusBots y la probe read-only de Pinecone pueden ejecutarse
+- Health/origin de ForusBots y la probe read-only de Pinecone pueden ejecutarse
   con credenciales aprobadas (sin efectos participant-facing);
 - submit/poll de ForusBots o CUALQUIER efecto sólo DESPUÉS de G4 y con
   identidades sintéticas.
@@ -32,21 +32,17 @@ def _require(*env_vars):
 
 class TestForusBotsTransportLive:
 
-    async def test_health_https_no_downgrade(self):
-        """TLS + hostname válido + /health, sin datos de participante. NO
-        requiere G4 (sin efectos)."""
-        _require("FORUSBOTS_BASE_URL", "FORUSBOTS_AUTH_TOKEN")
+    async def test_health_on_reviewed_origin(self):
+        """Exact reviewed origin + /health, without participant data."""
+        _require("FORUSBOTS_BASE_URL")
         from data_pipeline.forusbots_client import ForusBotsClient
 
         base = os.environ["FORUSBOTS_BASE_URL"]
-        assert base.lower().startswith("https://"), (
-            "la probe live exige HTTPS; el HTTP actual se retira en Tarea 16"
-        )
         client = ForusBotsClient(base_url=base,
-                                 auth_token=os.environ["FORUSBOTS_AUTH_TOKEN"])
+                                 auth_token=os.getenv("FORUSBOTS_AUTH_TOKEN", ""))
         try:
             result = await client.health()
-            assert result["tls"] is True
+            assert result["tls"] is base.lower().startswith("https://")
             assert result["status_code"] == 200
         finally:
             await client.aclose()

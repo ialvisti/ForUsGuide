@@ -1,19 +1,13 @@
-"""
-Identidad de clientes de la API + identidad workload de v2 (plan Tarea 4).
+"""Identidad de clientes de la API.
 
-Dos credenciales INDEPENDIENTES protegen v2 activo:
+El contrato desplegado conserva la integración histórica de n8n: Cloud Run
+valida el Google ID token de ``kb-rag-client`` en ``Authorization`` y la
+aplicación valida el ``X-API-Key`` existente. No requiere cuentas, roles ni
+credenciales de AWS, ni un segundo bearer header.
 
-1. ``X-API-Key`` → resuelve QUÉ principal/tenant es el caller
-   (``API_CLIENT_KEYS``/``API_CLIENT_TENANTS``; la ``API_KEY`` legacy mapea al
-   principal ``"default"``). Identifica cliente/tenant, pero NO autoriza sola.
-2. ``X-ForUs-Workload-Authorization: Bearer <ID token>`` → identidad workload
-   Google-signed de la SA ``n8n-ticket-invoker-{env}``, verificada DENTRO de
-   la app (firma/JWKS, issuer, audiencia exacta, email verificado, exp).
-   Cloud Run elimina la firma de ``X-Serverless-Authorization`` antes de
-   entregarlo al contenedor, así que ese header se RECHAZA siempre.
-
-Nunca se persiste ni loggea una key o token raw; el principal/tenant derivado
-es lo que viaja a jobs, logs y autorización de objetos.
+Las utilidades de validación workload que permanecen en este módulo son
+opt-in y no forman parte de la configuración desplegada. Nunca se persiste ni
+loggea una key o token raw; sólo el principal/tenant derivado.
 """
 
 from __future__ import annotations

@@ -49,9 +49,6 @@ locals {
   ])
   active_producer_secret_env = setunion(toset([
     "API_KEY",
-    "API_CLIENT_KEYS",
-    "API_CLIENT_TENANTS",
-    "PARTICIPANT_PLAN_SOURCE",
     "FORUSBOTS_AUTH_TOKEN",
     "OPENAI_API_KEY",
     "PINECONE_API_KEY",
@@ -76,9 +73,6 @@ locals {
   )
   expected_secret_accessor_roles_all = {
     API_KEY                     = toset(["producer"])
-    API_CLIENT_KEYS             = toset(["producer"])
-    API_CLIENT_TENANTS          = toset(["producer"])
-    PARTICIPANT_PLAN_SOURCE     = toset(["producer"])
     FORUSBOTS_AUTH_TOKEN        = toset(["worker"])
     OPENAI_API_KEY              = toset(["producer", "worker"])
     PINECONE_API_KEY            = toset(["producer", "worker"])
@@ -182,10 +176,16 @@ locals {
       if startswith(key, "gemini:")
     ]) > 0 ? toset(["openai:gpt-5.5"]) : toset([]),
   )
-  forusbots_origin_is_canonical = can(regex(
-    "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$",
-    trimspace(lookup(var.producer_core_env, "FORUSBOTS_BASE_URL", "")),
-  ))
+  forusbots_origin_is_canonical = (
+    can(regex(
+      "^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?/?$",
+      trimspace(lookup(var.producer_core_env, "FORUSBOTS_BASE_URL", "")),
+    )) ||
+    can(regex(
+      "^http://35\\.224\\.156\\.104:10000/?$",
+      trimspace(lookup(var.producer_core_env, "FORUSBOTS_BASE_URL", "")),
+    ))
+  )
   producer_managed_env_names = setunion(toset(keys(local.common_env)), toset([
     "APP_ROLE",
     "TICKET_HANDLER_MODE",
@@ -193,8 +193,6 @@ locals {
     "TICKET_WORKER_URL",
     "TICKET_WORKER_AUDIENCE",
     "TICKET_WORKER_SERVICE_ACCOUNT",
-    "TICKET_WIF_AUDIENCE",
-    "TICKET_WIF_ALLOWED_EMAILS",
   ]))
   # El worker no sirve APIs de cliente y no necesita API_KEY. No inyectar una
   # referencia que su SA no puede resolver; el resto sí es runtime RAG/LLM y
@@ -277,14 +275,6 @@ resource "google_cloud_run_v2_service" "producer" {
       env {
         name  = "TICKET_WORKER_SERVICE_ACCOUNT"
         value = var.task_signer_sa_email
-      }
-      env {
-        name  = "TICKET_WIF_AUDIENCE"
-        value = var.ticket_wif_audience
-      }
-      env {
-        name  = "TICKET_WIF_ALLOWED_EMAILS"
-        value = jsonencode(var.ticket_wif_allowed_emails)
       }
       dynamic "env" {
         for_each = local.common_env
@@ -426,7 +416,7 @@ resource "google_cloud_run_v2_service" "producer" {
     }
     precondition {
       condition     = local.forusbots_origin_is_canonical
-      error_message = "FORUSBOTS_BASE_URL debe ser un origen HTTPS canónico sin credenciales, path, query ni fragment."
+      error_message = "FORUSBOTS_BASE_URL debe ser un origen canónico revisado sin credenciales, path, query ni fragment."
     }
     precondition {
       condition     = local.runtime_secret_refs_exact
@@ -452,28 +442,9 @@ resource "google_cloud_run_v2_service" "producer" {
     precondition {
       condition = (
         var.ticket_handler_mode == "disabled" ||
-        (
-          trimspace(var.ticket_wif_audience) != "" &&
-          (
-            var.env == "staging" ?
-            toset(var.ticket_wif_allowed_emails) == toset([
-              var.n8n_invoker_sa_email,
-              "ticket-e2e-stg@${var.project_id}.iam.gserviceaccount.com",
-            ]) :
-            toset(var.ticket_wif_allowed_emails) == toset([
-              var.n8n_invoker_sa_email,
-            ])
-          )
-        )
-      )
-      error_message = "un producer activo exige audience y allowlist WIF exacta (staging n8n+E2E; production sólo n8n)."
-    }
-    precondition {
-      condition = (
-        var.ticket_handler_mode == "disabled" ||
         toset(keys(var.secret_version_refs)) == local.active_producer_secret_env
       )
-      error_message = "un producer activo exige el set exacto de secretos de cliente/tenant/participant-plan y dependencias; fault sólo staging."
+      error_message = "un producer activo exige el set exacto de secretos del runtime; fault sólo staging."
     }
   }
 }

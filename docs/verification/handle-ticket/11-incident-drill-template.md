@@ -42,7 +42,7 @@ del incidente, recepción por cada canal, ack y recuperación.
 | `ticket_terminal_incorrect_ratio` | terminales incorrectos >10% durante 15m | contener cohort en n8n y separar códigos técnicos | |
 | `ticket_queue_backlog` | depth >50 o p99 dispatch delay >120s durante 10m | contener admisión; revisar worker antes de cambiar capacidad | |
 | `worker_5xx_ratio` | 5xx/requests >1% durante 5m | n8n a legacy; preservar store y polling | |
-| `producer_auth_failure_ratio` | 401/403 >5% durante 5m | revisar WIF/audience/mapping; nunca relajar auth | |
+| `producer_auth_failure_ratio` | 401/403 >5% durante 5m | revisar token IAM de `kb-rag-client` y `X-API-Key`; nunca relajar auth | |
 | `ticket_lease_fencing` | reconciler fencea un lease vencido | verificar heartbeat, epoch y generación; no revivir worker viejo | |
 | `ticket_oldest_active_job` | job activo >120s (lease 90s + gracia) | comprobar heartbeat/fencing; no repetir efectos externos | |
 | `ticket_reconciler_health` | sin heartbeat 10m o errores >0 | revisar Job/Scheduler/locks; CLI sólo break-glass auditado | |

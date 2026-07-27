@@ -25,15 +25,14 @@ variable "runtime_service_accounts" {
         "ticket-reconciler-prod",
         "ticket-task-signer-prod",
         "ticket-scheduler-prod",
-        "n8n-ticket-invoker-prod",
       ]), toset(keys(var.runtime_service_accounts)))) == 0 &&
-      length(var.runtime_service_accounts) == 6 &&
+      length(var.runtime_service_accounts) == 5 &&
       alltrue([
         for email in values(var.runtime_service_accounts) :
         can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.iam\\.gserviceaccount\\.com$", email))
       ])
     )
-    error_message = "runtime_service_accounts debe contener exactamente las seis SAs production como emails GCP válidos."
+    error_message = "runtime_service_accounts debe contener exactamente las cinco SAs production como emails GCP válidos."
   }
 }
 
@@ -118,8 +117,7 @@ variable "secret_version_refs" {
     condition = (
       alltrue([
         for key in [
-          "API_KEY", "API_CLIENT_KEYS", "API_CLIENT_TENANTS",
-          "PARTICIPANT_PLAN_SOURCE", "FORUSBOTS_AUTH_TOKEN",
+          "API_KEY", "FORUSBOTS_AUTH_TOKEN",
           "OPENAI_API_KEY", "PINECONE_API_KEY",
         ] : trimspace(lookup(var.secret_version_refs, key, "")) != ""
       ]) &&
@@ -128,7 +126,7 @@ variable "secret_version_refs" {
         can(regex("^projects/[^/]+/secrets/[^/]+/versions/[0-9]+$", ref))
       ])
     )
-    error_message = "secret_version_refs exige los siete secretos observados por versión numérica."
+    error_message = "secret_version_refs exige los cuatro secretos del runtime por versión numérica."
   }
 }
 
@@ -146,8 +144,7 @@ variable "secret_containers" {
       var.secret_containers.enabled &&
       length(setsubtract(
         toset([
-          "API_KEY", "API_CLIENT_KEYS", "API_CLIENT_TENANTS",
-          "PARTICIPANT_PLAN_SOURCE", "FORUSBOTS_AUTH_TOKEN",
+          "API_KEY", "FORUSBOTS_AUTH_TOKEN",
           "OPENAI_API_KEY", "PINECONE_API_KEY",
         ]),
         toset(keys(var.secret_containers.ids)),
@@ -155,8 +152,7 @@ variable "secret_containers" {
       length(setsubtract(
         toset(keys(var.secret_containers.ids)),
         toset([
-          "API_KEY", "API_CLIENT_KEYS", "API_CLIENT_TENANTS",
-          "PARTICIPANT_PLAN_SOURCE", "FORUSBOTS_AUTH_TOKEN",
+          "API_KEY", "FORUSBOTS_AUTH_TOKEN",
           "OPENAI_API_KEY", "PINECONE_API_KEY",
         ]),
       )) == 0 &&
@@ -165,15 +161,12 @@ variable "secret_containers" {
         can(regex("^[a-zA-Z0-9_-]{1,255}$", secret_id))
       ]) &&
       try(var.secret_containers.accessor_roles["API_KEY"], toset([])) == toset(["producer"]) &&
-      try(var.secret_containers.accessor_roles["API_CLIENT_KEYS"], toset([])) == toset(["producer"]) &&
-      try(var.secret_containers.accessor_roles["API_CLIENT_TENANTS"], toset([])) == toset(["producer"]) &&
-      try(var.secret_containers.accessor_roles["PARTICIPANT_PLAN_SOURCE"], toset([])) == toset(["producer"]) &&
       try(var.secret_containers.accessor_roles["FORUSBOTS_AUTH_TOKEN"], toset([])) == toset(["worker"]) &&
       try(var.secret_containers.accessor_roles["OPENAI_API_KEY"], toset([])) == toset(["producer", "worker"]) &&
       try(var.secret_containers.accessor_roles["PINECONE_API_KEY"], toset([])) == toset(["producer", "worker"]) &&
-      length(keys(var.secret_containers.accessor_roles)) == 7
+      length(keys(var.secret_containers.accessor_roles)) == 4
     )
-    error_message = "production exige siete containers existentes y accessors mínimos exactos por producer/worker; nunca reconciler/e2e."
+    error_message = "production exige cuatro containers existentes y accessors mínimos exactos por producer/worker; nunca reconciler/e2e."
   }
 }
 
@@ -191,21 +184,6 @@ variable "producer_baseline_revision" {
 variable "producer_candidate_tag" {
   type    = string
   default = "candidate"
-}
-
-variable "ticket_wif_audience" {
-  type    = string
-  default = ""
-}
-
-variable "ticket_wif_expected_email" {
-  type    = string
-  default = ""
-}
-
-variable "ticket_wif_allowed_emails" {
-  type    = list(string)
-  default = []
 }
 
 variable "producer_ingress" {

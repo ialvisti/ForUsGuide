@@ -491,46 +491,23 @@ def validate_settings() -> bool:
                             "cada provider:model primario y fallback"
                         )
 
-    # Autorización participant-plan fail-closed: un producer ACTIVO sin fuente
-    # canónica configurada no puede arrancar. `None` nunca es autorización.
-    if producer_ticket_active \
-            and not settings.PARTICIPANT_PLAN_SOURCE:
-        errors.append(
-            f"TICKET_HANDLER_MODE={settings.TICKET_HANDLER_MODE} requiere "
-            "PARTICIPANT_PLAN_SOURCE (fuente canónica participant-plan); "
-            "sin validador la autorización queda abierta"
-        )
-
-    # Identidad workload de v2: todo entorno desplegado activo exige
-    # audiencia y una allowlist exacta. El email singular legado no puede
-    # abrir staging/production; sólo queda para compatibilidad local.
-    if deployed_environment and producer_ticket_active:
-        client_keys = settings.API_CLIENT_KEYS or {}
-        client_tenants = settings.API_CLIENT_TENANTS or {}
-        if not client_keys:
-            errors.append(
-                "producción activa v2 requiere API_CLIENT_KEYS; API_KEY "
-                "legacy no es una credencial v2"
-            )
-        missing_tenants = sorted(
-            str(principal) for principal in client_keys
-            if not client_tenants.get(principal)
-        )
-        if missing_tenants:
-            errors.append(
-                "API_CLIENT_TENANTS no tiene tenant explícito para: "
-                + ", ".join(missing_tenants)
-            )
+    # El producer conserva el contrato ya desplegado de n8n: Cloud Run IAM
+    # autentica a kb-rag-client y API_KEY autentica la aplicación. Los mapas
+    # multi-tenant, el directorio participant-plan y la segunda identidad de
+    # aplicación son extensiones opcionales; nunca requisitos de arranque.
+    if settings.TICKET_WIF_AUDIENCE \
+            or settings.TICKET_WIF_ALLOWED_EMAILS \
+            or settings.TICKET_WIF_EXPECTED_EMAIL:
+        allowed_wif_emails = settings.TICKET_WIF_ALLOWED_EMAILS or []
         if not settings.TICKET_WIF_AUDIENCE:
             errors.append(
-                f"{settings.ENVIRONMENT} con ticket handler activo requiere "
-                "TICKET_WIF_AUDIENCE"
+                "TICKET_WIF_AUDIENCE es obligatoria al activar la identidad "
+                "workload opcional"
             )
-        allowed_wif_emails = settings.TICKET_WIF_ALLOWED_EMAILS or []
         if not allowed_wif_emails:
             errors.append(
-                f"{settings.ENVIRONMENT} con ticket handler activo requiere "
-                "TICKET_WIF_ALLOWED_EMAILS no vacía"
+                "TICKET_WIF_ALLOWED_EMAILS no puede estar vacía al activar "
+                "la identidad workload opcional"
             )
         elif any(
             not isinstance(email, str)
@@ -581,8 +558,7 @@ def validate_settings() -> bool:
         except ForusBotsError:
             errors.append(
                 f"APP_ROLE=worker en {settings.ENVIRONMENT} "
-                "requiere FORUSBOTS_BASE_URL como origen HTTPS canónico "
-                "(https://host[:port])"
+                "requiere FORUSBOTS_BASE_URL como origen canónico revisado"
             )
 
     # Ejecución durable fail-closed: los roles desplegados no pueden depender

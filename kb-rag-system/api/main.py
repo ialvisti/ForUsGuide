@@ -121,6 +121,7 @@ from .middleware import (
     limit_body_size,
 )
 from .participant_plan import (
+    AuthorizedParticipantPlan,
     ParticipantPlanUnavailable,
     build_validator_from_settings,
 )
@@ -558,9 +559,11 @@ app.include_router(_ticket_worker_router)
 
 
 def _custom_openapi():
-    """OpenAPI con los DOS esquemas de autenticación del flujo de tickets
-    (Tarea 4 Paso 7): X-API-Key (cliente/tenant) y la identidad workload de
-    v2, más el bearer de Cloud Run IAM cuando el servicio es privado."""
+    """Document the deployed n8n authentication contract.
+
+    Cloud Run IAM validates ``Authorization`` and the application validates
+    ``X-API-Key``.  No second bearer header is required from n8n.
+    """
     role = settings.APP_ROLE
     if app.openapi_schema and getattr(app.state, "openapi_role", None) == role:
         return app.openapi_schema
@@ -578,20 +581,12 @@ def _custom_openapi():
     schemes = schema.setdefault("components", {}).setdefault("securitySchemes", {})
     schemes["ApiKeyAuth"] = {
         "type": "apiKey", "in": "header", "name": "X-API-Key",
-        "description": "Identifica cliente/tenant; NO autoriza v2 por sí sola.",
-    }
-    schemes["WorkloadIdentity"] = {
-        "type": "apiKey", "in": "header",
-        "name": "X-ForUs-Workload-Authorization",
-        "description": "`Bearer <ID token>` Google-signed de la SA "
-                       "n8n-ticket-invoker-{env}, verificado en la app "
-                       "(firma/issuer/audience/email/exp). "
-                       "X-Serverless-Authorization se rechaza siempre.",
+        "description": "Credencial de aplicación usada por el workflow n8n.",
     }
     schemes["CloudRunIAM"] = {
         "type": "http", "scheme": "bearer",
-        "description": "El MISMO ID token duplicado en Authorization cuando "
-                       "Cloud Run IAM protege el servicio (invoker privado).",
+        "description": "Google ID token para invocar el servicio privado, "
+                       "obtenido por el flujo OAuth2/IAM Credentials existente.",
     }
     for path, ops in schema.get("paths", {}).items():
         for op in ops.values():
@@ -601,10 +596,10 @@ def _custom_openapi():
                                 "/api/v1/tickets/",
                                 "/api/v2/handle-ticket",
                                 "/api/v2/ticket-jobs/")):
-                op["security"] = [
-                    {"ApiKeyAuth": [], "WorkloadIdentity": [], "CloudRunIAM": []},
-                    {"ApiKeyAuth": [], "WorkloadIdentity": []},
-                ]
+                # Un único objeto OpenAPI expresa AND: el workflow existente
+                # presenta ambos factores al servicio privado. No hay un
+                # segundo bearer header propio de la aplicación.
+                op["security"] = [{"ApiKeyAuth": [], "CloudRunIAM": []}]
     app.openapi_schema = schema
     app.state.openapi_role = role
     return schema
@@ -645,15 +640,12 @@ async def verify_api_key(
 async def verify_v2_api_key(
     request: Request, api_key: Optional[str] = Security(_API_KEY_SCHEME)
 ):
-    """v2 only accepts an explicitly mapped principal and tenant.
+    """Alias de compatibilidad para overrides de tests/integraciones antiguas.
 
-    The legacy ``API_KEY → default/default`` compatibility path is restricted
-    to v1 during migration; it is never a v2 credential.
+    Las rutas v2 desplegadas usan ``verify_api_key`` y aceptan la ``API_KEY``
+    existente, exactamente igual que v1.
     """
-    from api.auth import authenticate_principal
-    await authenticate_principal(
-        request, allow_legacy=False, require_tenant=True
-    )
+    await verify_api_key(request, api_key)
 
 
 async def verify_workload_identity(http_request: Request) -> None:
@@ -1597,43 +1589,43 @@ async def _accept_ticket_job(
 
     tenant = getattr(http_request.state, "tenant_id", None) or "default"
 
-    # Autorización canónica participant-plan-tenant ANTES de cuotas y de
-    # cualquier LLM (invariante 10, Tarea 4). FAIL-CLOSED: un modo activo sin
-    # validador configurado NUNCA autoriza (bloqueo 1 del plan).
+    # Preserve the deployed n8n contract: Cloud Run authenticates
+    # kb-rag-client and X-API-Key authenticates the application caller.  An
+    # optional participant directory may further canonicalize these fields,
+    # but its absence cannot break the existing trusted integration.
     validator = getattr(http_request.app.state, "participant_plan_validator", None)
     if validator is None:
-        ticket_metrics.increment("ticket_participant_plan_unavailable")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE",
-                    "message": "la fuente canónica participant-plan no está "
-                               "configurada; un modo activo no autoriza sin ella"},
+        authorized = AuthorizedParticipantPlan(
+            tenant_id=tenant,
+            participant_id=request.participant_id,
+            plan_id=request.plan_id,
+            record_keeper=request.record_keeper,
         )
-    try:
-        authorized = await asyncio.wait_for(
-            validator.authorize(
-                tenant_id=tenant,
-                participant_id=request.participant_id,
-                plan_id=request.plan_id,
-            ),
-            timeout=settings.PARTICIPANT_PLAN_TIMEOUT_S,
-        )
-    except ParticipantPlanUnavailable as exc:
-        ticket_metrics.increment("ticket_participant_plan_unavailable")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
-        ) from exc
-    except HTTPException:
-        raise
-    except Exception as exc:
-        # Un adaptador roto es indisponibilidad, jamás autorización.
-        logger.error("participant-plan validator failed")
-        ticket_metrics.increment("ticket_participant_plan_unavailable")
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
-        ) from exc
+    else:
+        try:
+            authorized = await asyncio.wait_for(
+                validator.authorize(
+                    tenant_id=tenant,
+                    participant_id=request.participant_id,
+                    plan_id=request.plan_id,
+                ),
+                timeout=settings.PARTICIPANT_PLAN_TIMEOUT_S,
+            )
+        except ParticipantPlanUnavailable as exc:
+            ticket_metrics.increment("ticket_participant_plan_unavailable")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
+            ) from exc
+        except HTTPException:
+            raise
+        except Exception as exc:
+            logger.error("participant-plan validator failed")
+            ticket_metrics.increment("ticket_participant_plan_unavailable")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail={"code": "PARTICIPANT_PLAN_VALIDATION_UNAVAILABLE"},
+            ) from exc
     if authorized is None or (
         authorized.tenant_id != tenant
         or authorized.participant_id != request.participant_id
@@ -1649,10 +1641,9 @@ async def _accept_ticket_job(
         request, http_request, allow_body=allow_body_idem
     )
     payload = request.model_dump(mode="json", exclude={"idempotency_key"})
-    # Campo SERVER-OWNED (Tarea 4 Paso 3 / P2 review): el record keeper SIEMPRE
-    # proviene de la fuente canónica, nunca del metadato del caller. Un valor
-    # None de la fuente significa "sin record keeper afirmado" y DEBE sustituir
-    # cualquier valor del body (no dejarlo sobrevivir).
+    # Si existe un directorio opcional, sus valores canónicos sustituyen el
+    # body. Sin directorio conservamos intactos los campos del workflow n8n
+    # autenticado, incluido record_keeper.
     payload["record_keeper"] = authorized.record_keeper
     payload["participant_id"] = authorized.participant_id
     payload["plan_id"] = authorized.plan_id
@@ -1869,7 +1860,10 @@ def _job_handle_response(record: TicketJobRecord, replayed: bool) -> JSONRespons
 
 @app.post(
     "/api/v1/handle-ticket",
-    dependencies=[Depends(verify_api_key), Depends(verify_workload_identity)],
+    dependencies=[
+        Depends(verify_api_key),
+        Depends(verify_workload_identity),
+    ],
     tags=["RAG Endpoints"],
     responses={200: {"model": TicketHandleResponse}, 202: {"model": TicketJobHandle}},
 )
@@ -1889,12 +1883,9 @@ async def handle_ticket_endpoint(
     transacción ANTES de cualquier LLM: misma key + mismo payload replaya el
     job; misma key + otro payload es ``409``.
 
-    **Auth (P1 review):** v1 alcanza el MISMO pipeline durable que v2, así que
-    también exige la identidad workload cuando está configurada
-    (``verify_workload_identity``). El gate es no-op mientras WIF no esté
-    configurado (ventana de migración legacy con X-API-Key), y cierra el bypass
-    en cuanto WIF se activa: un X-API-Key filtrado ya no basta para conducir el
-    flujo completo. n8n siempre envía el header propio (Tarea 1 Paso 3).
+    **Auth:** conserva el flujo existente de n8n: Cloud Run IAM valida
+    ``Authorization`` y la aplicación valida ``X-API-Key``. La comprobación
+    workload adicional es opcional y queda desactivada si no tiene audiencia.
 
     **Rollout:** gated por ``TICKET_HANDLER_MODE``; el override del body sólo
     puede RESTRINGIR el modo del servidor.
@@ -1939,7 +1930,10 @@ async def handle_ticket_endpoint(
 @app.get(
     "/api/v1/tickets/{ticket_job_id}",
     response_model=TicketStatusResponse,
-    dependencies=[Depends(verify_api_key), Depends(verify_workload_identity)],
+    dependencies=[
+        Depends(verify_api_key),
+        Depends(verify_workload_identity),
+    ],
     tags=["RAG Endpoints"],
 )
 async def get_ticket_status(
@@ -2015,16 +2009,18 @@ async def get_ticket_status(
 
 @app.post(
     "/api/v2/handle-ticket",
-    dependencies=[Depends(verify_v2_api_key), Depends(verify_workload_identity)],
+    dependencies=[
+        Depends(verify_api_key),
+        Depends(verify_workload_identity),
+    ],
     tags=["RAG Endpoints"],
     status_code=status.HTTP_202_ACCEPTED,
     response_model=TicketJobAcceptedV2,
     responses={
         401: {"model": ErrorResponse,
-              "description": "Falta X-API-Key o la identidad workload "
-                             "(X-ForUs-Workload-Authorization)"},
+              "description": "Falta X-API-Key o la identidad de Cloud Run"},
         403: {"model": ErrorResponse,
-              "description": "Credencial inválida, SA workload inesperada o "
+              "description": "Credencial inválida o "
                              "PARTICIPANT_PLAN_MISMATCH"},
         409: {"model": ErrorResponse,
               "description": "IDEMPOTENCY_PAYLOAD_MISMATCH: la misma "
@@ -2036,8 +2032,8 @@ async def get_ticket_status(
               "description": "RATE_LIMITED o TOO_MANY_OUTSTANDING_JOBS "
                              "(con Retry-After)"},
         503: {"model": ErrorResponse,
-              "description": "Handler disabled, validador participant-plan no "
-                             "disponible o verificador workload caído"},
+              "description": "Handler disabled o dependencia opcional "
+                             "no disponible"},
     },
 )
 async def handle_ticket_v2(
@@ -2055,11 +2051,10 @@ async def handle_ticket_v2(
 ):
     """Contrato v2: SIEMPRE ``202 + polling`` sobre el job durable.
 
-    Auth: ``X-API-Key`` (cliente/tenant) + ``X-ForUs-Workload-Authorization``
-    (ID token WIF verificado en la app; si el servicio es privado, el mismo
-    token viaja además en ``Authorization`` para Cloud Run IAM). El body es
-    estricto: no acepta ``idempotency_key`` ni ``ticket_handler_mode`` — la
-    key viaja SÓLO en el header y el rollout es exclusivamente server-side."""
+    Auth: el mismo contrato existente de n8n: ``Authorization`` para Cloud Run
+    IAM y ``X-API-Key`` para la aplicación. El body es estricto: no acepta
+    ``idempotency_key`` ni ``ticket_handler_mode`` — la key viaja SÓLO en el
+    header y el rollout es exclusivamente server-side."""
     record, replayed = await _accept_ticket_job(
         request, http_request, repo, api_version="v2", allow_body_idem=False
     )
@@ -2083,7 +2078,10 @@ async def handle_ticket_v2(
 
 @app.get(
     "/api/v2/ticket-jobs/{ticket_job_id}",
-    dependencies=[Depends(verify_v2_api_key), Depends(verify_workload_identity)],
+    dependencies=[
+        Depends(verify_api_key),
+        Depends(verify_workload_identity),
+    ],
     tags=["RAG Endpoints"],
     response_model=TicketJobStatusV2,
     responses={

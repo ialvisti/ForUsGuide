@@ -119,8 +119,6 @@ ALLOWED_TERRAFORM_RESOURCE_TYPES = frozenset({
     "google_firestore_database",
     "google_firestore_field",
     "google_firestore_index",
-    "google_iam_workload_identity_pool",
-    "google_iam_workload_identity_pool_provider",
     "google_logging_metric",
     "google_monitoring_alert_policy",
     "google_monitoring_dashboard",
@@ -237,12 +235,11 @@ RUNTIME_SERVICE_ACCOUNTS = {
     "staging": (
         "ticket-producer-stg", "ticket-worker-stg",
         "ticket-reconciler-stg", "ticket-task-signer-stg",
-        "ticket-scheduler-stg", "n8n-ticket-invoker-stg",
+        "ticket-scheduler-stg",
     ),
     "production": (
         "ticket-producer-prod", "ticket-worker-prod", "ticket-reconciler-prod",
         "ticket-task-signer-prod", "ticket-scheduler-prod",
-        "n8n-ticket-invoker-prod",
     ),
 }
 PLATFORM_RUNTIME_SERVICE_ACCOUNTS = (
@@ -273,8 +270,7 @@ PLATFORM_MANAGED_RUNTIME_IAM_INVENTORY = {
 }
 ENVIRONMENT_TFVARS = {
     "staging": {
-        "producer_core_env", "ticket_wif_audience",
-        "ticket_wif_allowed_emails",
+        "producer_core_env",
         "secret_containers", "e2e_job",
         "e2e_secret_containers", "producer_baseline_revision",
         "producer_baseline_tag", "producer_candidate_tag",
@@ -283,8 +279,6 @@ ENVIRONMENT_TFVARS = {
     "production": {
         "producer_core_env", "secret_version_refs",
         "producer_baseline_revision", "producer_candidate_tag",
-        "ticket_wif_audience",
-        "ticket_wif_allowed_emails",
         "producer_ingress", "producer_max_instances", "producer_min_instances",
         "producer_concurrency", "producer_timeout", "producer_cpu",
         "producer_memory", "producer_cpu_idle", "producer_startup_cpu_boost",
@@ -308,8 +302,7 @@ WORKER_SECRET_REF_KEYS = {
     "FORUSBOTS_AUTH_TOKEN", "OPENAI_API_KEY", "PINECONE_API_KEY",
 }
 PRODUCTION_SECRET_REF_KEYS = {
-    "API_KEY", "API_CLIENT_KEYS", "API_CLIENT_TENANTS",
-    "PARTICIPANT_PLAN_SOURCE", *WORKER_SECRET_REF_KEYS,
+    "API_KEY", *WORKER_SECRET_REF_KEYS,
 }
 STAGING_SECRET_REF_KEYS = {
     *PRODUCTION_SECRET_REF_KEYS, "TICKET_FAULT_SIGNING_SECRET",
@@ -398,10 +391,7 @@ def _runtime_secret_contract(
         return set(), {"producer": set(), "worker": set()}, {}
 
     producer_base = {"API_KEY", "OPENAI_API_KEY", "PINECONE_API_KEY"}
-    producer_active = {
-        *producer_base,
-        "API_CLIENT_KEYS", "API_CLIENT_TENANTS", "PARTICIPANT_PLAN_SOURCE",
-    }
+    producer_active = set(producer_base)
     if environment == "staging" \
             and release_phase not in ACTIVE_TICKET_RELEASE_PHASES:
         inventory = {"API_KEY", *WORKER_SECRET_REF_KEYS}
@@ -460,8 +450,6 @@ PLATFORM_RESOURCE_NAMES = {
     "google_cloud_run_v2_job_iam_member": {
         "environment_apply_developer", "scheduler_runs_reconciler",
     },
-    "google_iam_workload_identity_pool": {"n8n"},
-    "google_iam_workload_identity_pool_provider": {"n8n_aws"},
     "google_project_iam_custom_role": {
         "platform_storage_admin", "environment_plan_reader", "platform_plan_reader",
         "platform_secret_container_broker", "platform_scheduler_broker",
@@ -501,7 +489,7 @@ PLATFORM_RESOURCE_NAMES = {
         "staging_observer", "gate_receipt",
     },
     "google_service_account_iam_member": {
-        "n8n_wif_prod", "environment_apply_actas", "n8n_wif_stg",
+        "environment_apply_actas",
         "cloud_build_executes_as", "production_release_group",
         "runtime_producer_actas_signer", "runtime_reconciler_actas_signer",
         "tasks_agent_signs_as_runtime_signer",
@@ -516,6 +504,7 @@ PLATFORM_RESOURCE_NAMES = {
         "plan_state_viewer",
         "staging_observer_evidence_writer", "staging_observer_e2e_reader",
         "staging_plan_rag_bucket_reader",
+        "controller_verifier_source_reader",
     },
 }
 PLATFORM_IAM_ROLE_POLICY = {
@@ -559,7 +548,7 @@ PLATFORM_IAM_ROLE_POLICY = {
     ("google_project_iam_member", "apply_functional"): {
         "roles/serviceusage.serviceUsageAdmin", "roles/artifactregistry.admin",
         "roles/iam.serviceAccountAdmin", "roles/iam.roleAdmin",
-        "roles/iam.workloadIdentityPoolAdmin", "roles/cloudbuild.builds.editor",
+        "roles/cloudbuild.builds.editor",
         "roles/logging.configWriter", "roles/monitoring.editor",
         "roles/serviceusage.serviceUsageConsumer",
     },
@@ -608,10 +597,6 @@ PLATFORM_IAM_ROLE_POLICY = {
         {"roles/iam.serviceAccountTokenCreator"},
     ("google_service_account_iam_member", "production_release_group"):
         {"roles/iam.serviceAccountUser"},
-    ("google_service_account_iam_member", "n8n_wif_stg"):
-        {"roles/iam.workloadIdentityUser"},
-    ("google_service_account_iam_member", "n8n_wif_prod"):
-        {"roles/iam.workloadIdentityUser"},
     ("google_service_account_iam_member", "runtime_producer_actas_signer"):
         {"roles/iam.serviceAccountUser"},
     ("google_service_account_iam_member", "runtime_reconciler_actas_signer"):
@@ -646,9 +631,11 @@ PLATFORM_IAM_ROLE_POLICY = {
         {"roles/storage.objectCreator"},
     ("google_storage_bucket_iam_member", "staging_observer_e2e_reader"):
         {"roles/storage.objectViewer"},
+    ("google_storage_bucket_iam_member", "controller_verifier_source_reader"):
+        {"roles/storage.objectViewer"},
 }
 PLATFORM_CUSTOM_ROLE_PERMISSION_HASHES = {
-    "platform_plan_reader": "1a7ff81dcdd06f595a920ad3dc72044cb0b8284647afedc5262bf59dc4dc492c",
+    "platform_plan_reader": "6469b93f55fb5584e60bc3b618109605a05b9fa7996c7b6a9ff0dcd92d8d8973",
     "environment_plan_reader": "259db6f0e92627a3c5c8db7ba53065e4b2b0613f146f4c9c01b5d4a8a09f0093",
     "build_provenance_reader": "5a0938d19dfff471dde0c569cefbd8349644317c01576c9c32daec9b6b664b85",
     "platform_storage_admin": "57c57f39c9add2559577ee1e3c807edf59152d7d341efa40b08f860602c1061c",
@@ -704,13 +691,16 @@ def _require_https_origin(value: str, label: str) -> str:
         parsed = urlsplit(value)
         port = parsed.port
     except ValueError as exc:
-        raise ControllerRejected(f"{label} must be an exact HTTPS origin") from exc
-    if parsed.scheme != "https" or not parsed.hostname \
+        raise ControllerRejected(f"{label} must be a reviewed exact origin") from exc
+    normalized = value.rstrip("/")
+    reviewed_legacy_http = normalized == "http://35.224.156.104:10000"
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname \
             or parsed.username is not None or parsed.password is not None \
             or parsed.path not in {"", "/"} or parsed.query or parsed.fragment \
-            or (port is not None and not 1 <= port <= 65_535):
-        raise ControllerRejected(f"{label} must be an exact HTTPS origin")
-    return value.rstrip("/")
+            or (port is not None and not 1 <= port <= 65_535) \
+            or parsed.scheme == "http" and not reviewed_legacy_http:
+        raise ControllerRejected(f"{label} must be a reviewed exact origin")
+    return normalized
 
 
 def _validate_reviewed_llm_pricing(raw: str, route_models: Iterable[str]) -> None:
@@ -1286,7 +1276,7 @@ def _validate_environment_plan(
     reconciler_email = runtime_sas.get(f"ticket-reconciler-{suffix}")
     signer_email = runtime_sas.get(f"ticket-task-signer-{suffix}")
     scheduler_email = runtime_sas.get(f"ticket-scheduler-{suffix}")
-    n8n_email = runtime_sas.get(f"n8n-ticket-invoker-{suffix}")
+    n8n_email = f"kb-rag-client@{project_id}.iam.gserviceaccount.com"
     e2e_email = f"ticket-e2e-stg@{project_id}.iam.gserviceaccount.com"
     exact_members = {
         "producer_queue": producer_email,
@@ -1701,8 +1691,7 @@ def _validate_platform_plan(
         if "delete" in actions and resource_type in {
             "google_artifact_registry_repository", "google_firestore_database",
             "google_cloud_tasks_queue", "google_cloud_scheduler_job",
-            "google_iam_workload_identity_pool",
-            "google_iam_workload_identity_pool_provider", "google_secret_manager_secret",
+            "google_secret_manager_secret",
             "google_project_iam_custom_role", "google_service_account",
             "google_storage_bucket",
         }:
@@ -1933,7 +1922,7 @@ def _validate_platform_plan(
             platform_roles = {
                 "roles/serviceusage.serviceUsageAdmin", "roles/artifactregistry.admin",
                 "roles/iam.serviceAccountAdmin", "roles/iam.roleAdmin",
-                "roles/iam.workloadIdentityPoolAdmin", "roles/cloudbuild.builds.editor",
+                "roles/cloudbuild.builds.editor",
             }
             residual_roles = {
                 "roles/logging.configWriter", "roles/monitoring.editor",
@@ -1956,7 +1945,19 @@ def _validate_platform_plan(
                 raise ControllerRejected("platform apply binding address/member is not exact")
         if resource_type == "google_storage_bucket_iam_member":
             bucket = after.get("bucket")
-            if resource_name in {"plan_state_viewer", "plan_state_lock", "apply_state_admin"}:
+            if resource_name == "controller_verifier_source_reader":
+                expected_member = (
+                    f"serviceAccount:ticket-controller-verify@{project_id}."
+                    "iam.gserviceaccount.com"
+                )
+                if bucket != f"{project_id}_cloudbuild" \
+                        or after.get("member") != expected_member:
+                    raise ControllerRejected(
+                        "platform verifier source bucket binding is not exact"
+                    )
+            elif resource_name in {
+                "plan_state_viewer", "plan_state_lock", "apply_state_admin",
+            }:
                 if address_index not in {"platform", "staging", "production"} \
                         or bucket != (
                             f"rag-kb-system-tfstate-{address_index}-900340137010"
@@ -2038,10 +2039,10 @@ def _validate_platform_plan(
                     "ticket-reconciler-prod", "ticket-scheduler-prod",
                 ),
                 ("n8n_invokes_producer", "staging"): (
-                    "kb-rag-system-staging", "n8n-ticket-invoker-stg",
+                    "kb-rag-system-staging", "kb-rag-client",
                 ),
                 ("n8n_invokes_producer", "production"): (
-                    "kb-rag-system", "n8n-ticket-invoker-prod",
+                    "kb-rag-system", "kb-rag-client",
                 ),
                 ("e2e_invokes_staging_producer", "staging"): (
                     "kb-rag-system-staging", "ticket-e2e-stg",
@@ -2945,7 +2946,7 @@ class ReleaseController:
         )
         outputs = manifest.get("outputs")
         if not isinstance(outputs, dict) or set(outputs) != {
-            "runtime_service_accounts", "evidence_bucket", "wif_provider",
+            "runtime_service_accounts", "evidence_bucket",
             "firestore_scope_phase", "firestore_scope_enforced",
             "pipeline_service_accounts", "environment_handoff_phase",
             "environment_run_resources", "environment_secret_ids",
@@ -3229,26 +3230,6 @@ class ReleaseController:
             supplied.get("secret_version_refs", {}),
             environment=environment, release_phase=release_phase,
         )
-        expected_invoker = (
-            f"n8n-ticket-invoker-{'stg' if environment == 'staging' else 'prod'}"
-            f"@{self.project_id}.iam.gserviceaccount.com"
-        )
-        expected_wif_emails = [expected_invoker]
-        if environment == "staging":
-            expected_wif_emails.append(
-                f"ticket-e2e-stg@{self.project_id}.iam.gserviceaccount.com"
-            )
-        allowed_wif_emails = supplied.get("ticket_wif_allowed_emails", [])
-        if services_enabled and (
-            not isinstance(allowed_wif_emails, list)
-            or set(allowed_wif_emails) != set(expected_wif_emails)
-            or len(allowed_wif_emails) != len(expected_wif_emails)
-        ):
-            raise ControllerRejected("ticket WIF email allowlist mismatch")
-        if services_enabled:
-            audience = supplied.get("ticket_wif_audience")
-            if not isinstance(audience, str) or not audience.startswith("https://"):
-                raise ControllerRejected("active environment requires exact WIF inputs")
         if environment == "production":
             expected_invokers = [
                 f"serviceAccount:kb-rag-client@{self.project_id}.iam.gserviceaccount.com"
@@ -3454,7 +3435,7 @@ class ReleaseController:
         except json.JSONDecodeError as exc:
             raise ControllerRejected("platform terraform output is not JSON") from exc
         required = {
-            "runtime_service_accounts", "evidence_bucket", "wif_provider",
+            "runtime_service_accounts", "evidence_bucket",
             "firestore_scope_phase", "firestore_scope_enforced",
             "pipeline_service_accounts", "environment_handoff_phase",
             "environment_run_resources", "environment_secret_ids",

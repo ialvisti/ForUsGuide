@@ -436,9 +436,7 @@ class TestDifferentialHarness:
                 else "legacy-application-key"
             )
             assert headers["Authorization"] == f"Bearer {expected_token}"
-            assert headers["X-ForUs-Workload-Authorization"] == (
-                f"Bearer {expected_token}"
-            )
+            assert "X-ForUs-Workload-Authorization" not in headers
             assert headers["X-API-Key"] == expected_api_key
         post_keys = [
             headers["Idempotency-Key"]

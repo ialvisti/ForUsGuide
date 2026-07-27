@@ -19,13 +19,11 @@ variables {
   reconciler_job_name   = "ticket-reconciler-staging"
   queue_name            = "ticket-jobs-staging"
 
-  producer_sa_email    = "ticket-producer-stg@rag-kb-system.iam.gserviceaccount.com"
-  worker_sa_email      = "ticket-worker-stg@rag-kb-system.iam.gserviceaccount.com"
-  reconciler_sa_email  = "ticket-reconciler-stg@rag-kb-system.iam.gserviceaccount.com"
-  task_signer_sa_email = "ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com"
-  scheduler_sa_email   = "ticket-scheduler-stg@rag-kb-system.iam.gserviceaccount.com"
-  n8n_invoker_sa_email = "n8n-ticket-invoker-stg@rag-kb-system.iam.gserviceaccount.com"
-
+  producer_sa_email               = "ticket-producer-stg@rag-kb-system.iam.gserviceaccount.com"
+  worker_sa_email                 = "ticket-worker-stg@rag-kb-system.iam.gserviceaccount.com"
+  reconciler_sa_email             = "ticket-reconciler-stg@rag-kb-system.iam.gserviceaccount.com"
+  task_signer_sa_email            = "ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com"
+  scheduler_sa_email              = "ticket-scheduler-stg@rag-kb-system.iam.gserviceaccount.com"
   worker_max_instances            = 1
   queue_max_concurrent_dispatches = 1
   notification_channels = [

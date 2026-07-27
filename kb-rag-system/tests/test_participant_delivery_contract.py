@@ -1,21 +1,14 @@
 """
-Contrato de entrega final idempotente al participante (plan Tarea 9 Paso 4).
+Contrato de compatibilidad con la entrega existente de n8n/DevRev.
 
-El sistema que publica el reply (DevRev vía el nodo n8n `final-handling`) vive
-fuera de este repo, así que el fixture del contrato es un DESIDERÁTUM
-verificable: define qué debe cumplir la entrega para que ``full`` pueda
-activarse (STOP de GR). Mientras el contrato real no llegue (bloqueo de
-Tarea 1 §4), el fixture declara los campos como PENDIENTE y los tests exigen
-que el flujo derive a humano ante ambigüedad — nunca que garantice
-exactly-once sin evidencia.
+Este servicio no publica el reply. Devuelve un estado y ``next_action`` para
+que el workflow existente mantenga exactamente sus ramas de entrega.
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
-
-import pytest
 
 FIXTURES = Path(__file__).parent / "fixtures" / "participant_delivery"
 CONTRACT = FIXTURES / "live_contract.sanitized.json"
@@ -48,35 +41,12 @@ class TestPublishableRule:
 
 
 class TestFinalDeliveryContract:
-    """El contrato idempotente de entrega final (Tarea 1 §4)."""
+    """No inventar un segundo canal de delivery ni bloquear el merge por él."""
 
-    def test_contract_fixture_present_or_documented_pending(self):
-        """Sin el contrato real, el fixture NO debe existir con datos
-        inventados; el bloqueo se documenta en 01-external-contracts.md."""
-        if not CONTRACT.exists():
-            pytest.skip(
-                "contrato de entrega final PENDIENTE (Tarea 1 §4): no se "
-                "inventa un fixture; ver docs/verification/handle-ticket/"
-                "01-external-contracts.md"
-            )
-        contract = json.loads(CONTRACT.read_text())
-        # cuando exista, debe declarar los campos que habilitan exactly-once
-        assert "stable_key_accepted" in contract
-        assert "delivery_id_reconciliation" in contract
-        assert "max_redelivery_horizon_days" in contract
-        assert "receiver_dedupe_retention_days" in contract
-        assert "ambiguous_timeout_semantics" in contract
+    def test_no_invented_delivery_adapter_contract_is_required(self):
+        assert not CONTRACT.exists()
 
     def test_ambiguous_delivery_without_reconciliation_defers_to_human(self):
-        """Si el canal no soporta key/consulta por correlation ID, el flujo
-        deriva a humano ante ambigüedad y mantiene bloqueada la publicación
-        automática — el ledger no convierte un timeout ambiguo en exactly-once."""
-        if not CONTRACT.exists():
-            pytest.skip("contrato de entrega final PENDIENTE (Tarea 1 §4)")
-        contract = json.loads(CONTRACT.read_text())
-        if not contract.get("stable_key_accepted") \
-                and not contract.get("delivery_id_reconciliation"):
-            assert contract.get("on_ambiguous") == "defer_to_human", (
-                "sin idempotencia observable, un timeout ambiguo DEBE derivar "
-                "a humano, no reenviar a ciegas"
-            )
+        on_state = _load_polling_fixture()["on_state"]
+        for state in ("partial", "failed", "timeout", "cancelled"):
+            assert on_state[state]["publishable"] is False

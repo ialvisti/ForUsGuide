@@ -18,13 +18,11 @@ variables {
   reconciler_job_name   = "ticket-reconciler-prod"
   queue_name            = "ticket-jobs-prod"
 
-  producer_sa_email    = "ticket-producer-prod@rag-kb-system.iam.gserviceaccount.com"
-  worker_sa_email      = "ticket-worker-prod@rag-kb-system.iam.gserviceaccount.com"
-  reconciler_sa_email  = "ticket-reconciler-prod@rag-kb-system.iam.gserviceaccount.com"
-  task_signer_sa_email = "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
-  scheduler_sa_email   = "ticket-scheduler-prod@rag-kb-system.iam.gserviceaccount.com"
-  n8n_invoker_sa_email = "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com"
-
+  producer_sa_email               = "ticket-producer-prod@rag-kb-system.iam.gserviceaccount.com"
+  worker_sa_email                 = "ticket-worker-prod@rag-kb-system.iam.gserviceaccount.com"
+  reconciler_sa_email             = "ticket-reconciler-prod@rag-kb-system.iam.gserviceaccount.com"
+  task_signer_sa_email            = "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
+  scheduler_sa_email              = "ticket-scheduler-prod@rag-kb-system.iam.gserviceaccount.com"
   worker_max_instances            = 2
   queue_max_concurrent_dispatches = 2
   producer_baseline_revision      = "kb-rag-system-00048-bkc"
@@ -58,33 +56,24 @@ variables {
     USE_VERTEX_AI                   = "true"
   }
   secret_version_refs = {
-    API_KEY                 = "projects/rag-kb-system/secrets/api-key/versions/1"
-    API_CLIENT_KEYS         = "projects/rag-kb-system/secrets/api-client-keys/versions/1"
-    API_CLIENT_TENANTS      = "projects/rag-kb-system/secrets/api-client-tenants/versions/1"
-    PARTICIPANT_PLAN_SOURCE = "projects/rag-kb-system/secrets/participant-plan-source/versions/1"
-    FORUSBOTS_AUTH_TOKEN    = "projects/rag-kb-system/secrets/forusbots-token/versions/1"
-    OPENAI_API_KEY          = "projects/rag-kb-system/secrets/openai-key/versions/1"
-    PINECONE_API_KEY        = "projects/rag-kb-system/secrets/pinecone-key/versions/1"
+    API_KEY              = "projects/rag-kb-system/secrets/api-key/versions/1"
+    FORUSBOTS_AUTH_TOKEN = "projects/rag-kb-system/secrets/forusbots-token/versions/1"
+    OPENAI_API_KEY       = "projects/rag-kb-system/secrets/openai-key/versions/1"
+    PINECONE_API_KEY     = "projects/rag-kb-system/secrets/pinecone-key/versions/1"
   }
   secret_containers = {
     enabled = true
     ids = {
-      API_KEY                 = "api-key"
-      API_CLIENT_KEYS         = "api-client-keys"
-      API_CLIENT_TENANTS      = "api-client-tenants"
-      PARTICIPANT_PLAN_SOURCE = "participant-plan-source"
-      FORUSBOTS_AUTH_TOKEN    = "forusbots-token"
-      OPENAI_API_KEY          = "openai-key"
-      PINECONE_API_KEY        = "pinecone-key"
+      API_KEY              = "api-key"
+      FORUSBOTS_AUTH_TOKEN = "forusbots-token"
+      OPENAI_API_KEY       = "openai-key"
+      PINECONE_API_KEY     = "pinecone-key"
     }
     accessor_roles = {
-      API_KEY                 = ["producer"]
-      API_CLIENT_KEYS         = ["producer"]
-      API_CLIENT_TENANTS      = ["producer"]
-      PARTICIPANT_PLAN_SOURCE = ["producer"]
-      FORUSBOTS_AUTH_TOKEN    = ["worker"]
-      OPENAI_API_KEY          = ["producer", "worker"]
-      PINECONE_API_KEY        = ["producer", "worker"]
+      API_KEY              = ["producer"]
+      FORUSBOTS_AUTH_TOKEN = ["worker"]
+      OPENAI_API_KEY       = ["producer", "worker"]
+      PINECONE_API_KEY     = ["producer", "worker"]
     }
   }
 }
@@ -132,10 +121,6 @@ run "active_production_rejects_the_legacy_producer_identity" {
     shadow_sample_rate  = 100
     ticket_handler_mode = "shadow"
     producer_sa_email   = "kb-rag-runner@rag-kb-system.iam.gserviceaccount.com"
-    ticket_wif_audience = "https://kb-rag-system.example.test"
-    ticket_wif_allowed_emails = [
-      "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com",
-    ]
   }
 
   expect_failures = [google_cloud_run_v2_service.producer]
@@ -282,13 +267,10 @@ run "runtime_rejects_swapped_secret_version_refs" {
 
   variables {
     secret_version_refs = {
-      API_KEY                 = "projects/rag-kb-system/secrets/openai-key/versions/1"
-      API_CLIENT_KEYS         = "projects/rag-kb-system/secrets/api-client-keys/versions/1"
-      API_CLIENT_TENANTS      = "projects/rag-kb-system/secrets/api-client-tenants/versions/1"
-      PARTICIPANT_PLAN_SOURCE = "projects/rag-kb-system/secrets/participant-plan-source/versions/1"
-      FORUSBOTS_AUTH_TOKEN    = "projects/rag-kb-system/secrets/forusbots-token/versions/1"
-      OPENAI_API_KEY          = "projects/rag-kb-system/secrets/api-key/versions/1"
-      PINECONE_API_KEY        = "projects/rag-kb-system/secrets/pinecone-api-key/versions/1"
+      API_KEY              = "projects/rag-kb-system/secrets/openai-key/versions/1"
+      FORUSBOTS_AUTH_TOKEN = "projects/rag-kb-system/secrets/forusbots-token/versions/1"
+      OPENAI_API_KEY       = "projects/rag-kb-system/secrets/api-key/versions/1"
+      PINECONE_API_KEY     = "projects/rag-kb-system/secrets/pinecone-api-key/versions/1"
     }
   }
 
@@ -300,13 +282,10 @@ run "runtime_rejects_cross_project_secret_version_refs" {
 
   variables {
     secret_version_refs = {
-      API_KEY                 = "projects/attacker-project/secrets/api-key/versions/1"
-      API_CLIENT_KEYS         = "projects/rag-kb-system/secrets/api-client-keys/versions/1"
-      API_CLIENT_TENANTS      = "projects/rag-kb-system/secrets/api-client-tenants/versions/1"
-      PARTICIPANT_PLAN_SOURCE = "projects/rag-kb-system/secrets/participant-plan-source/versions/1"
-      FORUSBOTS_AUTH_TOKEN    = "projects/rag-kb-system/secrets/forusbots-token/versions/1"
-      OPENAI_API_KEY          = "projects/rag-kb-system/secrets/openai-key/versions/1"
-      PINECONE_API_KEY        = "projects/rag-kb-system/secrets/pinecone-key/versions/1"
+      API_KEY              = "projects/attacker-project/secrets/api-key/versions/1"
+      FORUSBOTS_AUTH_TOKEN = "projects/rag-kb-system/secrets/forusbots-token/versions/1"
+      OPENAI_API_KEY       = "projects/rag-kb-system/secrets/openai-key/versions/1"
+      PINECONE_API_KEY     = "projects/rag-kb-system/secrets/pinecone-key/versions/1"
     }
   }
 
@@ -400,9 +379,6 @@ run "production_secrets_grant_worker_without_project_wide_or_reconciler_access" 
     condition = (
       toset(keys(google_secret_manager_secret_iam_member.runtime_accessor)) == toset([
         "API_KEY:producer",
-        "API_CLIENT_KEYS:producer",
-        "API_CLIENT_TENANTS:producer",
-        "PARTICIPANT_PLAN_SOURCE:producer",
         "FORUSBOTS_AUTH_TOKEN:worker",
         "OPENAI_API_KEY:producer",
         "OPENAI_API_KEY:worker",

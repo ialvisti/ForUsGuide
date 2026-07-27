@@ -238,46 +238,6 @@ variable "firestore_scope_migration" {
   }
 }
 
-# WIF apagado por defecto (Tarea 10 Paso 5): el bootstrap G1B puede crear
-# pipelines sin el binding si aún falta el ARN de n8n; cuando llegue el
-# contrato, un nuevo platform plan→G1B+G3→apply lo habilita.
-variable "enable_n8n_wif" {
-  type    = bool
-  default = false
-}
-
-# Cuenta AWS y ARN del execution role de n8n (Tarea 1 Paso 3). Sin estos NO
-# se inventa/wildcardea el provider.
-variable "n8n_aws_account_id" {
-  type    = string
-  default = ""
-}
-
-variable "n8n_aws_role_arns" {
-  type = object({
-    staging    = string
-    production = string
-  })
-  default = {
-    staging    = ""
-    production = ""
-  }
-
-  validation {
-    condition = alltrue([
-      for arn in values(var.n8n_aws_role_arns) :
-      arn == "" || can(regex("^arn:aws:iam::[0-9]{12}:role/[A-Za-z0-9+=,.@_/-]+$", arn))
-    ])
-    error_message = "cada role de n8n debe ser un ARN IAM exacto, nunca wildcard."
-  }
-}
-
-variable "producer_audience" {
-  type        = string
-  default     = ""
-  description = "Audiencia del ID token WIF (URL del producer)."
-}
-
 # Inventario aprobado de containers que cada environment root puede gestionar.
 # Son IDs (no versiones/payloads) y permiten condicionar el custom role exacto.
 variable "environment_secret_ids" {

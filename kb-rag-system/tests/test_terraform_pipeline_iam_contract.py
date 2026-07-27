@@ -137,11 +137,30 @@ def test_image_builders_are_explicit_and_can_scan_without_deploy() -> None:
 def test_controller_candidate_verifier_has_no_publish_scan_or_state_authority() -> None:
     iam = _read("pipeline_iam.tf")
     cloud_build = _read("cloud_build.tf")
+    imports = _read("imports.tf")
 
     assert 'resource "google_service_account" "controller_verifier"' in cloud_build
     assert (
         "controller-verifier = google_service_account.controller_verifier.email"
         in iam
+    )
+    assert (
+        'resource "google_storage_bucket_iam_member" '
+        '"controller_verifier_source_reader"' in iam
+    )
+    source_reader = iam.split(
+        'resource "google_storage_bucket_iam_member" '
+        '"controller_verifier_source_reader"',
+        1,
+    )[1].split("\n}", 1)[0]
+    assert 'bucket = "${var.project_id}_cloudbuild"' in source_reader
+    assert 'role   = "roles/storage.objectViewer"' in source_reader
+    assert "google_service_account.controller_verifier.email" in source_reader
+    assert "to = google_service_account.controller_verifier" in imports
+    assert (
+        'id = "projects/${var.project_id}/serviceAccounts/'
+        'ticket-controller-verify@${var.project_id}.iam.gserviceaccount.com"'
+        in imports
     )
 
     image_builders = iam.split("image_builders =", 1)[1].split(

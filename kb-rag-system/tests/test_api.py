@@ -838,9 +838,8 @@ class TestCoveragePackBuilder:
 
 class TestTicketHandlerContainment:
     """Task 0 (contención HT-02/HT-10): la configuración del ticket handler es
-    fail-closed — producción no arranca con ForusBots sin TLS ni sin token, y
-    el body del request sólo puede restringir el modo del servidor, nunca
-    expandirlo."""
+    fail-closed for unreviewed origins and missing credentials, while preserving
+    the exact live ForUsBots origin."""
 
     def _pin_settings(self, monkeypatch, **overrides):
         """Fija en el singleton una configuración base válida y aplica overrides."""
@@ -858,33 +857,59 @@ class TestTicketHandlerContainment:
             TICKET_HANDLER_MODE="full",
             FORUSBOTS_BASE_URL="https://forusbots.internal.example",
             FORUSBOTS_AUTH_TOKEN="tok",
-            # Tarea 4: un modo activo exige fuente participant-plan e
-            # identidad workload configuradas (fail-closed).
-            PARTICIPANT_PLAN_SOURCE="mock://participant-plan-directory",
-            TICKET_WIF_AUDIENCE="https://kb-rag-system.example.run.app",
-            TICKET_WIF_ALLOWED_EMAILS=[
-                "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com"
-            ],
-            TICKET_WIF_EXPECTED_EMAIL=(
-                "n8n-ticket-invoker-prod@rag-kb-system.iam.gserviceaccount.com"),
+            LLM_ROUTE_CLASSIFY="gpt-5.5",
+            LLM_ROUTE_DECOMPOSE="gpt-5.5",
+            LLM_ROUTE_GR_OUTCOME="gpt-5.5",
+            LLM_ROUTE_GR_RESPONSE="gpt-5.5",
+            LLM_ROUTE_KNOWLEDGE="gpt-5.5",
+            LLM_ROUTE_REQUIRED_DATA="gpt-5.5",
+            LLM_ROUTE_EXTRACT_INQUIRIES="gpt-5.5",
+            LLM_ROUTE_KB_QUESTION_SYNTHESIS="gpt-5.5",
+            LLM_ROUTE_FORUSBOTS_FIELD_MAP="gpt-5.5",
+            LLM_ROUTE_GR_BODY_BUILD="gpt-5.5",
+            LLM_ROUTE_TICKET_FIELD_EXTRACT="gpt-5.5",
+            PARTICIPANT_PLAN_SOURCE="",
+            TICKET_WIF_AUDIENCE="",
+            TICKET_WIF_ALLOWED_EMAILS=[],
+            TICKET_WIF_EXPECTED_EMAIL="",
+            TICKET_LLM_PRICING_JSON=(
+                '{"pricing_as_of":"2026-07-21",'
+                '"source":"openai-google-official-public-pricing","models":{'
+                '"openai:gpt-5.5":{"input_usd_per_million":5.0,'
+                '"output_usd_per_million":30.0},'
+                '"gemini:gemini-2.5-pro":{"input_usd_per_million":1.25,'
+                '"output_usd_per_million":10.0}}}'
+            ),
+            TICKET_JOB_BACKEND="firestore",
+            FIRESTORE_DATABASE="(default)",
+            TICKET_TASK_QUEUE="cloudtasks",
+            GCP_PROJECT="rag-kb-system",
+            CLOUD_TASKS_LOCATION="us-central1",
+            CLOUD_TASKS_QUEUE="ticket-jobs",
+            TICKET_WORKER_URL="https://worker.example.run.app",
+            TICKET_WORKER_AUDIENCE=(
+                "https://kb-rag-ticket-worker."
+                "rag-kb-system.ticket.internal"
+            ),
+            TICKET_WORKER_SERVICE_ACCOUNT=(
+                "ticket-task-signer-prod@rag-kb-system.iam.gserviceaccount.com"
+            ),
+            TICKET_WORKER_REQUIRE_OIDC=True,
         )
         base.update(overrides)
         for key, value in base.items():
             monkeypatch.setattr(app_settings, key, value)
 
-    def test_full_mode_rejects_non_tls_forusbots(self, monkeypatch):
-        """En producción, un modo activo con FORUSBOTS_BASE_URL http:// no arranca."""
+    def test_full_mode_accepts_reviewed_live_forusbots_origin(self, monkeypatch):
         from api.config import validate_settings
         self._pin_settings(
             monkeypatch,
             APP_ROLE="worker",
             FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
         )
-        with pytest.raises(ValueError, match="https://"):
-            validate_settings()
+        assert validate_settings() is True
 
-    def test_staging_active_rejects_non_tls_forusbots(self, monkeypatch):
-        """Staging E2E también transporta token/datos y jamás permite HTTP."""
+    def test_staging_active_accepts_reviewed_live_forusbots_origin(self, monkeypatch):
         from api.config import validate_settings
 
         self._pin_settings(
@@ -894,13 +919,15 @@ class TestTicketHandlerContainment:
             APP_ENV="staging",
             FIRESTORE_DATABASE="ticket-staging",
             FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
-            TICKET_WIF_ALLOWED_EMAILS=[
-                "n8n-ticket-invoker-stg@rag-kb-system.iam.gserviceaccount.com",
-                "ticket-e2e-stg@rag-kb-system.iam.gserviceaccount.com",
-            ],
+            TICKET_WORKER_AUDIENCE=(
+                "https://kb-rag-ticket-worker-staging."
+                "rag-kb-system.ticket.internal"
+            ),
+            TICKET_WORKER_SERVICE_ACCOUNT=(
+                "ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com"
+            ),
         )
-        with pytest.raises(ValueError, match="https://"):
-            validate_settings()
+        assert validate_settings() is True
 
     @pytest.mark.parametrize("base_url", [
         "https://user:raw-secret@forusbots.internal.example",
@@ -916,7 +943,9 @@ class TestTicketHandlerContainment:
         self._pin_settings(
             monkeypatch, APP_ROLE="worker", FORUSBOTS_BASE_URL=base_url
         )
-        with pytest.raises(ValueError, match="origen HTTPS") as captured:
+        with pytest.raises(
+            ValueError, match="origen canónico revisado"
+        ) as captured:
             validate_settings()
 
         assert "raw-secret" not in str(captured.value)
@@ -960,7 +989,7 @@ class TestTicketHandlerContainment:
         )
         assert validate_settings() is True
 
-    def test_active_production_requires_complete_v2_tenant_mapping(
+    def test_active_production_preserves_legacy_api_key_without_tenant_mapping(
             self, monkeypatch):
         from api.config import validate_settings
 
@@ -969,8 +998,7 @@ class TestTicketHandlerContainment:
             API_CLIENT_KEYS={"n8n": "mapped-k"},
             API_CLIENT_TENANTS={},
         )
-        with pytest.raises(ValueError, match="API_CLIENT_TENANTS"):
-            validate_settings()
+        assert validate_settings() is True
 
     def test_full_mode_requires_forusbots_token(self, monkeypatch):
         """Un modo activo sin FORUSBOTS_AUTH_TOKEN no arranca (antes era warning)."""
@@ -981,8 +1009,7 @@ class TestTicketHandlerContainment:
         with pytest.raises(ValueError, match="FORUSBOTS_AUTH_TOKEN"):
             validate_settings()
 
-    def test_non_production_http_forusbots_is_also_rejected(self, monkeypatch):
-        """Development cannot instantiate a token-bearing HTTP client either."""
+    def test_non_production_accepts_same_reviewed_forusbots_origin(self, monkeypatch):
         from api.config import validate_settings
         self._pin_settings(
             monkeypatch,
@@ -991,8 +1018,7 @@ class TestTicketHandlerContainment:
             APP_ENV="development",
             FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
         )
-        with pytest.raises(ValueError, match="origen HTTPS"):
-            validate_settings()
+        assert validate_settings() is True
 
     def test_request_cannot_expand_server_mode(self, client, test_api_key, monkeypatch):
         """Servidor disabled + body ticket_handler_mode=full → sigue 503."""

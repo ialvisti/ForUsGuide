@@ -13,7 +13,6 @@ locals {
     "monitoring.googleapis.com",
     "secretmanager.googleapis.com",
     "iamcredentials.googleapis.com",
-    "sts.googleapis.com",
     "cloudscheduler.googleapis.com",
     "containeranalysis.googleapis.com",
     "containerscanning.googleapis.com",
@@ -66,14 +65,12 @@ locals {
     "ticket-task-signer-stg"  = "Task signer (staging)"
     "ticket-scheduler-stg"    = "Scheduler (staging)"
     "ticket-producer-stg"     = "Producer runtime (staging)"
-    "n8n-ticket-invoker-stg"  = "n8n WIF invoker (staging)"
     "ticket-e2e-stg"          = "E2E runner (staging)"
     "ticket-producer-prod"    = "Producer runtime (production)"
     "ticket-worker-prod"      = "Worker runtime (production)"
     "ticket-reconciler-prod"  = "Reconciler runtime (production)"
     "ticket-task-signer-prod" = "Task signer (production)"
     "ticket-scheduler-prod"   = "Scheduler (production)"
-    "n8n-ticket-invoker-prod" = "n8n WIF invoker (production)"
   }
 }
 

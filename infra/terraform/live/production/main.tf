@@ -37,23 +37,18 @@ module "production" {
   producer_port              = var.producer_port
   producer_startup_probe     = var.producer_startup_probe
   producer_liveness_probe    = var.producer_liveness_probe
-  ticket_wif_audience        = var.ticket_wif_audience
-  ticket_wif_allowed_emails  = var.ticket_wif_allowed_emails
-
-  firestore_database = "(default)"
+  firestore_database         = "(default)"
 
   producer_service_name = "kb-rag-system"
   worker_service_name   = "kb-rag-ticket-worker"
   reconciler_job_name   = "ticket-reconciler-prod"
   queue_name            = "ticket-jobs-prod"
 
-  producer_sa_email    = local.sas["ticket-producer-prod"]
-  worker_sa_email      = local.sas["ticket-worker-prod"]
-  reconciler_sa_email  = local.sas["ticket-reconciler-prod"]
-  task_signer_sa_email = local.sas["ticket-task-signer-prod"]
-  scheduler_sa_email   = local.sas["ticket-scheduler-prod"]
-  n8n_invoker_sa_email = local.sas["n8n-ticket-invoker-prod"]
-
+  producer_sa_email        = local.sas["ticket-producer-prod"]
+  worker_sa_email          = local.sas["ticket-worker-prod"]
+  reconciler_sa_email      = local.sas["ticket-reconciler-prod"]
+  task_signer_sa_email     = local.sas["ticket-task-signer-prod"]
+  scheduler_sa_email       = local.sas["ticket-scheduler-prod"]
   producer_invoker_members = var.producer_invoker_members
 
   worker_max_instances            = 2

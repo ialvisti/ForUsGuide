@@ -376,6 +376,38 @@ def _pin_active_producer_settings(monkeypatch, **overrides) -> None:
     _pin_deployed_role_settings(monkeypatch, **values)
 
 
+def test_active_producer_accepts_existing_n8n_auth_without_wif_or_directory(
+    monkeypatch,
+):
+    """The deployed producer preserves the existing n8n IAM + API key contract."""
+    from api.config import validate_settings
+
+    credential = "existing-n8n-api-key"
+    _pin_active_producer_settings(
+        monkeypatch,
+        API_KEY=credential,
+        API_CLIENT_KEYS={},
+        API_CLIENT_TENANTS={},
+        PARTICIPANT_PLAN_SOURCE="",
+        TICKET_WIF_AUDIENCE="",
+        TICKET_WIF_ALLOWED_EMAILS=[],
+        TICKET_WIF_EXPECTED_EMAIL="",
+    )
+
+    assert validate_settings() is True
+
+
+def test_worker_accepts_documented_forusbots_legacy_origin(monkeypatch):
+    from api.config import validate_settings
+
+    _pin_deployed_role_settings(
+        monkeypatch,
+        FORUSBOTS_BASE_URL="http://35.224.156.104:10000",
+    )
+
+    assert validate_settings() is True
+
+
 @pytest.mark.parametrize(
     "allowed_emails",
     [

@@ -19,10 +19,6 @@ output "release_controller_builder_service_account" {
   value = google_service_account.controller_builder.email
 }
 
-output "wif_provider" {
-  value = var.enable_n8n_wif ? google_iam_workload_identity_pool_provider.n8n_aws[0].name : null
-}
-
 output "firestore_scope_phase" {
   description = "Fase G1C efectiva; consumers sólo pueden avanzar tras enforce."
   value       = var.firestore_scope_migration.enabled ? var.firestore_scope_migration.phase : "disabled"

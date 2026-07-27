@@ -85,6 +85,31 @@ _SUBMIT_OK = _resp(202, {"jobId": "j1", "queuePosition": 1, "estimate": {}, "cap
 
 class TestScrapeHappyPath:
 
+    async def test_live_legacy_http_origin_uses_documented_contract(self):
+        """The deployed ForUsBots API is the compatibility contract.
+
+        It currently serves the documented API at the exact legacy origin
+        below.  Other plain-HTTP origins remain invalid.
+        """
+        client, fake = _client(
+            [_resp(200, {"ok": True})],
+            base_url="http://35.224.156.104:10000",
+        )
+
+        health = await client.health()
+
+        assert health == {"status_code": 200, "tls": False}
+        assert fake.calls == [
+            ("GET", "http://35.224.156.104:10000/forusbot/health", None)
+        ]
+
+    def test_unreviewed_http_origin_is_rejected(self):
+        with pytest.raises(ForusBotsError):
+            ForusBotsClient(
+                base_url="http://forusbots.example.test:10000",
+                auth_token="token",
+            )
+
     async def test_submit_poll_succeeds(self):
         client, fake = _client([
             _SUBMIT_OK,
@@ -953,13 +978,12 @@ class TestWaiterCancellationIsolation:
 
 class TestTransportSecurity:
 
-    def test_constructor_rejects_non_tls_base_url(self):
-        """El token viaja en x-auth-token: un base_url no-HTTPS debe fallar
-        antes de emitir la request."""
-        with pytest.raises(ForusBotsError, match="HTTPS"):
-            ForusBotsClient(
-                base_url="http://35.224.156.104:10000", auth_token="tok",
-            )
+    def test_constructor_accepts_reviewed_live_http_origin(self):
+        """Keep the exact documented ForUsBots deployment compatible."""
+        client = ForusBotsClient(
+            base_url="http://35.224.156.104:10000", auth_token="tok",
+        )
+        assert client.requires_tls() is False
 
     @pytest.mark.parametrize("base_url", [
         "https://user:raw-secret@forusbots.example.com",
@@ -970,7 +994,9 @@ class TestTransportSecurity:
     def test_constructor_rejects_noncanonical_https_origin_without_echoing_it(
         self, base_url,
     ):
-        with pytest.raises(ForusBotsError, match="origen HTTPS") as captured:
+        with pytest.raises(
+            ForusBotsError, match="origen canónico revisado"
+        ) as captured:
             ForusBotsClient(base_url=base_url, auth_token="tok")
 
         assert "raw-secret" not in str(captured.value)

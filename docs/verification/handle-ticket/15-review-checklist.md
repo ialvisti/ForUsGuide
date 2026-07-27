@@ -12,7 +12,7 @@ falta de verdict).
 | Sev | Hallazgo | Fix | Test |
 |---|---|---|---|
 | **P1** | ForusBots job IDs se pierden en checkpoints timeout/failed/unprocessed (`_collect_forusbots_ids_from_entries` sólo leía `entry['result']`) | `_entry_forusbots_ids` lee el bloque explícito `forusbots_job_ids` + `result.diagnostics`; checkpoints GR degradados marcan `manual_reconciliation_required` (no se afirma "sin efectos") | `test_forusbots_ids_preserved_when_inquiry_times_out` |
-| **P1** | v1 alcanza el pipeline durable completo con sólo X-API-Key, evadiendo el segundo factor WIF de v2 | v1 añade `Depends(verify_workload_identity)` (no-op durante la migración legacy; cierra el bypass en cuanto WIF se configura) | `TestV1AlsoRequiresWorkloadIdentity` (rechaza sin token con WIF activo; sigue con X-API-Key durante migración) |
+| **P1, superseded 2026-07-27** | Se trató el header WIF de aplicación como obligatorio aunque el workflow real usa Cloud Run IAM + `X-API-Key` | Terraform retiró WIF/AWS y v1/v2 conservan el contrato de `kb-rag-client`; la comprobación adicional queda sólo como compatibilidad opcional no desplegada | `test_v2_accepts_existing_n8n_auth_contract_without_custom_wif_header` |
 | **P1** | El reconciliador terminaliza por deadline/payload sin fencear al worker vivo (sin bump de `lease_epoch`) → efectos externos sobre un job ya terminal | `_terminalize` llama a `fence_and_requeue` (epoch+1) antes de terminalizar | `test_reconciler_terminalizes_expired_deadline` (verifica estado terminal) + fencing en `fence_and_requeue` |
 | **P2** | `done_indexes` trata `unprocessed` (retryable) como terminal → un retry con presupuesto fresco nunca la reprocesa | `unprocessed` excluido de `done_indexes` | `test_unprocessed_inquiry_reprocessed_on_resume` |
 | **P2** | `record_keeper` del caller sobrevive cuando la fuente canónica devuelve None | el servidor SIEMPRE fija `record_keeper` desde la fuente (None incluido) | `test_caller_record_keeper_dropped_when_canonical_is_none` |
@@ -35,7 +35,7 @@ deterministas. Corrigió RED-first estos falsos verdes de la primera pasada:
 | **P0** | El admission control construía `GetQueueRequest(read_mask=...)` con Cloud Tasks GA v2, cuyo request no admite `read_mask`; toda creación nueva terminaba 503 | cliente v2beta3 fijado sólo para `stats.tasks_count`/rate limits; v2 GA conserva create/get task |
 | **P0** | El worker validaba configuración RAG/LLM/ForusBots pero Terraform no le entregaba `producer_core_env` | el worker recibe el mismo mapa core y secret refs que valida al arrancar |
 | **P1** | `plan_type` generado por el LLM sobrescribía el valor canónico autorizado | sólo se usa el `plan_type` de la fuente/entrada canónica |
-| **P1** | GET v1 devolvía estado y job IDs con sólo API key | poll v1 exige también workload identity cuando WIF está configurado; OpenAPI declara ambos factores |
+| **P1, superseded 2026-07-27** | GET v1 se evaluó contra un segundo factor inexistente en n8n | polling conserva Cloud Run IAM + `X-API-Key`; OpenAPI declara ese contrato real |
 | **P1** | `enqueue_generation` se comprobaba antes, no dentro, del claim | CAS de generación dentro de la misma transacción que adquiere el lease; task stale responde 204 sin efecto |
 | **P1** | Un worker que pierde lease durante un POST ForusBots podía provocar un segundo submit | intent durable por inquiry antes del POST; un worker posterior no reenvía y marca reconciliación manual |
 | **P1** | `body.error` de ForusBots alcanzaba logs, checkpoints y polling | errores cerrados por código; se descarta texto upstream y se conserva sólo señal de reconciliación |
@@ -52,7 +52,8 @@ actualizado.
 
 ## Hallazgos de la primera pasada reevaluados
 
-- **v1-bypass-WIF**: confirmado por su propio verificador (P1, arriba).
+- **v1-bypass-WIF**: superseded por la decisión del owner del 2026-07-27; WIF
+  de aplicación no forma parte del contrato desplegado.
 - **stale-generation TOCTOU** se reclasificó como confirmado y quedó cerrado
   al plegar `expected_generation` dentro del claim transaccional.
 - **malformed task body → 422 retryable** quedó cerrado: una task autenticada
@@ -154,8 +155,9 @@ una ruta de publicación segura ni permite solicitar G1B.
   `serviceAccount` del YAML no impone la SA efectiva. Se requiere un PREP
   separado o build en cuarentena + scan/copia byte a byte que nunca ejecute
   código candidato con la identidad publicadora.
-- Los cuatro contratos externos y G1A–G10 siguen sin aprobar. No se ejecutó
-  rollout, mutación IAM/secrets/tráfico/n8n ni merge a `main`.
+- No quedan contratos externos que bloqueen el merge. G1A–G10 siguen sin
+  aprobar porque autorizan mutaciones de rollout, no porque falten owners.
+  No se ejecutó rollout, mutación IAM/secrets/tráfico/n8n ni merge a `main`.
 - La SA live `kb-rag-runner` conserva autoridad Secret Manager amplia. La nueva
   identidad candidata no existe aún en GCP; no puede afirmarse aislamiento
   efectivo hasta aplicar los gates y obtener una negativa efectiva sobre el

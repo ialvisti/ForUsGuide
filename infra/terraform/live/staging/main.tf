@@ -29,22 +29,18 @@ module "staging" {
   reconciler_job_name   = "ticket-reconciler-staging"
   queue_name            = "ticket-jobs-staging"
 
-  producer_sa_email    = local.sas["ticket-producer-stg"]
-  worker_sa_email      = local.sas["ticket-worker-stg"]
-  reconciler_sa_email  = local.sas["ticket-reconciler-stg"]
-  task_signer_sa_email = local.sas["ticket-task-signer-stg"]
-  scheduler_sa_email   = local.sas["ticket-scheduler-stg"]
-  n8n_invoker_sa_email = local.sas["n8n-ticket-invoker-stg"]
-
+  producer_sa_email               = local.sas["ticket-producer-stg"]
+  worker_sa_email                 = local.sas["ticket-worker-stg"]
+  reconciler_sa_email             = local.sas["ticket-reconciler-stg"]
+  task_signer_sa_email            = local.sas["ticket-task-signer-stg"]
+  scheduler_sa_email              = local.sas["ticket-scheduler-stg"]
   worker_max_instances            = 1
   queue_max_concurrent_dispatches = 1
 
-  producer_core_env         = var.producer_core_env
-  ticket_wif_audience       = var.ticket_wif_audience
-  ticket_wif_allowed_emails = var.ticket_wif_allowed_emails
-  secret_version_refs       = var.secret_version_refs
-  secret_containers         = var.secret_containers
-  e2e_job                   = var.e2e_job
-  e2e_secret_containers     = var.e2e_secret_containers
-  notification_channels     = var.notification_channels
+  producer_core_env     = var.producer_core_env
+  secret_version_refs   = var.secret_version_refs
+  secret_containers     = var.secret_containers
+  e2e_job               = var.e2e_job
+  e2e_secret_containers = var.e2e_secret_containers
+  notification_channels = var.notification_channels
 }

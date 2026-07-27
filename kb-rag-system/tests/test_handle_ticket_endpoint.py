@@ -753,19 +753,16 @@ class TestV2ContractRegressions:
 
 class TestParticipantPlanFailClosed:
 
-    def test_active_mode_without_participant_plan_validator_fails_closed(self, client):
-        """Bloqueo 1 del plan: participant_plan_validator=None en modo activo
-        autoriza TODO hoy (fail-open). Debe fallar cerrado: 503 o rechazo."""
+    def test_active_mode_without_optional_directory_preserves_n8n_contract(
+            self, client):
+        """The authenticated n8n payload remains authoritative by default."""
         client.app.state.participant_plan_validator = None
         _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"),
                                    InquiryOutcome(inquiry="q", topic="t",
                                                   route="knowledge_question",
                                                   knowledge_result=_kq_result())))
         r = client.post("/api/v1/handle-ticket", json=_body())
-        assert r.status_code == 503, (
-            f"modo activo sin validador aceptó el ticket ({r.status_code}); "
-            "una configuración None en modo activo debe ser fail-closed"
-        )
+        assert r.status_code in {200, 202}
 
     def test_wrong_participant_plan_or_tenant_is_403(self, client):
         """El contrato objetivo (Tarea 4 Paso 1) es un validador tenant-aware

@@ -8,18 +8,12 @@ variables {
     ticket-reconciler-stg  = "ticket-reconciler-stg@rag-kb-system.iam.gserviceaccount.com"
     ticket-task-signer-stg = "ticket-task-signer-stg@rag-kb-system.iam.gserviceaccount.com"
     ticket-scheduler-stg   = "ticket-scheduler-stg@rag-kb-system.iam.gserviceaccount.com"
-    n8n-ticket-invoker-stg = "n8n-ticket-invoker-stg@rag-kb-system.iam.gserviceaccount.com"
   }
 
   image_digest               = "us-central1-docker.pkg.dev/rag-kb-system/kb-rag/kb-rag-system@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   release_phase              = "shadow"
   producer_baseline_revision = "kb-rag-system-staging-00001-abc"
   shadow_sample_rate         = 100
-  ticket_wif_audience        = "https://producer.example.run.app"
-  ticket_wif_allowed_emails = [
-    "n8n-ticket-invoker-stg@rag-kb-system.iam.gserviceaccount.com",
-    "ticket-e2e-stg@rag-kb-system.iam.gserviceaccount.com",
-  ]
   producer_core_env = {
     ENABLE_EXECUTION_LOGGING        = "true"
     FORUSBOTS_BASE_URL              = "https://forusbots.example.test"
@@ -45,9 +39,6 @@ variables {
   }
   secret_version_refs = {
     API_KEY                     = "projects/rag-kb-system/secrets/api-key/versions/1"
-    API_CLIENT_KEYS             = "projects/rag-kb-system/secrets/api-client-keys/versions/1"
-    API_CLIENT_TENANTS          = "projects/rag-kb-system/secrets/api-client-tenants/versions/1"
-    PARTICIPANT_PLAN_SOURCE     = "projects/rag-kb-system/secrets/participant-plan-source/versions/1"
     FORUSBOTS_AUTH_TOKEN        = "projects/rag-kb-system/secrets/forusbots-token/versions/1"
     OPENAI_API_KEY              = "projects/rag-kb-system/secrets/openai-key/versions/1"
     PINECONE_API_KEY            = "projects/rag-kb-system/secrets/pinecone-key/versions/1"
@@ -57,9 +48,6 @@ variables {
     enabled = true
     ids = {
       API_KEY                     = "api-key"
-      API_CLIENT_KEYS             = "api-client-keys"
-      API_CLIENT_TENANTS          = "api-client-tenants"
-      PARTICIPANT_PLAN_SOURCE     = "participant-plan-source"
       FORUSBOTS_AUTH_TOKEN        = "forusbots-token"
       OPENAI_API_KEY              = "openai-key"
       PINECONE_API_KEY            = "pinecone-key"
@@ -67,9 +55,6 @@ variables {
     }
     accessor_roles = {
       API_KEY                     = ["producer"]
-      API_CLIENT_KEYS             = ["producer"]
-      API_CLIENT_TENANTS          = ["producer"]
-      PARTICIPANT_PLAN_SOURCE     = ["producer"]
       FORUSBOTS_AUTH_TOKEN        = ["worker"]
       OPENAI_API_KEY              = ["producer", "worker"]
       PINECONE_API_KEY            = ["producer", "worker"]

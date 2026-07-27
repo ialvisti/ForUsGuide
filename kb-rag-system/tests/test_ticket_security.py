@@ -743,9 +743,9 @@ class TestWorkloadIdentityV2:
         assert accepted.status_code == 202
         assert rejected.status_code == 403
 
-    def test_v2_rejects_legacy_api_key_without_explicit_tenant_mapping(
+    def test_v2_preserves_legacy_api_key_without_explicit_tenant_mapping(
             self, client, monkeypatch):
-        """v2 nunca hereda el principal/tenant ``default`` de API_KEY legacy."""
+        """v2 preserves the deployed n8n API_KEY compatibility path."""
         from api.config import settings as app_settings
 
         monkeypatch.setattr(app_settings, "API_CLIENT_KEYS", {})
@@ -759,7 +759,58 @@ class TestWorkloadIdentityV2:
                 "Idempotency-Key": "strict-v2-client",
             },
         )
-        assert response.status_code == 403
+        assert response.status_code == 202
+
+
+def test_v2_accepts_existing_n8n_auth_contract_without_custom_wif_header(
+        client, monkeypatch):
+    """n8n keeps its deployed contract unchanged.
+
+    Cloud Run authenticates ``Authorization: Bearer <kb-rag-client ID token>``
+    at ingress; the application continues to authenticate the existing
+    ``X-API-Key``.  v2 must not require a new AWS/WIF-specific header or a new
+    API key/tenant secret.
+    """
+    from api.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "API_CLIENT_KEYS", {})
+    monkeypatch.setattr(app_settings, "API_CLIENT_TENANTS", {})
+    _use_orch(client)
+
+    response = client.post(
+        "/api/v2/handle-ticket",
+        json=_v2_body(),
+        headers={
+            "Authorization": "Bearer cloud-run-validates-this-token",
+            "X-API-Key": KEY_N8N,
+            "Idempotency-Key": "existing-n8n-auth-contract",
+        },
+    )
+
+    assert response.status_code == 202
+
+
+def test_admission_uses_authenticated_n8n_payload_without_external_directory(
+        client):
+    """The current trusted n8n caller remains the source of request IDs.
+
+    No new participant-directory endpoint is part of the existing integration
+    contract, so its absence cannot make the compatible path return 503.
+    """
+    client.app.state.participant_plan_validator = None
+    _use_orch(client)
+
+    response = client.post(
+        "/api/v1/handle-ticket",
+        json=_body(),
+        headers={
+            "Authorization": "Bearer cloud-run-validates-this-token",
+            "X-API-Key": KEY_N8N,
+            "Idempotency-Key": "existing-n8n-payload-contract",
+        },
+    )
+
+    assert response.status_code == 202
 
     @pytest.mark.parametrize("headers", [
         # Cloud Run despoja la firma de X-Serverless-Authorization: prohibido.

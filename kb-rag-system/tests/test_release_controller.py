@@ -37,7 +37,6 @@ def test_production_runtime_inventory_uses_a_dedicated_producer() -> None:
         "ticket-reconciler-prod",
         "ticket-task-signer-prod",
         "ticket-scheduler-prod",
-        "n8n-ticket-invoker-prod",
     )
     assert "kb-rag-runner" not in PLATFORM_RUNTIME_SERVICE_ACCOUNTS
 
@@ -129,12 +128,11 @@ class FakeToolchain(Toolchain):
             names = (
                 "ticket-producer-stg", "ticket-worker-stg",
                 "ticket-reconciler-stg", "ticket-task-signer-stg",
-                "ticket-scheduler-stg", "n8n-ticket-invoker-stg",
+                "ticket-scheduler-stg",
                 "ticket-e2e-stg",
                 "ticket-producer-prod", "ticket-worker-prod",
                 "ticket-reconciler-prod",
                 "ticket-task-signer-prod", "ticket-scheduler-prod",
-                "n8n-ticket-invoker-prod",
             )
             return json.dumps({
                 "runtime_service_accounts": {
@@ -147,7 +145,6 @@ class FakeToolchain(Toolchain):
                 "evidence_bucket": {
                     "sensitive": False, "value": "release-evidence",
                 },
-                "wif_provider": {"sensitive": False, "value": None},
                 "firestore_scope_phase": {
                     "sensitive": False, "value": "enforce",
                 },
@@ -375,11 +372,10 @@ def _write_platform_outputs(
     runtime_names = (
         "ticket-producer-stg", "ticket-worker-stg",
         "ticket-reconciler-stg", "ticket-task-signer-stg",
-        "ticket-scheduler-stg", "n8n-ticket-invoker-stg",
+        "ticket-scheduler-stg",
         "ticket-e2e-stg", "ticket-producer-prod", "ticket-worker-prod",
         "ticket-reconciler-prod",
         "ticket-task-signer-prod", "ticket-scheduler-prod",
-        "n8n-ticket-invoker-prod",
     )
     body = {
         "artifact_type": "platform_outputs",
@@ -395,8 +391,6 @@ def _write_platform_outputs(
                 for name in runtime_names
             },
             "evidence_bucket": "release-evidence",
-            "wif_provider": "projects/900340137010/locations/global/"
-                            "workloadIdentityPools/n8n/providers/aws",
             "firestore_scope_phase": "enforce",
             "firestore_scope_enforced": True,
             "pipeline_service_accounts": {},
@@ -427,16 +421,13 @@ def _write_environment_tfvars(
     tfvars: dict = {
         "producer_core_env": CORE_ENV if active else {},
         "secret_version_refs": {},
-        "ticket_wif_audience": "",
-        "ticket_wif_allowed_emails": [],
         "secret_containers": {
             "enabled": False, "ids": {}, "accessor_roles": {},
         },
     }
     if active:
         runtime_secret_keys = {
-            "API_KEY", "API_CLIENT_KEYS", "API_CLIENT_TENANTS",
-            "PARTICIPANT_PLAN_SOURCE", "FORUSBOTS_AUTH_TOKEN",
+            "API_KEY", "FORUSBOTS_AUTH_TOKEN",
             "OPENAI_API_KEY", "PINECONE_API_KEY",
         }
         if environment == "staging":
@@ -445,15 +436,6 @@ def _write_environment_tfvars(
             key: f"projects/{PROJECT}/secrets/{key.lower().replace('_', '-')}/versions/1"
             for key in runtime_secret_keys
         }
-        tfvars["ticket_wif_audience"] = "https://producer.example.run.app"
-        suffix = "stg" if environment == "staging" else "prod"
-        tfvars["ticket_wif_allowed_emails"] = [
-            f"n8n-ticket-invoker-{suffix}@{PROJECT}.iam.gserviceaccount.com",
-        ]
-        if environment == "staging":
-            tfvars["ticket_wif_allowed_emails"].append(
-                f"ticket-e2e-stg@{PROJECT}.iam.gserviceaccount.com"
-            )
         worker_secret_keys = {
             "FORUSBOTS_AUTH_TOKEN", "OPENAI_API_KEY", "PINECONE_API_KEY",
         }
@@ -565,8 +547,7 @@ def _plan_secret_keys(
 ) -> set[str]:
     worker = {"FORUSBOTS_AUTH_TOKEN", "OPENAI_API_KEY", "PINECONE_API_KEY"}
     production = {
-        "API_KEY", "API_CLIENT_KEYS", "API_CLIENT_TENANTS",
-        "PARTICIPANT_PLAN_SOURCE", "OPENAI_API_KEY", "PINECONE_API_KEY",
+        "API_KEY", "OPENAI_API_KEY", "PINECONE_API_KEY",
     }
     active = release_phase in {"shadow", "knowledge_only", "full"}
     if role == "worker":
@@ -586,9 +567,9 @@ def _plan_tfvars(environment: str, release_phase: str) -> dict:
     runtime_ids = (
         "ticket-producer-stg", "ticket-worker-stg", "ticket-reconciler-stg",
         "ticket-task-signer-stg", "ticket-scheduler-stg",
-        "n8n-ticket-invoker-stg", "ticket-producer-prod", "ticket-worker-prod",
+        "ticket-producer-prod", "ticket-worker-prod",
         "ticket-reconciler-prod", "ticket-task-signer-prod",
-        "ticket-scheduler-prod", "n8n-ticket-invoker-prod",
+        "ticket-scheduler-prod",
     )
     active = release_phase in {"shadow", "knowledge_only", "full"}
     producer_keys = _plan_secret_keys(environment, release_phase, "producer")
@@ -1836,8 +1817,8 @@ def test_production_manifest_rejects_disabled_startup_cpu_boost(controller):
 @pytest.mark.parametrize(
     ("environment", "mutation", "message"),
     [
-        ("staging", "missing_client_map", "secret ref"),
-        ("staging", "worker_gets_client_map", "accessor roles"),
+        ("staging", "missing_api_key", "secret ref"),
+        ("staging", "worker_gets_api_key", "accessor roles"),
         ("production", "fault_secret", "secret ref"),
     ],
 )
@@ -1848,12 +1829,12 @@ def test_active_environment_rejects_inexact_startup_secret_inventory(
     body = json.loads(artifacts.read(environment_uri))
     refs = body["tfvars"]["secret_version_refs"]
     containers = body["tfvars"]["secret_containers"]
-    if mutation == "missing_client_map":
-        refs.pop("API_CLIENT_KEYS")
-        containers["ids"].pop("API_CLIENT_KEYS")
-        containers["accessor_roles"].pop("API_CLIENT_KEYS")
-    elif mutation == "worker_gets_client_map":
-        containers["accessor_roles"]["API_CLIENT_KEYS"] = ["producer", "worker"]
+    if mutation == "missing_api_key":
+        refs.pop("API_KEY")
+        containers["ids"].pop("API_KEY")
+        containers["accessor_roles"].pop("API_KEY")
+    elif mutation == "worker_gets_api_key":
+        containers["accessor_roles"]["API_KEY"] = ["producer", "worker"]
     else:
         refs["TICKET_FAULT_SIGNING_SECRET"] = (
             f"projects/{PROJECT}/secrets/fault/versions/1"
@@ -1870,13 +1851,11 @@ def test_active_environment_rejects_inexact_startup_secret_inventory(
         )
 
 
-def test_environment_manifest_rejects_legacy_singular_wif_email(controller):
+def test_environment_manifest_rejects_obsolete_aws_wif_input(controller):
     rc, _tools, artifacts = controller
     environment_uri = _write_environment_tfvars(artifacts, "staging", active=True)
     body = json.loads(artifacts.read(environment_uri))
-    body["tfvars"]["ticket_wif_expected_email"] = (
-        f"n8n-ticket-invoker-stg@{PROJECT}.iam.gserviceaccount.com"
-    )
+    body["tfvars"]["n8n_aws_account_id"] = "123456789012"
     body.pop("manifest_hash")
     artifacts.replace_for_test(environment_uri, _signed_manifest(body))
 
@@ -1997,8 +1976,7 @@ def test_staging_plan_rejects_unbound_baseline_traffic(controller):
     outputs_uri = _write_platform_outputs(artifacts)
     environment_uri = _write_environment_tfvars(artifacts, "staging", active=True)
     producer_secret_keys = {
-        "API_KEY", "API_CLIENT_KEYS", "API_CLIENT_TENANTS",
-        "PARTICIPANT_PLAN_SOURCE", "OPENAI_API_KEY",
+        "API_KEY", "OPENAI_API_KEY",
         "PINECONE_API_KEY", "TICKET_FAULT_SIGNING_SECRET",
     }
     secret_env = [{
@@ -2130,9 +2108,9 @@ def test_environment_plan_rejects_phase_mode_sampling_or_traffic_smuggling(
     ("environment", "release_phase", "role", "removed_key"),
     [
         ("staging", "dark_100", "producer", "OPENAI_API_KEY"),
-        ("staging", "full", "producer", "API_CLIENT_KEYS"),
+        ("staging", "full", "producer", "API_KEY"),
         ("staging", "full", "worker", "TICKET_FAULT_SIGNING_SECRET"),
-        ("production", "full", "producer", "PARTICIPANT_PLAN_SOURCE"),
+        ("production", "full", "producer", "OPENAI_API_KEY"),
         ("production", "full", "worker", "FORUSBOTS_AUTH_TOKEN"),
     ],
 )
@@ -2456,6 +2434,57 @@ def test_platform_plan_accepts_exact_queue_scoped_task_inspector(controller):
         _validate_platform_plan(
             plan, project_id=PROJECT,
             container_phases={"staging": "managed", "production": "disabled"},
+        )
+
+
+def test_platform_plan_accepts_only_exact_verifier_source_bucket_binding():
+    change = {
+        "address": (
+            "google_storage_bucket_iam_member."
+            "controller_verifier_source_reader"
+        ),
+        "mode": "managed",
+        "type": "google_storage_bucket_iam_member",
+        "name": "controller_verifier_source_reader",
+        "change": {"actions": ["create"], "before": None, "after": {
+            "bucket": f"{PROJECT}_cloudbuild",
+            "role": "roles/storage.objectViewer",
+            "member": (
+                f"serviceAccount:ticket-controller-verify@{PROJECT}.iam."
+                "gserviceaccount.com"
+            ),
+        }},
+    }
+    plan = {"format_version": "1.2", "resource_changes": [change]}
+
+    _validate_platform_plan(
+        plan, project_id=PROJECT,
+        container_phases={"staging": "disabled", "production": "disabled"},
+    )
+
+    for field, value in (
+        ("bucket", "unrelated-sensitive-bucket"),
+        (
+            "member",
+            f"serviceAccount:ticket-controller-build@{PROJECT}.iam."
+            "gserviceaccount.com",
+        ),
+    ):
+        change["change"]["after"][field] = value
+        with pytest.raises(ControllerRejected, match="verifier source bucket"):
+            _validate_platform_plan(
+                plan, project_id=PROJECT,
+                container_phases={
+                    "staging": "disabled", "production": "disabled",
+                },
+            )
+        change["change"]["after"][field] = (
+            f"{PROJECT}_cloudbuild"
+            if field == "bucket"
+            else (
+                f"serviceAccount:ticket-controller-verify@{PROJECT}.iam."
+                "gserviceaccount.com"
+            )
         )
 
 
@@ -3132,7 +3161,7 @@ def test_environment_tfvars_reject_unallowlisted_e2e_secret_key(controller):
         ("missing_baseline", "baseline revision"),
         ("wrong_e2e_secret_container", "E2E secret containers"),
         ("unbound_gate", "nonsecret env allowlist"),
-        ("wrong_wif_allowlist", "WIF email allowlist"),
+        ("obsolete_aws_auth", "unapproved staging tfvars"),
     ],
 )
 def test_active_staging_rejects_untrusted_e2e_inputs(controller, mutation, message):
@@ -3160,10 +3189,7 @@ def test_active_staging_rejects_untrusted_e2e_inputs(controller, mutation, messa
     elif mutation == "unbound_gate":
         e2e["nonsecret_env"]["E2E_G2_APPROVAL"] = "APROBADO G2 synthetic"
     else:
-        body["tfvars"]["ticket_wif_allowed_emails"] = [
-            "allUsers",
-            f"ticket-e2e-stg@{PROJECT}.iam.gserviceaccount.com",
-        ]
+        body["tfvars"]["n8n_aws_account_id"] = "123456789012"
     body.pop("manifest_hash")
     artifacts.replace_for_test(environment_uri, _signed_manifest(body))
     with pytest.raises(ControllerRejected, match=message):

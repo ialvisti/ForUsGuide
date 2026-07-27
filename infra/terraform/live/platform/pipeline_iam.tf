@@ -194,7 +194,6 @@ locals {
         "roles/artifactregistry.admin",
         "roles/iam.serviceAccountAdmin",
         "roles/iam.roleAdmin",
-        "roles/iam.workloadIdentityPoolAdmin",
         "roles/cloudbuild.builds.editor",
       ])
     }
@@ -297,8 +296,6 @@ resource "google_project_iam_custom_role" "platform_plan_reader" {
     "iam.roles.get",
     "iam.serviceAccounts.get",
     "iam.serviceAccounts.getIamPolicy",
-    "iam.workloadIdentityPoolProviders.get",
-    "iam.workloadIdentityPools.get",
     "resourcemanager.projects.get",
     "resourcemanager.projects.getIamPolicy",
     "run.jobs.get",
@@ -1009,4 +1006,13 @@ resource "google_project_iam_member" "pipeline_logs" {
   project  = var.project_id
   role     = "roles/logging.logWriter"
   member   = "serviceAccount:${each.value}"
+}
+
+# Cloud Build almacena el source tarball del submit manual en este bucket
+# legacy. El verificador sólo necesita leer ese input; no puede escribir,
+# publicar imágenes, desplegar, leer state ni acceder al evidence bucket.
+resource "google_storage_bucket_iam_member" "controller_verifier_source_reader" {
+  bucket = "${var.project_id}_cloudbuild"
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.controller_verifier.email}"
 }

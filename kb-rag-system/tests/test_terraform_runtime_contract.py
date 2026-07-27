@@ -147,7 +147,10 @@ def test_production_import_preserves_revision_00048_as_rollback_only() -> None:
     )[0]
     assert "default  = null" in liveness
 
-    assert 'producer_sa_email    = local.sas["ticket-producer-prod"]' in main
+    assert re.search(
+        r'producer_sa_email\s*=\s*local\.sas\["ticket-producer-prod"\]',
+        main,
+    )
     assert (
         'producer_sa_email    = "kb-rag-runner@${var.project_id}.'
         'iam.gserviceaccount.com"' not in main
@@ -395,7 +398,10 @@ def test_e2e_service_account_gets_only_its_eleven_exact_secret_accessors() -> No
     staging_main = _read(STAGING_ROOT / "main.tf")
 
     assert 'variable "e2e_secret_containers"' in variables
-    assert "e2e_secret_containers     = var.e2e_secret_containers" in staging_main
+    assert re.search(
+        r"e2e_secret_containers\s*=\s*var\.e2e_secret_containers",
+        staging_main,
+    )
     assert 'resource "google_secret_manager_secret_iam_member" "e2e_runtime_accessor"' in secrets
     block = secrets.split(
         'resource "google_secret_manager_secret_iam_member" "e2e_runtime_accessor"', 1
@@ -421,20 +427,33 @@ def test_e2e_service_account_gets_only_its_eleven_exact_secret_accessors() -> No
         assert forged_gate_claim not in e2e
 
 
-def test_deployed_wif_uses_environment_exact_json_allowlists() -> None:
+def test_cloud_run_preserves_existing_n8n_iam_contract_without_custom_wif_env() -> None:
     cloud_run = _read(MODULE_ROOT / "cloud_run.tf")
-    variables = _read(MODULE_ROOT / "variables.tf")
-    staging = _read(STAGING_ROOT / "main.tf")
-    production = _read(PRODUCTION_ROOT / "main.tf")
 
-    assert 'variable "ticket_wif_allowed_emails"' in variables
-    assert 'name  = "TICKET_WIF_ALLOWED_EMAILS"' in cloud_run
-    assert "jsonencode(var.ticket_wif_allowed_emails)" in cloud_run
-    assert '"ticket-e2e-stg@${var.project_id}.iam.gserviceaccount.com"' in cloud_run
-    assert "toset(var.ticket_wif_allowed_emails)" in cloud_run
-    assert "ticket_wif_allowed_emails = var.ticket_wif_allowed_emails" in staging
-    assert "ticket_wif_allowed_emails  = var.ticket_wif_allowed_emails" in production
+    assert 'name  = "TICKET_WIF_AUDIENCE"' not in cloud_run
+    assert 'name  = "TICKET_WIF_ALLOWED_EMAILS"' not in cloud_run
     assert 'name  = "TICKET_WIF_EXPECTED_EMAIL"' not in cloud_run
+
+
+def test_terraform_uses_existing_kb_rag_client_without_aws_wif() -> None:
+    platform_root = REPO_ROOT / "infra" / "terraform" / "live" / "platform"
+    platform_iam = _read(platform_root / "runtime_project_iam.tf")
+    all_hcl = "\n".join(
+        path.read_text(encoding="utf-8")
+        for path in (REPO_ROOT / "infra" / "terraform").rglob("*.tf")
+    )
+    assert not (platform_root / "workload_identity.tf").exists()
+    for obsolete in (
+        "enable_n8n_wif",
+        "n8n_aws_account_id",
+        "n8n_aws_role_arns",
+        "n8n-ticket-invoker-stg",
+        "n8n-ticket-invoker-prod",
+        "ticket_wif_audience",
+        "ticket_wif_allowed_emails",
+    ):
+        assert obsolete not in all_hcl
+    assert "kb-rag-client@${var.project_id}.iam.gserviceaccount.com" in platform_iam
 
 
 def test_active_producer_secrets_are_complete_and_worker_is_minimal() -> None:
@@ -443,9 +462,6 @@ def test_active_producer_secrets_are_complete_and_worker_is_minimal() -> None:
 
     for key in (
         "API_KEY",
-        "API_CLIENT_KEYS",
-        "API_CLIENT_TENANTS",
-        "PARTICIPANT_PLAN_SOURCE",
         "FORUSBOTS_AUTH_TOKEN",
         "OPENAI_API_KEY",
         "PINECONE_API_KEY",
@@ -466,12 +482,12 @@ def test_active_producer_secrets_are_complete_and_worker_is_minimal() -> None:
     ):
         assert forbidden not in worker
 
-    for key in (
+    for obsolete in (
         "API_CLIENT_KEYS",
         "API_CLIENT_TENANTS",
         "PARTICIPANT_PLAN_SOURCE",
     ):
-        assert f'"{key}"' in production_variables
+        assert f'"{obsolete}"' not in production_variables
 
 
 def test_forusbots_secret_is_injected_and_granted_only_to_worker() -> None:
@@ -542,7 +558,7 @@ def test_every_deployed_service_requires_complete_startup_configuration() -> Non
     ):
         assert f'"{route}"' in cloud_run
     assert "todo producer/worker desplegado exige core env exacto" in cloud_run
-    assert "FORUSBOTS_BASE_URL debe ser un origen HTTPS canónico" in cloud_run
+    assert "FORUSBOTS_BASE_URL debe ser un origen canónico revisado" in cloud_run
     assert 'can(regex("@sha256:[0-9a-f]{64}$", var.image_digest))' in staging_variables
     assert '"infra_only", "dark_no_traffic", "dark_100", "shadow"' in staging_variables
 
@@ -619,8 +635,6 @@ def test_staging_exposes_every_gated_runtime_input() -> None:
 
     for variable in (
         "producer_core_env",
-        "ticket_wif_audience",
-        "ticket_wif_allowed_emails",
         "secret_containers",
         "e2e_job",
     ):

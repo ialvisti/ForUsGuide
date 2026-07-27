@@ -32,9 +32,9 @@ Proyecto GCP: `rag-kb-system` (`900340137010`), región `us-central1`.
 | Invoker IAM | **sin `allUsers`** — único binding `roles/run.invoker`: `kb-rag-client@rag-kb-system.iam.gserviceaccount.com` (etag `BwZO9B4rTuA=`) |
 | Revisión prohibida | `kb-rag-system-00047-vkd` (misma imagen, `TICKET_HANDLER_MODE=full`) |
 
-Consumidores conocidos: el invoker de producción es la SA `kb-rag-client` (usada por el caller
-legacy de n8n según docs del repo; owner del binding pendiente de confirmar en Tarea 1). No se
-modifica la invoker policy en este plan hasta el paso que lo exija con gate.
+Consumidores conocidos: el invoker de producción es la SA `kb-rag-client`,
+usada por el caller de n8n según la documentación operativa. La decisión del
+owner del 2026-07-27 conserva este binding y contrato sin migración AWS/WIF.
 
 ## Env vars de la revisión activa (nombres + valores seguros; secretos sólo como referencia)
 
@@ -68,8 +68,9 @@ Hallazgos:
 
 - **Todas las secret refs usan `latest`** — viola el requisito de versiones numéricas inmutables;
   se corrige vía manifest G6A (producción) / G3 (staging), no ahora.
-- **`FORUSBOTS_BASE_URL` es HTTP sin cifrar hacia una IP pública** — confirma el bloqueo del plan;
-  el contrato HTTPS se resuelve en Tarea 1 Paso 2 y Tarea 16 Paso 1.
+- **`FORUSBOTS_BASE_URL` es el origen HTTP legacy revisado**. La documentación
+  viva y el código ForUsBots 2.5 confirman ese deployment. El candidato permite
+  sólo ese origen HTTP exacto y rechaza cualquier otro.
 
 ## IAM a nivel proyecto (bindings relevantes)
 

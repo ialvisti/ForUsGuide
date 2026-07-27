@@ -1,215 +1,88 @@
-# 01 — Inventario de contratos externos (Tarea 1)
+# 01 — Contratos de integración verificados
 
-Estado revisado al 2026-07-21. Este documento registra, por cada uno de los cuatro contratos que
-bloquean la activación, lo que el repositorio ya sabe (con citas), lo que **debe** entregar
-el equipo propietario, y el estado del bloqueo. Ninguna fila contiene valores de secretos.
+Estado revisado el 2026-07-27 contra el código local, la documentación viva de
+ForUsBots 2.5 y la documentación operativa existente de n8n.
 
-**Estado global: los cuatro contratos están PENDIENTES.** Conforme al punto de control STOP
-de la Tarea 1, el trabajo continúa en modo local/infraestructura desactivada; el E2E activo
-de staging y el despliegue progresivo quedan bloqueados hasta cerrar estos contratos.
+## Decisión del owner
 
-No hay respuesta ni contrato firmado de sus owners en el repositorio; cada
-sección conserva la lista exacta de lo que debe solicitarse.
+La integración debe conservar el comportamiento actual:
 
----
+- n8n obtiene un Google ID token mediante el flujo OAuth2/IAM Credentials ya
+  documentado para `kb-rag-client@rag-kb-system.iam.gserviceaccount.com`;
+- Cloud Run valida `Authorization: Bearer <token>`;
+- la aplicación valida el `X-API-Key` existente;
+- no se solicita ni configura cuenta, ARN, key ni rol AWS;
+- n8n no necesita `X-ForUs-Workload-Authorization`, mapas de tenants nuevos ni
+  un directorio participant-plan externo;
+- la entrega final permanece en el workflow n8n/DevRev actual. Este servicio
+  sólo devuelve `next_action` y nunca publica directamente al participante.
 
-## 1. Fuente canónica participante-plan-tenant — **PENDIENTE (bloqueante)**
+Esta decisión sustituye las solicitudes de AWS WIF, export/migración del
+workflow y adaptadores externos propuestas por el plan original.
 
-**Lo que el repo sabe:**
+## n8n — resuelto
 
-- Ya existe un `ParticipantPlanValidator` tenant-aware con
-  `authorize(*, tenant_id, participant_id, plan_id)` y un resultado estricto
-  server-owned (`tenant_id`, participante, plan y record keeper).
-- Admission falla cerrado: validador ausente/timeout/error devuelve 503,
-  mismatch devuelve 403 y sólo el resultado canónico puede poblar los campos
-  autorizados. `validate_settings()` impide arrancar un producer activo sin
-  `PARTICIPANT_PLAN_SOURCE`.
-- El factory deliberadamente **no implementa un adaptador externo**: vacío
-  devuelve `None`; cualquier source no vacío se rechaza al arranque hasta que
-  exista endpoint/schema/SLA real. Los tests sólo inyectan dobles explícitos.
-- Por tanto se cerró el bypass fail-open en código, pero no el contrato
-  operativo: ningún modo activo puede habilitarse todavía.
+La fuente de verdad es
+`kb-rag-system/Development Docs/GCP_SERVICES_GUIDE.md`: el workflow usa la
+cuenta OAuth2 corporativa para llamar IAM Credentials, genera un ID token de
+`kb-rag-client`, y envía ese token junto con `X-API-Key` al Cloud Run privado.
+Los endpoints `/api/v1/handle-ticket` y `/api/v2/handle-ticket` aceptan ese
+mismo contrato. Terraform conserva `kb-rag-client` como `roles/run.invoker`.
 
-**Owner:** sin nombre en el repo — "el equipo propietario" del directorio de participantes.
-Aprobador del gate: fila "participant-plan" en G4/G6A/G9.
+No hay cambio requerido en credenciales o cuentas de n8n para hacer merge.
+La adopción de `handle-ticket` dentro del workflow, si se decide, es una
+operación posterior y debe preservar sus ramas de publicación actuales.
 
-**Solicitud abierta (qué pedir):** endpoint o librería y su propietario; método de auth y
-audiencia; schema exacto request/response; campos de tenant y record keeper devueltos;
-timeout/SLA y semántica de errores; un par sintético autorizado y un mismatch sintético.
-Criterio: responder "¿P pertenece a L en T?" sin confiar en texto del ticket ni valores de n8n.
+## Participante/plan — resuelto para compatibilidad
 
-**Fixtures destino (no creados; no se inventan):**
-`tests/fixtures/participant_plan/authorized_pair.json`, `tests/fixtures/participant_plan/rejected_pair.json`.
+El payload proveniente del n8n autenticado sigue siendo la entrada autorizada
+para `participant_id`, `plan_id` y `record_keeper`. Un
+`ParticipantPlanValidator` tenant-aware continúa disponible como extensión
+opcional, pero su ausencia no impide arrancar ni procesar el flujo existente.
 
----
+## ForUsBots — contrato 2.5 verificado
 
-## 2. Contrato HTTPS + idempotencia de ForusBots — **PENDIENTE (bloqueante para GR/full)**
+Fuentes revisadas:
 
-**Lo que el repo sabe (cliente `data_pipeline/forusbots_client.py`):**
+- documentación viva: `http://35.224.156.104:10000/docs/`;
+- OpenAPI vivo: `http://35.224.156.104:10000/docs/openapi.yaml`;
+- implementación local: `/Users/ivanalvis/Desktop/ForUsBots/`.
 
-- El valor legacy por defecto sigue documentando
-  `http://35.224.156.104:10000`, pero sólo puede coexistir con el handler
-  desactivado. El worker valida y exige origen HTTPS canónico
-  `https://host[:port]` y token; el producer no construye el cliente ni recibe
-  la inyección/per-secret accessor ForusBots. Terraform conserva la base URL en
-  el inventario core compartido del par desplegado, pero no entrega el token al
-  producer candidato.
-- El cliente rechaza HTTP, userinfo, query, fragment y paths no canónicos;
-  desactiva redirects explícitamente y trata cualquier 3xx como error para no
-  filtrar el token a otro origen.
-- Auth: header `x-auth-token`. Async-only: `POST /forusbot/scrape-participant|scrape-plan`
-  → `202 {jobId}` → poll `GET /forusbot/jobs/{id}` (`succeeded|failed|canceled`); no hay
-  endpoint separado de result; `/forusbot/health` sólo se ejercita en el test live opt-in.
-- **El upstream no deduplica y no acepta idempotency key ni lookup por correlation ID**: un
-  5xx tras el POST es irresoluble y el cliente lanza `ForusBotsAmbiguousSubmit`
-  (`needs_reconciliation=True`). El dedupe del cliente es sólo in-process.
-- Capacidad asumida `maxConcurrency=3` (cliente usa `max_inflight=2`); sin confirmación del owner.
-- IDs de prueba usados hoy (158948, 342393, 580) son literales ad-hoc, **no** IDs sintéticos
-  sancionados por el equipo.
+Contrato observado:
 
-Límite live: la revisión productiva actual aún usa `kb-rag-runner`, con
-`secretAccessor` project-wide y un grant directo sobre el token. El diseño
-candidato usa una SA productiva separada, pero no puede afirmarse aislamiento
-efectivo hasta aplicar G1B/G6A/G6B y probar producer=DENIED/worker=GRANTED con
-effective IAM. La SA legacy se preserva para el rollback anchor.
+- health: `GET /forusbot/health`;
+- auth: `x-auth-token` (también admite bearer según el registro de tokens);
+- submit: `POST /forusbot/scrape-participant` y
+  `POST /forusbot/scrape-plan`;
+- respuesta: `202 {"jobId": ...}`;
+- polling: `GET /forusbot/jobs/{jobId}` hasta
+  `succeeded|failed|canceled`;
+- el job store es de proceso y no hay idempotency key ni lookup por
+  correlation ID.
 
-**Owner:** equipo ForusBots (sin individuos nombrados en el repo); owner de cert/DNS por identificar.
+El cliente acepta únicamente HTTPS canónico o el origen HTTP legacy exacto
+`http://35.224.156.104:10000`; cualquier otro HTTP, redirect, userinfo, path,
+query o fragment se rechaza. Ante un submit ambiguo no reintenta a ciegas:
+conserva el estado para reconciliación/manual y evita duplicar trabajo RPA.
 
-**Solicitud abierta:** URL base HTTPS verificada + owner de certificado/DNS; contratos de
-`/health`/submit/status/result; capacidad global de concurrencia/tasa; IDs sintéticos;
-procedimiento de rotación del token legacy (debe tratarse como potencialmente
-expuesto por el transporte histórico);
-key de idempotencia aceptada por submit **o** búsqueda por correlation ID estable; dedupe
-documentado, retención de keys ≥ horizonte de replay y reconciliación tras timeout/reset.
+La falta de idempotencia upstream es una limitación operativa conocida, no un
+contrato pendiente ni un bloqueo de merge.
 
-**STOP de GR (vigente):** sin idempotencia/reconciliación observable en ForusBots y en el
-canal de entrega final, `full` no puede activarse ni afirmarse "cero efectos duplicados".
+## Entrega final — sin cambio
 
-**Fixture destino (no creado):** `tests/fixtures/forusbots/live_contract.sanitized.json`.
+La publicación sigue siendo responsabilidad de n8n/DevRev. El productor
+durable entrega estados y `next_action`; sólo
+`succeeded + send_participant_reply + participant_reply_safe` es publicable.
+Estados técnicos, parciales o ambiguos derivan a legacy/humano y nunca se
+presentan como respuesta publicable.
 
----
+No se afirma exactly-once sobre un sistema externo que no lo documenta, pero
+eso no exige modificar el workflow actual para integrar o hacer merge de esta
+rama.
 
-## 3. Export real del workflow n8n + identidad AWS→GCP — **PENDIENTE (bloqueante)**
+## Pendientes reales
 
-**Lo que el repo sabe:**
-
-- **No existe export real/sanitizado del workflow de n8n en el repo**; los dos fixtures
-  (`n8n_handle_ticket_request.json`, `n8n_handle_ticket_polling.json`) declaran
-  `provenance: RECONSTRUIDO`, cubren sólo v1 y omiten el comportamiento real del consumidor
-  de `next_action` (bloqueo #10 del plan).
-- n8n corre en **AWS EC2** (`Development Docs/INFRASTRUCTURE_DIAGRAM_EXPLAINED.md:96-97`).
-- **Identidad actual: OAuth humano** — `ivan.alvis@forusall.com` con
-  `roles/iam.serviceAccountTokenCreator` genera ID tokens de `kb-rag-client@` vía IAM
-  Credentials API (`GCP_SERVICES_GUIDE.md:89-98,649-696`). El plan prohíbe credenciales
-  humanas en el flujo; deben cerrarse con la migración WIF (Tarea 10 Paso 5 / G3).
-- WIF se intentó antes y se desactivó (`sts.googleapis.com` disabled,
-  `GCP_SERVICES_GUIDE.md:583`); habrá que reactivarla vía IaC platform (G1B).
-- El pipeline legacy documentado llama `/api/v1/required-data` + `/api/v1/generate-response`
-  por inquiry; el consumo de handle-ticket v2 es el objetivo del workflow nuevo.
-
-**Owner:** owner de n8n (instancia `n8n.forusall.com` / `n8nhooks.forusall.com`); sin
-individuo nombrado. La cuenta AWS/ARN del execution role debe venir de ese owner.
-
-**Solicitud abierta:** export de respaldo del workflow real (previo a cualquier edición);
-export sanitizado preservando nombres/expresiones/casing/null/timeouts/retries/ramas; cuenta
-AWS + ARN exacto del execution role de n8n + mecanismo de credenciales temporales; y
-confirmación de si el runtime n8n puede hacer WIF/impersonation (si no puede: STOP y diseñar
-broker service-to-service aprobado — no usar credenciales humanas).
-
-**Contrato objetivo registrado:** AWS WIF → pool/provider GCP con condition por cuenta+ARN →
-`n8n-ticket-invoker-{env}@rag-kb-system.iam.gserviceaccount.com` → ID token con audiencia del
-producer e `includeEmail=true`, enviado en `X-ForUs-Workload-Authorization: Bearer <token>`
-(nunca `X-Serverless-Authorization`); `X-API-Key` identifica cliente/tenant pero no autoriza
-solo. Nota de preflight: el servicio hoy es **privado** (invoker únicamente `kb-rag-client@`),
-así que n8n además debe mandar el mismo token en `Authorization: Bearer` mientras Cloud Run
-IAM esté delante.
-
-**Fixture destino (no creado):** `tests/fixtures/n8n/handle_ticket_workflow.sanitized.json`.
-
----
-
-## 4. Contrato idempotente de entrega final al participante — **PENDIENTE (bloqueante para publicar)**
-
-**Lo que el repo sabe:**
-
-- La entrega es vía **DevRev** (CRM), orquestada por n8n: el DevRev AI Agent redacta la
-  respuesta y llama a `https://n8nhooks.forusall.com/webhook/final-handling`; n8n escribe
-  `participant_reply`/`internal_notes` en el ticket DevRev y fija el stage
-  (`INFRASTRUCTURE_DIAGRAM_EXPLAINED.md:296-329`). No hay Zendesk/Front/email.
-- **No existe ledger de delivery ni dedupe** en kb-rag-system ni (documentado) en n8n; el
-  plan exige que n8n reclame transaccionalmente el delivery y persista/reconcilie el
-  delivery ID (Tarea 9 Paso 1.8).
-- Se desconoce si la API de DevRev acepta una key estable derivada del evento y si permite
-  reconciliar un timeout ambiguo; sin eso no puede garantizarse cero duplicados.
-
-**Owner:** owners de n8n/delivery + equipo DevRev; producto/operaciones para los gates G8/G9.
-
-**Solicitud abierta:** sistema/nodo exacto que publica el reply para handle-ticket; si acepta
-key estable y devuelve/reconcilia el mismo delivery ID; horizonte máximo de redelivery de la
-fuente; retención de dedupe del receptor; estados y semántica del timeout ambiguo.
-Con esas cifras se fija `TICKET_IDEMPOTENCY_RETENTION_DAYS = max(90d, horizonte fuente,
-dedupe downstream, retención rollback)`; hasta entonces rige el default **90d** como mínimo.
-
-**Fixture destino (no creado):** `tests/fixtures/participant_delivery/live_contract.sanitized.json`.
-
----
-
-## 5. Umbrales diferenciales — **smoke automático; aprobación semántica pendiente**
-
-Hasta que producto/operaciones los cambien explícitamente, rigen los valores seguros del plan:
-
-| Métrica | Umbral |
-|---|---|
-| IDs, hechos, módulos y límites de tokens determinísticos | coincidencia exacta 100% |
-| Tasa de publicación insegura | 0% |
-| Tasa de inquiries faltantes | 0% |
-| Cobertura léxica de la rúbrica revisada | ≥95% (smoke; no prueba semántica) |
-| Fallos del replay idempotente de admisión | 0% |
-| Tasa de 404 de polling sin explicación | 0% |
-
-El arnés real (`rag-testing/ticket_differential.py` +
-`ticket_differential_thresholds.json`) llama a ambos sistemas. Su rúbrica es
-deliberadamente **léxica**: una contradicción no enumerada puede contener todos
-los substrings requeridos. Por ello emite `semantic_quality_verified=false` y
-hashes de las respuestas, y no afirma aceptabilidad semántica ni entrega
-exactly-once. El replay inmediato sólo observa que la admisión devuelve el mismo
-job durable; la entrega final continúa bajo el contrato bloqueante de la sección 4.
-
----
-
-## 6. Receipt independiente de revisión semántica — **PENDIENTE (bloqueante para promoción)**
-
-El evidence manifest exige un artefacto `semantic_review` distinto, write-once y
-seleccionado por URI con generation. Debe provenir de una revisión humana o
-independiente autorizada y quedar ligado exactamente a:
-
-- `main_sha` e image digest del candidato;
-- hash canónico del set de rúbricas;
-- hash canónico de los hashes de replies legacy/v2 por caso;
-- número exacto de casos y URI con generation del diferencial revisado;
-- identidad del reviewer en forma de SHA-256, tipo de revisión, timestamp UTC y
-  veredicto explícito `pass`.
-
-Sin ese receipt, `create_evidence_manifest.py`, su verificador y la promoción
-fallan cerrados aunque todos los smokes automáticos pasen. No existe fallback a
-un juez LLM ni una lista ampliada de frases prohibidas que se presente como
-garantía semántica.
-
----
-
-## Registro de bloqueos
-
-| # | Contrato | Owner responsable | Estado | Fecha solicitud | Fecha respuesta |
-|---|---|---|---|---|---|
-| 1 | Fuente canónica participant-plan-tenant | equipo directorio participantes (por nombrar) | **BLOQUEADO** — solicitud redactada, pendiente de envío por el requester | 2026-07-13 (redactada) | — |
-| 2 | ForusBots HTTPS + idempotencia/reconciliación | equipo ForusBots + owner cert/DNS | **BLOQUEADO** — ídem | 2026-07-13 (redactada) | — |
-| 3 | Export n8n real + AWS ARN/WIF | owner n8n | **BLOQUEADO** — ídem | 2026-07-13 (redactada) | — |
-| 4 | Entrega final idempotente (DevRev vía n8n) | owners n8n/delivery + DevRev | **BLOQUEADO** — ídem | 2026-07-13 (redactada) | — |
-| 5 | Umbrales diferenciales | producto + operaciones | defaults del plan activos; ratificación pendiente | 2026-07-13 | — |
-| 6 | Revisión semántica independiente del diferencial | producto/operaciones + reviewer autorizado | **BLOQUEADO** — falta receipt inmutable ligado al output exacto | 2026-07-21 | — |
-
-**Consecuencia operativa (STOP de Tarea 1):** pueden ejecutarse las Tareas 2–12 (trabajo
-local, mocks, IaC declarativa, CI) y los pasos de infraestructura desactivada gateados por
-G1A/G1B/G1C/G2. No puede iniciarse: E2E activo en staging (G4), migración WIF en n8n (G3),
-ni ningún escalón de producción (G5+). Los fixtures live de las Tareas 4/8/9 usan el
-contrato mock hasta que lleguen los contratos reales.
+No quedan owners externos necesarios para el merge. Las únicas aprobaciones
+posteriores son operativas y explícitas: crear/aplicar infraestructura,
+activar staging, promover tráfico y retirar el rollback anchor. La revisión
+semántica de respuestas sigue siendo un gate de promoción, no de merge.

@@ -766,12 +766,6 @@ def _build_http_runners(
             ).encode(),
         ).hexdigest()
         headers["Idempotency-Key"] = f"diff-{digest}"
-        # Each target receives only the token minted for its own audience.
-        # Reusing the v2 token against a distinct legacy origin both breaks the
-        # legacy WIF check and discloses a replayable v2 credential.
-        headers["X-ForUs-Workload-Authorization"] = (
-            f"Bearer {authorization_token}"
-        )
         return headers
 
     async def _poll_terminal(

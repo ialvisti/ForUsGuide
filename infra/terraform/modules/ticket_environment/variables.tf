@@ -216,40 +216,6 @@ variable "producer_liveness_probe" {
   nullable = true
 }
 
-# Segundo factor WIF del producer. Los valores pueden quedar vacíos mientras el
-# handler esté disabled; cualquier fase activa los exige mediante preconditions.
-variable "ticket_wif_audience" {
-  type    = string
-  default = ""
-}
-
-variable "ticket_wif_expected_email" {
-  type    = string
-  default = ""
-  validation {
-    condition = (
-      var.ticket_wif_expected_email == "" ||
-      can(regex("^[^@[:space:]]+@[^@[:space:]]+$", var.ticket_wif_expected_email))
-    )
-    error_message = "ticket_wif_expected_email debe ser un email de service account válido."
-  }
-}
-
-variable "ticket_wif_allowed_emails" {
-  type    = list(string)
-  default = []
-  validation {
-    condition = (
-      length(var.ticket_wif_allowed_emails) == length(toset(var.ticket_wif_allowed_emails)) &&
-      alltrue([
-        for email in var.ticket_wif_allowed_emails :
-        email == trimspace(email) && can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.iam\\.gserviceaccount\\.com$", email))
-      ])
-    )
-    error_message = "ticket_wif_allowed_emails debe contener SAs exactas, únicas y sin espacios."
-  }
-}
-
 # Manifest de secret versions NUMÉRICAS (nunca 'latest'). Mapa
 # nombre_lógico -> "projects/<p>/secrets/<s>/versions/<N>".
 variable "secret_version_refs" {
@@ -296,10 +262,6 @@ variable "task_signer_sa_email" {
 }
 
 variable "scheduler_sa_email" {
-  type = string
-}
-
-variable "n8n_invoker_sa_email" {
   type = string
 }
 

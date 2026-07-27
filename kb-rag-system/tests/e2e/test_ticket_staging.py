@@ -72,8 +72,6 @@ E2E_DERIVED_ENV_KEYS = (
     "E2E_RECONCILER_JOB",
     "E2E_RUNTIME_DIGEST",
     "E2E_RUNNER_DIGEST",
-    "E2E_WIF_AUDIENCE",
-    "E2E_WIF_EXPECTED_EMAIL",
     "E2E_RUNNER_SERVICE_ACCOUNT",
     "E2E_EVIDENCE_PATH",
 )
@@ -270,8 +268,6 @@ class StagingE2EConfig:
     rate_limit_api_key: str = field(repr=False)
     principal_id: str
     tenant_id: str
-    workload_audience: str
-    expected_caller_email: str
     runner_service_account: str
     participant_id: str
     plan_id: str
@@ -331,8 +327,6 @@ class StagingE2EConfig:
             "E2E_RATE_LIMIT_API_KEY",
             "E2E_PRINCIPAL_ID",
             "E2E_TENANT_ID",
-            "E2E_WIF_AUDIENCE",
-            "E2E_WIF_EXPECTED_EMAIL",
             "E2E_RUNNER_SERVICE_ACCOUNT",
             "E2E_PARTICIPANT_ID",
             "E2E_PLAN_ID",
@@ -412,13 +406,9 @@ class StagingE2EConfig:
                 raise StagingE2EConfigurationError(f"{name} must be immutable @sha256")
         if values["E2E_RUNTIME_DIGEST"] == values["E2E_RUNNER_DIGEST"]:
             raise StagingE2EConfigurationError("runtime and E2E runner digests must differ")
-        for name in ("E2E_WIF_EXPECTED_EMAIL", "E2E_RUNNER_SERVICE_ACCOUNT"):
+        for name in ("E2E_RUNNER_SERVICE_ACCOUNT",):
             if not _SERVICE_ACCOUNT_RE.fullmatch(values[name]):
                 raise StagingE2EConfigurationError(f"{name} is not a service account email")
-        if values["E2E_WIF_EXPECTED_EMAIL"] != values["E2E_RUNNER_SERVICE_ACCOUNT"]:
-            raise StagingE2EConfigurationError(
-                "runner identity is not an accepted v2 workload caller; no impersonation fallback"
-            )
         namespace = values["E2E_PINECONE_NAMESPACE"]
         if "staging" not in namespace.lower() or namespace in {"", "__default__"}:
             raise ProductionTargetRejected("Pinecone probe requires an explicit staging namespace")
@@ -482,8 +472,6 @@ class StagingE2EConfig:
             rate_limit_api_key=values["E2E_RATE_LIMIT_API_KEY"],
             principal_id=values["E2E_PRINCIPAL_ID"],
             tenant_id=values["E2E_TENANT_ID"],
-            workload_audience=_https_url(values["E2E_WIF_AUDIENCE"], "E2E_WIF_AUDIENCE"),
-            expected_caller_email=values["E2E_WIF_EXPECTED_EMAIL"],
             runner_service_account=values["E2E_RUNNER_SERVICE_ACCOUNT"],
             participant_id=values["E2E_PARTICIPANT_ID"],
             plan_id=values["E2E_PLAN_ID"],
@@ -578,8 +566,6 @@ def synthetic_valid_environment() -> dict[str, str]:
         "E2E_RATE_LIMIT_API_KEY": "synthetic-rate-principal-key",
         "E2E_PRINCIPAL_ID": "e2e",
         "E2E_TENANT_ID": "tenant-staging",
-        "E2E_WIF_AUDIENCE": "https://kb-rag-system-staging.example.test",
-        "E2E_WIF_EXPECTED_EMAIL": "ticket-e2e-stg@rag-kb-system.iam.gserviceaccount.com",
         "E2E_RUNNER_SERVICE_ACCOUNT": "ticket-e2e-stg@rag-kb-system.iam.gserviceaccount.com",
         "E2E_PARTICIPANT_ID": "synthetic-participant",
         "E2E_PLAN_ID": "synthetic-plan",
@@ -808,14 +794,8 @@ class StagingHarness:
             from google.oauth2.id_token import fetch_id_token
 
             cloud_run_token = fetch_id_token(Request(), self.config.producer_url)
-            workload_token = (
-                cloud_run_token
-                if self.config.workload_audience == self.config.producer_url
-                else fetch_id_token(Request(), self.config.workload_audience)
-            )
             self._producer_headers_cache = {
                 "Authorization": f"Bearer {cloud_run_token}",
-                "X-ForUs-Workload-Authorization": f"Bearer {workload_token}",
                 "X-API-Key": self.config.api_key,
                 "Content-Type": "application/json",
             }

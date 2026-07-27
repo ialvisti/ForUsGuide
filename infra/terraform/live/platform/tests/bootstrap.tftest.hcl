@@ -28,6 +28,16 @@ override_resource {
   target = google_artifact_registry_repository.images
 }
 
+# El verificador bootstrap también existe y se importa; el mock no puede
+# ejecutar imports reales.
+override_resource {
+  target = google_service_account.controller_verifier
+  values = {
+    email = "ticket-controller-verify@rag-kb-system.iam.gserviceaccount.com"
+    name  = "projects/rag-kb-system/serviceAccounts/ticket-controller-verify@rag-kb-system.iam.gserviceaccount.com"
+  }
+}
+
 override_resource {
   target = google_service_account.runtime["ticket-producer-prod"]
   values = {
@@ -670,44 +680,4 @@ run "g1c_enforce_removes_only_the_legacy_grant" {
     )
     error_message = "G1C enforce debe retirar el grant project-wide y conservar el scoped."
   }
-}
-
-run "aws_wif_uses_stable_role_attributes_and_separate_environment_roles" {
-  command = plan
-
-  variables {
-    enable_n8n_wif     = true
-    n8n_aws_account_id = "123456789012"
-    n8n_aws_role_arns = {
-      staging    = "arn:aws:iam::123456789012:role/n8n-ticket-staging"
-      production = "arn:aws:iam::123456789012:role/n8n-ticket-production"
-    }
-  }
-
-  assert {
-    condition = (
-      google_iam_workload_identity_pool_provider.n8n_aws[0].attribute_mapping["attribute.aws_role"] == "assertion.arn.extract('assumed-role/{role_name}/')" &&
-      strcontains(google_iam_workload_identity_pool_provider.n8n_aws[0].attribute_condition, "attribute.aws_role") &&
-      strcontains(google_iam_workload_identity_pool_provider.n8n_aws[0].attribute_condition, "n8n-ticket-staging") &&
-      strcontains(google_iam_workload_identity_pool_provider.n8n_aws[0].attribute_condition, "n8n-ticket-production") &&
-      length(google_service_account_iam_member.n8n_wif_stg) == 1 &&
-      length(google_service_account_iam_member.n8n_wif_prod) == 1
-    )
-    error_message = "WIF debe normalizar el role de sesión y separar los principals por entorno."
-  }
-}
-
-run "aws_wif_rejects_one_role_shared_by_both_environments" {
-  command = plan
-
-  variables {
-    enable_n8n_wif     = true
-    n8n_aws_account_id = "123456789012"
-    n8n_aws_role_arns = {
-      staging    = "arn:aws:iam::123456789012:role/n8n-ticket"
-      production = "arn:aws:iam::123456789012:role/n8n-ticket"
-    }
-  }
-
-  expect_failures = [google_iam_workload_identity_pool.n8n[0]]
 }

@@ -865,7 +865,7 @@ resource "google_monitoring_alert_policy" "producer_auth_failure_ratio" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "Revisar WIF/audience/SA y client mapping. No relajar auth ni reactivar credenciales humanas."
+    content   = "Revisar el ID token IAM de kb-rag-client y X-API-Key. No relajar auth ni cambiar el workflow durante el incidente."
   }
   notification_channels = var.notification_channels
 }

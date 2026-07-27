@@ -25,14 +25,13 @@ variable "runtime_service_accounts" {
         "ticket-reconciler-stg",
         "ticket-task-signer-stg",
         "ticket-scheduler-stg",
-        "n8n-ticket-invoker-stg",
       ]), toset(keys(var.runtime_service_accounts)))) == 0 &&
       alltrue([
         for email in values(var.runtime_service_accounts) :
         can(regex("^[^@[:space:]]+@[^@[:space:]]+\\.iam\\.gserviceaccount\\.com$", email))
       ])
     )
-    error_message = "runtime_service_accounts debe incluir las seis SAs staging como emails GCP válidos."
+    error_message = "runtime_service_accounts debe incluir las cinco SAs staging como emails GCP válidos."
   }
 }
 
@@ -96,21 +95,6 @@ variable "secret_version_refs" {
 variable "producer_core_env" {
   type    = map(string)
   default = {}
-}
-
-variable "ticket_wif_audience" {
-  type    = string
-  default = ""
-}
-
-variable "ticket_wif_expected_email" {
-  type    = string
-  default = ""
-}
-
-variable "ticket_wif_allowed_emails" {
-  type    = list(string)
-  default = []
 }
 
 variable "secret_containers" {

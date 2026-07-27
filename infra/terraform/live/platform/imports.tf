@@ -5,6 +5,14 @@ import {
   id = "projects/${var.project_id}/locations/${var.region}/repositories/kb-rag"
 }
 
+# Bootstrap read-only creado para ejecutar la verificación previa al primer
+# apply de platform. Importarlo evita intentar recrearlo cuando se habilite el
+# pipeline declarativo.
+import {
+  to = google_service_account.controller_verifier
+  id = "projects/${var.project_id}/serviceAccounts/ticket-controller-verify@${var.project_id}.iam.gserviceaccount.com"
+}
+
 import {
   for_each = var.enable_legacy_trigger_neutralization ? {
     legacy = "projects/rag-kb-system/locations/global/triggers/c2126528-7cd3-4063-9214-5eb82e9f76a6"

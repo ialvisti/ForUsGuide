@@ -70,7 +70,7 @@ locals {
       reconciler      = google_service_account.runtime["ticket-reconciler-stg"].email
       task_signer     = google_service_account.runtime["ticket-task-signer-stg"].email
       scheduler       = google_service_account.runtime["ticket-scheduler-stg"].email
-      n8n             = google_service_account.runtime["n8n-ticket-invoker-stg"].email
+      n8n             = "kb-rag-client@${var.project_id}.iam.gserviceaccount.com"
       e2e             = google_service_account.runtime["ticket-e2e-stg"].email
       producer_name   = "kb-rag-system-staging"
       worker_name     = "kb-rag-ticket-worker-staging"
@@ -83,7 +83,7 @@ locals {
       reconciler      = google_service_account.runtime["ticket-reconciler-prod"].email
       task_signer     = google_service_account.runtime["ticket-task-signer-prod"].email
       scheduler       = google_service_account.runtime["ticket-scheduler-prod"].email
-      n8n             = google_service_account.runtime["n8n-ticket-invoker-prod"].email
+      n8n             = "kb-rag-client@${var.project_id}.iam.gserviceaccount.com"
       e2e             = null
       producer_name   = "kb-rag-system"
       worker_name     = "kb-rag-ticket-worker"

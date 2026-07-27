@@ -111,14 +111,6 @@ resource "google_cloud_run_v2_job" "e2e" {
           value = var.e2e_job.image_digest
         }
         env {
-          name  = "E2E_WIF_AUDIENCE"
-          value = var.ticket_wif_audience
-        }
-        env {
-          name  = "E2E_WIF_EXPECTED_EMAIL"
-          value = var.e2e_job.service_account_email
-        }
-        env {
           name  = "E2E_RUNNER_SERVICE_ACCOUNT"
           value = var.e2e_job.service_account_email
         }

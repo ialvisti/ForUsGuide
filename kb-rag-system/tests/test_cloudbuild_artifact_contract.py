@@ -79,7 +79,7 @@ def test_runtime_build_resolves_the_registry_digest_not_local_docker_state() -> 
     assert "docker image inspect" not in controller
     assert "gcloud artifacts docker images describe" in controller
     assert "image_summary.fully_qualified_digest" in controller
-    assert "--if-generation-match=0" in controller
+    assert "scripts/upload_gcs_write_once.sh" in controller
 
 
 def test_runtime_evidence_uses_the_ticket_ci_authorized_bucket_prefix() -> None:
@@ -94,19 +94,26 @@ def test_runtime_evidence_uses_the_ticket_ci_authorized_bucket_prefix() -> None:
     ).read_text(encoding="utf-8")
 
     assert 'prefix = "runtime/"' in platform_iam
-    assert controller.count(
-        "gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/"
-    ) == 3
-    assert "gs://${_EVIDENCE_BUCKET}/ci/$COMMIT_SHA/" not in controller
+    assert controller.count("runtime/$COMMIT_SHA/") == 3
+    assert "ci/$COMMIT_SHA/" not in controller
 
 
-def test_runtime_evidence_upload_does_not_require_bucket_listing() -> None:
+def test_runtime_evidence_upload_uses_create_only_gcs_api() -> None:
     controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
     upload_steps = controller[controller.index("id: 'upload-sbom'"):]
+    uploader = (KB_ROOT / "scripts" / "upload_gcs_write_once.sh").read_text(
+        encoding="utf-8"
+    )
 
-    assert upload_steps.count("gcloud storage cp") == 3
-    assert upload_steps.count("--if-generation-match=0") == 3
+    assert upload_steps.count("scripts/upload_gcs_write_once.sh") == 3
+    assert "gcloud storage cp" not in upload_steps
     assert "gsutil " not in upload_steps
+    assert "curl " in uploader
+    assert "x-goog-if-generation-match: 0" in uploader
+    assert "--upload-file" in uploader
+    assert "gcloud auth print-access-token" in uploader
+    for forbidden in ("storage objects describe", "storage ls", "gsutil"):
+        assert forbidden not in uploader
 
 
 def test_runtime_build_escapes_shell_only_variables_from_cloud_build_substitution() -> None:

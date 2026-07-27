@@ -121,9 +121,10 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        gcloud storage cp --if-generation-match=0 \
-          /workspace/sbom.spdx.json \
-          gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/sbom.spdx.json
+        bash kb-rag-system/scripts/upload_gcs_write_once.sh \
+          '${_EVIDENCE_BUCKET}' \
+          'runtime/$COMMIT_SHA/sbom.spdx.json' \
+          /workspace/sbom.spdx.json
 
   # 10) analizar ESE digest con On-Demand Scanning; CRITICAL bloquea sin
   # excepción; cada HIGH requiere G5V por digest+CVE aún vigente.
@@ -155,12 +156,14 @@ steps:
       - '-c'
       - |
         set -euo pipefail
-        gcloud storage cp --if-generation-match=0 \
-          /workspace/scan-vulnerabilities.json \
-          gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/scan-vulnerabilities.json
-        gcloud storage cp --if-generation-match=0 \
-          /workspace/scan-policy.json \
-          gs://${_EVIDENCE_BUCKET}/runtime/$COMMIT_SHA/scan-policy.json
+        bash kb-rag-system/scripts/upload_gcs_write_once.sh \
+          '${_EVIDENCE_BUCKET}' \
+          'runtime/$COMMIT_SHA/scan-vulnerabilities.json' \
+          /workspace/scan-vulnerabilities.json
+        bash kb-rag-system/scripts/upload_gcs_write_once.sh \
+          '${_EVIDENCE_BUCKET}' \
+          'runtime/$COMMIT_SHA/scan-policy.json' \
+          /workspace/scan-policy.json
 
 options:
   logging: CLOUD_LOGGING_ONLY

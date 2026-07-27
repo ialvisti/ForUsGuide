@@ -108,13 +108,11 @@ steps:
 
   - name: 'anchore/syft:v1.46.0@sha256:473a60e3a58e29aca3aedb3e99e787bb4ef273917e44d10fcbea4330a07320bb'
     id: 'sbom'
-    entrypoint: sh
+    entrypoint: '/syft'
     args:
-      - '-c'
-      - |
-        set -eu
-        DIGEST=$$(cat /workspace/image_digest.txt)
-        syft "$$DIGEST" -o spdx-json > /workspace/sbom.spdx.json
+      - 'us-central1-docker.pkg.dev/$PROJECT_ID/kb-rag/kb-rag-system:$COMMIT_SHA'
+      - '-o'
+      - 'spdx-json=/workspace/sbom.spdx.json'
 
   - name: 'gcr.io/google.com/cloudsdktool/google-cloud-cli:577.0.0@sha256:1ccec754a72b81280b047f476e92771afbef26b3072f3798937fc39101f7a60a'
     id: 'upload-sbom'

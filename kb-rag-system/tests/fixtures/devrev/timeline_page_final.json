@@ -1,0 +1,103 @@
+{
+  "_meta": {
+    "provenance": "SYNTHETIC. Hand-authored from the public DevRev API response shapes documented at https://developer.devrev.ai (works.list, works.get, timeline-entries.list) on 2026-07-27. NOT a capture of real DevRev traffic.",
+    "sanitization": "No real participant, employee, email, ticket body, PAT, DON tenant segment, or attachment URL. All identifiers, names, and text are invented. Display IDs use the TKT-1234 range and all domains are example.invalid.",
+    "endpoint": "timeline-entries.list",
+    "devrev_version": "2022-10-20"
+  },
+  "response": {
+    "timeline_entries": [
+      {
+        "type": "timeline_comment",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:timeline_event/1",
+        "display_id": "TKT-1234:1",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "object_type": "ticket",
+        "visibility": "external",
+        "body": "Hi, I left my prior employer last month. What do I need to send you to move that balance over?",
+        "body_type": "text",
+        "created_by": {
+          "type": "rev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:revu/21",
+          "display_name": "Sam Participant",
+          "email": "sam.participant@example.invalid"
+        },
+        "created_date": "2026-05-04T14:12:07.000Z",
+        "modified_date": "2026-05-04T14:12:07.000Z"
+      },
+      {
+        "type": "timeline_comment",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:timeline_event/2",
+        "display_id": "TKT-1234:2",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "object_type": "ticket",
+        "visibility": "internal",
+        "body": "Checked the plan record: rollovers in are allowed. Need the prior provider statement before we reply.",
+        "body_type": "text",
+        "created_by": {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/11",
+          "display_name": "Ada Support",
+          "email": "ada.support@example.invalid"
+        },
+        "created_date": "2026-05-04T15:40:22.000Z",
+        "modified_date": "2026-05-04T15:40:22.000Z"
+      },
+      {
+        "type": "timeline_comment",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:timeline_event/3",
+        "display_id": "TKT-1234:3",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "object_type": "ticket",
+        "visibility": "internal",
+        "body": "Draft answer: outline the rollover-in steps, list the two forms the recordkeeper requires, and note the typical processing window. Sources cited internally.",
+        "body_type": "text",
+        "created_by": {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/99",
+          "display_name": "ForUs RAG Assistant",
+          "email": "forus.rag.assistant@example.invalid"
+        },
+        "created_date": "2026-05-05T09:02:11.000Z",
+        "modified_date": "2026-05-05T09:02:11.000Z"
+      },
+      {
+        "type": "timeline_change_event",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:timeline_event/4",
+        "display_id": "TKT-1234:4",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "object_type": "ticket",
+        "visibility": "internal",
+        "change": {
+          "field": "stage",
+          "old": "triage",
+          "new": "in_development"
+        },
+        "created_by": {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/11",
+          "display_name": "Ada Support",
+          "email": "ada.support@example.invalid"
+        },
+        "created_date": "2026-05-05T09:15:03.000Z",
+        "modified_date": "2026-05-05T09:15:03.000Z"
+      },
+      {
+        "type": "timeline_future_entry_type_v9",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:timeline_event/5",
+        "display_id": "TKT-1234:5",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "object_type": "ticket",
+        "future_payload": {
+          "kind": "experimental_signal",
+          "label": "unmodeled-by-design",
+          "count": 3,
+          "nested": {"flag": true}
+        },
+        "created_date": "2026-05-06T09:31:44.000Z",
+        "modified_date": "2026-05-06T09:31:44.000Z"
+      }
+    ],
+    "next_cursor": null
+  }
+}

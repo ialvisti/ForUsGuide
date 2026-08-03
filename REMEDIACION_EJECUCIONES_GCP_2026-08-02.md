@@ -8,18 +8,20 @@
 **Rama de trabajo:** `codex/fix-ticket-execution-failures`
 **Commits de código:** `ae0a81d031dcb0d3cae7032e32ed74c2ef14103f`,
 `ba9c060ac9e7ced428b64aeb9b94fbb89b36de3e`
+**PR de código:** [#14](https://github.com/ialvisti/ForUsGuide/pull/14)
+**Merge en `main`:** `8055c2a2d4aaed283e043c9ff41a1b6d85d08d52`
 
 ## Estado ejecutivo
 
-El incidente quedó **contenido en producción** y la corrección integral está
-implementada en una rama limpia derivada de `origin/main`. No se usó ni se
-alteró el checkout obsoleto `handle-ticket-hardening`, que conserva cambios del
-usuario.
+El incidente quedó **corregido y desplegado en producción bajo contención
+`knowledge_only`**. La corrección se integró mediante el PR #14 en la rama
+canónica `main`; `main` local y remota se sincronizaron sin usar ni alterar el
+checkout obsoleto `handle-ticket-hardening`, que conserva cambios del usuario.
 
-La rama y ambos commits están publicados en
-`origin/codex/fix-ticket-execution-failures`. Una auditoría independiente no
-encontró P0 residuales y los dos P1 y el P2 que detectó quedaron corregidos con
-pruebas RED→GREEN antes del gate remoto final.
+Una auditoría independiente no encontró P0 residuales y los dos P1 y el P2 que
+detectó quedaron corregidos con pruebas RED→GREEN antes del gate remoto final.
+El producer, worker y reconciliador productivos usan ahora el digest corregido
+`sha256:0711f1f55e5e38d9becbac77fa2853fb96996369b8ed4fb8d8f03bff28b6a9c4`.
 
 La ruta `generate_response` no debe volver a activarse en producción hasta
 completar los gates live indicados al final de este documento. La razón no es
@@ -62,6 +64,44 @@ gcloud run services update-traffic kb-rag-system \
 ```
 
 Ese rollback reabriría el defecto original y no debe usarse para activar GR.
+
+## Promoción productiva del código corregido
+
+El merge `8055c2a2d4aaed283e043c9ff41a1b6d85d08d52` activó únicamente el
+trigger CI de `main`: no contiene deploy, apply ni cambio de tráfico. Cloud
+Build `b77a08c7-aec5-4a49-8ec8-8b0f7fd0e910` terminó `SUCCESS` en sus nueve
+pasos (2026-08-03 16:41:49–16:46:21 UTC), con source provenance ligado al
+merge exacto, SLSA build level 3, SBOM write-once y scan sin vulnerabilidades
+ni excepciones. El artefacto promovido fue:
+
+`us-central1-docker.pkg.dev/rag-kb-system/kb-rag/kb-rag-system@sha256:0711f1f55e5e38d9becbac77fa2853fb96996369b8ed4fb8d8f03bff28b6a9c4`.
+
+La promoción se hizo de forma gradual con queue y scheduler pausados, revisiones
+a 0%, probes autenticados y canary del producer antes del 100%:
+
+| Superficie | Resultado productivo |
+|---|---|
+| Producer | `kb-rag-system-inc8055c2a`, 100%, `Ready=True`, `knowledge_only`, SA `ticket-producer-prod` |
+| Worker | `kb-rag-ticket-worker-inc8055c2a`, 100%, `Ready=True`, SA `ticket-worker-prod` |
+| Reconciliador | generación 5, digest nuevo, timeout 300 s, `maxRetries=0`, SA `ticket-reconciler-prod` |
+| Cloud Tasks | `RUNNING`, 2/s, concurrencia 2, 5 intentos, logging sampling 1.0 |
+| Scheduler | `ENABLED`, `*/6 * * * *`, deadline 300 s, cero retries |
+
+El canary del producer sirvió 40/40 `/readyz` con 3 respuestas 200 atribuidas
+a la revisión candidata y cero errores. Después de promoverlo al 100%, otras
+20/20 respuestas fueron 200. Un smoke funcional v2 con datos exclusivamente
+sintéticos confirmó `queued → running → succeeded`, replay de la misma
+`Idempotency-Key` al mismo job, `error=none` y
+`next_action=send_participant_reply`. `knowledge_only` impidió cualquier efecto
+ForUsBots.
+
+El reconciliador tuvo una ejecución manual controlada
+`ticket-reconciler-prod-f2rmc` y el primer tick automático
+`ticket-reconciler-prod-t8nmv`; ambas terminaron `Completed=True` con el digest
+nuevo y sin retry. Queue y logs quedaron sin backlog ni errores al cerrar la
+ventana. Los anchors inmediatos de rollback son las revisiones anteriores
+`kb-rag-system-00053-jmx` (también `knowledge_only`) y
+`kb-rag-ticket-worker-00004-zf8`; no se eliminó ninguna revisión ni dato.
 
 ## Causa raíz confirmada y corrección
 
@@ -215,12 +255,14 @@ cero retries automáticos: el siguiente tick es la recuperación idempotente y
 el intervalo excede el timeout, evitando solapamiento. Con el máximo observado
 de 191 s, la recuperación esperada permanece por debajo del SLA de 10 minutos.
 
-Estos cambios Terraform están implementados pero **todavía no aplicados**. La
-lectura live de 2026-08-03 confirmó que `ticket-jobs-prod` sigue `RUNNING`, con
-2 despachos/s, concurrencia 2, cinco intentos y sin logging; Scheduler sigue
-habilitado cada minuto con deadline 180 s. No se mutarán hasta que el plan
-remoto exacto confirme cero deletes/replaces y satisfaga los quorums del
-controlador.
+Estos cambios Terraform están implementados pero **todavía no se aplicaron por
+Terraform**. Durante la promoción operativa autorizada se alinearon en vivo,
+sin deletes/replaces, los valores de bajo riesgo: Cloud Tasks conserva 2
+despachos/s, concurrencia 2 y cinco intentos, ahora con logging sampling 1.0;
+Scheduler usa `*/6`, deadline 300 s y cero retries; el Run Job usa timeout 300 s
+y cero retries. Su adopción en state y la comprobación de un plan sin drift
+siguen pendientes del bootstrap gobernado pre-G1B; no se afirmará convergencia
+Terraform hasta completar ese flujo.
 
 El plan remoto tampoco se fabricó por fuera del flujo gobernado. Antes de G1B
 falta una ruta publisher confiable/source-less que publique y escanee el
@@ -274,33 +316,37 @@ imágenes, no desplegó, no ejecutó `terraform apply` y no escribió evidencia 
 release.
 
 El build diagnóstico anterior `e94b1116-bde2-4648-bb6d-aeee433990f5` también
-terminó `SUCCESS` sobre `ae0a81d`, pero el resultado autoritativo para el código
-final es `fe41ade9…`. Digest promovible, SBOM/provenance, scan y planes remotos
-pertenecen al build de release y a los triggers Terraform gobernados; no son
-salidas del recipe verify-only y siguen correctamente pendientes.
+terminó `SUCCESS` sobre `ae0a81d`, pero el resultado autoritativo de verificación
+pre-merge es `fe41ade9…`. El build de `main`
+`b77a08c7-aec5-4a49-8ec8-8b0f7fd0e910` aportó además el digest promovible,
+SBOM, provenance y scan write-once del merge exacto. Los planes y applies
+Terraform continúan perteneciendo al flujo gobernado y no se sustituyeron por
+este build.
 
 ## Gates cumplidos
 
-1. Corrección y hardening publicados en los commits remotos exactos indicados.
-2. Cloud Build verify-only verde sobre el commit final, incluido Emulator,
-   Terraform y smokes de contenedores.
-3. Contención live revalidada saludable y sin tráfico en la revisión `full`
-   anterior.
-4. Ocho efectos históricos confirmados como exitosos, con decisión de cero
+1. Corrección y hardening publicados, PR #14 integrado y `main` local/remota
+   sincronizadas.
+2. Cloud Build verify-only verde y build de `main` verde con digest inmutable,
+   SBOM, provenance SLSA 3 y scan sin hallazgos.
+3. Producer/worker/reconciliador corregidos en producción; canary, probes,
+   smoke v2 idempotente y tick automático completados sin errores.
+4. Queue y scheduler reanudados con la configuración operativa corregida.
+5. Ocho efectos históricos confirmados como exitosos, con decisión de cero
    replays; dos falsos outages Pinecone reclasificados.
 
 ## Gates live pendientes y criterio de cierre
 
-1. Build de release gobernado con digest inmutable, SBOM/provenance y scan;
-   primero debe cerrarse el bootstrap publisher pre-G1B documentado.
-2. Planes Terraform revisados: cero delete/replace; apply sólo con quorum exacto.
-3. Revisión producer/worker corregida sin tráfico y probes sintéticos sin PII.
-4. Importar/validar/activar el workflow n8n sanitizado en su instancia.
-5. Contrato upstream ForUsBots HTTPS/privado con idempotencia o lookup de
+1. Bootstrap publisher/controlador pre-G1B y planes Terraform revisados: cero
+   delete/replace; adopción/apply sólo con quorum exacto.
+2. Importar, validar y activar el workflow n8n sanitizado en su instancia; el
+   repositorio no contiene URL ni credencial operable de esa instancia.
+3. Contrato upstream ForUsBots HTTPS/privado con idempotencia o lookup de
    reconciliación; mientras falte, GR permanece legacy/knowledge-only.
-6. Sólo después: canary, paridad 1:1 de evento terminal/métrica y al menos 20
+4. Sólo después: canary GR, paridad 1:1 de evento terminal/métrica y al menos 20
    GR consecutivos seguros. Cualquier `INTERNAL_ERROR`, ID externo ausente o
    discrepancia de métricas aborta y revierte.
 
-Hasta completar esos gates, el resultado correcto es **incidente contenido,
-corrección implementada, rollout full bloqueado de forma segura**.
+El resultado correcto es **remediación desplegada y verificada en producción
+bajo `knowledge_only`; rollout `full` bloqueado de forma segura por el contrato
+upstream y los gates externos restantes**.

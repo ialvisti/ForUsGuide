@@ -1,0 +1,66 @@
+{
+  "_meta": {
+    "provenance": "SYNTHETIC. Hand-authored from the public DevRev API response shapes documented at https://developer.devrev.ai (works.list, works.get, timeline-entries.list) on 2026-07-27. NOT a capture of real DevRev traffic.",
+    "sanitization": "No real participant, employee, email, ticket body, PAT, DON tenant segment, or attachment URL. All identifiers, names, and text are invented. Display IDs use the TKT-1234 range and all domains are example.invalid.",
+    "endpoint": "works.list",
+    "devrev_version": "2022-10-20"
+  },
+  "response": {
+    "works": [
+      {
+        "type": "ticket",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1236",
+        "display_id": "TKT-1236",
+        "title": "Confirm beneficiary designation was saved",
+        "created_date": "2026-04-28T11:05:33.000Z",
+        "modified_date": "2026-05-02T13:20:10.000Z",
+        "stage": {"name": "resolved"},
+        "state": "closed",
+        "severity": "low",
+        "applies_to_part": {
+          "type": "product",
+          "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:product/1",
+          "display_id": "PROD-1",
+          "name": "Retirement Support"
+        },
+        "owned_by": [
+          {
+            "type": "dev_user",
+            "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/11",
+            "display_name": "Ada Support",
+            "email": "ada.support@example.invalid"
+          }
+        ],
+        "created_by": {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/12",
+          "display_name": "Blair Agent",
+          "email": "blair.agent@example.invalid"
+        },
+        "modified_by": {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/12",
+          "display_name": "Blair Agent",
+          "email": "blair.agent@example.invalid"
+        },
+        "reported_by": {
+          "type": "rev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:revu/23",
+          "display_name": "Ren Saver",
+          "email": "ren.saver@example.invalid"
+        },
+        "tags": [
+          {"id": "don:core:dvrv-us-1:devo/SYNTHETIC00:tag/6", "name": "beneficiaries"}
+        ],
+        "object_version": 2,
+        "ticket": {
+          "visibility": 2,
+          "source_channel": "web",
+          "subtype": "question"
+        }
+      }
+    ],
+    "next_cursor": null,
+    "prev_cursor": "cursor-works-page-1"
+  }
+}

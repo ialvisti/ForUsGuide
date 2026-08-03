@@ -1,0 +1,74 @@
+{
+  "_meta": {
+    "provenance": "SYNTHETIC. Hand-authored from the public DevRev API response shapes documented at https://developer.devrev.ai (works.list, works.get, timeline-entries.list) on 2026-07-27. NOT a capture of real DevRev traffic.",
+    "sanitization": "No real participant, employee, email, ticket body, PAT, DON tenant segment, or attachment URL. All identifiers, names, and text are invented. Display IDs use the TKT-1234 range and all domains are example.invalid.",
+    "endpoint": "works.get",
+    "devrev_version": "2022-10-20"
+  },
+  "response": {
+    "work": {
+      "type": "ticket",
+      "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+      "display_id": "TKT-1234",
+      "title": "Rollover question from sam.participant@example.invalid (555-0100)",
+      "body": "Participant asks how to move a prior-employer balance into the current plan and what paperwork the recordkeeper needs. No amounts confirmed yet.",
+      "body_type": "text",
+      "created_date": "2026-05-04T14:12:07.000Z",
+      "modified_date": "2026-05-06T09:31:44.000Z",
+      "stage": {"name": "triage"},
+      "state": "open",
+      "severity": "medium",
+      "priority": "p2",
+      "applies_to_part": {
+        "type": "product",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:product/1",
+        "display_id": "PROD-1",
+        "name": "Retirement Support"
+      },
+      "owned_by": [
+        {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/11",
+          "display_name": "Ada Support",
+          "email": "ada.support@example.invalid"
+        }
+      ],
+      "created_by": {
+        "type": "dev_user",
+        "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/11",
+        "display_name": "Ada Support",
+        "email": "ada.support@example.invalid"
+      },
+      "modified_by": {
+        "type": "dev_user",
+        "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/11",
+        "display_name": "Ada Support",
+        "email": "ada.support@example.invalid"
+      },
+      "reported_by": {
+        "type": "rev_user",
+        "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:revu/21",
+        "display_name": "Sam Participant",
+        "email": "sam.participant@example.invalid"
+      },
+      "rev_org": {
+        "type": "rev_org",
+        "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:revo/31",
+        "display_name": "Synthetic Plan Sponsor"
+      },
+      "tags": [
+        {"id": "don:core:dvrv-us-1:devo/SYNTHETIC00:tag/3", "name": "distributions"}
+      ],
+      "artifacts": [],
+      "object_version": 4,
+      "ticket": {
+        "visibility": 2,
+        "source_channel": "email",
+        "subtype": "question",
+        "channels": ["email"],
+        "group": null,
+        "sla_summary": null
+      }
+    }
+  }
+}

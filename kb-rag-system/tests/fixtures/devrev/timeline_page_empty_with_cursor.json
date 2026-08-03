@@ -1,0 +1,12 @@
+{
+  "_meta": {
+    "provenance": "SYNTHETIC. Hand-authored from the public DevRev API response shapes documented at https://developer.devrev.ai (works.list, works.get, timeline-entries.list) on 2026-07-27. NOT a capture of real DevRev traffic.",
+    "sanitization": "No real participant, employee, email, ticket body, PAT, DON tenant segment, or attachment URL. All identifiers, names, and text are invented. Display IDs use the TKT-1234 range and all domains are example.invalid.",
+    "endpoint": "timeline-entries.list",
+    "devrev_version": "2022-10-20"
+  },
+  "response": {
+    "timeline_entries": [],
+    "next_cursor": "cursor-timeline-page-2"
+  }
+}

@@ -1,5 +1,5 @@
 {
-  "__comment": "Índices y TTL del flujo de tickets (Tarea 5 Paso 3). La fuente autoritativa de despliegue es infra/terraform (modules/ticket_environment/firestore.tf); este archivo es la declaración canónica que la IaC refleja. Se declara POR base (ticket-staging y (default)); los collection IDs son idénticos porque la base — no un prefijo — es el límite de aislamiento.",
+  "__comment": "Índices y TTL del flujo de tickets (Tarea 5 Paso 3). La fuente autoritativa de despliegue es infra/terraform (modules/ticket_environment/firestore.tf); este archivo es la declaración canónica que la IaC refleja. Se declara POR base (ticket-staging y (default)); los collection IDs son idénticos porque la base — no un prefijo — es el límite de aislamiento. La consola /tickets (Etapa 3) declara sus propias colecciones en sus bases nombradas (tickets-console-staging y tickets-console-prod): los índices de ticket_reviews cubren EXACTAMENTE la gramática de consulta maestra (un set de estados más a lo sumo una faceta) y el TTL vive SÓLO en las cuatro colecciones desechables; ticket_reviews, sus audit_events/evidence_links, los lotes, imports y exports usan retention_expires_at (730d) y legal_hold, nunca TTL.",
   "indexes": [
     {
       "collectionGroup": "ticket_jobs",
@@ -35,6 +35,82 @@
         {"fieldPath": "created_at", "order": "ASCENDING"}
       ],
       "__comment": "reconciliador: outbox pending en orden FIFO acotado"
+    },
+    {
+      "collectionGroup": "ticket_reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"},
+        {"fieldPath": "review_id", "order": "ASCENDING"}
+      ],
+      "__comment": "consola /tickets: cola por estado con desempate estable (updated_at DESC, review_id ASC)"
+    },
+    {
+      "collectionGroup": "ticket_reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "assigned_reviewer.email", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"},
+        {"fieldPath": "review_id", "order": "ASCENDING"}
+      ],
+      "__comment": "consola /tickets: cola por revisor asignado (una sola faceta)"
+    },
+    {
+      "collectionGroup": "ticket_reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "observation_type", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"},
+        {"fieldPath": "review_id", "order": "ASCENDING"}
+      ],
+      "__comment": "consola /tickets: cola por taxonomía de causa raíz (una sola faceta)"
+    },
+    {
+      "collectionGroup": "ticket_reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "rating", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"},
+        {"fieldPath": "review_id", "order": "ASCENDING"}
+      ],
+      "__comment": "consola /tickets: cola por rating heredado (1-5) (una sola faceta)"
+    },
+    {
+      "collectionGroup": "ticket_reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "remediation_target", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"},
+        {"fieldPath": "review_id", "order": "ASCENDING"}
+      ],
+      "__comment": "consola /tickets: cola por objetivo de remediación (una sola faceta)"
+    },
+    {
+      "collectionGroup": "ticket_reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "severity", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"},
+        {"fieldPath": "review_id", "order": "ASCENDING"}
+      ],
+      "__comment": "consola /tickets: cola por severidad (una sola faceta)"
+    },
+    {
+      "collectionGroup": "ticket_reviews",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "status", "order": "ASCENDING"},
+        {"fieldPath": "topic", "order": "ASCENDING"},
+        {"fieldPath": "updated_at", "order": "DESCENDING"},
+        {"fieldPath": "review_id", "order": "ASCENDING"}
+      ],
+      "__comment": "consola /tickets: cola por tema (una sola faceta)"
     }
   ],
   "fieldOverrides": [
@@ -73,6 +149,30 @@
       "fieldPath": "expires_at",
       "ttl": true,
       "__comment": "logs estructurados core con retención declarativa"
+    },
+    {
+      "collectionGroup": "devrev_message_cache",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "cuerpos de mensaje DevRev: TTL 24h; único lugar con body/título"
+    },
+    {
+      "collectionGroup": "idempotency_keys",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "receipts de idempotencia de la consola: TTL 7d"
+    },
+    {
+      "collectionGroup": "ticket_console_cache",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "cache de listado/detalle: TTL 15 min (nunca retención de review)"
+    },
+    {
+      "collectionGroup": "ticket_import_staging",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "filas parseadas del CSV: TTL 7d, jamás la auditoría durable"
     }
   ]
 }

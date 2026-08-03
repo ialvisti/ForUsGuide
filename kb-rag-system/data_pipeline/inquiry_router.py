@@ -114,6 +114,8 @@ class CoveragePack:
     chunk_types_present: List[str]
     chunks: List[Dict[str, Any]] = field(default_factory=list)
     pinecone_error: Optional[str] = None
+    failure_kind: Optional[str] = None
+    retryable: bool = False
 
     @classmethod
     def empty(cls) -> "CoveragePack":
@@ -127,7 +129,13 @@ class CoveragePack:
         )
 
     @classmethod
-    def failed(cls, exception_name: str) -> "CoveragePack":
+    def failed(
+        cls,
+        exception_name: str,
+        *,
+        failure_kind: str = "unknown",
+        retryable: bool = False,
+    ) -> "CoveragePack":
         return cls(
             retrieval_status="failed",
             top_score=0.0,
@@ -136,6 +144,22 @@ class CoveragePack:
             chunk_types_present=[],
             chunks=[],
             pinecone_error=exception_name,
+            failure_kind=failure_kind,
+            retryable=retryable,
+        )
+
+    @classmethod
+    def blocked(cls, *, failure_kind: str) -> "CoveragePack":
+        return cls(
+            retrieval_status="blocked",
+            top_score=0.0,
+            chunk_count=0,
+            distinct_articles=[],
+            chunk_types_present=[],
+            chunks=[],
+            pinecone_error=None,
+            failure_kind=failure_kind,
+            retryable=False,
         )
 
     def signals_dict(self) -> Dict[str, Any]:
@@ -147,6 +171,8 @@ class CoveragePack:
             "distinct_articles": self.distinct_articles,
             "chunk_types_present": self.chunk_types_present,
             "pinecone_error": self.pinecone_error,
+            "failure_kind": self.failure_kind,
+            "retryable": self.retryable,
         }
 
     def to_prompt_block(self) -> str:
@@ -168,6 +194,9 @@ class CoveragePack:
         ]
         if self.pinecone_error:
             header_lines.append(f"  pinecone_error: {self.pinecone_error}")
+        if self.failure_kind:
+            header_lines.append(f"  failure_kind: {self.failure_kind}")
+        header_lines.append(f"  retryable: {str(self.retryable).lower()}")
 
         if not self.chunks:
             return "\n".join(header_lines)
@@ -501,6 +530,34 @@ class InquiryRouterEngine:
         signals = compute_deterministic_features(inquiry_norm)
 
         coverage_pack = await self._build_coverage_pack(inquiry_norm)
+
+        # A local privacy-policy rejection is authoritative.  Do not send the
+        # blocked inquiry to an LLM, and do not let an unrelated LLM outage
+        # mask the deterministic UNSAFE_RETRIEVAL_QUERY classification.
+        if (
+            coverage_pack.retrieval_status == "blocked"
+            and coverage_pack.failure_kind == "unsafe_query"
+        ):
+            reasoning = "Retrieval blocked by local privacy policy"
+            return ClassificationResult(
+                route="needs_more_info",
+                confidence=1.0,
+                reasoning=reasoning,
+                signals=signals,
+                fast_path_hit=False,
+                metadata={
+                    "model": None,
+                    "provider": None,
+                    "usage": {},
+                    "latency_ms": 0.0,
+                    "classifier_parse_ok": True,
+                    "coverage_signals": coverage_pack.signals_dict(),
+                    "coverage_basis": "no_coverage",
+                    "kb_coverage_top_score": coverage_pack.top_score,
+                    "kb_coverage_reasoning": reasoning,
+                },
+                user_message=_DEFAULT_USER_MESSAGE,
+            )
 
         system_prompt, user_prompt = build_classify_inquiry_prompt(
             inquiry=inquiry_norm,

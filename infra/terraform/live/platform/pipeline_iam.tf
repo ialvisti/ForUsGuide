@@ -442,7 +442,7 @@ resource "google_project_iam_custom_role" "platform_queue_broker" {
   project     = var.project_id
   role_id     = "ticketTfPlatformQueues"
   title       = "Ticket Terraform platform queue broker"
-  description = "Create/update/IAM/pause de las dos queues; nunca tasks/purge/resume."
+  description = "Create/update/IAM/pause/resume de las dos queues; nunca tasks/purge."
   permissions = [
     "cloudtasks.locations.get",
     "cloudtasks.locations.list",
@@ -450,6 +450,7 @@ resource "google_project_iam_custom_role" "platform_queue_broker" {
     "cloudtasks.queues.get",
     "cloudtasks.queues.getIamPolicy",
     "cloudtasks.queues.pause",
+    "cloudtasks.queues.resume",
     "cloudtasks.queues.setIamPolicy",
     "cloudtasks.queues.update",
   ]
@@ -800,6 +801,22 @@ resource "google_storage_bucket_iam_member" "platform_apply_evidence_writer" {
     title       = "platform_outputs_only"
     description = "Create-only exclusivamente bajo platform-outputs/."
     expression  = "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence.name}/objects/platform-outputs/\")"
+  }
+}
+
+# Platform plan must inspect the exact generation-bound input manifests before
+# it can adopt secret containers.  Keep this separate from aux_evidence_reader:
+# the plan does not need read access to plans, promotions, attestations or E2E.
+resource "google_storage_bucket_iam_member" "platform_plan_environment_inputs_reader" {
+  count  = var.cicd_bootstrap.enabled ? 1 : 0
+  bucket = google_storage_bucket.evidence.name
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.plan_platform[0].email}"
+
+  condition {
+    title       = "platform_plan_environment_inputs_only"
+    description = "Lectura exclusiva de manifests versionados environment-inputs."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${google_storage_bucket.evidence.name}/objects/environment-inputs/\")"
   }
 }
 

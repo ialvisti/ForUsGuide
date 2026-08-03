@@ -103,6 +103,20 @@ def test_dev_lock_is_self_contained_for_a_fresh_python_image() -> None:
     assert "packages were not pinned" not in dev_lock
 
 
+def test_convenience_requirements_cannot_downgrade_pinecone_sdk() -> None:
+    """README installs must match the SDK major exercised by CI/runtime."""
+    canonical = _read(KB_ROOT / "requirements.in")
+    convenience = _read(KB_ROOT / "requirements.txt")
+
+    canonical_spec = re.search(r"(?m)^pinecone[^#\n]+", canonical)
+    convenience_spec = re.search(r"(?m)^pinecone[^#\n]+", convenience)
+
+    assert canonical_spec is not None
+    assert convenience_spec is not None
+    assert convenience_spec.group(0).strip() == canonical_spec.group(0).strip()
+    assert ">=9.1.0,<10" in canonical_spec.group(0)
+
+
 def test_ci_container_scan_fails_closed_and_enforces_severity() -> None:
     cloudbuild = _read(KB_ROOT / "cloudbuild.yaml")
 
@@ -279,6 +293,8 @@ def test_cloud_build_source_upload_is_default_deny() -> None:
         "!docs/verification/",
         "!docs/verification/handle-ticket/",
         "!docs/verification/handle-ticket/11-incident-drill-template.md",
+        "!flows_n8n/",
+        "!flows_n8n/bounded_ticket_polling.json",
         "!External agents/",
         "!External agents/Inquiry Extraction & Required-Data Builder agent .md",
         "!External agents/Knowledge Question Inquiry Generator.md",

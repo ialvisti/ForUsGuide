@@ -126,4 +126,5 @@ def test_cloud_build_compares_fresh_scan_to_reviewed_baseline():
     assert "../PA" in config
     assert '"../External agents"' in config
     assert "../docs/verification/handle-ticket/11-incident-drill-template.md" in config
+    assert "../flows_n8n/bounded_ticket_polling.json" in config
     assert "--require-empty" in config

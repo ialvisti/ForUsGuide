@@ -530,6 +530,12 @@ async def test_producer_emits_observed_queue_delay_for_accepted_job(
     assert queue.enqueued == [(record.job_id, 0)]
     assert ("ticket_queue_delay_seconds", 12.5, {"code": "observed"}) \
         in emitted
+    accepted = [event for event in emitted if event[0] == "ticket_job_accepted"]
+    assert len(accepted) == 1
+    assert accepted[0][1] == 1
+    assert accepted[0][2]["mode"] == "full"
+    assert len(accepted[0][2]["job_hash"]) == 64
+    assert record.job_id not in repr(accepted)
 
 
 async def test_admission_uses_only_atomic_repository_quota_gates(

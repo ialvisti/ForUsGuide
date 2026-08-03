@@ -24,7 +24,11 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from cachetools import TTLCache
 
-from .pinecone_uploader import PineconeUploader
+from .pinecone_uploader import (
+    PineconeCircuitOpen,
+    PineconeRetrievalError,
+    PineconeUploader,
+)
 from .token_manager import TokenManager
 from .llm_router import LLMRouter, LLMResponse, LLMEmptyResponseError
 from collections import defaultdict
@@ -806,10 +810,29 @@ class RAGEngine:
                 }
             )
 
-        except Exception:
+        except Exception as exc:
             logger.error("Error en get_required_data")
+            transient_kinds = {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+            is_retrieval_failure = isinstance(
+                exc, (PineconeRetrievalError, PineconeCircuitOpen)
+            )
+            failure_kind = (
+                getattr(exc, "failure_kind", "unknown")
+                if is_retrieval_failure else "unknown"
+            )
+            if failure_kind not in transient_kinds | {"client_error"}:
+                failure_kind = "unknown"
             return self._build_empty_required_data_response(
-                "An internal error occurred while determining required data"
+                "required_data_failed",
+                retrieval_failure_kind=failure_kind,
+                retrieval_retryable=(
+                    is_retrieval_failure
+                    and getattr(exc, "retryable", False) is True
+                    and failure_kind in transient_kinds
+                ),
             )
 
     # ========================================================================
@@ -925,7 +948,7 @@ class RAGEngine:
             if not chunks:
                 logger.warning("No se encontraron chunks relevantes")
                 return self._build_uncertain_response(
-                    "No relevant articles found for this topic",
+                    "no_relevant_articles",
                     confidence=0.0
                 )
 
@@ -1283,10 +1306,22 @@ class RAGEngine:
 
         except Exception as e:
             logger.error("Error en generate_response")
+            transient_kinds = {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+            failure_kind = getattr(e, "failure_kind", "unknown")
+            if failure_kind not in transient_kinds | {"client_error", "unknown"}:
+                failure_kind = "unknown"
             return self._build_uncertain_response(
-                f"{type(e).__name__}: {e}",
+                "generate_response_failed",
                 confidence=0.0,
                 error_type=type(e).__name__,
+                retrieval_failure_kind=failure_kind,
+                retrieval_retryable=(
+                    getattr(e, "retryable", False) is True
+                    and failure_kind in transient_kinds
+                ),
             )
 
     # ========================================================================
@@ -1652,13 +1687,31 @@ class RAGEngine:
 
         except Exception as e:
             logger.error("Error in ask_knowledge_question")
+            transient_kinds = {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+            failure_kind = getattr(e, "failure_kind", "unknown")
+            if failure_kind not in transient_kinds | {"client_error", "unknown"}:
+                failure_kind = "unknown"
+            retryable = (
+                getattr(e, "retryable", False) is True
+                and failure_kind in transient_kinds
+            )
             return KnowledgeQuestionResult(
                 answer="An internal error occurred while processing your question.",
                 key_points=[],
                 source_articles=[],
                 used_chunks=[],
                 confidence_note="limited_coverage",
-                metadata={"error": str(e), "chunks_used": 0, "model": None, "provider": None}
+                metadata={
+                    "error": "knowledge_question_failed",
+                    "retrieval_failure_kind": failure_kind,
+                    "retrieval_retryable": retryable,
+                    "chunks_used": 0,
+                    "model": None,
+                    "provider": None,
+                },
             )
 
     # ========================================================================
@@ -5672,8 +5725,36 @@ class RAGEngine:
             return True
         return all(isinstance(v, list) and len(v) == 0 for v in arrays)
 
-    def _build_empty_required_data_response(self, reason: str) -> RequiredDataResponse:
+    def _build_empty_required_data_response(
+        self,
+        reason: str,
+        *,
+        retrieval_failure_kind: Optional[str] = None,
+        retrieval_retryable: bool = False,
+    ) -> RequiredDataResponse:
         """Construye respuesta vacía para required_data."""
+        metadata: Dict[str, Any] = {
+            "error": reason,
+            "chunks_used": 0,
+            "sub_queries": [],
+            "per_query_scores": {},
+            "unique_articles": 0,
+            "relevant_articles": 0,
+            "coverage_gaps": [],
+        }
+        reviewed_failure_kinds = {
+            "timeout", "transport", "rate_limit", "server_error",
+            "circuit_open", "client_error", "unknown",
+        }
+        if retrieval_failure_kind in reviewed_failure_kinds:
+            metadata["retrieval_failure_kind"] = retrieval_failure_kind
+            metadata["retrieval_retryable"] = (
+                retrieval_retryable is True
+                and retrieval_failure_kind in {
+                    "timeout", "transport", "rate_limit", "server_error",
+                    "circuit_open",
+                }
+            )
         return RequiredDataResponse(
             article_reference={
                 "article_id": None,
@@ -5688,15 +5769,7 @@ class RAGEngine:
             source_articles=[],
             used_chunks=[],
             coverage_gaps=[],
-            metadata={
-                "error": reason,
-                "chunks_used": 0,
-                "sub_queries": [],
-                "per_query_scores": {},
-                "unique_articles": 0,
-                "relevant_articles": 0,
-                "coverage_gaps": []
-            }
+            metadata=metadata,
         )
 
     def _build_no_match_required_data_response(
@@ -5904,10 +5977,24 @@ class RAGEngine:
         reason: str,
         confidence: float,
         error_type: Optional[str] = None,
+        retrieval_failure_kind: Optional[str] = None,
+        retrieval_retryable: bool = False,
     ) -> GenerateResponseResult:
         """Construye respuesta de fallback con el schema outcome-driven."""
+        reason_messages = {
+            "no_relevant_articles": (
+                "No relevant knowledge-base articles were available."
+            ),
+            "generate_response_failed": (
+                "Automated response generation could not be completed."
+            ),
+        }
+        reason_code = (
+            reason if reason in reason_messages else "generate_response_failed"
+        )
+        safe_reason = reason_messages[reason_code]
         metadata: Dict[str, Any] = {
-            "error": reason,
+            "error": reason_code,
             "chunks_used": 0,
             "sub_queries": [],
             "per_query_scores": {},
@@ -5916,13 +6003,34 @@ class RAGEngine:
             "coverage_gaps": [],
         }
         if error_type is not None:
-            metadata["error_type"] = error_type
+            reviewed_error_types = {
+                "PineconeRetrievalError", "PineconeCircuitOpen",
+                "PineconeConnectionError", "PineconeTimeoutError",
+                "TimeoutError", "ConnectionError", "RuntimeError",
+                "ValueError", "TypeError", "Exception",
+            }
+            metadata["error_type"] = (
+                error_type if error_type in reviewed_error_types else "Exception"
+            )
+        reviewed_failure_kinds = {
+            "timeout", "transport", "rate_limit", "server_error",
+            "circuit_open", "client_error", "unknown",
+        }
+        if retrieval_failure_kind in reviewed_failure_kinds:
+            metadata["retrieval_failure_kind"] = retrieval_failure_kind
+            metadata["retrieval_retryable"] = (
+                retrieval_retryable is True
+                and retrieval_failure_kind in {
+                    "timeout", "transport", "rate_limit", "server_error",
+                    "circuit_open",
+                }
+            )
         return GenerateResponseResult(
             decision="out_of_scope",
             confidence=confidence,
             response={
                 "outcome": "blocked_missing_data",
-                "outcome_reason": f"Unable to generate response: {reason}",
+                "outcome_reason": safe_reason,
                 "response_to_participant": {
                     "opening": "We were unable to find sufficient information to address your inquiry.",
                     "key_points": [],
@@ -5935,7 +6043,7 @@ class RAGEngine:
                     "reason": "This inquiry may require human review."
                 },
                 "guardrails_applied": [],
-                "data_gaps": [reason],
+                "data_gaps": [safe_reason],
                 "coverage_gaps": []
             },
             source_articles=[],

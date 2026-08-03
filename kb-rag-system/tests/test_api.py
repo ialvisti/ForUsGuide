@@ -715,6 +715,24 @@ class TestCoveragePackBuilder:
     """
 
     @pytest.mark.asyncio
+    async def test_unsafe_query_returns_blocked_non_pinecone_pack(self):
+        from api.main import _make_coverage_pack_builder
+        from data_pipeline.retrieval_privacy import UnsafeRetrievalQuery
+
+        rag_engine = Mock()
+        rag_engine._cached_query = AsyncMock(
+            side_effect=UnsafeRetrievalQuery("sensitive text must stay private")
+        )
+
+        builder = _make_coverage_pack_builder(rag_engine)
+        pack = await builder("synthetic retirement request")
+
+        assert pack.retrieval_status == "blocked"
+        assert pack.failure_kind == "unsafe_query"
+        assert pack.retryable is False
+        assert pack.pinecone_error is None
+
+    @pytest.mark.asyncio
     async def test_pinecone_exception_returns_failed_pack(self):
         from api.main import _make_coverage_pack_builder
 
@@ -730,7 +748,47 @@ class TestCoveragePackBuilder:
         assert pack.top_score == 0.0
         assert pack.chunk_count == 0
         assert pack.pinecone_error == "RuntimeError"
+        assert pack.failure_kind == "unknown"
+        assert pack.retryable is False
         assert pack.chunks == []
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        ("status_code", "failure_kind", "retryable"),
+        [
+            (400, "client_error", False),
+            (429, "rate_limit", True),
+            (503, "server_error", True),
+        ],
+    )
+    async def test_typed_pinecone_failure_preserves_retry_taxonomy(
+        self, status_code, failure_kind, retryable
+    ):
+        from api.main import _make_coverage_pack_builder
+        from data_pipeline.pinecone_uploader import PineconeRetrievalError
+
+        cause = RuntimeError("synthetic sdk failure")
+        cause.status = status_code
+        rag_engine = Mock()
+        rag_engine._cached_query = AsyncMock(
+            side_effect=PineconeRetrievalError(
+                index_name="synthetic-index",
+                namespace="synthetic-namespace",
+                top_k=5,
+                filter_dict=None,
+                rerank=None,
+                cause=cause,
+            )
+        )
+
+        pack = await _make_coverage_pack_builder(rag_engine)(
+            "synthetic retirement request"
+        )
+
+        assert pack.retrieval_status == "failed"
+        assert pack.pinecone_error == "PineconeRetrievalError"
+        assert pack.failure_kind == failure_kind
+        assert pack.retryable is retryable
 
     @pytest.mark.asyncio
     async def test_zero_chunks_returns_empty_pack(self):

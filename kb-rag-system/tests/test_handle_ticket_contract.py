@@ -29,6 +29,10 @@ import pytest
 from api.models import HandleTicketRequest
 
 FIXTURES = Path(__file__).parent / "fixtures"
+WORKTREE_ROOT = Path(__file__).parents[2]
+BOUNDED_POLLING_WORKFLOW = (
+    WORKTREE_ROOT / "flows_n8n" / "bounded_ticket_polling.json"
+)
 
 # Estados que el servidor puede publicar hoy (v1) más los reservados para el
 # job durable (v2). El fixture de polling debe cubrirlos TODOS: un estado sin
@@ -58,6 +62,13 @@ PUBLISHABLE_ALLOWLIST = {
 
 def _load(name: str) -> dict:
     return json.loads((FIXTURES / name).read_text())
+
+
+def _load_bounded_polling_workflow() -> dict:
+    assert BOUNDED_POLLING_WORKFLOW.is_file(), (
+        "falta el subworkflow sanitizado importable de polling acotado"
+    )
+    return json.loads(BOUNDED_POLLING_WORKFLOW.read_text())
 
 
 @pytest.fixture(scope="module")
@@ -98,6 +109,50 @@ class TestRequestContract:
 
 
 class TestPollingContract:
+    def test_deadline_and_attempt_state_are_absolute_and_database_durable(
+            self, request_fixture, polling_fixture):
+        poll = polling_fixture["poll"]
+        deadline = poll.get("absolute_deadline")
+        durable = poll.get("durable_attempt_state")
+
+        assert deadline == {
+            "clock": "unix_epoch_ms",
+            "started_at_field": "started_at_ms",
+            "deadline_at_field": "deadline_at_ms",
+            "initialize_once": True,
+        }
+        assert durable, "falta declarar el estado durable del loop"
+        assert durable["storage"] == "n8n_wait_execution_database"
+        assert durable["fields"] == [
+            "started_at_ms", "deadline_at_ms", "attempt", "next_delay_s",
+        ]
+        assert durable["wait_offload_min_s"] >= 65
+        assert poll["interval_s"] >= durable["wait_offload_min_s"]
+        assert poll["max_interval_s"] == 120
+        assert request_fixture["_meta"]["polling"]["interval_s"] == \
+            poll["interval_s"]
+
+    def test_polling_is_bounded_with_backoff_and_exhaustion_branch(
+            self, polling_fixture):
+        poll = polling_fixture["poll"]
+        assert isinstance(poll.get("max_attempts"), int)
+        assert 1 <= poll["max_attempts"] <= 1000
+        assert poll["backoff"]["strategy"] == "bounded_exponential"
+        assert poll["backoff"]["multiplier"] > 1
+        assert 0 < poll["backoff"]["jitter_ratio"] <= 0.5
+        assert poll["max_interval_s"] >= poll["interval_s"]
+        assert poll["workflow_timeout_s"] > poll["deadline_s"]
+        assert polling_fixture["on_attempts_exhausted"]["action"] == \
+            "use_legacy_or_human"
+        assert polling_fixture["on_attempts_exhausted"][
+            "manual_reconciliation_required"
+        ] is True
+
+    def test_manual_reconciliation_always_overrides_publish(self, polling_fixture):
+        branch = polling_fixture["on_manual_reconciliation"]
+        assert branch["action"] == "use_legacy_or_human"
+        assert branch["publishable"] is False
+
     def test_polling_fixture_handles_every_terminal_state(self, polling_fixture):
         on_state = polling_fixture["on_state"]
         missing = SERVER_STATES - set(on_state)
@@ -157,6 +212,157 @@ class TestPollingContract:
                 f"{settings.TICKET_TOTAL_BUDGET_S}s"
             )
             assert deadline >= settings.TICKET_JOB_DEADLINE_S + 300
+
+
+class TestBoundedPollingWorkflowArtifact:
+    def test_artifact_is_an_inactive_importable_subworkflow(self):
+        workflow = _load_bounded_polling_workflow()
+
+        assert isinstance(workflow.get("name"), str) and workflow["name"]
+        assert workflow.get("active") is False
+        assert isinstance(workflow.get("nodes"), list) and workflow["nodes"]
+        assert isinstance(workflow.get("connections"), dict)
+        assert isinstance(workflow.get("settings"), dict)
+        triggers = [
+            node for node in workflow["nodes"]
+            if node.get("type") == "n8n-nodes-base.executeWorkflowTrigger"
+        ]
+        assert len(triggers) == 1
+        assert triggers[0]["parameters"]["inputSource"] == "passthrough"
+
+    def test_artifact_contains_no_credentials_payloads_prompts_or_pii(self):
+        workflow = _load_bounded_polling_workflow()
+        assert all("credentials" not in node for node in workflow["nodes"])
+
+        serialized = json.dumps(workflow, sort_keys=True).lower()
+        for forbidden in (
+            "x-api-key",
+            "bearer ",
+            "authorization",
+            "participant_id",
+            "plan_id",
+            "email_body",
+            "email_subject",
+            "ticket_messages",
+            "system prompt",
+            "user prompt",
+        ):
+            assert forbidden not in serialized, forbidden
+
+    def test_succeeded_terminal_projects_only_allowlisted_reply_fields(self):
+        workflow = _load_bounded_polling_workflow()
+        nodes = {node["name"]: node for node in workflow["nodes"]}
+        classify_code = nodes["Classify Poll Result"]["parameters"][
+            "jsCode"
+        ]
+        terminal_code = nodes["Terminal Succeeded"]["parameters"]["jsCode"]
+
+        for field in (
+            "needs_more_info_message",
+            "knowledge_answer?.answer",
+            "generate_response?.response?.response_to_participant",
+        ):
+            assert field in classify_code
+        assert "safe_replies" in classify_code
+        assert "status: $json.response_body" not in terminal_code
+        assert "safe_replies" in terminal_code
+        assert "response_body" not in terminal_code
+
+    def test_every_executable_node_is_connected_from_the_trigger(self):
+        workflow = _load_bounded_polling_workflow()
+        nodes = {node["name"]: node for node in workflow["nodes"]}
+        assert len(nodes) == len(workflow["nodes"]), "nombres duplicados"
+
+        adjacency = {name: set() for name in nodes}
+        for source, channels in workflow["connections"].items():
+            assert source in nodes, source
+            for outputs in channels.get("main", []):
+                for connection in outputs or []:
+                    target = connection["node"]
+                    assert target in nodes, target
+                    adjacency[source].add(target)
+
+        trigger = next(
+            node["name"] for node in workflow["nodes"]
+            if node["type"] == "n8n-nodes-base.executeWorkflowTrigger"
+        )
+        reached = set()
+        pending = [trigger]
+        while pending:
+            current = pending.pop()
+            if current in reached:
+                continue
+            reached.add(current)
+            pending.extend(adjacency[current] - reached)
+
+        assert reached == set(nodes), (
+            f"nodos desconectados: {sorted(set(nodes) - reached)}"
+        )
+        assert "Evaluate Loop Guard" in adjacency["Wait Before Next Poll"]
+        for terminal in (
+            "Terminal Succeeded",
+            "Terminal Safe Fallback",
+            "Terminal Deadline Exceeded",
+            "Terminal Attempts Exhausted",
+        ):
+            assert not adjacency[terminal], terminal
+
+    def test_workflow_implements_absolute_limits_backoff_and_explicit_branches(
+            self, polling_fixture):
+        workflow = _load_bounded_polling_workflow()
+        nodes = {node["name"]: node for node in workflow["nodes"]}
+        poll = polling_fixture["poll"]
+        assert workflow["settings"]["executionTimeout"] == \
+            poll["workflow_timeout_s"]
+
+        init_code = nodes["Initialize Durable Poll State"]["parameters"][
+            "jsCode"
+        ]
+        assert "started_at_ms" in init_code
+        assert "deadline_at_ms" in init_code
+        assert f"const DEADLINE_S = {poll['deadline_s']}" in init_code
+        assert f"const MAX_ATTEMPTS = {poll['max_attempts']}" in init_code
+        assert "new URL(rawUrl, ALLOWED_STATUS_ORIGIN)" in init_code, (
+            "el producer devuelve status_url relativo; el poller debe "
+            "resolverlo contra el único origen HTTPS revisado"
+        )
+
+        guard_code = nodes["Evaluate Loop Guard"]["parameters"]["jsCode"]
+        assert "Date.now() >= state.deadline_at_ms" in guard_code
+        assert "state.attempt >= state.max_attempts" in guard_code
+
+        backoff_code = nodes["Compute Bounded Backoff"]["parameters"][
+            "jsCode"
+        ]
+        assert f"const BASE_INTERVAL_S = {poll['interval_s']}" in backoff_code
+        assert f"const MAX_INTERVAL_S = {poll['max_interval_s']}" in backoff_code
+        assert "Math.min(MAX_INTERVAL_S" in backoff_code
+
+        wait = nodes["Wait Before Next Poll"]
+        assert wait["type"] == "n8n-nodes-base.wait"
+        assert "next_delay_s" in str(wait["parameters"]["amount"])
+
+        for branch in (
+            "Deadline Exceeded?",
+            "Attempts Exhausted?",
+            "Succeeded and Safe?",
+            "Continue Polling?",
+        ):
+            assert nodes[branch]["type"] == "n8n-nodes-base.if"
+
+    def test_artifact_declares_exact_external_activation_blocker(
+            self, polling_fixture):
+        artifact = polling_fixture.get("workflow_artifact")
+        assert artifact, "falta declarar el estado del artifact n8n"
+        assert artifact["path"] == "flows_n8n/bounded_ticket_polling.json"
+        assert artifact["importable"] is True
+        assert artifact["active"] is False
+        assert artifact["activation_blocker"] == (
+            "Importar en la instancia n8n efectiva, reemplazar el origen "
+            ".invalid por el origen HTTPS revisado del producer, asignar la "
+            "credencial HTTP existente, ejecutar casos sintéticos sin PII, "
+            "revisar el export resultante y activar manualmente."
+        )
 
 
 # ---------------------------------------------------------------------------

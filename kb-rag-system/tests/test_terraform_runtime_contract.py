@@ -663,3 +663,60 @@ def test_firestore_database_uses_real_api_delete_protection() -> None:
     assert 'delete_protection_state = "DELETE_PROTECTION_ENABLED"' in firestore
     assert re.search(r'deletion_policy\s*=\s*"ABANDON"', firestore)
     assert 'deletion_policy = "DELETE_PROTECTION_ENABLED"' not in firestore
+
+
+def test_production_adopts_existing_queue_scheduler_and_custom_role() -> None:
+    containers = _read(
+        REPO_ROOT / "infra/terraform/live/platform/environment_containers.tf"
+    )
+
+    expected = (
+        (
+            'google_cloud_tasks_queue.environment[each.key]',
+            'projects/${var.project_id}/locations/${var.region}/queues/'
+            'ticket-jobs-prod',
+        ),
+        (
+            'google_cloud_scheduler_job.environment[each.key]',
+            'projects/${var.project_id}/locations/${var.region}/jobs/'
+            'ticket-reconciler-prod-tick',
+        ),
+        (
+            'google_project_iam_custom_role.ticket_queue_enqueuer[each.key]',
+            'projects/${var.project_id}/roles/ticketQueueEnqueuerProduction',
+        ),
+    )
+    for target, resource_id in expected:
+        target_offset = containers.index(f"to = {target}")
+        block_start = containers.rfind("import {", 0, target_offset)
+        block_end = containers.index("\n}", target_offset)
+        block = containers[block_start:block_end]
+        assert (
+            'var.environment_container_phase.production == "managed"'
+            in block
+        )
+        assert resource_id in block
+
+
+def test_queue_logging_and_reconciler_execution_match_incident_bounds() -> None:
+    containers = _read(
+        REPO_ROOT / "infra/terraform/live/platform/environment_containers.tf"
+    )
+    cloud_run = _read(MODULE_ROOT / "cloud_run.tf")
+    queue = containers.split(
+        'resource "google_cloud_tasks_queue" "environment"', 1
+    )[1].split(
+        'resource "google_project_iam_custom_role" "ticket_queue_enqueuer"', 1
+    )[0]
+    scheduler = containers.split(
+        'resource "google_cloud_scheduler_job" "environment"', 1
+    )[1].split("\nimport {", 1)[0]
+    reconciler = cloud_run.split(
+        'resource "google_cloud_run_v2_job" "reconciler"', 1
+    )[1].split('\nresource "', 1)[0]
+
+    assert 'stackdriver_logging_config {' in queue
+    assert re.search(r"sampling_ratio\s*=\s*1(?:\.0)?", queue)
+    assert re.search(r'schedule\s*=\s*"\*/6 \* \* \* \*"', scheduler)
+    assert re.search(r"max_retries\s*=\s*0", reconciler)
+    assert re.search(r'timeout\s*=\s*"300s"', reconciler)

@@ -78,6 +78,51 @@ variables {
   }
 }
 
+run "incident_business_metrics_are_immediate_and_sla_aligned" {
+  command = plan
+
+  assert {
+    condition = alltrue([
+      for metric_filter in [
+        google_logging_metric.reconciler_fenced_leases.filter,
+        google_logging_metric.reconciler_errors.filter,
+        google_logging_metric.deadline_terminalized.filter,
+      ] : strcontains(metric_filter, "[1-9][0-9]*")
+    ])
+    error_message = "Los contadores del reconciliador sólo deben contar acciones positivas."
+  }
+
+  assert {
+    condition = alltrue([
+      for metric_filter in [
+        google_logging_metric.terminal_total.filter,
+        google_logging_metric.terminal_incorrect.filter,
+        google_logging_metric.terminal_failed.filter,
+        google_logging_metric.terminal_partial.filter,
+        google_logging_metric.terminal_internal_error.filter,
+      ] : strcontains(metric_filter, "jsonPayload.message") && !strcontains(metric_filter, "textPayload")
+    ])
+    error_message = "Las métricas del handler canónico deben leer jsonPayload.message, nunca textPayload."
+  }
+
+  assert {
+    condition = alltrue([
+      google_monitoring_alert_policy.ticket_terminal_failed[0].conditions[0].condition_threshold[0].threshold_value == 0,
+      google_monitoring_alert_policy.ticket_terminal_partial[0].conditions[0].condition_threshold[0].threshold_value == 0,
+      google_monitoring_alert_policy.ticket_terminal_internal_error[0].conditions[0].condition_threshold[0].threshold_value == 0,
+    ])
+    error_message = "Failed, partial e INTERNAL_ERROR deben alertar desde el primer evento."
+  }
+
+  assert {
+    condition = (
+      google_monitoring_alert_policy.ticket_oldest_active_job[0].conditions[0].condition_threshold[0].threshold_value == 2400 &&
+      google_monitoring_alert_policy.ticket_oldest_active_job[0].conditions[0].condition_threshold[0].duration == "0s"
+    )
+    error_message = "El alerta de job activo debe usar el SLA absoluto de 2400 segundos."
+  }
+}
+
 run "dark_no_traffic_keeps_baseline_at_one_hundred" {
   command = plan
 

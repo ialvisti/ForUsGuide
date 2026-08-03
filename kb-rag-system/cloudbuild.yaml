@@ -41,6 +41,7 @@ steps:
         detect-secrets scan --all-files --no-verify \
           ../PA "../External agents" \
           ../docs/verification/handle-ticket/11-incident-drill-template.md \
+          ../flows_n8n/bounded_ticket_polling.json \
           | python -m json.tool \
           > /workspace/external-input-secrets.json
         python scripts/verify_secrets_baseline.py \

@@ -1,7 +1,7 @@
 # Handle-Ticket Runbook
 
 > Operación del flujo durable `POST /api/v{1,2}/handle-ticket` (Firestore +
-> Cloud Tasks). Última actualización: 2026-07-14 (plan de finalización).
+> Cloud Tasks). Última actualización: 2026-08-02.
 > Contexto de diseño: `HANDLE_TICKET_AUDIT_AND_REMEDIATION_PLAN.md` +
 > `docs/plans/2026-07-13-handle-ticket-production-completion.md`.
 
@@ -22,10 +22,13 @@ Roles de proceso EXCLUYENTES (`APP_ROLE`), misma imagen inmutable:
   heartbeat 30 s); checkpoints por inquiry condicionados al epoch; reanuda
   desde el `execution_plan` persistido sin repetir efectos; agregación
   exhaustiva. Una generación stale/job desconocido/terminal → 204 sin efecto.
-- **Reconciler** (`APP_ROLE=reconciler`, Run Job + Scheduler cada 1 min):
+- **Reconciler** (`APP_ROLE=reconciler`, Run Job + Scheduler cada 6 min):
   `python -m data_pipeline.ticket_reconciler --once --batch-size=25`. Repara
   outbox pending y leases vencidos (recovery lock separado del lease de
-  ejecución), terminaliza deadlines/payloads ausentes. No sirve HTTP.
+  ejecución), terminaliza deadlines/payloads ausentes. El Job tiene timeout
+  de 300 s y cero retries: el siguiente tick es la única recuperación, deja
+  60 s de margen contra solapamiento y mantiene un SLA menor o igual a 10 min.
+  No sirve HTTP.
 - **Poll**: `GET /api/v1/tickets/{id}` / `GET /api/v2/ticket-jobs/{id}` —
   404 = inexistente; 410 = el control/tombstone vive pero el payload expiró
   (no reintentar con la misma key); 403 = de otro principal.
@@ -76,9 +79,11 @@ IDEMPOTENCY_PAYLOAD_MISMATCH` (bug del productor de payloads; no reintentar).
 ### Job atascado en `running`
 1. Ver `lease_owner`/`lease_expires_at`/`lease_epoch` en el doc de
    `ticket_jobs`.
-2. El lease expira a los 90 s; el reconciliador automático (cada 1 min)
+2. El lease expira a los 90 s; el reconciliador automático (cada 6 min)
    fencea al worker viejo (incrementa `lease_epoch`), transiciona
-   `running→queued` y re-encola con generación nueva. No requiere acción.
+   `running→queued` y re-encola con generación nueva. Una vez elegible, el
+   siguiente tick llega en un máximo de 6 min; el SLA de recuperación sigue
+   siendo menor o igual a 10 min. No requiere acción.
 3. Si hace falta forzarlo antes: usar la **CLI auditada** (NO recrear el
    mismo nombre de task): `APP_ROLE=reconciler python -m scripts.requeue_ticket_job --job-id JOB --operator you@forusall.com`.
    Rechaza jobs terminales y leases activos; incrementa la generación

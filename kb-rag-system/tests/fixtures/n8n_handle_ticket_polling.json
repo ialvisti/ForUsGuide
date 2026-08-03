@@ -4,11 +4,54 @@
     "fail_safe_rule": "Hasta terminar la remediación: cualquier estado partial|failed|timeout|cancelled, error técnico, JSON inválido o poll 404 va a legacy/humano. Nunca publicar automáticamente un fallback interno del servidor."
   },
   "poll": {
-    "interval_s": 3,
-    "max_interval_s": 30,
+    "interval_s": 65,
+    "max_interval_s": 120,
+    "max_attempts": 40,
     "deadline_s": 2700,
     "workflow_timeout_s": 3000,
-    "resume_mode": "durable_wait"
+    "resume_mode": "n8n_wait_database",
+    "absolute_deadline": {
+      "clock": "unix_epoch_ms",
+      "started_at_field": "started_at_ms",
+      "deadline_at_field": "deadline_at_ms",
+      "initialize_once": true
+    },
+    "durable_attempt_state": {
+      "storage": "n8n_wait_execution_database",
+      "fields": [
+        "started_at_ms",
+        "deadline_at_ms",
+        "attempt",
+        "next_delay_s"
+      ],
+      "wait_offload_min_s": 65,
+      "note": "n8n no descarga waits menores de 65 s a su base; 65 s es el mínimo para que cada pausa de este loop sea un checkpoint durable real."
+    },
+    "backoff": {
+      "strategy": "bounded_exponential",
+      "multiplier": 2,
+      "jitter_ratio": 0.2
+    }
+  },
+  "workflow_artifact": {
+    "path": "flows_n8n/bounded_ticket_polling.json",
+    "importable": true,
+    "active": false,
+    "activation_blocker": "Importar en la instancia n8n efectiva, reemplazar el origen .invalid por el origen HTTPS revisado del producer, asignar la credencial HTTP existente, ejecutar casos sintéticos sin PII, revisar el export resultante y activar manualmente."
+  },
+  "on_attempts_exhausted": {
+    "action": "use_legacy_or_human",
+    "publishable": false,
+    "manual_reconciliation_required": true
+  },
+  "on_deadline_exceeded": {
+    "action": "use_legacy_or_human",
+    "publishable": false,
+    "manual_reconciliation_required": true
+  },
+  "on_manual_reconciliation": {
+    "action": "use_legacy_or_human",
+    "publishable": false
   },
   "on_http_status": {
     "200": "inspect_state",

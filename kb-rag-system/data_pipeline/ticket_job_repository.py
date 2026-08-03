@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import (
     Any,
@@ -42,6 +43,9 @@ from typing import (
     cast,
 )
 
+from google.cloud.firestore_v1.base_query import FieldFilter
+
+from data_pipeline.durable_document import validate_durable_document
 from data_pipeline.ticket_job_models import (
     TERMINAL_STATES,
     VALID_TRANSITIONS,
@@ -167,6 +171,12 @@ class StaleEnqueueGeneration(TicketJobError):
     """Una confirmación de Cloud Tasks corresponde a otra generación."""
 
 
+@dataclass(frozen=True)
+class ForusBotsOperationDecision:
+    action: str
+    external_job_id: Optional[str] = None
+
+
 def principal_hash(principal_id: str) -> str:
     return hashlib.sha256(principal_id.encode("utf-8")).hexdigest()[:32]
 
@@ -222,6 +232,7 @@ class _TxnView:
         return copy.deepcopy(doc) if doc is not None else None
 
     def set(self, collection: str, doc_id: str, value: Document) -> None:
+        validate_durable_document(value)
         self._staged[(collection, doc_id)] = copy.deepcopy(value)
 
     def delete(self, collection: str, doc_id: str) -> None:
@@ -364,6 +375,7 @@ class FirestoreTicketJobBackend:
             def set(
                 self, collection: str, doc_id: str, value: Document
             ) -> None:
+                validate_durable_document(value)
                 ref = client.collection(f"{prefix}{collection}").document(doc_id)
                 self._writes.append(("set", ref, value))
 
@@ -410,8 +422,8 @@ class FirestoreTicketJobBackend:
     ) -> int:  # pragma: no cover - staging
         query = (
             self._client.collection(self._col(collection))
-            .where("principal_id", "==", principal_id)
-            .where("state", "in", states)
+            .where(filter=FieldFilter("principal_id", "==", principal_id))
+            .where(filter=FieldFilter("state", "in", states))
         )
         agg = await cast(Any, query.count()).get()
         return int(agg[0][0].value)
@@ -431,7 +443,7 @@ class FirestoreTicketJobBackend:
     ) -> ScanPage:  # pragma: no cover
         query: Any = self._client.collection(self._col(collection))
         if states is not None:
-            query = query.where("state", "in", states)
+            query = query.where(filter=FieldFilter("state", "in", states))
         query = query.order_by("__name__")
         if start_after is not None:
             query = query.start_after({"__name__": start_after})
@@ -445,7 +457,7 @@ class FirestoreTicketJobBackend:
         self, collection: str, states: list[str]
     ) -> tuple[int, Optional[datetime]]:  # pragma: no cover - staging
         query: Any = self._client.collection(self._col(collection)).where(
-            "state", "in", states
+            filter=FieldFilter("state", "in", states)
         )
         aggregation = await cast(Any, query.count()).get()
         count = int(aggregation[0][0].value)
@@ -490,6 +502,72 @@ def split_record(record: TicketJobRecord) -> Tuple[Document, Document]:
     if full.get("state") not in {s.value for s in TERMINAL_STATES}:
         full["expires_at"] = None
     return full, payload
+
+
+_IMMUTABLE_EFFECT_CHECKPOINT_KEYS = (
+    "forusbots_submit_intent",
+    "forusbots_submit_intent_epoch",
+    "forusbots_submit_intent_worker",
+    "forusbots_submit_intents",
+    "forusbots_external_jobs",
+)
+
+
+def _merge_effect_checkpoint(
+    existing: Optional[Document], entry: Document, *, index: int
+) -> Document:
+    """Merge an inquiry result without erasing durable side-effect evidence."""
+    merged = {**entry, "index": index}
+    if not existing:
+        return merged
+    for key in _IMMUTABLE_EFFECT_CHECKPOINT_KEYS:
+        if key in existing:
+            merged[key] = copy.deepcopy(existing[key])
+    return merged
+
+
+def _validated_external_job_id(value: str) -> str:
+    """Validate an opaque upstream identifier without echoing it on failure."""
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or len(value.encode("utf-8")) > 512
+        or any(ord(char) < 32 for char in value)
+    ):
+        raise TicketJobError("ForUsBots devolvió un identificador inválido")
+    return value
+
+
+def build_validated_inquiry_checkpoint(
+    record: TicketJobRecord,
+    index: int,
+    entry: Document,
+) -> TicketJobRecord:
+    """Build and validate the complete control/payload checkpoint documents."""
+    existing = next(
+        (status for status in record.per_inquiry_status
+         if status.get("index") == index),
+        None,
+    )
+    statuses = [
+        status for status in record.per_inquiry_status
+        if status.get("index") != index
+    ]
+    statuses.append(_merge_effect_checkpoint(existing, entry, index=index))
+    statuses.sort(key=lambda status: status.get("index", 0))
+    processed = sum(
+        1 for status in statuses
+        if status.get("execution_status") not in (None, "pending", "running")
+    )
+    merged = record.model_copy(update={
+        "per_inquiry_status": statuses,
+        "processed_inquiries": processed,
+        "updated_at": utcnow(),
+    })
+    control, payload = split_record(merged)
+    validate_durable_document(control)
+    validate_durable_document(payload)
+    return merged
 
 
 def _live_payload(
@@ -813,6 +891,22 @@ class TicketJobRepository:
                         f"job {job_id}: lease vencido o sin owner"
                     )
             updates: Dict[str, Any] = dict(changes)
+            if "forusbots_job_ids" in updates:
+                proposed_ids = updates["forusbots_job_ids"]
+                if not isinstance(proposed_ids, list):
+                    raise TicketJobError(
+                        "forusbots_job_ids debe ser una lista"
+                    )
+                # External receipts are monotonic effect evidence.  A worker
+                # can terminalize from a snapshot taken just before a late
+                # submit observer commits, so replacement here would erase
+                # the only top-level reconciliation handle.
+                merged_ids = list(record.forusbots_job_ids)
+                for proposed_id in proposed_ids:
+                    valid_id = _validated_external_job_id(proposed_id)
+                    if valid_id not in merged_ids:
+                        merged_ids.append(valid_id)
+                updates["forusbots_job_ids"] = merged_ids
             terminalizing = False
             if state is not None and state != record.state:
                 if state not in VALID_TRANSITIONS[record.state]:
@@ -931,19 +1025,7 @@ class TicketJobRepository:
                     raise StaleLeaseEpoch(
                         f"job {job_id}: lease vencido o sin owner"
                     )
-            statuses = [s for s in record.per_inquiry_status
-                        if s.get("index") != index]
-            statuses.append({**entry, "index": index})
-            statuses.sort(key=lambda s: s.get("index", 0))
-            processed = sum(
-                1 for s in statuses
-                if s.get("execution_status") not in (None, "pending", "running")
-            )
-            merged = record.model_copy(update={
-                "per_inquiry_status": statuses,
-                "processed_inquiries": processed,
-                "updated_at": utcnow(),
-            })
+            merged = build_validated_inquiry_checkpoint(record, index, entry)
             new_control, new_payload = split_record(merged)
             if record.state in TERMINAL_STATES and control.get("expires_at"):
                 new_control["expires_at"] = control["expires_at"]
@@ -960,6 +1042,131 @@ class TicketJobRepository:
             )
         return _doc_to_record(doc)
 
+    async def prepare_forusbots_operation(
+        self,
+        job_id: str,
+        index: int,
+        *,
+        operation: str,
+        request_fingerprint: str,
+        worker_id: str,
+        lease_epoch: int,
+        route: str,
+    ) -> ForusBotsOperationDecision:
+        """Atomically decide submit, resume, or manual reconciliation."""
+        if operation not in {"participant", "plan"}:
+            raise TicketJobError("operación ForUsBots inválida")
+        if (
+            not isinstance(request_fingerprint, str)
+            or len(request_fingerprint) != 64
+            or any(char not in "0123456789abcdef" for char in request_fingerprint)
+        ):
+            raise TicketJobError("fingerprint ForUsBots inválido")
+
+        async def _txn(
+            view: TransactionView,
+        ) -> tuple[ForusBotsOperationDecision, bool]:
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                raise JobNotFound(job_id)
+            payload = await view.get(PAYLOADS_COLLECTION, job_id)
+            now = utcnow()
+            live_payload = _live_payload(payload, now)
+            if live_payload is None:
+                return ForusBotsOperationDecision("reconcile"), True
+            record = _join(control, live_payload, now)
+            if record.state in TERMINAL_STATES \
+                    or record.lease_epoch != lease_epoch \
+                    or record.lease_owner != worker_id \
+                    or record.lease_expires_at is None \
+                    or now >= record.lease_expires_at:
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: lease perdido antes de ForUsBots"
+                )
+
+            existing = next(
+                (entry for entry in record.per_inquiry_status
+                 if entry.get("index") == index),
+                None,
+            )
+            intents = list((existing or {}).get("forusbots_submit_intents") or [])
+            external_jobs = list(
+                (existing or {}).get("forusbots_external_jobs") or []
+            )
+            external = next(
+                (item for item in external_jobs
+                 if isinstance(item, dict)
+                 and item.get("operation") == operation),
+                None,
+            )
+            matching_intent = next(
+                (intent for intent in intents
+                 if isinstance(intent, dict)
+                 and intent.get("operation") in {"all", operation}),
+                None,
+            )
+
+            if matching_intent is not None:
+                stored_fingerprint = matching_intent.get("request_fingerprint")
+                if stored_fingerprint not in {None, request_fingerprint}:
+                    return ForusBotsOperationDecision("reconcile"), False
+                if external is not None:
+                    external_id = external.get("job_id")
+                    if isinstance(external_id, str) and external_id:
+                        return ForusBotsOperationDecision(
+                            "resume", external_id,
+                        ), False
+                return ForusBotsOperationDecision("reconcile"), False
+
+            if existing and existing.get("forusbots_submit_intent") is True \
+                    and not intents:
+                # A singular legacy intent cannot be assigned safely to one
+                # of the two possible operations.
+                return ForusBotsOperationDecision("reconcile"), False
+            if external is not None:
+                # Effect evidence without a matching reservation is corrupt;
+                # never poll or submit automatically.
+                return ForusBotsOperationDecision("reconcile"), False
+
+            intents.append({
+                "operation": operation,
+                "lease_epoch": lease_epoch,
+                "worker_id": worker_id,
+                "request_fingerprint": request_fingerprint,
+            })
+            checkpoint = {
+                **(existing or {}),
+                "index": index,
+                "route": route,
+                "execution_status": "running",
+                "participant_reply_safe": False,
+                "forusbots_submit_intent": True,
+                "forusbots_submit_intent_epoch": lease_epoch,
+                "forusbots_submit_intent_worker": worker_id,
+                "forusbots_submit_intents": intents,
+            }
+            statuses = [
+                entry for entry in record.per_inquiry_status
+                if entry.get("index") != index
+            ]
+            statuses.append(checkpoint)
+            statuses.sort(key=lambda entry: entry.get("index", 0))
+            merged = record.model_copy(update={
+                "per_inquiry_status": statuses,
+                "updated_at": now,
+            })
+            new_control, new_payload = split_record(merged)
+            view.set(JOBS_COLLECTION, job_id, new_control)
+            view.set(PAYLOADS_COLLECTION, job_id, new_payload)
+            return ForusBotsOperationDecision("submit"), False
+
+        decision, payload_expired = await self.backend.transact(_txn)
+        if payload_expired:
+            raise StaleLeaseEpoch(
+                f"job {job_id}: payload expirado o ausente"
+            )
+        return decision
+
     async def reserve_forusbots_submit_intent(
         self,
         job_id: str,
@@ -968,6 +1175,7 @@ class TicketJobRepository:
         worker_id: str,
         lease_epoch: int,
         route: str,
+        operation: Optional[str] = None,
     ) -> bool:
         """Persiste el intent ANTES del primer POST de una inquiry.
 
@@ -979,6 +1187,10 @@ class TicketJobRepository:
         La comprobación del lease y la escritura del intent comparten la
         transacción, tanto en memoria como en Firestore.
         """
+
+        normalized_operation = operation or "all"
+        if normalized_operation not in {"all", "participant", "plan"}:
+            raise TicketJobError("operación ForUsBots inválida")
 
         async def _txn(view: TransactionView) -> tuple[bool, bool]:
             control = await view.get(JOBS_COLLECTION, job_id)
@@ -1017,21 +1229,45 @@ class TicketJobRepository:
                  if entry.get("index") == index),
                 None,
             )
-            if existing and existing.get("forusbots_submit_intent") is True:
+            existing_intents = list(
+                (existing or {}).get("forusbots_submit_intents") or []
+            )
+            if existing and existing.get("forusbots_submit_intent") is True \
+                    and not existing_intents:
+                # Legacy intent without operation: the POST outcome is
+                # ambiguous, so no operation may be submitted again.
                 return False, False
+            if any(
+                isinstance(intent, dict)
+                and intent.get("operation") in {
+                    "all", normalized_operation,
+                }
+                for intent in existing_intents
+            ) or (normalized_operation == "all" and existing_intents):
+                return False, False
+
+            existing_intents.append({
+                "operation": normalized_operation,
+                "lease_epoch": lease_epoch,
+                "worker_id": worker_id,
+            })
 
             statuses = [
                 entry for entry in record.per_inquiry_status
                 if entry.get("index") != index
             ]
-            statuses.append({
+            checkpoint = {
+                **(existing or {}),
                 "index": index,
                 "route": route,
                 "execution_status": "running",
                 "participant_reply_safe": False,
                 "forusbots_submit_intent": True,
                 "forusbots_submit_intent_epoch": lease_epoch,
-            })
+                "forusbots_submit_intent_worker": worker_id,
+                "forusbots_submit_intents": existing_intents,
+            }
+            statuses.append(checkpoint)
             statuses.sort(key=lambda entry: entry.get("index", 0))
             merged = record.model_copy(update={
                 "per_inquiry_status": statuses,
@@ -1048,6 +1284,119 @@ class TicketJobRepository:
                 f"job {job_id}: payload expirado o ausente"
             )
         return reserved
+
+    async def record_forusbots_external_job(
+        self,
+        job_id: str,
+        index: int,
+        *,
+        operation: str,
+        external_job_id: str,
+        worker_id: str,
+        lease_epoch: int,
+    ) -> TicketJobRecord:
+        """Persist a confirmed upstream job ID as monotonic effect evidence.
+
+        This receipt runs immediately after the upstream ``202``.  It binds to
+        the durable pre-submit reservation, worker and epoch, but deliberately
+        does not require the lease to remain live: lease expiry in the narrow
+        post-submit race must not discard the only handle that can reconcile
+        the already-created external job.
+        """
+        if operation not in {"participant", "plan"}:
+            raise TicketJobError("operación ForUsBots inválida")
+        external_job_id = _validated_external_job_id(external_job_id)
+
+        async def _txn(view: TransactionView) -> tuple[Optional[Document], bool]:
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                raise JobNotFound(job_id)
+            payload = await view.get(PAYLOADS_COLLECTION, job_id)
+            now = utcnow()
+            live_payload = _live_payload(payload, now)
+            if live_payload is None:
+                return None, True
+            record = _join(control, live_payload, now)
+            existing = next(
+                (entry for entry in record.per_inquiry_status
+                 if entry.get("index") == index),
+                None,
+            )
+            if existing is None:
+                raise TicketJobError(
+                    "falta la reserva durable previa de ForUsBots"
+                )
+
+            intents = list(existing.get("forusbots_submit_intents") or [])
+            reservation_matches = any(
+                isinstance(intent, dict)
+                and intent.get("operation") in {"all", operation}
+                and intent.get("lease_epoch") == lease_epoch
+                and intent.get("worker_id") == worker_id
+                for intent in intents
+            )
+            if not reservation_matches:
+                reservation_matches = (
+                    not intents
+                    and existing.get("forusbots_submit_intent") is True
+                    and existing.get("forusbots_submit_intent_epoch") == lease_epoch
+                    and existing.get("forusbots_submit_intent_worker") == worker_id
+                )
+            if not reservation_matches:
+                raise StaleLeaseEpoch(
+                    "el recibo ForUsBots no coincide con su reserva durable"
+                )
+
+            external_jobs = list(existing.get("forusbots_external_jobs") or [])
+            current_for_operation = next(
+                (item for item in external_jobs
+                 if isinstance(item, dict)
+                 and item.get("operation") == operation),
+                None,
+            )
+            if current_for_operation is not None:
+                if current_for_operation.get("job_id") != external_job_id:
+                    raise TicketJobError(
+                        "conflicto de identificador ForUsBots para la operación"
+                    )
+            else:
+                external_jobs.append({
+                    "operation": operation,
+                    "job_id": external_job_id,
+                })
+
+            checkpoint = {
+                **existing,
+                "forusbots_external_jobs": external_jobs,
+            }
+            statuses = [
+                entry for entry in record.per_inquiry_status
+                if entry.get("index") != index
+            ]
+            statuses.append(checkpoint)
+            statuses.sort(key=lambda entry: entry.get("index", 0))
+
+            job_ids = list(record.forusbots_job_ids)
+            if external_job_id not in job_ids:
+                job_ids.append(external_job_id)
+            merged = record.model_copy(update={
+                "per_inquiry_status": statuses,
+                "forusbots_job_ids": job_ids,
+                "updated_at": now,
+            })
+            new_control, new_payload = split_record(merged)
+            if record.state in TERMINAL_STATES and control.get("expires_at"):
+                new_control["expires_at"] = control["expires_at"]
+            view.set(JOBS_COLLECTION, job_id, new_control)
+            view.set(PAYLOADS_COLLECTION, job_id, new_payload)
+            return _record_to_doc(_join(new_control, new_payload, now)), False
+
+        doc, payload_expired = await self.backend.transact(_txn)
+        if payload_expired or doc is None:
+            raise StaleLeaseEpoch(
+                f"job {job_id}: payload expirado o ausente"
+            )
+        return _doc_to_record(doc)
 
     # ------------------------------------------------------------------
     # Claims de worker con fencing por epoch (Tarea 6 Paso 4a)

@@ -2,7 +2,8 @@
 Integración del repositorio contra el emulador REAL de Firestore
 (plan Tarea 5 Paso 4). Se ejecuta vía scripts/run_firestore_emulator_tests.sh
 (emulador fijado por digest de ci/tool-images.env); si el emulador no está
-disponible, la suite entera se salta con la razón explícita — nunca se simula.
+disponible, los casos que hacen RPC se saltan con la razón explícita — nunca
+se simula. El contrato puro de la fixture GR sigue ejecutándose localmente.
 
 El emulador prueba la semántica transaccional real del cliente
 google-cloud-firestore (retries de transacción, tipos nativos, borrados),
@@ -13,8 +14,11 @@ valida contra staging real (Tarea 14).
 from __future__ import annotations
 
 import asyncio
+import inspect
 import os
 from datetime import datetime
+from types import SimpleNamespace
+from typing import TYPE_CHECKING, Any
 
 import pytest
 
@@ -34,14 +38,13 @@ from data_pipeline.ticket_job_repository import (
     TicketJobRepository,
     principal_hash,
 )
+from data_pipeline.durable_document import DurableDocumentValidationError
+
+if TYPE_CHECKING:
+    from data_pipeline.ticket_orchestrator import InquiryOutcome
 
 pytestmark = [
     pytest.mark.integration,
-    pytest.mark.skipif(
-        not os.environ.get("FIRESTORE_EMULATOR_HOST"),
-        reason="requiere el emulador de Firestore "
-               "(scripts/run_firestore_emulator_tests.sh)",
-    ),
 ]
 
 PAYLOAD_A = {"participant_id": "158948", "plan_id": "580",
@@ -51,7 +54,16 @@ PAYLOAD_B = {"participant_id": "999999", "plan_id": "111",
 
 
 @pytest.fixture
-def backend():
+def require_firestore_emulator():
+    if not os.environ.get("FIRESTORE_EMULATOR_HOST"):
+        pytest.skip(
+            "requiere el emulador de Firestore "
+            "(scripts/run_firestore_emulator_tests.sh)"
+        )
+
+
+@pytest.fixture
+def backend(require_firestore_emulator):
     return FirestoreTicketJobBackend(
         project=os.environ.get("FIRESTORE_PROJECT_ID", "handle-ticket-emulator"),
         database="(default)",
@@ -82,6 +94,118 @@ async def _create(repo, key, principal="n8n", payload=None):
         request_fingerprint=fingerprint_request(payload),
         candidate=_candidate(principal=principal, payload=payload),
     )
+
+
+async def _realistic_gr_fixture() -> tuple[InquiryOutcome, dict[str, Any]]:
+    """Build a synthetic GR through the production mapping/conversion path."""
+    from api.ticket_worker import _entry_from_outcome
+    from data_pipeline.ticket_orchestrator import (
+        InquiryOutcome,
+        OrchestratorDeps,
+        TicketOrchestrator,
+    )
+
+    orchestrator = TicketOrchestrator(
+        OrchestratorDeps(
+            rag_engine=None,
+            inquiry_router=None,
+            llm_router=None,
+            forusbots=None,
+        ),
+        SimpleNamespace(
+            TICKET_MAX_RELATED=3,
+            TICKET_INQUIRY_BUDGET_S=300.0,
+        ),
+    )
+    diagnostics: dict[str, Any] = {}
+    modules, _ = await orchestrator._map_fields(
+        [
+            {"field": "account_balance", "required": True},
+            {"field": "termination_date", "required": True},
+        ],
+        diagnostics,
+    )
+    diagnostics["mapped_modules"] = modules
+
+    source_articles = [
+        {
+            "article_id": f"synthetic-article-{index:02d}",
+            "article_title": f"Synthetic retirement guidance {index:02d}",
+            "chunk_types_used": "business_rules, steps",
+            "relevance": "Synthetic contract coverage",
+            "used_info": True,
+            "max_score": round(0.99 - index * 0.01, 2),
+        }
+        for index in range(10)
+    ]
+    used_chunks = [
+        {
+            "chunk_id": f"synthetic-chunk-{index:02d}",
+            "score": round(0.99 - index * 0.01, 2),
+            "chunk_type": "business_rules" if index % 2 == 0 else "steps",
+            "chunk_tier": "high",
+            "article_id": f"synthetic-article-{index % 10:02d}",
+            "article_title": (
+                f"Synthetic retirement guidance {index % 10:02d}"
+            ),
+            "content_preview": f"Synthetic preview {index:02d}",
+            "content": (
+                f"Synthetic retirement-plan content {index:02d}; "
+                "contains no participant data"
+            ),
+        }
+        for index in range(21)
+    ]
+    outcome = InquiryOutcome(
+        inquiry="Synthetic distribution eligibility request",
+        topic="distribution",
+        route="generate_response",
+        record_keeper="Synthetic Record Keeper",
+        plan_type="401(k)",
+        scrape_status="ok",
+        generate_result=SimpleNamespace(
+            decision="can_proceed",
+            confidence=0.91,
+            response={
+                "outcome": "can_proceed",
+                "response_to_participant": "Synthetic safe response",
+            },
+            source_articles=source_articles,
+            used_chunks=used_chunks,
+            coverage_gaps=[],
+            metadata={"synthetic": True, "chunks_used": len(used_chunks)},
+        ),
+        diagnostics=diagnostics,
+    )
+    return outcome, _entry_from_outcome(0, outcome)
+
+
+async def test_realistic_gr_fixture_uses_async_production_pipeline() -> None:
+    pending_fixture = _realistic_gr_fixture()
+
+    assert inspect.isawaitable(pending_fixture), (
+        "la fixture debe atravesar el mapper asíncrono de producción"
+    )
+    built = await pending_fixture
+    assert isinstance(built, tuple) and len(built) == 2, (
+        "la fixture debe conservar el outcome previo a su conversión durable"
+    )
+    outcome, entry = built
+
+    assert len(outcome.generate_result.source_articles) == 10
+    assert len(outcome.generate_result.used_chunks) == 21
+    assert outcome.diagnostics["field_mapping"]["deterministic_mapped"] == {
+        "account_balance": [
+            {"module": "savings_rate", "field": "Account Balance"}
+        ],
+        "termination_date": [
+            {"module": "census", "field": "Termination Date"}
+        ],
+    }
+    durable_gr = entry["result"]["generate_response"]
+    assert len(durable_gr["source_articles"]) == 10
+    assert durable_gr["used_chunks"] == []
+    assert durable_gr["metadata"]["chunks_used"] == 21
 
 
 class TestNativeTypes:
@@ -150,6 +274,120 @@ class TestConcurrencyAndQuota:
 
 
 class TestPollingAndDurability:
+
+    async def test_realistic_gr_checkpoint_with_multiple_mappings_roundtrips(
+            self, repo, unique_key):
+        rec, _ = await _create(repo, unique_key)
+        await repo.update(rec.job_id, state=TicketJobState.RUNNING)
+        outcome, entry = await _realistic_gr_fixture()
+
+        await repo.record_inquiry_result(rec.job_id, 0, entry)
+        found = await repo.get(rec.job_id)
+
+        assert len(outcome.generate_result.source_articles) == 10
+        assert len(outcome.generate_result.used_chunks) == 21
+        persisted = found.per_inquiry_status[0]
+        assert persisted["result"]["generate_response"]["response"][
+            "response_to_participant"
+        ]
+        assert len(
+            persisted["result"]["diagnostics"]["field_mapping"][
+                "deterministic_mapped"
+            ]
+        ) == 2
+        assert len(
+            persisted["result"]["generate_response"]["source_articles"]
+        ) == 10
+        # `_entry_from_outcome` deliberately minimizes bulky chunks before
+        # Firestore, while metadata preserves the synthetic input cardinality.
+        assert persisted["result"]["generate_response"]["used_chunks"] == []
+        assert persisted["result"]["generate_response"]["metadata"][
+            "chunks_used"
+        ] == 21
+
+    async def test_twenty_consecutive_synthetic_gr_executions_terminalize(
+            self, repo, unique_key):
+        terminal_states = []
+        for case_number in range(20):
+            principal = f"synthetic-gr-{unique_key[:12]}-{case_number}"
+            rec, _ = await _create(
+                repo,
+                f"{unique_key}-gr-{case_number}",
+                principal=principal,
+            )
+            epoch = await repo.claim(rec.job_id, worker_id="synthetic-worker")
+            assert epoch is not None
+
+            for operation, fingerprint_seed in (
+                ("participant", "a"),
+                ("plan", "b"),
+            ):
+                decision = await repo.prepare_forusbots_operation(
+                    rec.job_id,
+                    0,
+                    operation=operation,
+                    request_fingerprint=fingerprint_seed * 64,
+                    worker_id="synthetic-worker",
+                    lease_epoch=epoch,
+                    route="generate_response",
+                )
+                assert decision.action == "submit"
+                await repo.record_forusbots_external_job(
+                    rec.job_id,
+                    0,
+                    operation=operation,
+                    external_job_id=(
+                        f"synthetic-{operation}-{case_number:02d}"
+                    ),
+                    worker_id="synthetic-worker",
+                    lease_epoch=epoch,
+                )
+
+            _outcome, entry = await _realistic_gr_fixture()
+            await repo.record_inquiry_result(
+                rec.job_id,
+                0,
+                entry,
+                lease_epoch=epoch,
+            )
+            await repo.update(
+                rec.job_id,
+                state=TicketJobState.SUCCEEDED,
+                expected_lease_epoch=epoch,
+            )
+            found = await repo.get(rec.job_id)
+            assert found is not None
+            assert len(found.forusbots_job_ids) == 2
+            assert found.public_error_code is None
+            terminal_states.append(found.state)
+
+        assert terminal_states == [TicketJobState.SUCCEEDED] * 20
+
+    async def test_legacy_nested_array_shape_is_rejected_before_firestore_write(
+            self, repo, unique_key):
+        rec, _ = await _create(repo, unique_key)
+        await repo.update(rec.job_id, state=TicketJobState.RUNNING)
+
+        with pytest.raises(DurableDocumentValidationError):
+            await repo.record_inquiry_result(rec.job_id, 0, {
+                "route": "generate_response",
+                "execution_status": "succeeded",
+                "participant_reply_safe": True,
+                "result": {
+                    "diagnostics": {
+                        "field_mapping": {
+                            "deterministic_mapped": {
+                                "account_balance": [
+                                    ["savings_rate", "Account Balance"]
+                                ]
+                            }
+                        }
+                    }
+                },
+            })
+
+        found = await repo.get(rec.job_id)
+        assert found.per_inquiry_status == []
 
     async def test_two_clients_poll_same_backend(self, backend, unique_key):
         repo_a = TicketJobRepository(backend)
@@ -237,7 +475,7 @@ class TestLeaseFencingLive:
 class TestReconcilerCursorLive:
 
     async def test_state_in_document_id_cursor_paginates_without_starvation(
-            self, unique_key):
+            self, unique_key, require_firestore_emulator):
         """Exercise the exact reconciler query against the emulator.
 
         Firestore must accept ``state in [queued, running]`` combined with

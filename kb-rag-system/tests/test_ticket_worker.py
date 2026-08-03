@@ -853,6 +853,130 @@ class _ForusBotsLeaseRaceOrchestrator:
 
 class TestForusBotsDurableSubmitIntent:
 
+    async def test_dedupe_scope_is_isolated_per_durable_job(self):
+        from api.ticket_worker import _install_forusbots_intent_guard
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        class HookCapture:
+            def set_forusbots_operation_hooks(
+                self, prepare, submitted, *, dedupe_scope
+            ):
+                self.dedupe_scope = dedupe_scope
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        first = HookCapture()
+        second = HookCapture()
+        common = dict(
+            repo=repo,
+            inquiry_index=0,
+            worker_id="worker",
+            lease_epoch=1,
+            route="generate_response",
+            job_request_fingerprint="a" * 64,
+        )
+
+        _install_forusbots_intent_guard(first, job_id="job-a", **common)
+        _install_forusbots_intent_guard(second, job_id="job-b", **common)
+
+        assert first.dedupe_scope != second.dedupe_scope
+
+    async def test_restart_after_confirmed_id_resumes_without_second_submit(self):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        shared = SimpleNamespace(
+            submit_calls=0,
+            resume_calls=0,
+            cancel_after_receipt=True,
+        )
+
+        class ResumeAwareOrchestrator:
+            def set_forusbots_operation_hooks(
+                self, prepare, submitted, *, dedupe_scope
+            ):
+                self.prepare = prepare
+                self.submitted = submitted
+                self.dedupe_scope = dedupe_scope
+
+            async def extract_inquiries(self, req):
+                return [ExtractedInquiry(
+                    "cash out", "LT Trust", "401(k)", "rollover"
+                )]
+
+            async def classify(self, inquiry):
+                return SimpleNamespace(
+                    route="generate_response",
+                    confidence=0.9,
+                    reasoning="synthetic",
+                    user_message=None,
+                    metadata={},
+                )
+
+            async def handle_inquiry(
+                self, ext, req, *, total_inquiries, classification=None
+            ):
+                decision = await self.prepare("participant")
+                if decision.action == "submit":
+                    shared.submit_calls += 1
+                    await self.submitted(
+                        "participant", "external-job-synthetic-restart"
+                    )
+                    if shared.cancel_after_receipt:
+                        shared.cancel_after_receipt = False
+                        raise asyncio.CancelledError()
+                elif decision.action == "resume":
+                    shared.resume_calls += 1
+                    assert decision.external_job_id == \
+                        "external-job-synthetic-restart"
+                else:
+                    raise AssertionError(decision.action)
+                return InquiryOutcome(
+                    inquiry=ext.inquiry,
+                    topic=ext.topic,
+                    route="generate_response",
+                    record_keeper=ext.record_keeper,
+                    plan_type=ext.plan_type,
+                    scrape_status="ok",
+                    generate_result=SimpleNamespace(
+                        decision="can_proceed",
+                        confidence=0.9,
+                        response={"response_to_participant": "Safe response"},
+                        source_articles=[],
+                        used_chunks=[],
+                        coverage_gaps=[],
+                        metadata={},
+                    ),
+                    diagnostics={},
+                )
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+        app = SimpleNamespace(state=SimpleNamespace(
+            ticket_repo=repo,
+            ticket_orchestrator_factory=ResumeAwareOrchestrator,
+            execution_logger=None,
+        ))
+
+        with pytest.raises(asyncio.CancelledError):
+            await run_ticket_job(app, rec.job_id, worker_id="worker-first")
+
+        final = await run_ticket_job(
+            app, rec.job_id, worker_id="worker-second"
+        )
+
+        assert shared.submit_calls == 1
+        assert shared.resume_calls == 1
+        assert final.state.value == "succeeded"
+        assert final.forusbots_job_ids == [
+            "external-job-synthetic-restart"
+        ]
+
     async def test_lost_lease_double_worker_never_submits_twice(self):
         """Worker A reserva intent y entra al POST. Tras perder el lease,
         worker B debe ver ese intent durable y cerrar para reconciliación sin
@@ -1024,6 +1148,33 @@ class _ScrapeThenTimeoutOrch:
 
 class TestForusBotsIdTraceabilityOnDegraded:
 
+    async def test_generate_response_timeout_is_manual_and_non_retryable(self):
+        """A GR timeout may hide an accepted upstream effect.
+
+        It must therefore require reconciliation and must never invite a
+        consumer to retry the whole ticket blindly.
+        """
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        final = await run_ticket_job(
+            _worker_app(repo, _ScrapeThenTimeoutOrch()), rec.job_id
+        )
+
+        entry = final.per_inquiry_status[0]
+        assert entry["manual_reconciliation_required"] is True
+        assert entry["error"] == {
+            "code": "INQUIRY_TIMEOUT",
+            "retryable": False,
+        }
+        assert final.public_error_code == "FORUSBOTS_NEEDS_RECONCILIATION"
+        assert final.retryable is False
+
     async def test_forusbots_ids_preserved_when_inquiry_times_out(self):
         """P1 (review): un scrape que produjo job_id pero cuya inquiry terminó
         en timeout DEBE conservar el ID en forusbots_job_ids (reconciliación).
@@ -1052,6 +1203,55 @@ class TestForusBotsIdTraceabilityOnDegraded:
 
 
 class TestAggregatePublicationSafety:
+
+    def test_manual_reconciliation_cannot_be_masked_by_retryable_error(self):
+        from api.ticket_worker import _aggregate_public_error
+
+        entries = [
+            {
+                "error": {
+                    "code": "PINECONE_TRANSIENT_FAILURE",
+                    "retryable": True,
+                }
+            },
+            {
+                "manual_reconciliation_required": True,
+                "error": {"code": "INQUIRY_TIMEOUT", "retryable": False},
+            },
+        ]
+
+        assert _aggregate_public_error(entries, unprocessed=0) == (
+            "FORUSBOTS_NEEDS_RECONCILIATION", False
+        )
+
+    def test_mixed_error_aggregation_keeps_code_and_retryability_coherent(self):
+        from api.ticket_worker import _aggregate_public_error
+
+        entries = [
+            {
+                "error": {
+                    "code": "UNSAFE_RETRIEVAL_QUERY",
+                    "retryable": False,
+                }
+            },
+            {
+                "error": {
+                    "code": "PINECONE_TRANSIENT_FAILURE",
+                    "retryable": True,
+                }
+            },
+        ]
+
+        assert _aggregate_public_error(entries, unprocessed=0) == (
+            "UNSAFE_RETRIEVAL_QUERY", False
+        )
+
+        entries.append({
+            "error": {"code": "INTERNAL_ERROR", "retryable": True}
+        })
+        assert _aggregate_public_error(entries, unprocessed=0) == (
+            "INTERNAL_ERROR", False
+        )
 
     def test_succeeded_but_unsafe_inquiry_is_never_publishable(self):
         from api.ticket_worker import aggregate_states
@@ -1109,6 +1309,8 @@ class TestAggregatePublicationSafety:
                         metadata={
                             "error": "vector retrieval unavailable",
                             "error_type": "PineconeException",
+                            "retrieval_failure_kind": "server_error",
+                            "retrieval_retryable": True,
                         },
                     ),
                 ),
@@ -1135,6 +1337,29 @@ class TestAggregatePublicationSafety:
                     ),
                 ),
                 "LLM_FAILURE",
+                "generate_response",
+            ),
+            (
+                InquiryOutcome(
+                    inquiry="Can I take a distribution?",
+                    topic="distribution",
+                    route="generate_response",
+                    scrape_status="ok",
+                    generate_result=SimpleNamespace(
+                        decision="out_of_scope",
+                        confidence=0.0,
+                        response={"outcome": "blocked_missing_data"},
+                        source_articles=[],
+                        used_chunks=[],
+                        coverage_gaps=[],
+                        metadata={
+                            "error": "generate_response_failed",
+                            "retrieval_failure_kind": "transport",
+                            "retrieval_retryable": True,
+                        },
+                    ),
+                ),
+                "PINECONE_TRANSIENT_FAILURE",
                 "generate_response",
             ),
         ],
@@ -1186,6 +1411,8 @@ class TestAggregatePublicationSafety:
                 "coverage_signals": {
                     "retrieval_status": "failed",
                     "pinecone_error": "ServiceUnavailable",
+                    "failure_kind": "server_error",
+                    "retryable": True,
                 },
             },
         )
@@ -1204,10 +1431,42 @@ class TestAggregatePublicationSafety:
         assert diagnostics["classifier"]["coverage_signals"] == {
             "retrieval_status": "failed",
             "pinecone_error": "ServiceUnavailable",
+            "failure_kind": "server_error",
+            "retryable": True,
         }
         assert entry["participant_reply_safe"] is False
         assert entry["error"]["code"] == "PINECONE_TRANSIENT_FAILURE"
         assert state.value != "succeeded"
+        assert next_action.value == "use_legacy_or_human"
+
+    def test_unsafe_classifier_retrieval_is_non_retryable_and_never_pinecone(self):
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
+
+        outcome = InquiryOutcome(
+            inquiry="synthetic retirement request",
+            topic="general",
+            route="needs_more_info",
+            needs_more_info_message="Please use assisted support.",
+            diagnostics={
+                "classifier": {
+                    "coverage_signals": {
+                        "retrieval_status": "blocked",
+                        "failure_kind": "unsafe_query",
+                        "retryable": False,
+                    }
+                }
+            },
+        )
+
+        entry = _entry_from_outcome(0, outcome)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+
+        assert entry["participant_reply_safe"] is False
+        assert entry["error"] == {
+            "code": "UNSAFE_RETRIEVAL_QUERY",
+            "retryable": False,
+        }
+        assert state.value == "partial"
         assert next_action.value == "use_legacy_or_human"
 
     def test_failed_classifier_retrieval_survives_execution_plan_round_trip(self):
@@ -1231,6 +1490,8 @@ class TestAggregatePublicationSafety:
                 "coverage_signals": {
                     "retrieval_status": "failed",
                     "pinecone_error": "ServiceUnavailable",
+                    "failure_kind": "server_error",
+                    "retryable": True,
                 },
             },
         )
@@ -1284,6 +1545,8 @@ class _RagMetadataFailureOrchestrator:
                 metadata={
                     "error": "vector retrieval unavailable",
                     "error_type": "PineconeException",
+                    "retrieval_failure_kind": "server_error",
+                    "retrieval_retryable": True,
                 },
             ),
         )
@@ -1331,6 +1594,35 @@ class TestWorkerOperationalMetrics:
         assert ("validate", "success") in steps
         assert ("retrieve", "success") in steps
         assert ("finalize", "success") in steps
+
+    async def test_success_observes_ordered_durable_phases(self, monkeypatch):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        calls = self._capture(monkeypatch)
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        final = await run_ticket_job(
+            _worker_app(repo, _HeartbeatBlockingOrchestrator(delay_s=0)),
+            rec.job_id,
+        )
+
+        assert final.state.value == "succeeded"
+        phases = [
+            labels["phase"]
+            for metric, value, labels in calls
+            if metric == "ticket_phase_count" and value == 1
+        ]
+        assert phases == [
+            "handle_inquiry",
+            "convert_outcome",
+            "validate_durable_document",
+            "persist_inquiry_result",
+            "mark_terminal",
+        ]
 
     async def test_worker_scope_enables_shared_parser_ticket_metric(
         self, monkeypatch,
@@ -1414,6 +1706,158 @@ class TestWorkerOperationalMetrics:
 
 
 class TestTechnicalFailurePublicationIntegration:
+
+    def test_exception_and_dependency_telemetry_use_closed_allowlists(self):
+        from api.ticket_worker import (
+            _safe_dependency_code,
+            _safe_exception_type,
+        )
+
+        PrivateException = type(
+            "PRIVATE_PARTICIPANT_TOKEN_123", (RuntimeError,), {}
+        )
+
+        class PrivateCodeError(RuntimeError):
+            code = "SECRET_CASE_987"
+
+        assert _safe_exception_type(PrivateException()) == "Exception"
+        assert _safe_dependency_code(PrivateCodeError()) is None
+
+    def test_failure_fingerprint_depends_only_on_structural_metadata(
+        self, caplog,
+    ):
+        from api.ticket_worker import _log_inquiry_failure
+
+        first_secret = "participant-private-first"  # pragma: allowlist secret
+        second_secret = "participant-private-second"  # pragma: allowlist secret
+        with caplog.at_level("ERROR", logger="api.ticket_worker"):
+            _log_inquiry_failure(
+                ValueError(first_secret), default_phase="convert_outcome"
+            )
+            _log_inquiry_failure(
+                ValueError(second_secret), default_phase="convert_outcome"
+            )
+
+        records = [
+            record.message for record in caplog.records
+            if record.name == "api.ticket_worker"
+            and record.message.startswith("ticket inquiry failed")
+        ]
+        assert len(records) == 2
+        fingerprints = [
+            record.split("fingerprint=", 1)[1].split(" ", 1)[0]
+            for record in records
+        ]
+        assert fingerprints[0] == fingerprints[1]
+        assert len(fingerprints[0]) == 64
+        assert first_secret not in caplog.text
+        assert second_secret not in caplog.text
+
+    def test_durable_validation_log_contains_only_safe_aggregates(self, caplog):
+        from api.ticket_worker import _InquiryPhaseFailure, _log_inquiry_failure
+        from data_pipeline.durable_document import (
+            DurableDocumentValidationError,
+            validate_durable_document,
+        )
+
+        private_value = "participant-private-value-must-not-leak"
+        with pytest.raises(DurableDocumentValidationError) as exc_info:
+            validate_durable_document({"result": [[private_value]]})
+
+        wrapped = _InquiryPhaseFailure(
+            "validate_durable_document", exc_info.value,
+        )
+        with caplog.at_level("ERROR", logger="api.ticket_worker"):
+            _log_inquiry_failure(
+                wrapped,
+                default_phase="handle_inquiry",
+            )
+
+        assert "phase=validate_durable_document" in caplog.text
+        assert "error_type=DurableDocumentValidationError" in caplog.text
+        assert "fingerprint=" in caplog.text
+        assert "estimated_size_bytes=" in caplog.text
+        assert "max_depth=" in caplog.text
+        assert "invalid_nested_arrays=1" in caplog.text
+        assert private_value not in caplog.text
+
+    async def test_conversion_failure_log_has_safe_phase_and_type(
+            self, caplog):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        class InvalidResultOrchestrator(_HeartbeatBlockingOrchestrator):
+            async def handle_inquiry(
+                self, ext, req, *, total_inquiries, classification=None
+            ):
+                return InquiryOutcome(
+                    inquiry=ext.inquiry,
+                    topic=ext.topic,
+                    route="generate_response",
+                    scrape_status="ok",
+                    generate_result=SimpleNamespace(
+                        decision="can_proceed", confidence=0.9
+                    ),
+                    diagnostics={},
+                )
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        with caplog.at_level("ERROR", logger="api.ticket_worker"):
+            final = await run_ticket_job(
+                _worker_app(repo, InvalidResultOrchestrator(delay_s=0)),
+                rec.job_id,
+            )
+
+        assert final.state.value == "failed"
+        assert "phase=convert_outcome" in caplog.text
+        assert "error_type=AttributeError" in caplog.text
+        assert "dependency_code=none" in caplog.text
+        assert rec.request_fingerprint not in caplog.text
+        assert "estimated_size_bytes=none" in caplog.text
+        assert "max_depth=none" in caplog.text
+        assert "invalid_nested_arrays=none" in caplog.text
+
+    async def test_pre_effect_durable_failure_has_validation_phase_and_stats(
+            self, caplog):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.durable_document import validate_durable_document
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        class PreEffectValidationFailure(_HeartbeatBlockingOrchestrator):
+            async def classify(self, inquiry):
+                return SimpleNamespace(
+                    route="generate_response",
+                    confidence=0.9,
+                    reasoning="synthetic",
+                    user_message=None,
+                )
+
+            async def handle_inquiry(
+                self, ext, req, *, total_inquiries, classification=None
+            ):
+                validate_durable_document({"diagnostics": [["private"]]})
+                raise AssertionError("unreachable")
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        with caplog.at_level("ERROR", logger="api.ticket_worker"):
+            final = await run_ticket_job(
+                _worker_app(repo, PreEffectValidationFailure(delay_s=0)),
+                rec.job_id,
+            )
+
+        entry = final.per_inquiry_status[0]
+        assert "phase=validate_durable_document" in caplog.text
+        assert "error_type=DurableDocumentValidationError" in caplog.text
+        assert "invalid_nested_arrays=1" in caplog.text
+        assert entry.get("manual_reconciliation_required") is False
 
     async def test_rag_metadata_failure_cannot_terminalize_as_publishable(self):
         from api.ticket_worker import run_ticket_job
@@ -1524,6 +1968,13 @@ class TestTerminalMetricPopulation:
         calls = []
         monkeypatch.setattr(
             ticket_worker.ticket_metrics,
+            "increment",
+            lambda *args, **kwargs: pytest.fail(
+                "legacy terminal metric must not be emitted"
+            ),
+        )
+        monkeypatch.setattr(
+            ticket_worker.ticket_metrics,
             "emit",
             lambda *args, **kwargs: calls.append((args, kwargs)),
         )
@@ -1603,3 +2054,54 @@ class TestTerminalMetricPopulation:
         terminal = [c for c in calls if c[0][0] == "ticket_job_terminal"]
         assert final.state.value == "succeeded"
         assert len(terminal) == 1
+
+    def test_terminal_metric_emits_internal_error_per_route(self, monkeypatch):
+        from api import ticket_worker
+        from data_pipeline.ticket_job_models import (
+            TicketJobState, new_job_record,
+        )
+
+        calls = self._capture_terminal_events(monkeypatch, ticket_worker)
+        record = new_job_record(
+            principal_id="principal",
+            request_fingerprint="a" * 64,
+            state=TicketJobState.PARTIAL,
+            per_inquiry_status=[
+                {
+                    "route": "knowledge_question",
+                    "execution_status": "failed",
+                    "error": {"code": "INTERNAL_ERROR", "retryable": False},
+                },
+                {
+                    "route": "generate_response",
+                    "execution_status": "failed",
+                    "error": {
+                        "code": "PINECONE_TRANSIENT_FAILURE",
+                        "retryable": True,
+                    },
+                },
+            ],
+        )
+
+        ticket_worker._emit_terminal_metric(record)
+
+        inquiry_events = [
+            call for call in calls
+            if call[0][0] == "ticket_inquiry_terminal"
+        ]
+        assert inquiry_events == [
+            (
+                ("ticket_inquiry_terminal", 1),
+                {
+                    "route": "knowledge_question",
+                    "code": "INTERNAL_ERROR",
+                },
+            ),
+            (
+                ("ticket_inquiry_terminal", 1),
+                {
+                    "route": "generate_response",
+                    "code": "PINECONE_TRANSIENT_FAILURE",
+                },
+            ),
+        ]

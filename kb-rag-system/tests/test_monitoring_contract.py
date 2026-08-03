@@ -64,8 +64,12 @@ def test_logging_metrics_are_real_environment_scoped_and_privacy_safe() -> None:
     required = {
         "poll_not_found",
         "poll_gone",
+        "accepted_total",
         "terminal_total",
         "terminal_incorrect",
+        "terminal_failed",
+        "terminal_partial",
+        "terminal_internal_error",
         "reconciler_run",
         "reconciler_fenced_leases",
         "reconciler_errors",
@@ -99,12 +103,164 @@ def test_logging_metrics_are_real_environment_scoped_and_privacy_safe() -> None:
     assert "ticket_manual_reconciliation_required" in manual
 
 
+def test_worker_metrics_use_one_canonical_cloud_logging_representation() -> None:
+    monitoring = _read(MONITORING)
+    locals_block = monitoring[:monitoring.index(
+        'check "ticket_monitoring_notification_channels"'
+    )]
+
+    assert locals_block.count('labels.python_logger="ticket_metrics"') == 2
+
+
+def test_canonical_run_metrics_read_json_message_not_text_payload() -> None:
+    monitoring = _read(MONITORING)
+    canonical_metrics = (
+        "poll_not_found",
+        "poll_gone",
+        "terminal_total",
+        "terminal_incorrect",
+        "terminal_failed",
+        "terminal_partial",
+        "terminal_internal_error",
+        "manual_reconciliation",
+        "forusbots_failure",
+        "pinecone_circuit_open",
+        "queue_delay",
+        "step_latency",
+        "result_count",
+        "forusbots_count",
+        "forusbots_circuit",
+        "pinecone_retry",
+        "pinecone_circuit",
+        "llm_parse",
+        "llm_fallback",
+        "llm_tokens",
+        "llm_cost",
+        "n8n_poll",
+    )
+    for resource_name in canonical_metrics:
+        block = _resource(monitoring, "google_logging_metric", resource_name)
+        assert "jsonPayload.message" in block
+        assert "textPayload" not in block
+        if "value_extractor" in block:
+            assert "REGEXP_EXTRACT(jsonPayload.message" in block
+
+    for resource_name in (
+        "reconciler_run",
+        "reconciler_fenced_leases",
+        "reconciler_errors",
+        "deadline_terminalized",
+        "jobs_active",
+        "jobs_oldest_age",
+        "reconciler_duration",
+    ):
+        block = _resource(monitoring, "google_logging_metric", resource_name)
+        assert "textPayload" in block
+        assert "jsonPayload.message" not in block
+
+
+def test_reconciler_action_counters_ignore_zero_value_heartbeats() -> None:
+    monitoring = _read(MONITORING)
+    for resource_name in (
+        "reconciler_fenced_leases",
+        "reconciler_errors",
+        "deadline_terminalized",
+    ):
+        block = _resource(monitoring, "google_logging_metric", resource_name)
+        assert "value" in block
+        assert "[1-9][0-9]*" in block
+
+
+def test_failed_partial_and_internal_error_have_new_private_safe_signals() -> None:
+    monitoring = _read(MONITORING)
+    metrics = {
+        "terminal_failed": ('"state":"failed"',),
+        "terminal_partial": ('"state":"partial"',),
+        "terminal_internal_error": (
+            '"metric":"ticket_inquiry_terminal"',
+            '"code":"INTERNAL_ERROR"',
+        ),
+    }
+    for resource_name, tokens in metrics.items():
+        block = _resource(monitoring, "google_logging_metric", resource_name)
+        expected_metric = (
+            "ticket_inquiry_terminal"
+            if resource_name == "terminal_internal_error"
+            else "ticket_job_terminal"
+        )
+        assert f'"metric":"{expected_metric}"' in block
+        assert "${local.worker_log_filter}" in block
+        if resource_name == "terminal_internal_error":
+            assert 'route = "REGEXP_EXTRACT' in block
+        else:
+            assert "label_extractors" not in block
+        for token in tokens:
+            assert token in block
+        for forbidden in ("job_hash", "trace_id", "participant_id", "plan_id"):
+            assert forbidden not in block
+
+    policies = {
+        "ticket_terminal_failed": "terminal_failed",
+        "ticket_terminal_partial": "terminal_partial",
+        "ticket_terminal_internal_error": "terminal_internal_error",
+    }
+    for policy_name, metric_name in policies.items():
+        block = _resource(
+            monitoring, "google_monitoring_alert_policy", policy_name
+        )
+        assert f"google_logging_metric.{metric_name}.name" in block
+        assert re.search(r"threshold_value\s*=\s*0(?:\.0)?", block)
+        assert re.search(r'duration\s*=\s*"0s"', block)
+        assert "notification_channels = var.notification_channels" in block
+
+    internal_policy = _resource(
+        monitoring,
+        "google_monitoring_alert_policy",
+        "ticket_terminal_internal_error",
+    )
+    assert 'group_by_fields      = ["metric.label.route"]' in internal_policy
+
+
+def test_accepted_to_terminal_ratio_is_declared_and_alerted() -> None:
+    monitoring = _read(MONITORING)
+    accepted = _resource(
+        monitoring, "google_logging_metric", "accepted_total"
+    )
+    policy = _resource(
+        monitoring,
+        "google_monitoring_alert_policy",
+        "ticket_accepted_terminal_ratio",
+    )
+
+    assert '${local.producer_log_filter}' in accepted
+    assert '"metric":"ticket_job_accepted"' in accepted
+    assert "google_logging_metric.terminal_total.name" in policy
+    assert "google_logging_metric.accepted_total.name" in policy
+    assert 'comparison         = "COMPARISON_LT"' in policy
+    assert re.search(r"threshold_value\s*=\s*0\.99", policy)
+    assert "denominator_filter" in policy
+    assert "notification_channels = var.notification_channels" in policy
+
+
+def test_oldest_active_job_alert_uses_the_absolute_job_sla() -> None:
+    block = _resource(
+        _read(MONITORING),
+        "google_monitoring_alert_policy",
+        "ticket_oldest_active_job",
+    )
+
+    assert re.search(r"threshold_value\s*=\s*2400", block)
+    assert re.search(r'duration\s*=\s*"0s"', block)
+    assert "120s" not in block
+
+
 def test_task11_structured_signals_are_backed_by_log_metrics() -> None:
     monitoring = _read(MONITORING)
     required = {
         "queue_delay": "ticket_queue_delay_seconds",
         "jobs_active": "ticket_jobs_active",
         "jobs_oldest_age": "ticket_jobs_oldest_age_seconds",
+        "reconciler_duration": "ticket_reconciler_duration_seconds",
         "step_latency": "ticket_step_latency_seconds",
         "result_count": "ticket_result_count",
         "forusbots_count": "ticket_forusbots_count",
@@ -128,6 +284,7 @@ def test_task11_structured_signals_are_backed_by_log_metrics() -> None:
         "queue_delay",
         "jobs_active",
         "jobs_oldest_age",
+        "reconciler_duration",
         "step_latency",
         "llm_tokens",
         "llm_cost",
@@ -153,6 +310,7 @@ def test_task11_structured_signals_are_backed_by_log_metrics() -> None:
         "queue_delay",
         "jobs_active",
         "jobs_oldest_age",
+        "reconciler_duration",
         "step_latency",
         "llm_tokens",
         "llm_cost",
@@ -320,6 +478,10 @@ def test_required_alerts_are_implemented_not_left_as_comments() -> None:
         "ticket_poll_not_found",
         "ticket_poll_gone",
         "ticket_terminal_incorrect_ratio",
+        "ticket_accepted_terminal_ratio",
+        "ticket_terminal_failed",
+        "ticket_terminal_partial",
+        "ticket_terminal_internal_error",
         "ticket_queue_backlog",
         "worker_5xx_ratio",
         "producer_auth_failure_ratio",
@@ -464,6 +626,10 @@ def test_incident_drill_maps_every_alert_and_cloud_tasks_dlq_semantics() -> None
         "ticket_poll_not_found",
         "ticket_poll_gone",
         "ticket_terminal_incorrect_ratio",
+        "ticket_accepted_terminal_ratio",
+        "ticket_terminal_failed",
+        "ticket_terminal_partial",
+        "ticket_terminal_internal_error",
         "ticket_queue_backlog",
         "worker_5xx_ratio",
         "producer_auth_failure_ratio",
@@ -480,6 +646,8 @@ def test_incident_drill_maps_every_alert_and_cloud_tasks_dlq_semantics() -> None
 
     assert "Cloud Tasks no ofrece una DLQ nativa" in drill
     assert "dos canales" in drill
+    assert "job activo >2400s" in drill
+    assert "lease + gracia" not in drill
     assert "job_hash" in drill and "trace_id" in drill
     assert "participant_id" not in drill
     assert "plan_id" not in drill

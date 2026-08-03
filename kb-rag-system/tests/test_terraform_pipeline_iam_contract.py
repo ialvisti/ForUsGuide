@@ -394,14 +394,14 @@ def test_reconciler_scheduler_is_bound_to_an_attested_active_release_phase() -> 
         assert "_PLATFORM_RELEASE_PHASES_SHA256" in scope
 
 
-def test_queue_pause_preflight_can_only_list_tasks_on_the_two_ticket_queues() -> None:
+def test_queue_transition_can_only_list_tasks_on_the_two_ticket_queues() -> None:
     iam = _read("pipeline_iam.tf")
 
     broker = iam.split(
         'resource "google_project_iam_custom_role" "platform_queue_broker"', 1
     )[1].split("\n}", 1)[0]
     assert '"cloudtasks.queues.pause"' in broker
-    assert '"cloudtasks.queues.resume"' not in broker
+    assert '"cloudtasks.queues.resume"' in broker
     assert '"cloudtasks.tasks.list"' not in broker
 
     inspector = iam.split(
@@ -917,6 +917,32 @@ def test_platform_apply_can_create_one_outputs_manifest_but_not_overwrite() -> N
     assert 'role   = "roles/storage.objectCreator"' in block
     assert "google_service_account.apply_platform[0].email" in block
     assert "roles/storage.objectAdmin" not in block
+
+
+def test_platform_plan_reads_only_generation_bound_environment_inputs() -> None:
+    iam = _read("pipeline_iam.tf")
+    main = _read("main.tf")
+
+    marker = (
+        'resource "google_storage_bucket_iam_member" '
+        '"platform_plan_environment_inputs_reader"'
+    )
+    assert marker in iam
+    block = iam.split(marker, 1)[1].split("\n}", 1)[0]
+    assert "bucket = google_storage_bucket.evidence.name" in block
+    assert 'name                        = "rag-kb-system-ticket-evidence-900340137010"' in main
+    assert 'role   = "roles/storage.objectViewer"' in block
+    assert "google_service_account.plan_platform[0].email" in block
+    assert 'resource.name.startsWith(' in block
+    assert "/objects/environment-inputs/" in block
+    assert "roles/storage.objectAdmin" not in block
+    assert "roles/storage.admin" not in block
+
+    aux_reader = iam.split(
+        'resource "google_storage_bucket_iam_member" "aux_evidence_reader"',
+        1,
+    )[1].split("\n}", 1)[0]
+    assert "plan_platform" not in aux_reader
 
 
 def test_every_trigger_uses_a_user_managed_identity_never_compute_default() -> None:

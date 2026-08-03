@@ -34,11 +34,14 @@ from data_pipeline.retrieval_privacy import (
     sanitize_retrieval_query,
 )
 from data_pipeline.forusbots_client import (
+    ForusBotsCircuitOpen,
     ForusBotsError,
     ForusBotsJobFailed,
+    ForusBotsPollFailed,
     ForusBotsTimeout,
 )
 from data_pipeline.json_parsing import parse_json_array, parse_json_object
+from data_pipeline.durable_document import validate_durable_document
 from data_pipeline.llm_output_models import (
     ExtractedInquiryOut,
     FieldMapOut,
@@ -56,7 +59,14 @@ _SAFE_FORUSBOTS_ERROR_CODES = frozenset({
     "FORUSBOTS_AMBIGUOUS_SUBMIT",
     "FORUSBOTS_POLL_FAILED",
     "FORUSBOTS_CIRCUIT_OPEN",
+    "FORUSBOTS_CHECKPOINT_FAILED",
+    "FORUSBOTS_NEEDS_RECONCILIATION",
 })
+
+
+class _ForusBotsOperationNeedsReconciliation(ForusBotsError):
+    code = "FORUSBOTS_NEEDS_RECONCILIATION"
+    needs_reconciliation = True
 
 
 def _safe_nonnegative_number(value: Any) -> Optional[float]:
@@ -344,6 +354,12 @@ class TicketOrchestrator:
         self._forusbots_intent_guard: Optional[
             Callable[[], Awaitable[None]]
         ] = None
+        self._forusbots_prepare_operation: Optional[
+            Callable[[str], Awaitable[Any]]
+        ] = None
+        self._forusbots_submitted_observer: Optional[
+            Callable[[str, str], Awaitable[None]]
+        ] = None
         # ForusBotsClient es singleton de proceso, pero cada orchestrator
         # pertenece a un ticket job. El scope aleatorio impide que caché o
         # in-flight dedupe crucen tickets/tenants con IDs coincidentes.
@@ -358,6 +374,18 @@ class TicketOrchestrator:
         realmente pueden disparar ForusBots, inmediatamente antes del submit.
         """
         self._forusbots_intent_guard = guard
+
+    def set_forusbots_operation_hooks(
+        self,
+        prepare: Callable[[str], Awaitable[Any]],
+        submitted: Callable[[str, str], Awaitable[None]],
+        *,
+        dedupe_scope: str,
+    ) -> None:
+        """Install durable per-operation submit/resume hooks for one inquiry."""
+        self._forusbots_prepare_operation = prepare
+        self._forusbots_submitted_observer = submitted
+        self._forusbots_dedupe_scope = dedupe_scope
 
     # ------------------------------------------------------------------
     # Step 1 — extraction
@@ -572,6 +600,39 @@ class TicketOrchestrator:
             plan_type=ext.plan_type, topic=ext.topic,
             related_inquiries=ext.related_inquiries,
         )
+        rd_metadata = getattr(rd, "metadata", None) or {}
+        if (
+            isinstance(rd_metadata, dict)
+            and rd_metadata.get("error") == "required_data_failed"
+        ):
+            transient_kinds = {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+            failure_kind = rd_metadata.get("retrieval_failure_kind")
+            if failure_kind not in transient_kinds | {
+                "client_error", "unknown",
+            }:
+                failure_kind = "unknown"
+            diag["required_data_failure"] = {
+                "failure_kind": failure_kind,
+                "retryable": (
+                    rd_metadata.get("retrieval_retryable") is True
+                    and failure_kind in transient_kinds
+                ),
+            }
+            # Fail before mapping, ForUsBots, ticket extraction, body building
+            # or response generation.  Empty required-data caused by a
+            # technical failure is not evidence that no fields are required.
+            return InquiryOutcome(
+                inquiry=ext.inquiry,
+                topic=ext.topic,
+                route="generate_response",
+                record_keeper=ext.record_keeper,
+                plan_type=ext.plan_type,
+                scrape_status="skipped",
+                diagnostics=diag,
+            )
         flat_fields = _flatten_required_fields(getattr(rd, "required_fields", {}))
         modules: List[Dict[str, Any]] = []
         extraction_candidates: List[Dict[str, Any]] = []
@@ -579,11 +640,18 @@ class TicketOrchestrator:
             modules, extraction_candidates = await self._map_fields(flat_fields, diag)
         diag["mapped_modules"] = modules
 
+        # This diagnostic block becomes part of the durable per-inquiry
+        # checkpoint.  Validate it before the first irreversible ForUsBots
+        # effect so a Firestore-incompatible shape can never create an
+        # upstream job that the worker is then unable to checkpoint.
+        validate_durable_document({"diagnostics": diag})
+
         # El dedupe in-memory del cliente no cruza instancias ni sobrevive a
         # un lease perdido. El worker persiste este intent después de saber
         # que habrá scrape y justo antes del primer POST. Sin contrato
         # upstream idempotente, un intent previo bloquea cualquier resubmit.
-        if modules and self._forusbots_intent_guard is not None:
+        if modules and self._forusbots_prepare_operation is None \
+                and self._forusbots_intent_guard is not None:
             await self._forusbots_intent_guard()
 
         # 2) ForusBots scrapes AND ticket-field extraction, in PARALLEL — the
@@ -696,7 +764,7 @@ class TicketOrchestrator:
         year = datetime.now(timezone.utc).year
 
         det_entries: List[Tuple[str, str]] = []
-        det_by_slug: Dict[str, List[List[str]]] = {}
+        det_by_slug: Dict[str, List[Dict[str, str]]] = {}
         unresolved: List[Dict[str, Any]] = []
         request_provided: List[str] = []
         for item in flat_fields:
@@ -710,7 +778,10 @@ class TicketOrchestrator:
                 unresolved.append(item)
             else:
                 det_entries.extend(entries)
-                det_by_slug[str(item.get("field"))] = [list(e) for e in entries]
+                det_by_slug[str(item.get("field"))] = [
+                    {"module": module, "field": field_name}
+                    for module, field_name in entries
+                ]
 
         llm_modules: List[Dict[str, Any]] = []
         llm_unmapped: List[Any] = []
@@ -799,6 +870,49 @@ class TicketOrchestrator:
         scrape dominates, and a plan-side failure downgrades to "partial"."""
         p_modules, plan_modules = forusbots_catalog.split_modules_by_target(modules)
 
+        async def _run_operation(
+            operation: str, entity_id: str, operation_modules: List[Dict[str, Any]],
+        ) -> Any:
+            if self._forusbots_prepare_operation is not None:
+                decision = await self._forusbots_prepare_operation(operation)
+                action = getattr(decision, "action", None)
+                external_job_id = getattr(decision, "external_job_id", None)
+                if action == "reconcile":
+                    raise _ForusBotsOperationNeedsReconciliation(
+                        "ForUsBots operation requires manual reconciliation"
+                    )
+                if action == "resume":
+                    if not isinstance(external_job_id, str) or not external_job_id:
+                        raise _ForusBotsOperationNeedsReconciliation(
+                            "ForUsBots resume receipt is incomplete"
+                        )
+                    try:
+                        return await self.deps.forusbots.resume_job(
+                            external_job_id, operation=operation,
+                        )
+                    except ForusBotsCircuitOpen:
+                        # The effect is already confirmed by a durable receipt.
+                        # A local open circuit only prevented observing it; do
+                        # not degrade as though no upstream job existed.
+                        raise ForusBotsPollFailed(external_job_id) from None
+                if action != "submit":
+                    raise _ForusBotsOperationNeedsReconciliation(
+                        "ForUsBots operation decision is invalid"
+                    )
+
+            kwargs: Dict[str, Any] = {
+                "dedupe_scope": self._forusbots_dedupe_scope,
+            }
+            if self._forusbots_submitted_observer is not None:
+                kwargs["on_submitted"] = self._forusbots_submitted_observer
+            if operation == "participant":
+                return await self.deps.forusbots.scrape_participant(
+                    entity_id, operation_modules, **kwargs,
+                )
+            return await self.deps.forusbots.scrape_plan(
+                entity_id, operation_modules, **kwargs,
+            )
+
         async def _one(
             coro_label: str,
             coro: Awaitable[Any],
@@ -852,19 +966,14 @@ class TicketOrchestrator:
 
         tasks = []
         if p_modules:
-            tasks.append(_one("participant",
-                              self.deps.forusbots.scrape_participant(
-                                  participant_id,
-                                  p_modules,
-                                  dedupe_scope=self._forusbots_dedupe_scope,
-                              )))
+            tasks.append(_one(
+                "participant",
+                _run_operation("participant", participant_id, p_modules),
+            ))
         if plan_modules:
-            tasks.append(_one("plan",
-                              self.deps.forusbots.scrape_plan(
-                                  plan_id,
-                                  plan_modules,
-                                  dedupe_scope=self._forusbots_dedupe_scope,
-                              )))
+            tasks.append(_one(
+                "plan", _run_operation("plan", plan_id, plan_modules),
+            ))
         results = await asyncio.gather(*tasks) if tasks else []
 
         idx = 0

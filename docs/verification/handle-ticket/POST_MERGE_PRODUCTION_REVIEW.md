@@ -19,7 +19,9 @@ Proyecto: `rag-kb-system` / `us-central1`
 - Worker `kb-rag-ticket-worker-00004-zf8`: Ready, `TICKET_HANDLER_MODE=full`.
 - Reconciler `ticket-reconciler-prod`: Ready, `TICKET_HANDLER_MODE=full`; una ejecución programada ya completó con `exit(0)` y cero errores.
 - Queue `ticket-jobs-prod`: `RUNNING`, sin tasks pendientes después del smoke.
-- Scheduler `ticket-reconciler-prod-tick`: `ENABLED`, cron cada minuto.
+- Scheduler `ticket-reconciler-prod-tick`: `ENABLED`, cron cada minuto en esta
+  observación histórica. El contrato correctivo posterior declara `*/6`,
+  timeout de 300 s y cero retries; no considerarlo live hasta un apply aprobado.
 - IAM verificado: `kb-rag-client` invoca producer; `ticket-task-signer-prod` invoca worker; `ticket-scheduler-prod` invoca reconciler.
 
 Se conserva el contrato existente de n8n: Cloud Run IAM + `X-API-Key`, sin cuentas/keys AWS y sin WIF adicional. El directorio participant-plan es opcional; si algún día se configura, su health check sigue siendo fail-closed. También se conserva el origen legacy documentado de ForUsBots.

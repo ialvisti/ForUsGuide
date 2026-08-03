@@ -109,6 +109,10 @@ resource "google_cloud_tasks_queue" "environment" {
     max_doublings      = 2
   }
 
+  stackdriver_logging_config {
+    sampling_ratio = 1.0
+  }
+
   lifecycle {
     prevent_destroy = true
   }
@@ -134,11 +138,13 @@ resource "google_project_iam_custom_role" "ticket_queue_enqueuer" {
 }
 
 resource "google_cloud_scheduler_job" "environment" {
-  for_each  = local.environment_schedulers
-  project   = var.project_id
-  region    = var.region
-  name      = each.value.name
-  schedule  = "* * * * *"
+  for_each = local.environment_schedulers
+  project  = var.project_id
+  region   = var.region
+  name     = each.value.name
+  # 360s deja 60s de margen sobre el timeout de 300s. Sin retries internos
+  # del Job, el siguiente tick es la única recuperación y queda dentro de 10m.
+  schedule  = "*/6 * * * *"
   time_zone = "Etc/UTC"
   paused = !(
     contains(
@@ -171,6 +177,33 @@ import {
     production = "projects/rag-kb-system/databases/(default)"
   } : {}
   to = google_firestore_database.environment[each.key]
+  id = each.value
+}
+
+# Estos tres containers de producción preexisten al ownership declarativo.
+# El gate managed los adopta antes de cualquier update in-place; staging sigue
+# siendo creación nueva y nunca entra en estos imports.
+import {
+  for_each = var.environment_container_phase.production == "managed" ? {
+    production = "projects/${var.project_id}/locations/${var.region}/queues/ticket-jobs-prod"
+  } : {}
+  to = google_cloud_tasks_queue.environment[each.key]
+  id = each.value
+}
+
+import {
+  for_each = var.environment_container_phase.production == "managed" ? {
+    production = "projects/${var.project_id}/locations/${var.region}/jobs/ticket-reconciler-prod-tick"
+  } : {}
+  to = google_cloud_scheduler_job.environment[each.key]
+  id = each.value
+}
+
+import {
+  for_each = var.environment_container_phase.production == "managed" ? {
+    production = "projects/${var.project_id}/roles/ticketQueueEnqueuerProduction"
+  } : {}
+  to = google_project_iam_custom_role.ticket_queue_enqueuer[each.key]
   id = each.value
 }
 

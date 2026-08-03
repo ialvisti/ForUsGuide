@@ -549,8 +549,10 @@ resource "google_cloud_run_v2_job" "reconciler" {
   template {
     template {
       service_account = var.reconciler_sa_email
-      max_retries     = 1
-      timeout         = "300s"
+      # El siguiente tick (360s) es la única recuperación: cero retries evita
+      # solapar una segunda task con una ejecución que puede durar hasta 300s.
+      max_retries = 0
+      timeout     = "300s"
       containers {
         image   = var.image_digest
         command = ["python", "-m", "data_pipeline.ticket_reconciler"]

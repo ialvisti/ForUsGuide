@@ -75,6 +75,28 @@ async def _seed(repo, **over):
 
 class TestReconcilerRepairs:
 
+    async def test_run_emits_sanitized_application_duration(
+        self, repo, monkeypatch,
+    ):
+        emitted = []
+        monotonic_values = iter((100.0, 100.75))
+        monkeypatch.setattr(
+            "data_pipeline.ticket_reconciler._monotonic",
+            lambda: next(monotonic_values),
+        )
+        monkeypatch.setattr(
+            "data_pipeline.ticket_reconciler.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+
+        await TicketReconciler(repo, FakeQueue()).run_once()
+
+        assert (
+            "ticket_reconciler_duration_seconds", 0.75, {}
+        ) in emitted
+
     async def test_run_emits_exact_global_active_job_gauges(
         self, repo, monkeypatch,
     ):

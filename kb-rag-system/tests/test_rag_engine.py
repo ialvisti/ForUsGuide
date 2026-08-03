@@ -83,6 +83,102 @@ async def test_cached_query_sanitizes_obfuscated_values_before_query_chunks(
     assert "rollover" in engine.pinecone.sent.lower()
 
 
+@pytest.mark.asyncio
+async def test_knowledge_question_preserves_closed_retrieval_taxonomy():
+    from api.ticket_worker import _entry_from_outcome
+    from data_pipeline.rag_engine import RAGEngine
+    from data_pipeline.ticket_orchestrator import InquiryOutcome
+
+    private_sentinel = "participant-private-retrieval-message"
+
+    class SyntheticTransientRetrieval(RuntimeError):
+        failure_kind = "server_error"
+        retryable = True
+
+    engine = RAGEngine.__new__(RAGEngine)
+    engine._decompose_question = AsyncMock(return_value=["retirement rules"])
+    engine._cached_query = AsyncMock(
+        side_effect=SyntheticTransientRetrieval(private_sentinel)
+    )
+
+    result = await engine.ask_knowledge_question("retirement rules")
+
+    assert result.metadata["error"] == "knowledge_question_failed"
+    assert result.metadata["retrieval_failure_kind"] == "server_error"
+    assert result.metadata["retrieval_retryable"] is True
+    assert private_sentinel not in repr(result.metadata)
+
+    entry = _entry_from_outcome(0, InquiryOutcome(
+        inquiry="retirement rules",
+        topic="general",
+        route="knowledge_question",
+        knowledge_result=result,
+    ))
+    assert entry["error"] == {
+        "code": "PINECONE_TRANSIENT_FAILURE",
+        "retryable": True,
+    }
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "expected_kind", "expected_retryable"),
+    [
+        (TimeoutError("private required-data timeout"), "unknown", False),
+        (ValueError("private required-data failure"), "unknown", False),
+    ],
+)
+async def test_required_data_failure_uses_closed_non_private_taxonomy(
+    failure, expected_kind, expected_retryable,
+):
+    from data_pipeline.rag_engine import RAGEngine
+
+    engine = RAGEngine.__new__(RAGEngine)
+    engine._decompose_question = AsyncMock(side_effect=failure)
+
+    result = await engine.get_required_data(
+        inquiry="retirement rules",
+        record_keeper="LT Trust",
+        plan_type="401(k)",
+        topic="rollover",
+    )
+
+    assert result.metadata["error"] == "required_data_failed"
+    assert result.metadata["retrieval_failure_kind"] == expected_kind
+    assert result.metadata["retrieval_retryable"] is expected_retryable
+    assert "private required-data" not in repr(result.metadata)
+
+
+@pytest.mark.asyncio
+async def test_required_data_transient_retrieval_failure_stays_retryable():
+    from data_pipeline.rag_engine import RAGEngine
+    from data_pipeline.pinecone_uploader import PineconeRetrievalError
+
+    engine = RAGEngine.__new__(RAGEngine)
+    engine._decompose_question = AsyncMock(
+        side_effect=PineconeRetrievalError(
+            index_name="synthetic-index",
+            namespace="synthetic-namespace",
+            top_k=1,
+            filter_dict=None,
+            rerank=None,
+            cause=TimeoutError("private upstream body"),
+        )
+    )
+
+    result = await engine.get_required_data(
+        inquiry="retirement rules",
+        record_keeper="LT Trust",
+        plan_type="401(k)",
+        topic="rollover",
+    )
+
+    assert result.metadata["error"] == "required_data_failed"
+    assert result.metadata["retrieval_failure_kind"] == "timeout"
+    assert result.metadata["retrieval_retryable"] is True
+    assert "private upstream body" not in repr(result.metadata)
+
+
 @pytest.fixture
 def mock_router():
     """A minimal LLMRouter double with an awaitable `call()` method."""
@@ -145,6 +241,22 @@ class TestRAGEngine:
         """Test decision con baja confidence."""
         decision = mock_rag_engine._determine_decision(0.3)
         assert decision == "out_of_scope"
+
+    def test_uncertain_response_never_persists_raw_failure_reason(
+            self, mock_rag_engine):
+        private_sentinel = "participant-private-exception-message"
+
+        result = mock_rag_engine._build_uncertain_response(
+            private_sentinel,
+            confidence=0.0,
+            error_type="PRIVATE_DYNAMIC_EXCEPTION",
+        )
+
+        serialized = repr(result)
+        assert private_sentinel not in serialized
+        assert "PRIVATE_DYNAMIC_EXCEPTION" not in serialized
+        assert result.metadata["error"] == "generate_response_failed"
+        assert result.metadata["error_type"] == "Exception"
 
     def test_organize_chunks_by_tier(self, mock_rag_engine):
         """Test organización de chunks por tier."""

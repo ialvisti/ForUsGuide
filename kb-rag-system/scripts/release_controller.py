@@ -144,6 +144,10 @@ ALLOWED_TERRAFORM_IMPORT_BLOCKS = {
         id = "projects/${var.project_id}/locations/${var.region}/repositories/kb-rag"
         """,
         """
+        to = google_service_account.controller_verifier
+        id = "projects/${var.project_id}/serviceAccounts/ticket-controller-verify@${var.project_id}.iam.gserviceaccount.com"
+        """,
+        """
         for_each = var.enable_legacy_trigger_neutralization ? {
           legacy = "projects/rag-kb-system/locations/global/triggers/c2126528-7cd3-4063-9214-5eb82e9f76a6"
         } : {}
@@ -168,6 +172,27 @@ ALLOWED_TERRAFORM_IMPORT_BLOCKS = {
           production = "projects/rag-kb-system/databases/(default)"
         } : {}
         to = google_firestore_database.environment[each.key]
+        id = each.value
+        """,
+        """
+        for_each = var.environment_container_phase.production == "managed" ? {
+          production = "projects/${var.project_id}/locations/${var.region}/queues/ticket-jobs-prod"
+        } : {}
+        to = google_cloud_tasks_queue.environment[each.key]
+        id = each.value
+        """,
+        """
+        for_each = var.environment_container_phase.production == "managed" ? {
+          production = "projects/${var.project_id}/locations/${var.region}/jobs/ticket-reconciler-prod-tick"
+        } : {}
+        to = google_cloud_scheduler_job.environment[each.key]
+        id = each.value
+        """,
+        """
+        for_each = var.environment_container_phase.production == "managed" ? {
+          production = "projects/${var.project_id}/roles/ticketQueueEnqueuerProduction"
+        } : {}
+        to = google_project_iam_custom_role.ticket_queue_enqueuer[each.key]
         id = each.value
         """,
         """
@@ -345,9 +370,12 @@ E2E_NONSECRET_ENV_KEYS = {
 ENVIRONMENT_RESOURCE_NAMES = {
     "google_storage_bucket_iam_member": {"producer_core_objects"},
     "google_logging_metric": {
-        "poll_not_found", "poll_gone", "terminal_total", "terminal_incorrect",
+        "poll_not_found", "poll_gone", "accepted_total", "terminal_total",
+        "terminal_incorrect",
+        "terminal_failed", "terminal_partial", "terminal_internal_error",
         "reconciler_run", "reconciler_fenced_leases", "reconciler_errors",
-        "deadline_terminalized", "manual_reconciliation", "forusbots_failure",
+        "reconciler_duration", "deadline_terminalized",
+        "manual_reconciliation", "forusbots_failure",
         "pinecone_circuit_open", "queue_delay", "jobs_active",
         "jobs_oldest_age", "step_latency", "result_count", "forusbots_count",
         "forusbots_circuit", "pinecone_retry", "pinecone_circuit",
@@ -355,7 +383,10 @@ ENVIRONMENT_RESOURCE_NAMES = {
     },
     "google_monitoring_alert_policy": {
         "legacy_high_error_rate", "ticket_poll_not_found", "ticket_poll_gone",
-        "ticket_terminal_incorrect_ratio", "ticket_queue_backlog", "worker_5xx_ratio",
+        "ticket_terminal_incorrect_ratio", "ticket_accepted_terminal_ratio",
+        "ticket_queue_backlog", "worker_5xx_ratio",
+        "ticket_terminal_failed", "ticket_terminal_partial",
+        "ticket_terminal_internal_error",
         "producer_auth_failure_ratio", "ticket_lease_fencing",
         "ticket_reconciler_health", "ticket_forusbots_reconciliation",
         "ticket_pinecone_circuit", "ticket_task_delivery_deadline",
@@ -504,6 +535,7 @@ PLATFORM_RESOURCE_NAMES = {
         "plan_state_viewer",
         "staging_observer_evidence_writer", "staging_observer_e2e_reader",
         "staging_plan_rag_bucket_reader",
+        "platform_plan_environment_inputs_reader",
         "controller_verifier_source_reader",
     },
 }
@@ -607,6 +639,8 @@ PLATFORM_IAM_ROLE_POLICY = {
         {"projects/{project}/roles/ticketTfEnvironmentBucketIam"},
     ("google_storage_bucket_iam_member", "staging_plan_rag_bucket_reader"):
         {"projects/{project}/roles/ticketTfEnvironmentBucketRead"},
+    ("google_storage_bucket_iam_member", "platform_plan_environment_inputs_reader"):
+        {"roles/storage.objectViewer"},
     ("google_storage_bucket_iam_member", "plan_state_viewer"):
         {"roles/storage.objectViewer"},
     ("google_storage_bucket_iam_member", "plan_state_lock"):
@@ -641,7 +675,7 @@ PLATFORM_CUSTOM_ROLE_PERMISSION_HASHES = {
     "platform_storage_admin": "57c57f39c9add2559577ee1e3c807edf59152d7d341efa40b08f860602c1061c",
     "platform_firestore_database_broker": "7c25e9e01fd48da11ee48cafb5f446e457c6ebdbe715702e5fbfd92f80261004",
     "platform_scheduler_broker": "26c7b14d6e9fca72cdc4f31c831164514abaca16946e307c9c99849142a6734d",
-    "platform_queue_broker": "c767e55d9cfbb8c916435fd8a918e1b0b517405a7adeaaedf0dff1db2013c979",
+    "platform_queue_broker": "493835f68de1a6693271ca593c1f93336c2fc070a72aef5afbea008e37c2e4d5",  # pragma: allowlist secret
     "platform_queue_task_inspector": "fda3f364f0792ea157f2eaf7879950cd7a4ec11ab569d95f85a0737fa2945f5e",
     "platform_run_iam_broker": "b9d235f5b1b4e68af8a122247e0f5b4d2cce73ca393565f8de5bf6611e14f05b",
     "environment_run_creator": "8fce42c9be3cd167e4d0215e037701286e8dc41a43e28214370b2c4330e5e9f6",
@@ -1333,12 +1367,10 @@ def _validate_environment_plan(
         if not isinstance(actions, list) or not actions \
                 or not set(actions).issubset({"no-op", "read", "create", "update", "delete"}):
             raise ControllerRejected("Terraform resource actions are invalid")
-        if "delete" in actions and resource_type in {
-            "google_cloud_run_v2_service", "google_cloud_run_v2_job",
-            "google_cloud_tasks_queue", "google_firestore_database",
-            "google_secret_manager_secret",
-        }:
-            raise ControllerRejected("Terraform plan may not delete critical runtime resources")
+        if "delete" in actions:
+            raise ControllerRejected(
+                "Terraform plan may not delete or replace resources"
+            )
         values = [value for value in (change.get("before"), change.get("after"))
                   if isinstance(value, dict)]
         for value in values:
@@ -1490,6 +1522,18 @@ def _validate_environment_plan(
                 raise ControllerRejected(
                     "Terraform runtime service account differs from the root contract"
                 )
+            if resource_type == "google_cloud_run_v2_job" \
+                    and resource_name == "reconciler":
+                max_retries = list(_json_values_for_key(
+                    after.get("template", {}), "max_retries",
+                ))
+                timeouts = list(_json_values_for_key(
+                    after.get("template", {}), "timeout",
+                ))
+                if max_retries != [0] or timeouts != ["300s"]:
+                    raise ControllerRejected(
+                        "Terraform reconciler execution contract is not exact"
+                    )
             env_lists = list(_json_values_for_key(after.get("template", {}), "env"))
             env_entries = [entry for entries in env_lists if isinstance(entries, list)
                            for entry in entries if isinstance(entry, dict)]
@@ -1605,6 +1649,7 @@ def _validate_platform_plan(
     handoff: Optional[Mapping[str, Any]] = None,
     secret_inventory: Optional[Mapping[str, Any]] = None,
     container_phases: Optional[Mapping[str, str]] = None,
+    release_phases: Optional[Mapping[str, str]] = None,
 ) -> None:
     if not isinstance(plan, dict) or not isinstance(plan.get("resource_changes"), list):
         raise ControllerRejected("Terraform platform JSON plan has invalid shape")
@@ -1647,6 +1692,14 @@ def _validate_platform_plan(
         for environment in closed_inventory
     ):
         raise ControllerRejected("Run handoff requires managed environment containers")
+    release_phases = dict(release_phases or {
+        "staging": "disabled", "production": "disabled",
+    })
+    if set(release_phases) != set(closed_inventory) or any(
+        phase not in {"disabled", *RELEASE_PHASES}
+        for phase in release_phases.values()
+    ):
+        raise ControllerRejected("platform release phase policy is invalid")
     normalized_resources: dict[str, set[str]] = {}
     for environment, allowed in closed_inventory.items():
         raw_resources = resources[environment]
@@ -1658,6 +1711,24 @@ def _validate_platform_plan(
             raise ControllerRejected("disabled handoff may not retain runtime inventory")
         if phases[environment] == "managed" and set(raw_resources) != allowed:
             raise ControllerRejected("managed handoff requires the complete runtime inventory")
+        release_phase = release_phases[environment]
+        reconciler = (
+            "jobs/ticket-reconciler-staging"
+            if environment == "staging"
+            else "jobs/ticket-reconciler-prod"
+        )
+        if release_phase != "disabled" and (
+            container_phases[environment] != "managed"
+            or phases[environment] == "disabled"
+        ):
+            raise ControllerRejected(
+                "platform release phase requires managed containers and Run handoff"
+            )
+        if release_phase in ACTIVE_TICKET_RELEASE_PHASES \
+                and reconciler not in normalized_resources[environment]:
+            raise ControllerRejected(
+                "platform active release phase requires inventoried reconciler"
+            )
     creator_environments: set[str] = set()
     developer_inventory: set[str] = set()
     observed_secret_ids: set[str] = set()
@@ -1688,14 +1759,26 @@ def _validate_platform_plan(
             {"no-op", "read", "create", "update", "delete"}
         ):
             raise ControllerRejected("platform resource actions are invalid")
-        if "delete" in actions and resource_type in {
-            "google_artifact_registry_repository", "google_firestore_database",
-            "google_cloud_tasks_queue", "google_cloud_scheduler_job",
-            "google_secret_manager_secret",
-            "google_project_iam_custom_role", "google_service_account",
-            "google_storage_bucket",
-        }:
-            raise ControllerRejected("platform plan may not delete critical resources")
+        if "delete" in actions:
+            raise ControllerRejected(
+                "platform plan may not delete or replace resources"
+            )
+        if "create" in actions and address_index == "production" and (
+            (
+                resource_type in {
+                    "google_cloud_tasks_queue",
+                    "google_cloud_scheduler_job",
+                }
+                and resource_name == "environment"
+            )
+            or (
+                resource_type == "google_project_iam_custom_role"
+                and resource_name == "ticket_queue_enqueuer"
+            )
+        ):
+            raise ControllerRejected(
+                "existing production queue, scheduler, and role must be imported"
+            )
         if "delete" in actions and resource_name == "environment_apply_developer":
             raise ControllerRejected("platform handoff inventory must be monotonic")
         if "delete" in actions and resource_name in {
@@ -1854,11 +1937,95 @@ def _validate_platform_plan(
                 raise ControllerRejected(
                     "platform environment target does not match its environment index"
                 )
-            if resource_type == "google_cloud_scheduler_job" \
-                    and after.get("paused") is not True:
-                raise ControllerRejected(
-                    "platform scheduler must remain paused until authenticated activation"
+            environment = str(address_index)
+            queue_limits = {
+                "staging": {
+                    "max_concurrent_dispatches": 1,
+                    "max_dispatches_per_second": 1,
+                },
+                "production": {
+                    "max_concurrent_dispatches": 2,
+                    "max_dispatches_per_second": 2,
+                },
+            }
+            if resource_type == "google_cloud_tasks_queue":
+                rate_limits = after.get("rate_limits")
+                retry_config = after.get("retry_config")
+                logging_config = after.get("stackdriver_logging_config")
+                expected_retry = {
+                    "max_attempts": 5,
+                    "max_retry_duration": "1800s",
+                    "min_backoff": "30s",
+                    "max_backoff": "120s",
+                    "max_doublings": 2,
+                }
+                if after.get("location") != "us-central1" \
+                        or not isinstance(rate_limits, list) \
+                        or len(rate_limits) != 1 \
+                        or not isinstance(rate_limits[0], Mapping) \
+                        or any(
+                            rate_limits[0].get(key) != value
+                            for key, value in queue_limits[environment].items()
+                        ) \
+                        or not isinstance(retry_config, list) \
+                        or len(retry_config) != 1 \
+                        or not isinstance(retry_config[0], Mapping) \
+                        or any(
+                            retry_config[0].get(key) != value
+                            for key, value in expected_retry.items()
+                        ) \
+                        or not isinstance(logging_config, list) \
+                        or len(logging_config) != 1 \
+                        or not isinstance(logging_config[0], Mapping) \
+                        or logging_config[0].get("sampling_ratio") != 1.0:
+                    raise ControllerRejected(
+                        "platform queue operational contract is not exact"
+                    )
+            if resource_type == "google_cloud_scheduler_job":
+                reconciler = (
+                    "ticket-reconciler-staging"
+                    if environment == "staging"
+                    else "ticket-reconciler-prod"
                 )
+                scheduler_suffix = "stg" if environment == "staging" else "prod"
+                http_target = after.get("http_target")
+                target = (
+                    http_target[0]
+                    if isinstance(http_target, list)
+                    and len(http_target) == 1
+                    and isinstance(http_target[0], Mapping)
+                    else {}
+                )
+                oauth_token = target.get("oauth_token")
+                token = (
+                    oauth_token[0]
+                    if isinstance(oauth_token, list)
+                    and len(oauth_token) == 1
+                    and isinstance(oauth_token[0], Mapping)
+                    else {}
+                )
+                expected_uri = (
+                    "https://us-central1-run.googleapis.com/apis/run.googleapis.com/"
+                    f"v1/namespaces/{project_id}/jobs/{reconciler}:run"
+                )
+                expected_scheduler_sa = (
+                    f"ticket-scheduler-{scheduler_suffix}@{project_id}."
+                    "iam.gserviceaccount.com"
+                )
+                expected_paused = not (
+                    release_phases[environment] in ACTIVE_TICKET_RELEASE_PHASES
+                    and f"jobs/{reconciler}" in normalized_resources[environment]
+                )
+                if after.get("region") != "us-central1" \
+                        or after.get("schedule") != "*/6 * * * *" \
+                        or after.get("time_zone") != "Etc/UTC" \
+                        or after.get("paused") is not expected_paused \
+                        or target.get("http_method") != "POST" \
+                        or target.get("uri") != expected_uri \
+                        or token.get("service_account_email") != expected_scheduler_sa:
+                    raise ControllerRejected(
+                        "platform scheduler operational contract is not exact"
+                    )
         if resource_type == "google_project_iam_custom_role" \
                 and resource_name == "ticket_queue_enqueuer":
             expected_role_id = {
@@ -1945,7 +2112,30 @@ def _validate_platform_plan(
                 raise ControllerRejected("platform apply binding address/member is not exact")
         if resource_type == "google_storage_bucket_iam_member":
             bucket = after.get("bucket")
-            if resource_name == "controller_verifier_source_reader":
+            if resource_name == "platform_plan_environment_inputs_reader":
+                expected_member = (
+                    f"serviceAccount:ticket-plan-platform@{project_id}."
+                    "iam.gserviceaccount.com"
+                )
+                expected_condition = [{
+                    "title": "platform_plan_environment_inputs_only",
+                    "description": (
+                        "Lectura exclusiva de manifests versionados "
+                        "environment-inputs."
+                    ),
+                    "expression": (
+                        'resource.name.startsWith("projects/_/buckets/'
+                        'rag-kb-system-ticket-evidence-900340137010/objects/'
+                        'environment-inputs/")'
+                    ),
+                }]
+                if bucket != "rag-kb-system-ticket-evidence-900340137010" \
+                        or after.get("member") != expected_member \
+                        or after.get("condition") != expected_condition:
+                    raise ControllerRejected(
+                        "platform environment-inputs binding is not exact"
+                    )
+            elif resource_name == "controller_verifier_source_reader":
                 expected_member = (
                     f"serviceAccount:ticket-controller-verify@{project_id}."
                     "iam.gserviceaccount.com"
@@ -2424,6 +2614,9 @@ class Toolchain:
     def pause_existing_queue_and_verify_empty(self, queue_name: str) -> None:
         self.run(["queue", "pause-existing-and-verify-empty", queue_name])
 
+    def resume_and_verify_queue(self, queue_name: str) -> None:
+        self.run(["queue", "resume-and-verify", queue_name])
+
 
 class ProductionToolchain(Toolchain):
     """Real pinned-image toolchain used inside Dockerfile.release-controller."""
@@ -2497,6 +2690,36 @@ class ProductionToolchain(Toolchain):
         if not isinstance(queue, Mapping) or queue.get("name") != queue_path:
             raise ControllerRejected("queue existence preflight returned ambiguous scope")
         self.pause_and_verify_empty_queue(queue_name)
+
+    def resume_and_verify_queue(self, queue_name: str) -> None:
+        project_id = os.environ.get("PROJECT_ID", "")
+        if project_id != TRUSTED_PROJECT_ID:
+            raise ControllerRejected("queue operation project is not rag-kb-system")
+        queue_path = f"projects/{project_id}/locations/us-central1/queues/{queue_name}"
+        try:
+            self.run([
+                "gcloud", "tasks", "queues", "resume", queue_path,
+                f"--project={project_id}", "--location=us-central1", "--quiet",
+            ])
+            queue = json.loads(self.run([
+                "gcloud", "tasks", "queues", "describe", queue_path,
+                f"--project={project_id}", "--location=us-central1", "--format=json",
+            ], capture=True))
+            if not isinstance(queue, Mapping) or queue.get("name") != queue_path \
+                    or queue.get("state") != "RUNNING":
+                raise ControllerRejected(
+                    "active Cloud Tasks queue is not the exact RUNNING queue"
+                )
+        except Exception as activation_error:
+            try:
+                self.pause_and_verify_empty_queue(queue_name)
+            except Exception as pause_error:
+                raise ControllerRejected(
+                    "queue activation failed and safe pause could not be verified"
+                ) from pause_error
+            raise ControllerRejected(
+                "queue activation failed; queue restored to PAUSED and empty"
+            ) from activation_error
 
     def verify_scan(self, image_digest: str) -> Mapping[str, Any]:
         scan_name = self.run([
@@ -3713,6 +3936,7 @@ class ReleaseController:
                 show_json, project_id=self.project_id, handoff=platform_handoff,
                 secret_inventory=platform_secret_inventory,
                 container_phases=platform_container_phases,
+                release_phases=platform_release_phases,
             )
         else:
             _validate_environment_plan(
@@ -3922,6 +4146,7 @@ class ReleaseController:
                 handoff=manifest.get("platform_handoff"),
                 secret_inventory=manifest.get("platform_secret_inventory"),
                 container_phases=manifest.get("platform_container_phases"),
+                release_phases=manifest.get("platform_release_phases"),
             )
         else:
             _validate_environment_plan(
@@ -3954,6 +4179,7 @@ class ReleaseController:
             gate_manifest, args.gate_receipts,
         )
         paused_queues: list[str] = []
+        active_queues: list[str] = []
         if args.environment == "platform":
             phases = manifest.get("platform_container_phases", {})
             for environment, queue_name in (
@@ -3968,17 +4194,25 @@ class ReleaseController:
         ], cwd=root)
         if args.environment == "platform":
             phases = manifest.get("platform_container_phases", {})
+            release_phases = manifest.get("platform_release_phases", {})
             for environment, queue_name in (
                 ("staging", "ticket-jobs-staging"),
                 ("production", "ticket-jobs-prod"),
             ):
                 if isinstance(phases, Mapping) and phases.get(environment) == "managed":
-                    self.tools.pause_and_verify_empty_queue(queue_name)
-                    paused_queues.append(queue_name)
+                    if isinstance(release_phases, Mapping) and release_phases.get(
+                        environment
+                    ) in ACTIVE_TICKET_RELEASE_PHASES:
+                        self.tools.resume_and_verify_queue(queue_name)
+                        active_queues.append(queue_name)
+                    else:
+                        self.tools.pause_and_verify_empty_queue(queue_name)
+                        paused_queues.append(queue_name)
         result = {"status": "applied", "root": args.environment,
                   "plan_sha256": args.plan_sha256,
                   "gate_receipt_hashes": gate_receipt_hashes,
-                  "operationally_paused_empty_queues": paused_queues}
+                  "operationally_paused_empty_queues": paused_queues,
+                  "operationally_active_queues": active_queues}
         if args.environment == "platform":
             result.update(self._publish_platform_outputs(
                 candidate_sha=str(manifest["candidate_sha"]), root=root,
@@ -4071,13 +4305,12 @@ class ReleaseController:
             )
         if root == "platform":
             release_phases = manifest.get("platform_release_phases", {})
-            if isinstance(release_phases, Mapping) and any(
-                value in {"shadow", "knowledge_only", "full"}
-                for value in release_phases.values()
-            ):
+            if isinstance(release_phases, Mapping) and release_phases.get(
+                "staging"
+            ) in ACTIVE_TICKET_RELEASE_PHASES:
                 raise ControllerRejected(
-                    "platform active queue/scheduler transition is blocked until "
-                    "G4 binds the exact plan and evidence"
+                    "active staging platform transition is blocked until G4 "
+                    "receipts bind the exact plan and evidence"
                 )
         if phase == "firestore-enforce":
             raise ControllerRejected(

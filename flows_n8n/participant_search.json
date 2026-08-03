@@ -1,0 +1,1605 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -10416,
+        1824
+      ],
+      "id": "19a6ea62-fe1b-447b-9030-ae4d38637ac5",
+      "name": "AI model4",
+      "credentials": {
+        "openAiApi": {
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"ticketId\": \"{{ $json.ticketId }}\",\n  \"emailSubject\": \"{{ $json.emailSubject }}\",\n  \"emailBody\": \"{{ $json.emailBody }}\",\n  \"requesterUsername\": \"{{ $json.userName }}\",\n  \"requesterEmailAddress\":\"{{ $json.userEmail }}\",\n  \"tag\": \"{{ $json.tag }}\",\n  \"firstContact\": \"{{ $json.firstContact }}\",\n  \"isParticipant\": true,\n  \"thinking\": \"\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -10224,
+        1776
+      ],
+      "id": "cccc4bb0-d611-42c8-a9d5-6b1b0b732ec5",
+      "name": "Output Parser4",
+      "retryOnFail": true
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "da53240f-9dbb-42d0-a538-1d5396131c96",
+              "leftValue": "={{ $json.output.isParticipant }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -9952,
+        1584
+      ],
+      "id": "54350f5c-b31a-4afe-922d-a8beb4e67733",
+      "name": "Is it a Participant?1"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## Your Role\nYou are a **Senior Associate – 401(k) Participant Advisory at ForUsAll**.  \nEvery input is a support ticket. Decide whether the requester is **the participant** (`isParticipant: true`) or **not** (`isParticipant: false`) and provide a brief, evidence-based justification.\n\n---\n\n## Inputs\nticketId: {{ $json.ticketId }}\ntag: {{ $json.tag }}\nfirstContact: {{ $json.firstContact }}\nemailSubject: {{ $json.emailSubject }}\nemailBody: {{ (!$json.ticket_messages || Object.keys($json.ticket_messages).length === 0)\n    ? $json.emailBody\n    : $json.ticket_messages.message_1 }}\nrequesterUsername: {{ $json.userName }}\nrequesterEmailAddress: {{ $json.userEmail }}\n\n---\n\n## Preprocessing (silent)\n- Normalize case for matching; keep original text for the final JSON fields.\n- Strip HTML (e.g., `<br>`), decode entities, and remove boilerplate: quoted history and signatures (lines starting with `>`, blocks beginning `On ... wrote:` or `From:`, common signature delimiters like `--`, legal footers).\n- Treat missing fields as empty strings.\n\n---\n\n## Decision Rules\n\n### 1) Hard Overrides (always apply)\nIf `requesterEmailAddress` ends with **`@rightsignature.com`** or **`@lttrust.com`** or **`@americantrust.com`** ⇒ set `isParticipant = false` and stop.\n\n### 2) What NOT to use as evidence\n- Do **not** use `tag` (e.g., “n8n - Not a Participant”) as evidence; it is metadata only.\n- Do **not** infer status from the email **domain** (e.g., `gmail.com`, `yahoo.com`, `att.net`, company domains). Use the email **local-part** only for departmental checks below.\n- Do **not** penalize generic subjects like “Participant Advisory - Form Submission”.\n\n### 3) Email address usage (departmental check only)\nUse `requesterEmailAddress` **only** to detect **role/departmental mailboxes** by local-part (before `@`).  \nDepartmental examples (non-exhaustive, case-insensitive):  \n`hr`, `payroll`, `benefits`, `support`, `help`, `admin`, `no-reply`, `info`, `peopleops`, `humanresources`, `accountspayable`, `finance`, `talent`, `recruiting`, `legal`, `it`, `it-support`, `compliance`.  \n- If **departmental** ⇒ strong signal **false**.  \n- If **not departmental** (personal-looking like `firstname.lastname@...` or `name@...`) ⇒ **do not** treat the address itself as evidence; proceed to wording.\n\n### 4) Wording (primary when not departmental)\n**A. First-person narration (strong participant signal)**  \nMatch any of: `\\b(I|I’m|I'm|I’ve|I've|I’d|I'd|me|my|mine|myself)\\b` (case-insensitive).  \nExamples: “I can’t log in”, “I haven’t received a deposit”, “my address changed”.\n\n**B. Individual-experience auth/access issues (participant-likely even without first-person)**  \nIf the **subject or body** contains any of these auth/access phrases and there is **no on-behalf/sponsor language**, treat as **participant-likely**:  \n`login`, `log in`, `can't login`, `cannot login`, `sign in`, `password`, `reset`, `locked`, `mfa`, `2fa`, `verification`, `verify identity`, `okta`, `sso`, `authenticator`, `code`, `account access`, `set up okta`.  \nExample: “Cannot login to account due to Okta error. Need to set up Okta again.” ⇒ participant-likely.\n\n**C. Participant-likely cues (positive)**\n- Personal problems: lost access, missing deposit, waiting for funds, ID verification, address/name change, loan/distribution/rollover requests, contribution changes, statements/balance, transfers, beneficiary.\n\n**D. Non-participant cues (negative)**\n- Speaking **on behalf of** others: “our employee,” “one of our participants,” “for John Doe,” “on behalf of,” “for an employee.”\n- Sponsor/vendor ops: census, participant lists/rosters, payroll files, plan-wide changes, compliance/ERISA testing, TPA/custodian coordination, bulk uploads.\n- Role/department self-identification in the body (HR/Payroll/Benefits/People Ops/IT).\n\n**E. Neutral (do NOT penalize)**\n- Missing explicit account nouns (“401(k),” “account,” “balance”) is neutral.\n\n### 5) Additional context (secondary)\n- Usernames that look like roles/departments → tilt **false**.\n- Mentions of advisors/custodians/TPA tied to sponsor-side tasks → tilt **false**.\n\n### 6) Tie-breakers (apply in order)\n1. If **departmental mailbox** (3) or explicit **on-behalf** language (4D) ⇒ **false**.  \n2. Else if **not departmental** and there is **sustained first-person narration** (≥2 first-person tokens) with **no** sponsor/vendor language ⇒ **true**.  \n3. Else if **not departmental** and the issue is **individual-auth/access** (4B) with **no** on-behalf/sponsor language ⇒ **true**.  \n4. If signals are mixed, weigh explicit “on behalf of / our employee / participant list / payroll file” phrases more heavily toward **false**.  \n5. If still ambiguous after all the above, choose **false** (conservative routing).\n\n---\n\n## Output Contract\nReturn **only** this JSON (valid JSON, exact keys, no trailing commas; booleans are true/false, not strings):\n\n```json\n{\n  \"ticketId\": \"{{ $json.ticketId }}\",\n  \"tag\": \"{{ $json.tag }}\",\n  \"firstContact\": \"{{ $json.firstContact }}\",\n  \"emailSubject\": \"{{ $json.emailSubject }}\",\n  \"emailBody\": \"{{ (!$json.ticket_messages || Object.keys($json.ticket_messages).length === 0)\n    ? $json.emailBody\n    : $json.ticket_messages.message_1 }}\",\n  \"requesterUsername\": \"{{ $json.userName }}\",\n  \"requesterEmailAddress\": \"{{ $json.userEmail }}\",\n  \"isParticipant\": true,\n  \"thinking\": \"One to three short sentences citing decisive signals only (e.g., 'Non-departmental; login/auth issue (“Okta”, “cannot login”); no on-behalf/sponsor language.').\"\n}\n\nReplace true with false when appropriate.\nDo not include step-by-step reasoning or any text outside the JSON.\n\nCalibration Snippets (do not echo)\n\n“Cannot login to account due to Okta error. Need to set up Okta again.”\nNon-departmental; auth/access keywords; no on-behalf language ⇒ true.\n\n“We need confirmation of deposit dates for our employee John Doe.”\nDepartmental or on-behalf ⇒ false.\n\n“I changed my contribution but my payroll hasn’t updated.”\nFirst-person ⇒ true.",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        -10416,
+        1568
+      ],
+      "id": "3312f187-62e7-46a9-8355-ccdf08c56b78",
+      "name": "Participant Verifier1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o",
+          "mode": "list",
+          "cachedResultName": "gpt-4o"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -3104,
+        2304
+      ],
+      "id": "d5dd090b-862b-4199-9d24-95f68139c916",
+      "name": "AI model7",
+      "credentials": {
+        "openAiApi": {
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\n  \"participantMatched\": true,\n  \"first_name\": \"Ivan\",\n  \"last_name\": \"Alvis\",\n  \"id\": \"111\",\n  \"agentThinking\": \"Only one record found. Company not found, but match assumed under single-record rule.\"\n  \n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -2864,
+        2288
+      ],
+      "id": "3a7c6b71-aa20-4249-83b7-ddfdc34bc77b",
+      "name": "Output Parser1"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [
+        -7136,
+        2736
+      ],
+      "id": "e2e63eea-0bf8-4f97-a626-f05e21fe3928",
+      "name": "AI model8",
+      "credentials": {
+        "openAiApi": {
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## ROLE ##\nYou are Agent 1 in a two-step automated support system at ForUsAll. Your task is to extract identity information from a participant support email so another agent can try to match it in the database.\n\n---\n\n## CONTEXT ##\nThe participant may or may not clearly state their name or employer in the email. However, you will always receive the following 4 fields:\n\n- emailSubject: \"{{ $('Participant Verifier').item.json.emailSubject }}\"\n- emailBody: \"{{ $('Participant Verifier').item.json.ticket_messages.message_1 }}\"\n- requesterUsername: \"{{ $('Participant Verifier').item.json.userName }}\"\n- requesterEmailAddress: \"{{ $('Participant Verifier').item.json.userEmail }}\"\n\n---\n\n## GOAL ##\nExtract the following participant identity clues as structured fields:\n- first_name: (only if confidently inferred)\n- last_name: (only if confidently inferred)\n- company_name: (if the employer is mentioned)\n\n---\n\n## LOGIC TO APPLY ##\n\n### 🔹 Step 1: Check emailBody and emailSubject for clear name or company\n\n- Examples: \"My name is Denise Geiger\", \"I left L5 Interiors last month\"\n\n### 🔹 Step 2: If name is not found in body or subject:\n- Use requesterUsername or userEmail to infer name\n- E.g. \"john.doe85@gmail.com\" → John Doe\n- Ignore numbers or punctuation\n\n### 🔹 Step 3: For any field you CANNOT extract confidently:\n- Set it to not found (do NOT use \"unknown\", \"n/a\", \"unsure\", or leave it undefined)\n\n---\n\n## OUTPUT FORMAT ##\n\nReturn exactly this JSON object:\n\njson\n{\n  first_name: \"Serafin\",\n  last_name: \"Rojas\",\n  company_name: \"L5 Interiors LLC\",\n  agentThinking: \"Extracted full name from the email body and requesterUsername. The company L5 Interiors LLC was mentioned directly, and the participant stated they were let go.\"\n}\n\n ✅ Example with nulls:\njson\n{\n  first_name: \"not found\",\n  last_name: \"not found\",\n  company_name: \"Tesla\",\n  agentThinking: \"No name information could be reliably extracted from the body, subject, username, or email. However, Tesla was mentioned as an employer.\"\n}\n---\n\n✅ Your response MUST be valid JSON with all 4 fields:\n- Use **double quotes** for all keys and string values\n- Do **not** omit any key\n- Do **not** return raw text outside the JSON block\n\nIf you are unsure of a value, always return `\"field_name\": \"not found\"`\n\"\n\nThis is the output parser: \"{\n  \"first_name\": \"null\",\n  \"last_name\": \"null\",\n  \"company_name\": \"Tesla\",\n  \"agentThinking\": \"No name information could be reliably extracted from the body, subject, username, or email. However, Tesla was mentioned as an employer.\"\n}",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        -7120,
+        2544
+      ],
+      "id": "3b338a55-cd04-42d8-b265-a563c7864f92",
+      "name": "Gather Info Specialist1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=## 🧠 ROLE  \nYou are **Agent 2** in a two-step automated support system at ForUsAll.\n\nYour task is to:\n1. Evaluate one participant at a time using identity clues and database records.\n2. Determine whether any record can be confidently matched.\n3. Return a structured JSON output that reflects your decision and reasoning.\n\nYou must not skip evaluations, hallucinate content, or merge unrelated participants.\n\n---\n\n## 📥 INPUT SOURCE\n\nYou receive **one full participant object at a time**, \n\nparticipantFullName: {{ $json.full_name }}  \ndatabaseRecordsArray: {{ $json.databaseRecords }}\ndatabaseRecordsArrayLength: {{ $json.databaseRecords.length }}\naiFoundInfoArray: {{ $json.ai_found_info }}\n\nparticipantFullName will retrive a string with the participant's full name.\n\ndatabaseRecordsArray will retrieve a list with one or multiple objects(lists) that contains the following information retrieved from our official database: participant_id, first_name, last_name, plan_id, hire_date, rehire_date, termination_date, company_name.\n\naiFoundInfoArray will retrieve a list with the following information found by the first AI agent: first_name, last_name, company_name\n\nYou **MUST** read the full lists in order to get the information\n\n---\n\n## 🧩 INPUT STRUCTURE\n\nEach run of the agent receives a single item with this structure:\n\n```json\n{\n  \"full_name\": \"{{ $json.full_name }}\",\n  \"databaseRecords\": [\n    {\n      \"id\": {{ $json.databaseRecords[0].id }},\n      \"participant_id\": {{ $json.databaseRecords[0].participant_id }},\n      \"first_name\": \"{{ $json.databaseRecords[0].first_name }}\",\n      \"last_name\": \"{{ $json.databaseRecords[0].last_name }}\",\n      'plan_id\": {{ $json.databaseRecords[0].plan_id }},\n      \"hire_date\": \"{{ $json.databaseRecords[0].hire_date }}\",\n      \"rehire_date\": \"{{ $json.databaseRecords[0].rehire_date }}\",\n      \"termination_date\": \"{{ $json.databaseRecords[0].termination_date }}\",\n      \"company_name\": \"{{ $json.databaseRecords[0].company_name }}\"\n    }\n  ],\n  \"ai_found_info\": {\n    \"first_name\": \"{{ $json.ai_found_info.first_name }}\",\n    \"last_name\": \"{{ $json.ai_found_info.last_name }}\",\n    \"company_name\": \"{{ $json.ai_found_info.company_name }}\"\n  }\n}\n```\n\nYou access this full object using:\n\nFor the full_name: {{ $json.full_name }}  \nFor the databaseRecords list: {{ $json.databaseRecords }}  For the ai_found_info list: {{ $json.ai_found_info }}\n\n---\n\n## ⚙️ MATCHING RULES\n\n### ✅ If only one database record:\n\n- It's a direct match, no further review needed\n\n---\n\n### ✅ If multiple objects on databaseRecords:\n\n- IF `ai_found_info.company_name` = `\"not found\"`: ❌ mark as not matched.\n\n- If `ai_found_info.company_name` ≠ `\"not found\"`:\n  - Try **case-insensitive partial match** to each `record.company_name`.\n\n- If exactly one record matches all applicable clues:\n  - ✅ mark as participantMatched.\n- If none or multiple records match:\n  - ❌ mark as not matched.\n\n---\n\n## ⏳ TIME-INDEPENDENT EVALUATION\n\n- ⛔ **Speed does not matter** — take all the time you need.\n- ✅ You must carefully compare each `databaseRecords[]` entry against the `ai_found_info`.\n- ✅ Missing a match or making a wrong one is worse than being slow.\n- 🔍 Go field-by-field and explain your reasoning in `agentThinking`.\n\n---\n\n## 🔐 STRICT INSTRUCTIONS\n\n- Do not skip participants. Evaluate one at a time.\n- Never invent data like company names or plan IDs.\n- For Outputs use only the values present in `databaseRecords`.\n\n---\n\n## 📤 REQUIRED OUTPUT FORMAT\n\nReturn a JSON object with this structure using the data for the selected item from databaseRecords[]:\n\n```json\n{\n  \"participantMatched\": true | false,\n  \"first_name\": \"...\",\n  \"last_name\": \"...\",\n  \"id\": \"...\",\n  \"agentThinking\": \"...\"\n}\n```\n- `\"agentThinking\"` must describe what logic was used to decide.\n\n---\n\n## ✅ EXAMPLES\n\n### When 1 record and names match:\n\n```json\n{\n  \"participantMatched\": true,\n  \"first_name\": \"Ivan\",\n  \"last_name\": \"Alvis\",\n  \"id\": \"111\",\n  \"agentThinking\": \"Only one record found. Company not found, but match assumed under single-record rule.\"\n}\n```\n\n### When multiple records but no confident match:\n\n```json\n{\n  \"participantMatched\": true,\n  \"first_name\": \"Camilo\",\n  \"last_name\": \"Bello\",\n  \"id\": \"222\",\n  \"agentThinking\": \"Multiple records found on databaseRecords. None matched company, cannot confirm identity.\"\n}\n```\n\n---\n\n## 📞 IF NO MATCH\n\nIf no match is made:\n- `\"participantMatched\": false`\n\n✅ Output only the valid JSON block.  \n❌ Do not add Markdown, notes, or code wrappers.\n",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2,
+      "position": [
+        -3072,
+        2096
+      ],
+      "id": "99f2e126-dfd5-469f-92f7-00c20054feb8",
+      "name": "Comparison especialist1",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n  \"first_name\": \"null\",\n  \"last_name\": \"null\",\n  \"company_name\": \"Tesla\",\n  \"agentThinking\": \"No name information could be reliably extracted from the body, subject, username, or email. However, Tesla was mentioned as an employer.\"\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -6912,
+        2720
+      ],
+      "id": "ff9bfdc2-1cf5-4dc3-85ae-614886fee2b7",
+      "name": "Structured Output Parser3"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "84576e7b-46ae-4e21-856d-b5c388883883",
+              "leftValue": "={{ $json.output.participantMatched }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -2624,
+        2096
+      ],
+      "id": "bae1298b-eeef-4ae1-99c8-e21c3c65e02d",
+      "name": "Possible Match Found?1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1745f8cb-c6f2-4ea3-b643-0f6930ccaff2",
+              "leftValue": "={{ $json.output.first_name }}",
+              "rightValue": "found",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            },
+            {
+              "id": "43bf73bd-23e2-4951-936c-3acdf801e1c2",
+              "leftValue": "={{ $json.output.last_name }}",
+              "rightValue": "not found",
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -6736,
+        2544
+      ],
+      "id": "c5471964-8669-4ad6-960f-51932e5e385c",
+      "name": "Relevant information found?1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Get the amount of matches and Company name\nconst participantsFound =  Number($input.first().json.result.data.count)\nconst aiAgentOutput = $('Relevant information found?1').first().json.output.company_name\nvar matchStatus = \"\"\n\n// Perform Validations\nif (participantsFound === 1) {\n\n  matchStatus = \"Match Found\";\n  \n}else if (participantsFound === 1 && aiAgentOutput != \"not found\") {\n\n  matchStatus = \"AI Needed\";\n  \n}else{\n\n  matchStatus = \"No Match Found\";\n  \n}\n\n\nreturn{\n\n  json:{\n\n    \"matchStatus\": matchStatus\n    \n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4464,
+        2096
+      ],
+      "id": "7f541159-25a4-4ab6-8966-35e67e89b1de",
+      "name": "Validate Match1"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json['matchStatus'] }}",
+                    "rightValue": "Match Found",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "b07a39c7-fa08-4a16-b0ae-01f4ae797645"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Match Found"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "eb629e2d-52f5-4e00-9a0b-13e503abb58a",
+                    "leftValue": "={{ $json['matchStatus'] }}",
+                    "rightValue": "AI Needed",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "AI Needed"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "a98dd55b-12ff-4bf0-b3c0-223d3afa3f9f",
+                    "leftValue": "={{ $json['matchStatus'] }}",
+                    "rightValue": "No Match Found",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals",
+                      "name": "filter.operator.equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "No Match Found"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        -4128,
+        2096
+      ],
+      "id": "d6555359-89de-4a86-a2cd-dd8302a8b02a",
+      "name": "Case selecter1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9db67c59-40b9-4780-a03b-53aacae80b47",
+              "leftValue": "={{ $json.data.totalFound }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -8176,
+        1568
+      ],
+      "id": "4d3b7693-4057-41c8-8149-563e7e35a906",
+      "name": "Participant Found?1"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -1472,
+        208
+      ],
+      "id": "8d8940a7-add0-4303-930b-d363d3ae4b8f",
+      "name": "Merge Querys1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "eae7f015-21db-4a3f-8834-2a9a92ad36c2",
+              "name": "Result",
+              "value": "Participant was NOT found",
+              "type": "string"
+            },
+            {
+              "id": "8f0884ac-d07e-4258-b5e5-70c4afd7285d",
+              "name": "first_contact",
+              "value": "={{ $('Participant Verifier').item.json.firstContact }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1856,
+        2896
+      ],
+      "id": "58abda8a-9d92-4349-80e3-c19f319a0039",
+      "name": "Edit Fields",
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "0bb373eb-8df0-4f3e-906d-7971d9f99c1c",
+              "name": "Result",
+              "value": "Requester is NOT a Participant",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -9648,
+        1680
+      ],
+      "id": "93cc900a-fd0c-4930-bdfd-12d194ae2427",
+      "name": "Edit Fields1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c69b61f5-eacc-415d-bc7d-be6e28a76096",
+              "leftValue": "={{ $json.userEmail }}",
+              "rightValue": "notify@ringcentral.com",
+              "operator": {
+                "type": "string",
+                "operation": "notEquals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -11456,
+        1584
+      ],
+      "id": "c6943e3a-4dfe-43cd-b967-6edeb9f97a45",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -11776,
+        1584
+      ],
+      "id": "c87c9206-f884-4b37-91d2-8c60baa3f6a0",
+      "name": "Participant Verifier"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Number($json.estimate.avgDurationSeconds) + 3 }} "
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -9024,
+        1568
+      ],
+      "id": "ff0cf7ee-d5ef-40cc-801f-acf59fab6f9b",
+      "name": "Wait",
+      "webhookId": "055d0e9b-d321-4d5e-bd12-38b44ab103ca"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dba5d72d-4856-488f-87d6-2080e7b297b7",
+              "leftValue": "={{ (() => { const state = String($json.state ?? $json.jobs?.[0]?.state ?? '').toLowerCase(); if (state === 'failed' || state === 'canceled' || state === 'cancelled') { throw new Error(`ForUsBots job ended with state: ${state}`); } return state === 'succeeded'; })() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -8512,
+        1568
+      ],
+      "id": "f09922c9-fb39-428c-b5a4-f8cb5c567467",
+      "name": "If Done"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -8528,
+        1760
+      ],
+      "id": "deb4ac13-7caa-4397-8f9c-270f9fe2eb81",
+      "name": "Wait1",
+      "webhookId": "33e3c6b8-cb99-4d5d-a8be-276b54786b79"
+    },
+    {
+      "parameters": {
+        "jsCode": "const job_id = $('Search Participant').first().json.jobId\n\n\nreturn{\n\n  json:{\n\n    \"jobId\": job_id\n\n    \n  }\n  \n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -8784,
+        1760
+      ],
+      "id": "19578738-a1ed-4da4-a3b1-3b3f048257b7",
+      "name": "Replicate Data"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://35.224.156.104:10000/forusbot/search-participants",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"criteria\": {\n    \"companyName\": null,\n    \"fullName\": null,\n    \"email\": \"{{$('Participant Verifier1').item.json.output.requesterEmailAddress}}\",\n    \"ssn\": null,\n    \"phone\": null,\n    \"participantId\": null\n  },\n  \"options\": {\n    \"fetchAllPages\": false,\n    \"pageLimit\": 1,\n    \"maxRows\": 25,\n    \"evidenceOnSuccess\": false,\n    \"timeoutMs\": 12000\n  }\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -9248,
+        1568
+      ],
+      "id": "32fa1bcf-97bc-4c2d-be09-7aec319a15d6",
+      "name": "Search Participant",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "New Service PA [FUB]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://35.224.156.104:10000/forusbot/jobs/{{ $json.jobId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -8800,
+        1568
+      ],
+      "id": "254502bb-6b03-44a7-a430-3e56257b514d",
+      "name": "Get Job",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "New Service PA [FUB]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9db67c59-40b9-4780-a03b-53aacae80b47",
+              "leftValue": "={{ Number($('If Done1').item.json.result.data.count) }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -4992,
+        2192
+      ],
+      "id": "dee98eb4-1318-411e-8fc8-74b3f6d3694d",
+      "name": "Participant Found?"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Number($json.estimate.avgDurationSeconds) + 1 }} "
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -6064,
+        1984
+      ],
+      "id": "09ff330e-2cdd-4124-aaaf-00f8ec7fa13e",
+      "name": "Wait2",
+      "webhookId": "055d0e9b-d321-4d5e-bd12-38b44ab103ca"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dba5d72d-4856-488f-87d6-2080e7b297b7",
+              "leftValue": "={{ (() => { const state = String($json.state ?? $json.jobs?.[0]?.state ?? '').toLowerCase(); if (state === 'failed' || state === 'canceled' || state === 'cancelled') { throw new Error(`ForUsBots job ended with state: ${state}`); } return state === 'succeeded'; })() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -5552,
+        1984
+      ],
+      "id": "87e29e12-b5f7-4ffc-924d-1ec8100d6077",
+      "name": "If Done1"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -5568,
+        2176
+      ],
+      "id": "fe925dc5-35d4-4b03-b709-24913b987b74",
+      "name": "Wait3",
+      "webhookId": "33e3c6b8-cb99-4d5d-a8be-276b54786b79"
+    },
+    {
+      "parameters": {
+        "jsCode": "const job_id = $('Search Participant1').first().json.jobId\n\n\nreturn{\n\n  json:{\n\n    \"jobId\": job_id\n\n    \n  }\n  \n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -5824,
+        2176
+      ],
+      "id": "892d3194-aa98-4d64-a113-a5bbff496d5a",
+      "name": "Replicate Data1"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://35.224.156.104:10000/forusbot/search-participants",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"criteria\": {\n    \"companyName\": null,\n    \"fullName\": \"{{$json.output.first_name + \" \" + $json.output.last_name}}\",\n    \"email\": null,\n    \"ssn\": null,\n    \"phone\": null,\n    \"participantId\": null\n  },\n  \"options\": {\n    \"fetchAllPages\": false,\n    \"pageLimit\": 1,\n    \"maxRows\": 25,\n    \"evidenceOnSuccess\": false,\n    \"timeoutMs\": 12000\n  }\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -6288,
+        1984
+      ],
+      "id": "b4046efb-3373-413a-a2f3-36bc57155560",
+      "name": "Search Participant1",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "New Service PA [FUB]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "url": "=http://35.224.156.104:10000/forusbot/jobs/{{ $json.jobId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -5840,
+        1984
+      ],
+      "id": "41486401-bbd3-46ce-acb4-135386a3af00",
+      "name": "Get Job1",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "New Service PA [FUB]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const pptId = $('Participant Found?').first().json.result.data.rows[0].participantId\n\nconst planId = $('Participant Found?').first().json.result.data.rows[0].planId\n\nconst companyName = $('Participant Found?').first().json.result.data.rows[0].planName\n\nconst companyStatus = $('Participant Found?').first().json.result.data.rows[0].companyStatus\n\nconst companyStatusDetail = $('Participant Found?').first().json.result.data.rows[0].companyStatusDetail\n\nreturn {\n\n  json:{\n\n    \"pptId\": pptId,\n    \"planId\": planId,\n    \"companyName\": companyName,\n    \"companyStatus\": companyStatus,\n    \"companyStatusDetail\": companyStatusDetail\n    \n    \n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2480,
+        1856
+      ],
+      "id": "824fff38-3b13-4f2a-abbb-ea873a1c6d94",
+      "name": "Get Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "const participantData = $('Participant Found?1').first().json;\nconst firstMatch = participantData.data?.matches?.[0];\n\nif (!firstMatch) {\n  throw new Error('No se encontró ningún participante en data.matches');\n}\n\nconst {\n  participantId: pptId,\n  planId,\n  planName: companyName,\n  companyStatus,\n  companyStatusDetail,\n} = firstMatch;\n\nreturn {\n  json: {\n    pptId,\n    planId,\n    companyName,\n    companyStatus,\n    companyStatusDetail,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -4848,
+        832
+      ],
+      "id": "800630a9-f3e2-456f-9e50-b35f9bf912d1",
+      "name": "Get Data1"
+    },
+    {
+      "parameters": {
+        "jsCode": "return {\n\n  json:{\n    \"Result\": \"Participant was NOT found\",\n    \"participant_information\": \"We couldn’t find any participant records in our database matching the information extracted from the ticket. Please, answer to this participant in a generic way, without indicating any specific procedure, and ask for more details if further assistance is needed.\"\n  }\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1536,
+        2896
+      ],
+      "id": "0121b092-6e43-4977-87d7-cffe55446c08",
+      "name": "Code in JavaScript"
+    },
+    {
+      "parameters": {
+        "jsCode": "const userData = $('Merge Querys1').first().json\nconst fubData = $input.first().json\n\nreturn {\n  userData,\n  fubData,\n  \"Result\": \"Participant was found\"\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        160,
+        352
+      ],
+      "id": "7d28d4df-2745-4c31-96b0-64ce5df9e7dd",
+      "name": "Format Response"
+    },
+    {
+      "parameters": {
+        "amount": "={{ Number($json.estimate.avgDurationSeconds) + 3 }} "
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -928,
+        432
+      ],
+      "id": "a0e6ff00-0bd0-43e4-9ac6-f7fc8e38e145",
+      "name": "Wait4",
+      "webhookId": "055d0e9b-d321-4d5e-bd12-38b44ab103ca"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "dba5d72d-4856-488f-87d6-2080e7b297b7",
+              "leftValue": "={{ (() => { const state = String($json.state ?? $json.jobs?.[0]?.state ?? '').toLowerCase(); if (state === 'failed' || state === 'canceled' || state === 'cancelled') { throw new Error(`ForUsBots job ended with state: ${state}`); } return state === 'succeeded'; })() }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -416,
+        432
+      ],
+      "id": "906e2d00-b13f-478c-8457-c1c13d24ada5",
+      "name": "If Done2"
+    },
+    {
+      "parameters": {
+        "amount": 3
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -432,
+        624
+      ],
+      "id": "3f375a47-79bf-4cc8-b583-2a4d7006f1ef",
+      "name": "Wait5",
+      "webhookId": "33e3c6b8-cb99-4d5d-a8be-276b54786b79"
+    },
+    {
+      "parameters": {
+        "jsCode": "const job_id = $('Scrape Participant').first().json.jobId\n\n\nreturn{\n\n  json:{\n\n    \"jobId\": job_id\n\n    \n  }\n  \n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -688,
+        624
+      ],
+      "id": "f2144563-2e7d-41f8-9edd-00d3c9d1ffe9",
+      "name": "Replicate Data2"
+    },
+    {
+      "parameters": {
+        "url": "=http://35.224.156.104:10000/forusbot/jobs/{{ $json.jobId }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -704,
+        432
+      ],
+      "id": "105ce7b5-37b0-4e72-8a91-fd449a2af228",
+      "name": "Get Job2",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "New Service PA [FUB]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://35.224.156.104:10000/forusbot/scrape-participant",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"participantId\": \"{{$json.pptId}}\",\n  \"modules\": [\n    {\n      \"key\": \"savings_rate\",\n      \"fields\": [\n        \"Record Keeper\"\n      ]\n    },\n    {\n      \"key\": \"plan_details\",\n      \"fields\": [\n        \"Plan Type\"\n      ]\n    }\n  ],\n  \"strict\": true,\n  \"includeScreens\": false,\n  \"return\": \"data\"\n}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1152,
+        432
+      ],
+      "id": "5596f4df-38bb-4504-b30c-fd2e5ce67a81",
+      "name": "Scrape Participant",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "name": "New Service PA [FUB]"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const recordKeeper = $input.first().json.data.savings_rate['Record Keeper']\n\nreturn{\n  recordKeeper\n}"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -144,
+        416
+      ],
+      "id": "b9f24014-9d41-45fa-bb18-0c232f7b19b1",
+      "name": "Format Request data"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "d9a4e3fa-eff0-4023-8a1c-56abf670ea9d",
+              "leftValue": "={{ $json.emailSubject }}",
+              "rightValue": "Pending LT Transaction",
+              "operator": {
+                "type": "string",
+                "operation": "notContains"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -11136,
+        1568
+      ],
+      "id": "02d7532d-b6e5-416e-8e83-e701d8ac7165",
+      "name": "Pending LT Transaction mentioned?"
+    }
+  ],
+  "connections": {
+    "AI model4": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Participant Verifier1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser4": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Participant Verifier1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is it a Participant?1": {
+      "main": [
+        [
+          {
+            "node": "Search Participant",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Participant Verifier1": {
+      "main": [
+        [
+          {
+            "node": "Is it a Participant?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI model7": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Comparison especialist1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Output Parser1": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Comparison especialist1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "AI model8": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Gather Info Specialist1",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gather Info Specialist1": {
+      "main": [
+        [
+          {
+            "node": "Relevant information found?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Comparison especialist1": {
+      "main": [
+        [
+          {
+            "node": "Possible Match Found?1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser3": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Gather Info Specialist1",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Possible Match Found?1": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Relevant information found?1": {
+      "main": [
+        [
+          {
+            "node": "Search Participant1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Match1": {
+      "main": [
+        [
+          {
+            "node": "Case selecter1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Case selecter1": {
+      "main": [
+        [
+          {
+            "node": "Get Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Comparison especialist1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Participant Found?1": {
+      "main": [
+        [
+          {
+            "node": "Get Data1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gather Info Specialist1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Querys1": {
+      "main": [
+        [
+          {
+            "node": "Scrape Participant",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Code in JavaScript",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Pending LT Transaction mentioned?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Gather Info Specialist1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Participant Verifier": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Get Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Done": {
+      "main": [
+        [
+          {
+            "node": "Participant Found?1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Replicate Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replicate Data": {
+      "main": [
+        [
+          {
+            "node": "Get Job",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Participant": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job": {
+      "main": [
+        [
+          {
+            "node": "If Done",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Participant Found?": {
+      "main": [
+        [
+          {
+            "node": "Validate Match1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait2": {
+      "main": [
+        [
+          {
+            "node": "Get Job1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Done1": {
+      "main": [
+        [
+          {
+            "node": "Participant Found?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait3",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait3": {
+      "main": [
+        [
+          {
+            "node": "Replicate Data1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replicate Data1": {
+      "main": [
+        [
+          {
+            "node": "Get Job1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Participant1": {
+      "main": [
+        [
+          {
+            "node": "Wait2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job1": {
+      "main": [
+        [
+          {
+            "node": "If Done1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Querys1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Data1": {
+      "main": [
+        [
+          {
+            "node": "Merge Querys1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait4": {
+      "main": [
+        [
+          {
+            "node": "Get Job2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If Done2": {
+      "main": [
+        [
+          {
+            "node": "Format Request data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait5",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait5": {
+      "main": [
+        [
+          {
+            "node": "Replicate Data2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Replicate Data2": {
+      "main": [
+        [
+          {
+            "node": "Get Job2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Job2": {
+      "main": [
+        [
+          {
+            "node": "If Done2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Participant": {
+      "main": [
+        [
+          {
+            "node": "Wait4",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Request data": {
+      "main": [
+        [
+          {
+            "node": "Format Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Pending LT Transaction mentioned?": {
+      "main": [
+        [
+          {
+            "node": "Participant Verifier1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {
+    "Participant Verifier": [
+      {
+        "userId": "don:identity:dvrv-us-1:devo/1is7v8y722:revu/BIS6m9Mk",
+        "userName": "Joyce Chuen",
+        "userEmail": "jychuen@gmail.com",
+        "ticketId": "TKT-899261",
+        "emailSubject": "Account number",
+        "emailBody": "Joyce Chuen is asking where to find her account number.",
+        "tag": "NOT FOUND",
+        "firstContact": true,
+        "ticket_messages": {
+          "message_1": "Hi, Where can I find my account number? Thank you, Joyce Chuen"
+        }
+      }
+    ]
+  },
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

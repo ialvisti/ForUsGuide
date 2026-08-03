@@ -2,7 +2,7 @@
   "metadata": {
     "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
     "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form when portal access is not possible. Includes rollover best practices such as correct wire vs. check details, data-entry tips, and common errors to avoid. Also covers the small account balance fee-out process for terminated participants with a Total Vested Balance of $75 or less, where the account is closed and no funds are distributed. This article is specific to the recordkeeper LT Trust.",
+    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form provided directly when portal access is not possible (for example, MFA is not enrolled). Includes rollover best practices such as correct wire vs. check details, data-entry tips, and common errors to avoid. Also covers the small account balance fee-out process for terminated participants with a Total Vested Balance of $75 or less, where the account is closed and no funds are distributed. This article is specific to the recordkeeper LT Trust.",
     "audience": "Internal AI Support Agent",
     "record_keeper": "LT Trust",
     "plan_type": "401(k)",
@@ -79,7 +79,7 @@
         "category": "submission_method",
         "rules": [
           "Submitting through the participant portal is the preferred and fastest route.",
-          "If portal access is not possible due to MFA access issues, the participant can request a RightSignature electronic form as a slower secondary option."
+          "If portal access is not possible because MFA is not enrolled or the participant cannot log in, provide the participant directly with the RightSignature electronic form to submit the request (a slower secondary option than the portal). Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. Share this link only after termination distribution eligibility is confirmed (Terminated status, termination date on file, and Total Vested Balance above $75). Do not ask the participant to contact Support just to obtain the form."
         ]
       },
       {
@@ -206,7 +206,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.",
-        "notes": "Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan."
+        "notes": "Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan. If the participant cannot log in because MFA is not enrolled or they are having login issues, do not use these portal steps — instead provide them directly with the RightSignature electronic form to submit the request (after confirming eligibility): https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
       },
       {
         "step_number": 2,
@@ -261,7 +261,7 @@
     "common_issues": [
       {
         "issue": "Cannot log in or access the participant portal due to Participant data 'MFA' is 'not enrolled'.",
-        "resolution": "MFA is required for participant portal access. If the participant cannot access the portal because MFA is not enrolled, advise them to contact ForUsAll Support to request an electronic form to proceed with the distribution request. If the participant prefers to use the portal, they must create an online account using the email on file and enroll MFA by going to the portal login URL, clicking on 'New here? Create an Account' and following the instructions."
+        "resolution": "MFA is required for participant portal access. If the participant cannot access the portal because MFA is not enrolled, provide them directly with the RightSignature electronic form to proceed with the distribution request (share it only after confirming termination distribution eligibility): https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. If the participant prefers to use the portal, they must create an online account using the email on file and enroll MFA by going to the portal login URL, clicking on 'New here? Create an Account' and following the instructions."
       },
       {
         "issue": "The participant cannot log in or access the participant portal and Participant data 'MFA' is 'enrolled' (Participant doesn't mention they have forgotten their password).",
@@ -451,11 +451,11 @@
       },
       {
         "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $500 and wants a paper check as a cash lump sum distribution.",
-        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose Lump Sum and check as the method, and submit the request. If they don't have MFA enrolled or cannot log in, direct them to contact ForUsAll Support to request an electronic form."
+        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose Lump Sum and check as the method, and submit the request. If they don't have MFA enrolled or cannot log in, provide them directly with the RightSignature electronic form link to submit the request: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
       },
       {
         "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $1,200 and wants a wire transaction as a lump sum distribution.",
-        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose wire as the method, and submit the request. If they do not have MFA enrolled or cannot log in, instruct them to contact ForUsAll Support to request an electronic form."
+        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose wire as the method, and submit the request. If they do not have MFA enrolled or cannot log in, provide them directly with the RightSignature electronic form link to submit the request: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
       }
     ],
     "additional_notes": [
@@ -500,7 +500,7 @@
       {
         "category": "alternate_submission_method",
         "notes": [
-          "If portal access is not possible, a RightSignature electronic form can be requested from ForUsAll Support and is typically slower than portal submission."
+          "If portal access is not possible (for example MFA is not enrolled or the participant cannot log in), provide the participant directly with the RightSignature electronic form to submit the request; it is typically slower than portal submission. Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
         ]
       },
       {
@@ -627,7 +627,7 @@
       },
       {
         "question": "Can a participant request help submitting a distribution request without doing it online?",
-        "answer": "If the participant cannot log in to their ForUsAll online account, they can contact ForUsAll Support to request an electronic form to complete the distribution request. For security reasons, participants must complete the process themselves, and Support cannot initiate the request for them."
+        "answer": "If the participant cannot log in to their ForUsAll online account (for example MFA is not enrolled), they can be provided directly with the RightSignature electronic form to complete the distribution request: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. For security reasons, participants must complete the form themselves, and Support cannot initiate the request for them."
       },
       {
         "question": "How can a participant get additional assistance if they need help with a distribution request?",
@@ -677,7 +677,7 @@
       },
       {
         "term": "RightSignature electronic form",
-        "definition": "An electronic form used to request a distribution when portal submission is not possible."
+        "definition": "An electronic form used to submit a distribution request when portal submission is not possible (for example, MFA is not enrolled or the participant cannot log in). ForUsAll provides this form to the participant directly via a secure RightSignature link, after eligibility is confirmed."
       },
       {
         "term": "Tax withholding",
@@ -766,7 +766,7 @@
         "Do not promise exact delivery dates; use the stated approximate timelines only.",
         "Do not guarantee whether state withholding will apply or specify state withholding amounts.",
         "Do not claim the wire fee can be refunded; the wire fee is non-refundable.",
-        "Do not claim where or how to access any document other than the portal URL and contact methods explicitly provided.",
+        "Do not claim where or how to access any document other than the portal URL, the RightSignature electronic form link, and contact methods explicitly provided in this article. The RightSignature electronic form link may be shared directly with the participant on the MFA-not-enrolled / cannot-log-in path after eligibility is confirmed.",
         "Do not claim that ForUsAll will help complete all required fields on this form.",
         "Do not disclose account balances or vesting percentages, or any other sensitive information.",
         "Do not claim that wire and check instructions are the same; many financial institutions have different details for wires versus ACH.",
@@ -791,7 +791,7 @@
       ],
       "must_do_if_unsure": [
         "Advise the participant to contact ForUsAll Support if vesting percentages or account sources appear incorrect.",
-        "Advise the participant to contact ForUsAll Support if portal access issues prevent online submission.",
+        "If portal access issues prevent online submission (for example MFA is not enrolled or the participant cannot log in), provide the participant directly with the RightSignature electronic form to submit the request (after confirming eligibility) rather than only routing them to Support.",
         "Advise the participant to contact ForUsAll Support if employment separation status appears uncertain or not reflected in the portal options.",
         "Advise the participant to contact ForUsAll Support if they are unsure about the information needed to complete the form.",
         "Direct the participant to contact ForUsAll Support at help@forusall.com or 844-401-2253 if they are unsure which distribution type to select.",
@@ -821,6 +821,11 @@
         "Can I Take Money From My 401(k) While Employed? Your Options Explained"
       ],
       "external_links": [
+        {
+          "label": "Termination Distribution RightSignature Request Form",
+          "url": "https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723",
+          "purpose": "Provide this link directly to the participant to submit a termination distribution (cash, rollover, or split) when portal access is not possible (MFA not enrolled or cannot log in), after confirming eligibility (Terminated status, termination date on file, and Total Vested Balance above $75)."
+        },
         "https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions"
       ],
       "contact": {
@@ -1070,7 +1075,7 @@
         "If Total Vested Balance is above $75, the normal distribution process applies.",
         "If Total Vested Balance is $75 or less, fee-out applies and no normal distribution request can be initiated.",
         "If Total Vested Balance is above $75 and MFA is enrolled and the participant can log in, they qualify to submit the normal distribution request online in the ForUsAll portal.",
-        "If Total Vested Balance is above $75 and MFA is not enrolled or the participant cannot log in, they qualify to submit the normal distribution request using an electronic form provided by Support.",
+        "If Total Vested Balance is above $75 and MFA is not enrolled or the participant cannot log in, they qualify to submit the normal distribution request using the RightSignature electronic form, which is provided to them directly (link in the submission-method rules and references), not requested from Support.",
         "If Rehire date is not null, it must be before the termination date.",
         "Only vested balances are eligible for distribution."
       ],
@@ -1078,13 +1083,13 @@
         "Participant is not terminated.",
         "Participant does not have a termination date on file.",
         "Participant Total Vested Balance is $75 or less (fee-out applies; a normal distribution request cannot be initiated).",
-        "Online portal submission cannot be completed if MFA is not enrolled or if the participant is having issues logging in. Route the participant to Support to request an electronic form.",
+        "Online portal submission cannot be completed if MFA is not enrolled or if the participant is having issues logging in. In that case, provide the participant directly with the RightSignature electronic form link (https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723) to submit the request; do not route them to Support just to obtain the form.",
         "Participant eligibility status cannot be verified in-system (do not confirm eligibility to submit a termination distribution until verified).",
         "Participant current Total Vested Balance cannot be verified or shows as '--' (do not classify as fee-out vs. normal distribution until balance is confirmed). Contact Support.",
-        "Participant cannot log in to the ForUsAll portal to access the Loans & Distributions section (online request cannot be completed; route to Support to request an electronic form).",
+        "Participant cannot log in to the ForUsAll portal to access the Loans & Distributions section (online request cannot be completed; provide the RightSignature electronic form link directly so they can submit the request).",
         "Participant termination status cannot be verified in-system (do not confirm eligibility to submit a termination distribution until verified).",
         "Participant termination date cannot be verified in-system (do not confirm eligibility to submit a termination distribution until verified).",
-        "Participant is unable to locate or access the Loans & Distributions section in the portal (online request cannot be completed; route to Support for guided assistance or to request an electronic form if needed).",
+        "Participant is unable to locate or access the Loans & Distributions section in the portal (online request cannot be completed; provide the RightSignature electronic form link directly so they can submit the request, or route to Support for guided assistance if needed).",
         "Participant cannot select Termination Distribution in the drop down menu. Tell the participant sometimes the drop down shows a Default value due to a website glitch. If they do not see this or the Get Started button does not show, do not proceed with portal instructions; route to Support to investigate eligibility/profile setup.",
         "Participant reports the account already shows a $0 Total Vested Balance or has '--' (no distribution can be initiated; confirm whether fee-out closure has already completed).",
         "Participant requests a payout for a fee-out scenario ($75 or less) and insists a check/wire/rollover should be issued (do not proceed with a normal distribution workflow; verify balance and explain fee-out applies, then route to Support if they keep disputing).",
@@ -1125,7 +1130,7 @@
       "allowed_conclusions": [
         "If the participant is terminated, has a termination date on file, has MFA enrolled for online account access, and the Total Vested Balance is above $75, they can submit the normal distribution request online in the ForUsAll portal.",
         "If the participant is terminated, has a termination date on file, and the Total Vested Balance is $75 or less, the account will be closed through the fee-out process and no funds will be distributed.",
-        "If the participant is terminated, has a termination date on file, and the Total Vested Balance is above $75 but MFA is not enrolled or the participant cannot log in, they can request an electronic form from Support to submit the normal distribution request.",
+        "If the participant is terminated, has a termination date on file, and the Total Vested Balance is above $75 but MFA is not enrolled or the participant cannot log in, provide them directly with the RightSignature electronic form link to submit the normal distribution request (no need to contact Support to obtain it).",
         "If a rehire date is present and it's after the termination date, the participant is not eligible for a distribution.",
         "If the participant is eligible for a distribution, they can request a rollover or a cash distribution or a partial rollover or partial cash withdrawal.",
         "The participant can complete the rollover online by following the steps in this article.",
@@ -1182,7 +1187,7 @@
       "blocked_missing_data": {
         "participant_message_components": [
           "To guide you through the request, I need a few details about the type of distribution and delivery method you want.",
-          "You can submit through the portal under Loans & Distributions, or request a RightSignature electronic form if you cannot access the portal."
+          "You can submit through the portal under Loans & Distributions, or, if you cannot access the portal, we can provide you a secure RightSignature electronic form to submit your request."
         ],
         "next_steps": [
           "Collect the missing details required for the participant's selected option (cash, rollover, or split) and delivery method (check or wire).",

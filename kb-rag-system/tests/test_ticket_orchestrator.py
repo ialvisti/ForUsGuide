@@ -452,6 +452,64 @@ class TestGenerateBranch:
         rag.generate_response.assert_not_awaited()
         assert "forusbots_field_map" not in llm.calls
 
+    @pytest.mark.parametrize(
+        "error_value",
+        [
+            "No relevant articles found for this topic",
+            "unexpected required-data error",
+        ],
+    )
+    async def test_any_required_data_error_fails_closed_and_is_not_publishable(
+        self, error_value,
+    ):
+        from api.ticket_worker import (
+            _entry_from_outcome,
+            aggregate_states,
+            outcome_is_degraded,
+        )
+
+        llm = self._gr_llm()
+        deps, rag, _router, forusbots = _deps(
+            llm=llm, classify_route="generate_response"
+        )
+        rag.get_required_data.return_value = SimpleNamespace(
+            required_fields={},
+            metadata={"error": error_value},
+        )
+        rag.generate_response.return_value = SimpleNamespace(
+            decision="can_proceed",
+            confidence=0.9,
+        )
+        orch = TicketOrchestrator(deps, _settings())
+
+        out = await orch.handle_inquiry(
+            ExtractedInquiry("cash out", "LT Trust", "401(k)", "rollover"),
+            _req(),
+            total_inquiries=1,
+        )
+
+        assert out.scrape_status == "skipped"
+        assert out.generate_result is None
+        assert out.diagnostics["required_data_failure"] == {
+            "failure_kind": "unknown",
+            "retryable": False,
+        }
+        assert outcome_is_degraded(out) == (True, "INTERNAL_ERROR")
+        forusbots.scrape_participant.assert_not_awaited()
+        rag.generate_response.assert_not_awaited()
+        assert "forusbots_field_map" not in llm.calls
+
+        entry = _entry_from_outcome(0, out)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+        assert entry["participant_reply_safe"] is False
+        assert entry["degraded"] is True
+        assert entry["error"] == {
+            "code": "INTERNAL_ERROR",
+            "retryable": False,
+        }
+        assert state.value != "succeeded"
+        assert next_action.value == "use_legacy_or_human"
+
     async def test_gr_happy_path_deterministic_no_llm_mapper(self):
         llm = self._gr_llm()
         deps, rag, _r, forusbots = _deps(llm=llm, classify_route="generate_response")

@@ -1,10 +1,13 @@
 # Remediación del incidente de ejecuciones GCP
 
 **Fecha:** 2026-08-02
+**Última actualización:** 2026-08-03
 **Proyecto:** `rag-kb-system`
 **Región:** `us-central1`
 **Documento de origen:** `AUDITORIA_EJECUCIONES_GCP_2026-08-02.md`
 **Rama de trabajo:** `codex/fix-ticket-execution-failures`
+**Commits de código:** `ae0a81d031dcb0d3cae7032e32ed74c2ef14103f`,
+`ba9c060ac9e7ced428b64aeb9b94fbb89b36de3e`
 
 ## Estado ejecutivo
 
@@ -12,6 +15,11 @@ El incidente quedó **contenido en producción** y la corrección integral está
 implementada en una rama limpia derivada de `origin/main`. No se usó ni se
 alteró el checkout obsoleto `handle-ticket-hardening`, que conserva cambios del
 usuario.
+
+La rama y ambos commits están publicados en
+`origin/codex/fix-ticket-execution-failures`. Una auditoría independiente no
+encontró P0 residuales y los dos P1 y el P2 que detectó quedaron corregidos con
+pruebas RED→GREEN antes del gate remoto final.
 
 La ruta `generate_response` no debe volver a activarse en producción hasta
 completar los gates live indicados al final de este documento. La razón no es
@@ -39,6 +47,11 @@ La revisión nueva quedó `Ready=True`; los probes autenticados `/health` y
 `/readyz` devolvieron `healthy` y `ready`. No se cambió el worker, la cola, el
 scheduler, Firestore, secretos ni datos. `knowledge_only` conserva KQ y polling,
 pero coacciona GR a una salida sin ForUsBots.
+
+La lectura live de 2026-08-03 16:13–16:15 UTC confirmó de nuevo 100% del
+tráfico en `kb-rag-system-00053-jmx`, mismo digest y service account, y HTTP
+200 autenticado tanto en `/health` como en `/readyz`. La revisión anterior no
+tiene tráfico activo.
 
 Rollback de contención, sólo si lo autoriza el incident commander:
 
@@ -87,6 +100,11 @@ repite el POST. Timeout, fallo de polling, error de checkpoint o circuito
 abierto al reanudar conservan el ID y exigen reconciliación. Los POST ambiguos
 continúan fail-closed: nunca se reintentan a ciegas.
 
+Un timeout de una inquiry GR marca reconciliación manual y queda no
+reintentable. En la agregación, esa señal domina cualquier error transitorio de
+otra inquiry y publica `FORUSBOTS_NEEDS_RECONCILIATION`; así un consumidor no
+puede convertir un efecto posiblemente aceptado en un replay ciego.
+
 El `dedupe_scope` evita coalescing entre tickets o tenants dentro del proceso,
 pero **no se envía como header upstream**, porque el contrato ForUsBots 2.5 no
 define uno. Esta limitación externa es el motivo para no habilitar `full`.
@@ -131,9 +149,20 @@ Pinecone y no son reintentables.
 - Cada retry vuelve a consultar el circuito después del backoff; una consulta
   ya en vuelo se detiene si otra rama abrió el circuito y no multiplica
   requests concurrentes obsoletos.
+- Los upserts tampoco reintentan 4xx, 408 ni errores locales de contrato; sólo
+  timeout/transporte, 429 y 5xx consumen el presupuesto acotado.
+- `requirements.txt`, `requirements.in` y ambos locks quedan alineados con
+  Pinecone 9.1; una instalación de desarrollo ya no puede degradar el SDK a
+  una major distinta de la verificada en CI/runtime.
 - Los pools HTTP de Pinecone y ForUsBots se cierran durante shutdown.
 - KQ y GR almacenan únicamente taxonomías cerradas; cuerpos de error y mensajes
   de excepciones no cruzan logs, checkpoints ni API.
+
+Además, un fallo técnico de `get_required_data` ya no se interpreta como
+"cero campos requeridos": conserva una taxonomía cerrada, corta GR antes de
+mapping, ForUsBots, extracción y generación, y nunca produce una respuesta
+publicable con datos vacíos. Sólo un error tipificado de Pinecone puede
+publicarse como transitorio de Pinecone; el resto falla cerrado.
 
 ## Persistencia, fases y privacidad
 
@@ -186,10 +215,20 @@ cero retries automáticos: el siguiente tick es la recuperación idempotente y
 el intervalo excede el timeout, evitando solapamiento. Con el máximo observado
 de 191 s, la recuperación esperada permanece por debajo del SLA de 10 minutos.
 
-Estos cambios Terraform están implementados pero **todavía no aplicados**. En
-live, al momento de este reporte, Cloud Tasks continúa sin logging y Scheduler
-continúa cada minuto. No se mutarán hasta que el plan remoto exacto confirme
-cero deletes/replaces y satisfaga los quorums del controlador.
+Estos cambios Terraform están implementados pero **todavía no aplicados**. La
+lectura live de 2026-08-03 confirmó que `ticket-jobs-prod` sigue `RUNNING`, con
+2 despachos/s, concurrencia 2, cinco intentos y sin logging; Scheduler sigue
+habilitado cada minuto con deadline 180 s. No se mutarán hasta que el plan
+remoto exacto confirme cero deletes/replaces y satisfaga los quorums del
+controlador.
+
+El plan remoto tampoco se fabricó por fuera del flujo gobernado. Antes de G1B
+falta una ruta publisher confiable/source-less que publique y escanee el
+release-controller por digest; el recipe actual es deliberadamente
+verify-only. La primera adopción debe mantener containers deshabilitados e
+incluir la lectura de `environment-inputs/`; sólo después de un apply aprobado
+puede producirse el plan managed. Saltar esta secuencia recrearía el límite de
+confianza que el controlador bloquea.
 
 ## Polling n8n
 
@@ -206,13 +245,13 @@ acción externa; no se afirmará que está desplegado sin esa evidencia.
 
 ## Verificación
 
-Resultados frescos sobre el árbol final antes del gate remoto:
+Resultados frescos sobre el árbol final y el gate remoto:
 
-- suite local no-live completa: **1489 passed, 16 skipped, 23 deselected**;
-- fixture/worker/repositorio P0 focal: **236 passed, 1 live skip**;
-- controlador/IAM/Terraform contracts: **322 passed**;
-- Pinecone focal con HTTP real y cierre de pools: **132 passed**;
-- contratos n8n, JSON, grafo y código embebido: **20 passed**;
+- suite local no-live completa: **1502 passed, 16 skipped, 23 deselected**;
+- la suite final incluye las regresiones de fixture/worker/repositorio P0,
+  required-data fail-closed, reconciliación, controlador/IAM y n8n;
+- Pinecone uploader final: **28 passed**; el conjunto Pinecone/privacidad
+  también forma parte de la suite completa;
 - Ruff, mypy configurado, `pip check`, `pip-audit`, secret baseline,
   collect-only, árbol Terraform fail-closed y `git diff --check`: pass;
 - el upload default-deny de Cloud Build incluye explícitamente el único
@@ -221,23 +260,45 @@ Resultados frescos sobre el árbol final antes del gate remoto:
 - Terraform 1.9.8 oficial, verificado por checksum: fmt/init/validate y tests
   platform **21 passed**, staging **1 passed**, production **0 tests / validate
   pass**, módulo **26 passed**;
-- Firestore Emulator RPC local: no disponible (Docker no está instalado).
+- Firestore Emulator RPC local: no disponible (Docker no está instalado);
+  Cloud Build ejecutó **16 passed** contra el Emulator real.
 
-El resultado definitivo de Python 3.12, Emulator, Terraform nativo, imágenes,
-escaneo, build ID, digest y planes se añadirá después del Cloud Build
-verify-only sobre el commit exacto.
+Cloud Build verify-only
+`fe41ade9-1313-4413-9e27-e1e063b682f9` terminó `SUCCESS` sobre el árbol limpio
+del commit `ba9c060ac9e7ced428b64aeb9b94fbb89b36de3e` (2026-08-03
+16:23:10–16:29:41 UTC). Sus nueve pasos cubrieron Python 3.12, secret gates,
+Ruff, mypy, `pip check`, `pip-audit`, Terraform 1.9.8, Firestore Emulator y
+smokes de las imágenes runtime/CI/E2E/release-controller. Usó
+`ticket-controller-verify@rag-kb-system.iam.gserviceaccount.com` y no publicó
+imágenes, no desplegó, no ejecutó `terraform apply` y no escribió evidencia de
+release.
+
+El build diagnóstico anterior `e94b1116-bde2-4648-bb6d-aeee433990f5` también
+terminó `SUCCESS` sobre `ae0a81d`, pero el resultado autoritativo para el código
+final es `fe41ade9…`. Digest promovible, SBOM/provenance, scan y planes remotos
+pertenecen al build de release y a los triggers Terraform gobernados; no son
+salidas del recipe verify-only y siguen correctamente pendientes.
+
+## Gates cumplidos
+
+1. Corrección y hardening publicados en los commits remotos exactos indicados.
+2. Cloud Build verify-only verde sobre el commit final, incluido Emulator,
+   Terraform y smokes de contenedores.
+3. Contención live revalidada saludable y sin tráfico en la revisión `full`
+   anterior.
+4. Ocho efectos históricos confirmados como exitosos, con decisión de cero
+   replays; dos falsos outages Pinecone reclasificados.
 
 ## Gates live pendientes y criterio de cierre
 
-1. Cloud Build verify-only verde en Python 3.12, incluido Firestore Emulator,
-   Terraform fmt/validate/test, Ruff, mypy, secret scan, audit y smokes.
-2. Commit remoto exacto, build reproducible, SBOM/provenance y digest inmutable.
-3. Planes Terraform revisados: cero delete/replace; apply sólo con quorum exacto.
-4. Revisión producer/worker sin tráfico y probes sintéticos sin PII.
-5. Importar/validar/activar el workflow n8n sanitizado en su instancia.
-6. Contrato upstream ForUsBots HTTPS/privado con idempotencia o lookup de
+1. Build de release gobernado con digest inmutable, SBOM/provenance y scan;
+   primero debe cerrarse el bootstrap publisher pre-G1B documentado.
+2. Planes Terraform revisados: cero delete/replace; apply sólo con quorum exacto.
+3. Revisión producer/worker corregida sin tráfico y probes sintéticos sin PII.
+4. Importar/validar/activar el workflow n8n sanitizado en su instancia.
+5. Contrato upstream ForUsBots HTTPS/privado con idempotencia o lookup de
    reconciliación; mientras falte, GR permanece legacy/knowledge-only.
-7. Sólo después: canary, paridad 1:1 de evento terminal/métrica y al menos 20
+6. Sólo después: canary, paridad 1:1 de evento terminal/métrica y al menos 20
    GR consecutivos seguros. Cualquier `INTERNAL_ERROR`, ID externo ausente o
    discrepancia de métricas aborta y revierte.
 

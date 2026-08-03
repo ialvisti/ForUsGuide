@@ -180,6 +180,13 @@ otherwise keep ambiguous POSTs fail-closed and block the `full` rollout.
 **Files:**
 - Modify: `REMEDIACION_EJECUCIONES_GCP_2026-08-02.md`
 
+**Estado 2026-08-03:** Steps 1–2 completados; commit/push completados en
+`ba9c060ac9e7ced428b64aeb9b94fbb89b36de3e`; PR pendiente de autenticación
+GitHub. El verify-only autoritativo `fe41ade9-1313-4413-9e27-e1e063b682f9`
+terminó `SUCCESS`. No produce digest/SBOM/provenance/scan ni planes: esos
+pertenecen al release gobernado. Step 8 completado con cero replays. Steps 5–7
+siguen bloqueados por bootstrap/quorums, activación n8n y contrato upstream.
+
 **Step 1:** Run focused tests, complete non-live suite, Ruff, strict mypy, config/secret scans and container contract tests in the locked Python 3.12 Cloud Build environment.
 
 **Step 2:** Run Firestore Emulator integration proving old rejection and new round-trip.

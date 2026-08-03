@@ -55,6 +55,7 @@ Modify:
 - `kb-rag-system/firestore.indexes.json`
 - `kb-rag-system/api/tickets_console_config.py`
 - `kb-rag-system/tests/test_ticket_review_models.py`
+- `kb-rag-system/tests/test_terraform_runtime_contract.py`
 
 Terraform resources are implemented in Stage 10; this stage freezes the canonical index/TTL declaration and repository behavior.
 
@@ -328,6 +329,7 @@ cd "$KBRAG_ROOT"
 "$PYTHON_BIN" -m pytest tests/test_ticket_review_repository.py -q
 "$PYTHON_BIN" -m pytest tests/test_ticket_job_repository.py -q
 "$PYTHON_BIN" -m pytest tests/test_ticket_review_models.py -q
+"$PYTHON_BIN" -m pytest tests/test_terraform_runtime_contract.py -q
 "$PYTHON_BIN" -m json.tool firestore.indexes.json >/dev/null
 "$PYTHON_BIN" -m compileall -q data_pipeline api
 git -C "$IMPL_ROOT" diff --check
@@ -358,6 +360,7 @@ git -C "$IMPL_ROOT" add \
   kb-rag-system/tests/integration/test_firestore_ticket_review_repository.py \
   kb-rag-system/api/tickets_console_config.py \
   kb-rag-system/tests/test_ticket_review_models.py \
+  kb-rag-system/tests/test_terraform_runtime_contract.py \
   kb-rag-system/firestore.indexes.json
 "$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_staged_scope.py" \
   --allow kb-rag-system/data_pipeline/ticket_review_repository.py \
@@ -365,6 +368,7 @@ git -C "$IMPL_ROOT" add \
   --allow kb-rag-system/tests/integration/test_firestore_ticket_review_repository.py \
   --allow kb-rag-system/api/tickets_console_config.py \
   --allow kb-rag-system/tests/test_ticket_review_models.py \
+  --allow kb-rag-system/tests/test_terraform_runtime_contract.py \
   --allow kb-rag-system/firestore.indexes.json
 git -C "$IMPL_ROOT" diff --cached --check
 git -C "$IMPL_ROOT" diff --cached

@@ -601,9 +601,13 @@ class TicketOrchestrator:
             related_inquiries=ext.related_inquiries,
         )
         rd_metadata = getattr(rd, "metadata", None) or {}
+        rd_error = (
+            rd_metadata.get("error")
+            if isinstance(rd_metadata, dict)
+            else None
+        )
         if (
-            isinstance(rd_metadata, dict)
-            and rd_metadata.get("error") == "required_data_failed"
+            rd_error is not None
         ):
             transient_kinds = {
                 "timeout", "transport", "rate_limit", "server_error",
@@ -622,8 +626,9 @@ class TicketOrchestrator:
                 ),
             }
             # Fail before mapping, ForUsBots, ticket extraction, body building
-            # or response generation.  Empty required-data caused by a
-            # technical failure is not evidence that no fields are required.
+            # or response generation.  An explicit required-data error is not
+            # evidence that no fields are required, regardless of the exact
+            # provider/local sentinel used to describe it.
             return InquiryOutcome(
                 inquiry=ext.inquiry,
                 topic=ext.topic,

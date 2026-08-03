@@ -93,6 +93,16 @@ CSRF_SECRET_ENV = "TICKETS_CSRF_SIGNING_SECRET"  # noqa: S105 - env var NAME
 CURSOR_KEY_ENV = "TICKETS_CURSOR_AEAD_KEY"  # noqa: S105 - env var NAME
 
 # Each plane refuses every secret it does not own, in both directions.
+# The console's dedicated named databases. Firestore IAM is database-scoped,
+# so these are the isolation boundary; a collection prefix is not.
+STAGING_FIRESTORE_DATABASE = "tickets-console-staging"
+PRODUCTION_FIRESTORE_DATABASE = "tickets-console-prod"
+LOCAL_FIRESTORE_DATABASE = "tickets-console-emulator"
+EXPECTED_FIRESTORE_DATABASES: dict[str, str] = {
+    "staging": STAGING_FIRESTORE_DATABASE,
+    "production": PRODUCTION_FIRESTORE_DATABASE,
+}
+
 CONSOLE_FORBIDDEN_ENV_VARS = frozenset(
     {
         CORRELATION_INGRESS_KEY_ENV,
@@ -144,6 +154,41 @@ def decode_cursor_aead_key(value: object) -> bytes:
     if len(raw) != CURSOR_AEAD_KEY_BYTES:
         raise ValueError(invalid)
     return raw
+
+
+def resolve_tickets_firestore_database(database: object, *, environment: str) -> str:
+    """Return the console's named Firestore database, or fail closed.
+
+    The database — not a collection prefix — is the console's isolation
+    boundary, so there is no default and no fallback: a blank value is an
+    error in every environment. ``staging`` and ``production`` additionally
+    refuse ``(default)`` and pin the exact provisioned name, because
+    ``roles/datastore.user`` is database-scoped and the console must never be
+    able to reach the ticket handler's production ``(default)`` database.
+
+    Local/emulator runs may name any database explicitly, including
+    ``(default)``, but must still say so.
+    """
+    normalized = _secret_text(database)
+    env = (environment or "").strip() or FAIL_CLOSED_ENVIRONMENT
+    if env not in VALID_ENVIRONMENTS:
+        raise ValueError(f"ENVIRONMENT must be one of {sorted(VALID_ENVIRONMENTS)}")
+    if not normalized:
+        raise ValueError(
+            "FIRESTORE_DATABASE must name the console database explicitly; "
+            "the tickets console has no default database"
+        )
+    if env in STRICT_ENVIRONMENTS:
+        if normalized == DEFAULT_FIRESTORE_DATABASE:
+            raise ValueError(
+                "FIRESTORE_DATABASE must be a dedicated named database, never (default)"
+            )
+        expected = EXPECTED_FIRESTORE_DATABASES[env]
+        if normalized != expected:
+            raise ValueError(
+                f"the {env} tickets console must use the '{expected}' Firestore database"
+            )
+    return normalized
 
 
 def _is_https_url(value: str) -> bool:

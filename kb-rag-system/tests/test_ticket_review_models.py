@@ -158,15 +158,22 @@ from api.ticket_review_models import (
 from api.tickets_console_config import (
     BROKER_FORBIDDEN_ENV_VARS,
     CONSOLE_FORBIDDEN_ENV_VARS,
+    DEFAULT_FIRESTORE_DATABASE,
     DEVREV_OFFICIAL_API_BASE,
+    EXPECTED_FIRESTORE_DATABASES,
     FAIL_CLOSED_ENVIRONMENT,
+    LOCAL_FIRESTORE_DATABASE,
     PRODUCER_FORBIDDEN_ENV_VARS,
+    PRODUCTION_FIRESTORE_DATABASE,
+    STAGING_FIRESTORE_DATABASE,
+    STRICT_ENVIRONMENTS,
     VALID_ENVIRONMENTS,
     EvidenceBrokerSettings,
     ProducerCorrelationSettings,
     TicketConsoleSettings,
     decode_cursor_aead_key,
     validate_evidence_broker_settings,
+    resolve_tickets_firestore_database,
     validate_producer_correlation_settings,
     validate_ticket_console_settings,
 )
@@ -2887,3 +2894,133 @@ class TestClosedMutationEnvelopes:
         ):
             encoded = json.dumps(envelope.model_dump(mode="json"))
             assert type(envelope).model_validate(json.loads(encoded))
+
+
+# =====================================================================
+# 18. The console's named Firestore databases (Stage 3)
+# =====================================================================
+
+
+class TestNamedFirestoreDatabases:
+    """The database, not a collection prefix, is the isolation boundary.
+
+    ``roles/datastore.user`` is database-scoped, so a console revision that can
+    reach the wrong database is a privacy incident, not a config typo.
+    """
+
+    def test_the_database_names_are_frozen_per_environment(self):
+        assert STAGING_FIRESTORE_DATABASE == "tickets-console-staging"
+        assert PRODUCTION_FIRESTORE_DATABASE == "tickets-console-prod"
+        assert LOCAL_FIRESTORE_DATABASE == "tickets-console-emulator"
+        assert EXPECTED_FIRESTORE_DATABASES == {
+            "staging": STAGING_FIRESTORE_DATABASE,
+            "production": PRODUCTION_FIRESTORE_DATABASE,
+        }
+        assert set(EXPECTED_FIRESTORE_DATABASES) == STRICT_ENVIRONMENTS
+
+    def test_no_environment_may_fall_back_to_a_default_database(self):
+        for environment in sorted(VALID_ENVIRONMENTS):
+            with pytest.raises(ValueError, match="explicitly"):
+                resolve_tickets_firestore_database("", environment=environment)
+            with pytest.raises(ValueError, match="explicitly"):
+                resolve_tickets_firestore_database("   ", environment=environment)
+
+    def test_strict_environments_refuse_the_default_database(self):
+        for environment in sorted(STRICT_ENVIRONMENTS):
+            with pytest.raises(ValueError, match=r"never \(default\)"):
+                resolve_tickets_firestore_database(
+                    DEFAULT_FIRESTORE_DATABASE, environment=environment
+                )
+
+    def test_each_strict_environment_pins_exactly_its_own_database(self):
+        for environment, expected in EXPECTED_FIRESTORE_DATABASES.items():
+            assert (
+                resolve_tickets_firestore_database(expected, environment=environment)
+                == expected
+            )
+            other = next(
+                name
+                for env, name in EXPECTED_FIRESTORE_DATABASES.items()
+                if env != environment
+            )
+            with pytest.raises(ValueError, match=expected):
+                resolve_tickets_firestore_database(other, environment=environment)
+
+    def test_an_unknown_environment_fails_closed(self):
+        # "prod" is not "production": a near-miss must never resolve to a
+        # permissive path just because it looks like one.
+        for environment in ("prod", "dev", "Production", "LOCAL"):
+            with pytest.raises(ValueError, match="ENVIRONMENT must be one of"):
+                resolve_tickets_firestore_database(
+                    STAGING_FIRESTORE_DATABASE, environment=environment
+                )
+
+    def test_surrounding_whitespace_is_normalized_not_trusted(self):
+        # Cloud Run environment values routinely carry stray whitespace; the
+        # normalized value is still checked against the strict rules.
+        assert (
+            resolve_tickets_firestore_database(
+                f" {STAGING_FIRESTORE_DATABASE} ", environment=" staging "
+            )
+            == STAGING_FIRESTORE_DATABASE
+        )
+        with pytest.raises(ValueError, match=r"never \(default\)"):
+            resolve_tickets_firestore_database(" (default) ", environment=" production ")
+
+    def test_a_blank_environment_falls_back_to_the_fail_closed_one(self):
+        # An unset ENVIRONMENT must behave like production, never like local.
+        with pytest.raises(ValueError, match=r"never \(default\)"):
+            resolve_tickets_firestore_database(DEFAULT_FIRESTORE_DATABASE, environment="")
+        assert (
+            resolve_tickets_firestore_database(
+                EXPECTED_FIRESTORE_DATABASES[FAIL_CLOSED_ENVIRONMENT], environment=""
+            )
+            == PRODUCTION_FIRESTORE_DATABASE
+        )
+
+    def test_local_may_name_any_database_but_must_name_one(self, monkeypatch):
+        assert (
+            resolve_tickets_firestore_database(
+                LOCAL_FIRESTORE_DATABASE, environment="local"
+            )
+            == LOCAL_FIRESTORE_DATABASE
+        )
+        # The emulator's own default database is allowed locally only because it
+        # was declared explicitly.
+        assert (
+            resolve_tickets_firestore_database(
+                DEFAULT_FIRESTORE_DATABASE, environment="local"
+            )
+            == DEFAULT_FIRESTORE_DATABASE
+        )
+        cfg = _console_settings(monkeypatch, FIRESTORE_DATABASE=LOCAL_FIRESTORE_DATABASE)
+        assert validate_ticket_console_settings(cfg, env={}) is True
+
+    def test_the_resolver_agrees_with_startup_validation(self, monkeypatch):
+        # Both gates must reject the same production database, so a revision
+        # cannot start with one and then reach the other.
+        cfg = _production_settings(
+            monkeypatch, FIRESTORE_DATABASE=DEFAULT_FIRESTORE_DATABASE
+        )
+        with pytest.raises(ValueError, match=r"never \(default\)"):
+            validate_ticket_console_settings(cfg, env={})
+        with pytest.raises(ValueError, match=r"never \(default\)"):
+            resolve_tickets_firestore_database(
+                cfg.FIRESTORE_DATABASE, environment=cfg.ENVIRONMENT
+            )
+
+    def test_the_new_config_surface_keeps_the_service_boundary(self):
+        # Stage 3 must not smuggle a correlation secret into the console plane.
+        assert not any(
+            "CORRELATION" in field for field in TicketConsoleSettings.model_fields
+        )
+        source = Path("api/tickets_console_config.py").read_text()
+        assert "from api.config import" not in source
+        assert "import api.config" not in source
+
+    def test_the_resolver_never_echoes_a_secret_or_a_value_it_rejects(self):
+        for bad in ("super-secret-database-name", "(default)"):
+            try:
+                resolve_tickets_firestore_database(bad, environment="production")
+            except ValueError as error:
+                assert "super-secret-database-name" not in str(error)

@@ -273,9 +273,36 @@ def test_firestore_json_mirror_matches_all_terraform_indexes_and_ttls() -> None:
         (("state", "ASCENDING"), ("created_at", "ASCENDING")),
         (("enqueue_state", "ASCENDING"), ("created_at", "ASCENDING")),
     }
+    # The ticket handler and the /tickets review console share this canonical
+    # file but live in different named databases, and only the handler's
+    # resources are mirrored by this Terraform module (the console's are added
+    # in the console's own infrastructure stage). Partition by collection group
+    # so this test keeps detecting handler drift in both directions without
+    # forbidding the console's declarations.
+    handler_collections = {
+        "ticket_jobs",
+        "ticket_job_payloads",
+        "ticket_idempotency_receipts",
+        "ticket_rate_windows",
+        "ticket_executions",
+        "execution_logs",
+    }
+    console_collections = {
+        "ticket_reviews",
+        "ticket_console_cache",
+        "devrev_message_cache",
+        "ticket_import_staging",
+        "idempotency_keys",
+    }
+    declared_collections = {index["collectionGroup"] for index in mirror["indexes"]} | {
+        field["collectionGroup"] for field in mirror["fieldOverrides"]
+    }
+    assert declared_collections <= handler_collections | console_collections
+
     mirrored_indexes = {
         tuple((field["fieldPath"], field["order"]) for field in index["fields"])
         for index in mirror["indexes"]
+        if index["collectionGroup"] in handler_collections
     }
     assert mirrored_indexes == expected_indexes
 
@@ -290,9 +317,25 @@ def test_firestore_json_mirror_matches_all_terraform_indexes_and_ttls() -> None:
     mirrored_ttls = {
         (field["collectionGroup"], field["fieldPath"])
         for field in mirror["fieldOverrides"]
-        if field.get("ttl") is True
+        if field.get("ttl") is True and field["collectionGroup"] in handler_collections
     }
     assert mirrored_ttls == expected_ttls
+
+    # The console's disposable collections, and only those, may carry a TTL.
+    console_ttls = {
+        (field["collectionGroup"], field["fieldPath"])
+        for field in mirror["fieldOverrides"]
+        if field.get("ttl") is True and field["collectionGroup"] in console_collections
+    }
+    assert console_ttls == {
+        ("ticket_console_cache", "expires_at"),
+        ("devrev_message_cache", "expires_at"),
+        ("ticket_import_staging", "expires_at"),
+        ("idempotency_keys", "expires_at"),
+    }
+    assert not any(
+        field["collectionGroup"] == "ticket_reviews" for field in mirror["fieldOverrides"]
+    )
 
     for fields in expected_indexes:
         for field, order in fields:

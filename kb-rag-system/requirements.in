@@ -28,6 +28,10 @@ tiktoken>=0.5.0,<1
 cachetools>=5.3.0,<7
 cachecontrol>=0.14.0,<1       # cache HTTP de certificados Google ID-token
 
+# Criptografía de la consola de revisión (AES-GCM para cursores opacos).
+# 50.0.0 corrige CVE-2026-69247 detectada por el gate pip-audit.
+cryptography>=50.0.0,<51
+
 # GCP
 google-auth>=2.29.0,<3        # verificación de ID tokens (OIDC de Cloud Tasks + WIF v2)
 google-cloud-firestore>=2.16.0,<3

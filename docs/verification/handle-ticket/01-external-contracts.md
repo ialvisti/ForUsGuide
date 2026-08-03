@@ -1,7 +1,7 @@
 # 01 — Contratos de integración verificados
 
-Estado revisado el 2026-07-27 contra el código local, la documentación viva de
-ForUsBots 2.5 y la documentación operativa existente de n8n.
+Estado revisado el 2026-08-03 contra el código desplegado de ForUsBots 2.6, el
+cliente RAG productivo y la documentación operativa existente de n8n.
 
 ## Decisión del owner
 
@@ -40,13 +40,15 @@ para `participant_id`, `plan_id` y `record_keeper`. Un
 `ParticipantPlanValidator` tenant-aware continúa disponible como extensión
 opcional, pero su ausencia no impide arrancar ni procesar el flujo existente.
 
-## ForUsBots — contrato 2.5 verificado
+## ForUsBots — contrato 2.6 verificado
 
 Fuentes revisadas:
 
 - documentación viva: `http://35.224.156.104:10000/docs/`;
 - OpenAPI vivo: `http://35.224.156.104:10000/docs/openapi.yaml`;
-- implementación local: `/Users/ivanalvis/Desktop/ForUsBots/`.
+- implementación y contrato: PR
+  [ForUsBots #5](https://github.com/ialvisti/ForUsBots/pull/5), integrado en
+  `main` como `70befb4478369800919eaab5a78516cb13e870ea`.
 
 Contrato observado:
 
@@ -57,16 +59,26 @@ Contrato observado:
 - respuesta: `202 {"jobId": ...}`;
 - polling: `GET /forusbot/jobs/{jobId}` hasta
   `succeeded|failed|canceled`;
-- el job store es de proceso y no hay idempotency key ni lookup por
-  correlation ID.
+- `Idempotency-Key` opcional para compatibilidad, de 8–200 caracteres ASCII
+  visibles, en los dos endpoints de scrape;
+- receipt y job se reservan atómicamente en Firestore antes de encolar;
+- principal estable + endpoint + key forman la identidad durable: mismo payload
+  devuelve el mismo `jobId` y payload distinto devuelve `409`;
+- `GET /forusbot/jobs/{jobId}` usa memoria y fallback durable tras reinicio;
+  un lease huérfano expirado termina `failed/INTERRUPTED` sin reejecutar el RPA;
+- receipts expiran por TTL a 90 días y los terminales quedan cercados por
+  owner/epoch para impedir escrituras tardías.
 
 El cliente acepta únicamente HTTPS canónico o el origen HTTP legacy exacto
-`http://35.224.156.104:10000`; cualquier otro HTTP, redirect, userinfo, path,
-query o fragment se rechaza. Ante un submit ambiguo no reintenta a ciegas:
-conserva el estado para reconciliación/manual y evita duplicar trabajo RPA.
+configurado; cualquier otro HTTP, redirect, userinfo, path, query o fragment se
+rechaza. Para una operación durable deriva una key opaca estable, la envía sólo
+en el POST participant/plan y reintenta timeouts/408/429/5xx con esa misma key.
+Un `409`, `INTERRUPTED` o `DURABLE_STATE_FAILED` queda fail-closed para
+reconciliación manual. Los callers legacy sin scope conservan cero reenvíos
+ambiguos.
 
-La falta de idempotencia upstream es una limitación operativa conocida, no un
-contrato pendiente ni un bloqueo de merge.
+El transporte HTTP público legacy continúa como deuda de seguridad/operación,
+pero ya no es el bloqueo de idempotencia que impedía activar `full`.
 
 ## Entrega final — sin cambio
 
@@ -76,13 +88,15 @@ durable entrega estados y `next_action`; sólo
 Estados técnicos, parciales o ambiguos derivan a legacy/humano y nunca se
 presentan como respuesta publicable.
 
-No se afirma exactly-once sobre un sistema externo que no lo documenta, pero
-eso no exige modificar el workflow actual para integrar o hacer merge de esta
-rama.
+La garantía documentada es una sola creación durable por
+principal+endpoint+key y ausencia de reejecución tras reinicio. No se convierte
+esa garantía en una afirmación más amplia sobre publicación participant-facing,
+que continúa perteneciendo a n8n/DevRev.
 
 ## Pendientes reales
 
-No quedan owners externos necesarios para el merge. Las únicas aprobaciones
-posteriores son operativas y explícitas: crear/aplicar infraestructura,
-activar staging, promover tráfico y retirar el rollback anchor. La revisión
-semántica de respuestas sigue siendo un gate de promoción, no de merge.
+No quedan owners externos necesarios para el código o el rollout `full`. Quedan
+como acciones separadas: la prueba funcional del workflow real por su operador,
+la eventual migración de ForUsBots a HTTPS/ingress privado, la adopción
+Terraform gobernada y, cuando corresponda, el retiro explícito de los rollback
+anchors.

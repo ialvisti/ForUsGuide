@@ -58,6 +58,7 @@ from data_pipeline.ticket_job_models import (
     hash_tenant_id,
     utcnow,
 )
+from data_pipeline.forusbots_contract import FORUSBOTS_IDEMPOTENCY_CONTRACT
 
 JOBS_COLLECTION = "ticket_jobs"
 PAYLOADS_COLLECTION = "ticket_job_payloads"
@@ -1052,10 +1053,16 @@ class TicketJobRepository:
         worker_id: str,
         lease_epoch: int,
         route: str,
+        idempotency_contract: Optional[str] = None,
     ) -> ForusBotsOperationDecision:
         """Atomically decide submit, resume, or manual reconciliation."""
         if operation not in {"participant", "plan"}:
             raise TicketJobError("operación ForUsBots inválida")
+        if idempotency_contract not in {
+            None,
+            FORUSBOTS_IDEMPOTENCY_CONTRACT,
+        }:
+            raise TicketJobError("contrato idempotente ForUsBots inválido")
         if (
             not isinstance(request_fingerprint, str)
             or len(request_fingerprint) != 64
@@ -1106,6 +1113,34 @@ class TicketJobRepository:
                 None,
             )
 
+            def persist_intents(
+                updated_intents: list[dict[str, Any]],
+            ) -> None:
+                checkpoint = {
+                    **(existing or {}),
+                    "index": index,
+                    "route": route,
+                    "execution_status": "running",
+                    "participant_reply_safe": False,
+                    "forusbots_submit_intent": True,
+                    "forusbots_submit_intent_epoch": lease_epoch,
+                    "forusbots_submit_intent_worker": worker_id,
+                    "forusbots_submit_intents": updated_intents,
+                }
+                statuses = [
+                    entry for entry in record.per_inquiry_status
+                    if entry.get("index") != index
+                ]
+                statuses.append(checkpoint)
+                statuses.sort(key=lambda entry: entry.get("index", 0))
+                merged = record.model_copy(update={
+                    "per_inquiry_status": statuses,
+                    "updated_at": now,
+                })
+                new_control, new_payload = split_record(merged)
+                view.set(JOBS_COLLECTION, job_id, new_control)
+                view.set(PAYLOADS_COLLECTION, job_id, new_payload)
+
             if matching_intent is not None:
                 stored_fingerprint = matching_intent.get("request_fingerprint")
                 if stored_fingerprint not in {None, request_fingerprint}:
@@ -1116,7 +1151,24 @@ class TicketJobRepository:
                         return ForusBotsOperationDecision(
                             "resume", external_id,
                         ), False
-                return ForusBotsOperationDecision("reconcile"), False
+                if (
+                    idempotency_contract != FORUSBOTS_IDEMPOTENCY_CONTRACT
+                    or matching_intent.get("idempotency_contract")
+                    != idempotency_contract
+                    or matching_intent.get("operation") != operation
+                ):
+                    return ForusBotsOperationDecision("reconcile"), False
+                refreshed_intents = [
+                    {
+                        **intent,
+                        "lease_epoch": lease_epoch,
+                        "worker_id": worker_id,
+                    }
+                    if intent is matching_intent else intent
+                    for intent in intents
+                ]
+                persist_intents(refreshed_intents)
+                return ForusBotsOperationDecision("submit"), False
 
             if existing and existing.get("forusbots_submit_intent") is True \
                     and not intents:
@@ -1128,36 +1180,16 @@ class TicketJobRepository:
                 # never poll or submit automatically.
                 return ForusBotsOperationDecision("reconcile"), False
 
-            intents.append({
+            new_intent: Dict[str, Any] = {
                 "operation": operation,
                 "lease_epoch": lease_epoch,
                 "worker_id": worker_id,
                 "request_fingerprint": request_fingerprint,
-            })
-            checkpoint = {
-                **(existing or {}),
-                "index": index,
-                "route": route,
-                "execution_status": "running",
-                "participant_reply_safe": False,
-                "forusbots_submit_intent": True,
-                "forusbots_submit_intent_epoch": lease_epoch,
-                "forusbots_submit_intent_worker": worker_id,
-                "forusbots_submit_intents": intents,
             }
-            statuses = [
-                entry for entry in record.per_inquiry_status
-                if entry.get("index") != index
-            ]
-            statuses.append(checkpoint)
-            statuses.sort(key=lambda entry: entry.get("index", 0))
-            merged = record.model_copy(update={
-                "per_inquiry_status": statuses,
-                "updated_at": now,
-            })
-            new_control, new_payload = split_record(merged)
-            view.set(JOBS_COLLECTION, job_id, new_control)
-            view.set(PAYLOADS_COLLECTION, job_id, new_payload)
+            if idempotency_contract is not None:
+                new_intent["idempotency_contract"] = idempotency_contract
+            intents.append(new_intent)
+            persist_intents(intents)
             return ForusBotsOperationDecision("submit"), False
 
         decision, payload_expired = await self.backend.transact(_txn)

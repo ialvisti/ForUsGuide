@@ -57,6 +57,7 @@ _SAFE_FORUSBOTS_ERROR_CODES = frozenset({
     "FORUSBOTS_TIMEOUT",
     "FORUSBOTS_JOB_FAILED",
     "FORUSBOTS_AMBIGUOUS_SUBMIT",
+    "FORUSBOTS_IDEMPOTENCY_CONFLICT",
     "FORUSBOTS_POLL_FAILED",
     "FORUSBOTS_CIRCUIT_OPEN",
     "FORUSBOTS_CHECKPOINT_FAILED",
@@ -653,8 +654,9 @@ class TicketOrchestrator:
 
         # El dedupe in-memory del cliente no cruza instancias ni sobrevive a
         # un lease perdido. El worker persiste este intent después de saber
-        # que habrá scrape y justo antes del primer POST. Sin contrato
-        # upstream idempotente, un intent previo bloquea cualquier resubmit.
+        # que habrá scrape y justo antes del primer POST. Los workers modernos
+        # además derivan de ese job/inquiry una clave idempotente upstream; el
+        # guard legacy conserva el bloqueo fail-closed ante un intent previo.
         if modules and self._forusbots_prepare_operation is None \
                 and self._forusbots_intent_guard is not None:
             await self._forusbots_intent_guard()

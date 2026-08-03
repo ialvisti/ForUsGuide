@@ -50,6 +50,7 @@ from data_pipeline.ticket_job_models import (
     TicketJobState,
 )
 from data_pipeline.durable_document import DurableDocumentValidationError
+from data_pipeline.forusbots_contract import FORUSBOTS_IDEMPOTENCY_CONTRACT
 from data_pipeline.ticket_job_repository import (
     StaleEnqueueGeneration,
     StaleLeaseEpoch,
@@ -272,6 +273,7 @@ def _install_forusbots_intent_guard(
                 worker_id=worker_id,
                 lease_epoch=lease_epoch,
                 route=route,
+                idempotency_contract=FORUSBOTS_IDEMPOTENCY_CONTRACT,
             )
 
         async def _submitted(operation: str, external_job_id: str) -> None:

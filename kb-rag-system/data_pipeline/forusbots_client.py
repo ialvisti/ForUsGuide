@@ -10,10 +10,10 @@ encapsulates that contract with:
   * a concurrency semaphore (the ForusBots service has a small global
     ``maxConcurrency``, so we deliberately stay below it),
   * in-flight de-duplication so two callers asking for the same scrape share one
-    job instead of enqueuing duplicates (the service does NOT de-dupe), and a
-    short TTL result cache,
-  * per-HTTP-call retry that never blindly re-submits a non-idempotent POST on an
-    ambiguous timeout (a job may already have been created).
+    job instead of enqueuing duplicates, plus a durable scoped idempotency key
+    understood by the upstream service and a short TTL result cache,
+  * bounded per-HTTP-call retry: scoped POSTs safely reuse their durable key,
+    while legacy unscoped POSTs keep the conservative no-resubmit policy.
 
 See ticket-handler-planning/stage-1-forusbots-client.md for the design notes.
 """
@@ -34,6 +34,7 @@ import httpx
 from cachetools import TTLCache  # type: ignore[import-untyped]
 
 from api import metrics as ticket_metrics
+from data_pipeline.forusbots_contract import derive_forusbots_idempotency_key
 
 logger = logging.getLogger(__name__)
 
@@ -83,9 +84,22 @@ class ForusBotsJobFailed(ForusBotsError):
 
     code = "FORUSBOTS_JOB_FAILED"
 
-    def __init__(self, job_id: str, state: str, error: Optional[str]):
+    def __init__(self, job_id: str, state: str, error: Any):
         self.job_id = job_id
         self.state = state
+        allowed_upstream_codes = {
+            "DURABLE_STATE_FAILED",
+            "ENQUEUE_FAILED",
+            "INTERRUPTED",
+        }
+        upstream_code = error.get("code") if isinstance(error, dict) else None
+        self.upstream_code = (
+            upstream_code if upstream_code in allowed_upstream_codes else None
+        )
+        self.needs_reconciliation = self.upstream_code in {
+            "DURABLE_STATE_FAILED",
+            "INTERRUPTED",
+        }
         # ``error`` is an untrusted upstream body and can contain scraped PII.
         # Accept it to preserve the wire adapter's signature, but deliberately
         # neither retain nor interpolate it in the exception.  Every downstream
@@ -97,9 +111,8 @@ class ForusBotsJobFailed(ForusBotsError):
 class ForusBotsAmbiguousSubmit(ForusBotsError):
     """Un POST terminó sin confirmación: el job upstream PUDO haberse creado.
 
-    Reintentar a ciegas duplicaría trabajo RPA (HT-16). Sin un contrato de
-    idempotencia/reconciliación por request ID en el servicio upstream, el
-    caller debe marcar ``needs_reconciliation`` y derivar a legacy/humano.
+    Los submits scoped reintentan con una identidad durable upstream. Si se
+    agota ese presupuesto, el caller conserva la operación para reconciliación.
     """
 
     code = "FORUSBOTS_AMBIGUOUS_SUBMIT"
@@ -117,6 +130,19 @@ class ForusBotsAmbiguousSubmit(ForusBotsError):
         super().__init__(
             f"{self.method} {self.operation}: {outcome} tras el submit — resultado "
             "ambiguo (el job pudo crearse); no se reintenta"
+        )
+
+
+class ForusBotsIdempotencyConflict(ForusBotsError):
+    """The durable operation key already exists for a different request."""
+
+    code = "FORUSBOTS_IDEMPOTENCY_CONFLICT"
+    needs_reconciliation = True
+
+    def __init__(self) -> None:
+        super().__init__(
+            "ForUsBots rejected a changed durable operation; "
+            "manual reconciliation required"
         )
 
 
@@ -171,7 +197,7 @@ class ScrapeResult:
 
 @dataclass
 class _SubmitBoundary:
-    """Whether a non-idempotent submit may already have reached upstream."""
+    """Whether a submit may already have reached upstream."""
 
     crossed: bool = False
     orphaned: bool = False
@@ -186,9 +212,8 @@ class _InflightScrape:
     waiters: int = 0
 
 
-# Transport errors that are safe to retry on a NON-idempotent request because
-# they happen before the request is put on the wire (so no job can have been
-# created). Read/write timeouts are deliberately excluded for POSTs.
+# Transport errors proven safe to retry before the request reaches the wire.
+# Read/write timeouts remain excluded only for legacy unscoped POSTs.
 _PRESEND_SAFE = (httpx.ConnectError, httpx.ConnectTimeout, httpx.PoolTimeout)
 
 _TERMINAL_OK = "succeeded"
@@ -343,9 +368,13 @@ class ForusBotsClient:
         idem = self._idem_key(
             dedupe_scope, "participant", participant_id, modules,
         ) if dedupe_scope else None
+        upstream_idempotency_key = self._upstream_idempotency_key(
+            dedupe_scope, "participant",
+        ) if dedupe_scope else None
         return await self._deduped(
             idem, "/forusbot/scrape-participant", payload,
             label="participant",
+            upstream_idempotency_key=upstream_idempotency_key,
             on_submitted=on_submitted,
         )
 
@@ -369,8 +398,12 @@ class ForusBotsClient:
         idem = self._idem_key(
             dedupe_scope, "plan", plan_id, modules,
         ) if dedupe_scope else None
+        upstream_idempotency_key = self._upstream_idempotency_key(
+            dedupe_scope, "plan",
+        ) if dedupe_scope else None
         return await self._deduped(
             idem, "/forusbot/scrape-plan", payload, label="plan",
+            upstream_idempotency_key=upstream_idempotency_key,
             on_submitted=on_submitted,
         )
 
@@ -441,6 +474,16 @@ class ForusBotsClient:
         )
         return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
+    @staticmethod
+    def _upstream_idempotency_key(scope: str, operation: str) -> str:
+        """Opaque identity for one durable upstream operation.
+
+        Payload fields deliberately do not participate.  Reconstructing an
+        operation with a different payload must reuse the same key so ForUsBots
+        can reject the mismatch with 409 instead of creating a second job.
+        """
+        return derive_forusbots_idempotency_key(scope, operation)
+
     async def _deduped(
         self,
         idem: Optional[str],
@@ -448,14 +491,32 @@ class ForusBotsClient:
         payload: Dict[str, Any],
         *,
         label: str,
+        upstream_idempotency_key: Optional[str] = None,
         on_submitted: Optional[SubmittedJobObserver] = None,
     ) -> ScrapeResult:
+        # A durable observer is fenced to one worker/lease. Never coalesce it
+        # with another waiter: a new lease must get its own 202 callback even
+        # when both POSTs resolve to the same upstream job through the stable
+        # idempotency key.
+        if on_submitted is not None:
+            return await self._observed_submit(
+                path,
+                payload,
+                label=label,
+                upstream_idempotency_key=upstream_idempotency_key,
+                on_submitted=on_submitted,
+            )
+
         # El cliente vive como singleton de proceso. Sin un scope explícito no
         # existe una frontera segura para compartir datos de participante/plan,
         # por lo que se desactiva caché y coalescing (fail closed).
         if idem is None:
             return await self._submit_and_poll(
-                path, payload, label=label, on_submitted=on_submitted,
+                path,
+                payload,
+                label=label,
+                upstream_idempotency_key=upstream_idempotency_key,
+                on_submitted=on_submitted,
             )
 
         cached = self._result_cache.get(idem)
@@ -476,6 +537,7 @@ class ForusBotsClient:
                 payload,
                 label=label,
                 submit_boundary=submit_boundary,
+                upstream_idempotency_key=upstream_idempotency_key,
                 on_submitted=on_submitted,
             ))
             entry = _InflightScrape(
@@ -512,6 +574,42 @@ class ForusBotsClient:
                 if self._inflight.get(idem) is entry:
                     self._inflight.pop(idem, None)
                 entry.task.cancel()
+
+    async def _observed_submit(
+        self,
+        path: str,
+        payload: Dict[str, Any],
+        *,
+        label: str,
+        upstream_idempotency_key: Optional[str],
+        on_submitted: SubmittedJobObserver,
+    ) -> ScrapeResult:
+        """Run one lease-owned submit without sharing its durable observer."""
+        submit_boundary = _SubmitBoundary()
+        task = asyncio.create_task(self._submit_and_poll(
+            path,
+            payload,
+            label=label,
+            submit_boundary=submit_boundary,
+            upstream_idempotency_key=upstream_idempotency_key,
+            on_submitted=on_submitted,
+        ))
+
+        def _retrieve_outcome(done: "asyncio.Task[ScrapeResult]") -> None:
+            if not done.cancelled():
+                done.exception()
+
+        try:
+            return await asyncio.shield(task)
+        except asyncio.CancelledError:
+            submit_boundary.orphaned = True
+            if not submit_boundary.crossed and not task.done():
+                task.cancel()
+            if not task.done():
+                task.add_done_callback(_retrieve_outcome)
+            else:
+                _retrieve_outcome(task)
+            raise
 
     # ------------------------------------------------------------------
     # Submit + poll
@@ -578,6 +676,7 @@ class ForusBotsClient:
         *,
         label: str,
         submit_boundary: Optional[_SubmitBoundary] = None,
+        upstream_idempotency_key: Optional[str] = None,
         on_submitted: Optional[SubmittedJobObserver] = None,
     ) -> ScrapeResult:
         try:
@@ -592,10 +691,16 @@ class ForusBotsClient:
                         payload,
                         label=label,
                         submit_boundary=submit_boundary,
+                        upstream_idempotency_key=upstream_idempotency_key,
                     )
                 except ForusBotsAmbiguousSubmit:
                     self._emit_metric(
                         "ticket_forusbots_count", step=label, code="ambiguous"
+                    )
+                    raise
+                except ForusBotsIdempotencyConflict:
+                    self._emit_metric(
+                        "ticket_forusbots_count", step=label, code="failure"
                     )
                     raise
                 if on_submitted is not None:
@@ -654,10 +759,10 @@ class ForusBotsClient:
         except asyncio.CancelledError:
             self._record_circuit_cancelled()
             raise
-        except ForusBotsJobFailed:
-            # A terminal business/data outcome proves submit+poll dependency
-            # availability. It is observable as a failed scrape but must not
-            # poison the global availability circuit for unrelated tickets.
+        except (ForusBotsJobFailed, ForusBotsIdempotencyConflict):
+            # A terminal business/data outcome or durable-key conflict proves
+            # dependency availability. Neither should poison the global
+            # availability circuit for unrelated tickets.
             self._record_circuit_success()
             raise
         except ForusBotsCheckpointFailed:
@@ -680,6 +785,7 @@ class ForusBotsClient:
         *,
         label: str,
         submit_boundary: Optional[_SubmitBoundary] = None,
+        upstream_idempotency_key: Optional[str] = None,
     ) -> tuple[str, Optional[int], Dict[str, Any]]:
         resp = await self._http_request(
             "POST",
@@ -687,6 +793,7 @@ class ForusBotsClient:
             json=payload,
             idempotent=False,
             submit_boundary=submit_boundary,
+            upstream_idempotency_key=upstream_idempotency_key,
         )
         self._raise_for_status(resp, context=f"submit {label}")
         try:
@@ -786,16 +893,33 @@ class ForusBotsClient:
         json: Optional[Dict[str, Any]] = None,
         idempotent: bool,
         submit_boundary: Optional[_SubmitBoundary] = None,
+        upstream_idempotency_key: Optional[str] = None,
     ) -> httpx.Response:
         """Issue one HTTP call with bounded retry.
 
         Retries transient transport errors and 5xx/429 responses. For a
-        non-idempotent request (a POST that may create a job) only pre-send
-        transport errors are retried — a read/write timeout is NOT, because the
-        request may already have reached the server.
+        legacy unscoped submit only pre-send transport errors are retried. A
+        scoped submit retries with the exact same durable key.
         """
         delay = 0.5
         operation = _request_category(method, url)
+        keyed_submit = (
+            not idempotent and upstream_idempotency_key is not None
+        )
+        request_headers = self._headers
+        if upstream_idempotency_key is not None:
+            if method != "POST" or operation not in {
+                "submit_participant", "submit_plan",
+            }:
+                raise ForusBotsError(
+                    "ForusBots idempotency key is only valid for submit"
+                )
+            # Never mutate the singleton header dictionary: participant and plan
+            # submits may execute concurrently with different operation keys.
+            request_headers = {
+                **self._headers,
+                "Idempotency-Key": upstream_idempotency_key,
+            }
         last_failure: Optional[ForusBotsError] = None
         for attempt in range(1, self._http_retries + 1):
             try:
@@ -806,13 +930,14 @@ class ForusBotsClient:
                 if not idempotent and submit_boundary is not None:
                     submit_boundary.crossed = True
                 resp = await self._client.request(
-                    method, url, headers=self._headers, json=json
+                    method, url, headers=request_headers, json=json
                 )
             except httpx.TransportError as exc:
-                retriable = idempotent or isinstance(exc, _PRESEND_SAFE)
+                presend_safe = isinstance(exc, _PRESEND_SAFE)
+                retriable = idempotent or keyed_submit or presend_safe
                 if (
                     not idempotent
-                    and isinstance(exc, _PRESEND_SAFE)
+                    and presend_safe
                     and submit_boundary is not None
                 ):
                     # The transport proved that this attempt never reached the
@@ -831,14 +956,20 @@ class ForusBotsClient:
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 2.0)
                     continue
-                if not idempotent and not isinstance(exc, _PRESEND_SAFE):
+                if not idempotent and not presend_safe:
                     raise ForusBotsAmbiguousSubmit(method, operation) from None
                 raise last_failure from None
 
+            if (
+                resp.status_code == 409
+                and upstream_idempotency_key is not None
+                and not idempotent
+            ):
+                raise ForusBotsIdempotencyConflict() from None
             if resp.status_code >= 500:
-                # HT-16: un 5xx tras un POST no-idempotente es AMBIGUO — el
-                # job upstream pudo crearse antes del error. Nunca re-enviar.
-                if not idempotent:
+                # HT-16: legacy POSTs remain non-repeatable. Scoped submits can
+                # replay safely because every attempt carries the same key.
+                if not idempotent and not keyed_submit:
                     raise ForusBotsAmbiguousSubmit(
                         method, operation, resp.status_code
                     )
@@ -849,18 +980,20 @@ class ForusBotsClient:
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 2.0)
                     continue
+                if keyed_submit:
+                    raise ForusBotsAmbiguousSubmit(
+                        method, operation, resp.status_code
+                    )
             elif resp.status_code == 408 and not idempotent:
-                # A proxy/server timeout does not prove that the origin failed
-                # to create the job. Retrying or declaring it side-effect-free
-                # would risk a duplicate submit.
+                if keyed_submit and attempt < self._http_retries:
+                    await asyncio.sleep(delay)
+                    delay = min(delay * 2, 2.0)
+                    continue
                 raise ForusBotsAmbiguousSubmit(
                     method, operation, resp.status_code
                 )
             elif resp.status_code == 429:
-                # Sin el contrato externo de idempotencia/reconciliación no se
-                # puede asumir que un 429 de proxy ocurrió antes de que el
-                # origin aceptara un POST. Sólo el poll GET se reintenta.
-                if not idempotent:
+                if not idempotent and not keyed_submit:
                     raise ForusBotsAmbiguousSubmit(
                         method, operation, resp.status_code
                     )
@@ -871,6 +1004,10 @@ class ForusBotsClient:
                     await asyncio.sleep(delay)
                     delay = min(delay * 2, 2.0)
                     continue
+                if keyed_submit:
+                    raise ForusBotsAmbiguousSubmit(
+                        method, operation, resp.status_code
+                    )
             elif 300 <= resp.status_code < 400:
                 # No se siguen redirects para requests autenticados: un 3xx a
                 # otro host/esquema podría filtrar el token (Task 8 Step 3).

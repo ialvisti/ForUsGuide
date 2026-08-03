@@ -10,6 +10,7 @@ in the timeout test so the deadline can be crossed deterministically.
 from __future__ import annotations
 
 import os
+import re
 from unittest.mock import AsyncMock
 
 import httpx
@@ -21,6 +22,7 @@ from data_pipeline.forusbots_client import (
     ForusBotsCheckpointFailed,
     ForusBotsCircuitOpen,
     ForusBotsError,
+    ForusBotsIdempotencyConflict,
     ForusBotsJobFailed,
     ForusBotsPollFailed,
     ForusBotsTimeout,
@@ -41,9 +43,11 @@ class FakeHTTPClient:
     def __init__(self, script):
         self._script = list(script)
         self.calls = []  # list of (method, url, json)
+        self.request_headers = []
 
     async def request(self, method, url, headers=None, json=None):
         self.calls.append((method, url, json))
+        self.request_headers.append(dict(headers or {}))
         if not self._script:
             raise AssertionError(f"unexpected extra HTTP call: {method} {url}")
         item = self._script.pop(0)
@@ -371,6 +375,353 @@ class TestTimeout:
 # De-duplication + result cache
 # ---------------------------------------------------------------------------
 
+class TestUpstreamIdempotency:
+
+    async def test_new_lease_observer_never_joins_old_fenced_observer(self):
+        class ReplayHTTP:
+            def __init__(self):
+                self.calls = []
+                self.request_headers = []
+
+            async def request(self, method, url, headers=None, json=None):
+                self.calls.append((method, url, json))
+                self.request_headers.append(dict(headers or {}))
+                if method == "POST":
+                    await fb.asyncio.sleep(0)
+                    return _resp(202, {"jobId": "same-upstream-job"})
+                return _resp(200, {"state": "succeeded", "result": {}})
+
+            async def aclose(self):
+                pass
+
+        http = ReplayHTTP()
+        client = ForusBotsClient(
+            base_url="https://forusbots.example.com",
+            auth_token="t0ken",
+            poll_interval_s=0.0,
+            poll_max_interval_s=0.0,
+            max_wait_s=60.0,
+            max_inflight=2,
+            client=http,
+        )
+        observed = []
+
+        async def fenced_observer(operation, job_id):
+            observed.append(("old", operation, job_id))
+            raise RuntimeError("stale lease")
+
+        async def current_observer(operation, job_id):
+            observed.append(("new", operation, job_id))
+
+        calls = [
+            client.scrape_participant(
+                "synthetic-participant",
+                [{"key": "census", "fields": []}],
+                dedupe_scope="same-durable-operation",
+                on_submitted=fenced_observer,
+            ),
+            client.scrape_participant(
+                "synthetic-participant",
+                [{"key": "census", "fields": []}],
+                dedupe_scope="same-durable-operation",
+                on_submitted=current_observer,
+            ),
+        ]
+        old_result, new_result = await fb.asyncio.gather(
+            *calls, return_exceptions=True
+        )
+
+        assert isinstance(old_result, ForusBotsCheckpointFailed)
+        assert isinstance(new_result, fb.ScrapeResult)
+        assert new_result.job_id == "same-upstream-job"
+        assert [item[0] for item in observed] == ["old", "new"]
+        post_headers = [
+            headers
+            for call, headers in zip(
+                http.calls, http.request_headers, strict=True,
+            )
+            if call[0] == "POST"
+        ]
+        assert len(post_headers) == 2
+        assert post_headers[0]["Idempotency-Key"] == \
+            post_headers[1]["Idempotency-Key"]
+
+    @pytest.mark.parametrize(
+        "upstream_code", ["INTERRUPTED", "DURABLE_STATE_FAILED"]
+    )
+    async def test_ambiguous_durable_terminal_requires_reconciliation(
+        self, upstream_code
+    ):
+        private_detail = "private-upstream-detail"
+        client, _fake = _client([
+            _SUBMIT_OK,
+            _resp(200, {
+                "state": "failed",
+                "error": {
+                    "code": upstream_code,
+                    "message": private_detail,
+                },
+            }),
+        ])
+
+        with pytest.raises(ForusBotsJobFailed) as captured:
+            await client.scrape_participant(
+                "synthetic-participant",
+                [{"key": "census", "fields": []}],
+                dedupe_scope="durable-terminal-failure-scope",
+            )
+
+        assert captured.value.needs_reconciliation is True
+        assert captured.value.upstream_code == upstream_code
+        assert private_detail not in str(captured.value)
+        assert private_detail not in repr(captured.value)
+
+    @pytest.mark.parametrize("status_code", [408, 429, 503])
+    async def test_keyed_submit_retries_transient_http_with_exact_same_key(
+        self, status_code
+    ):
+        client, fake = _client([
+            _resp(status_code, {"ok": False}),
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+
+        result = await client.scrape_participant(
+            "synthetic-participant",
+            [{"key": "census", "fields": []}],
+            dedupe_scope="durable-http-retry-scope",
+        )
+
+        post_headers = [
+            headers
+            for call, headers in zip(
+                fake.calls, fake.request_headers, strict=True,
+            )
+            if call[0] == "POST"
+        ]
+        assert result.job_id == "j1"
+        assert len(post_headers) == 2
+        assert post_headers[0]["Idempotency-Key"] == \
+            post_headers[1]["Idempotency-Key"]
+
+    async def test_keyed_submit_retries_read_timeout_with_exact_same_key(self):
+        client, fake = _client([
+            httpx.ReadTimeout("ambiguous first response"),
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+
+        result = await client.scrape_plan(
+            "synthetic-plan",
+            [{"key": "basic_info", "fields": []}],
+            dedupe_scope="durable-transport-retry-scope",
+        )
+
+        post_headers = [
+            headers
+            for call, headers in zip(
+                fake.calls, fake.request_headers, strict=True,
+            )
+            if call[0] == "POST"
+        ]
+        assert result.job_id == "j1"
+        assert len(post_headers) == 2
+        assert post_headers[0]["Idempotency-Key"] == \
+            post_headers[1]["Idempotency-Key"]
+
+    async def test_exhausted_keyed_submit_remains_manual_reconciliation(self):
+        client, fake = _client([
+            httpx.ReadTimeout("ambiguous one"),
+            httpx.ReadTimeout("ambiguous two"),
+            httpx.ReadTimeout("ambiguous three"),
+        ])
+
+        with pytest.raises(fb.ForusBotsAmbiguousSubmit) as captured:
+            await client.scrape_participant(
+                "synthetic-participant",
+                [{"key": "census", "fields": []}],
+                dedupe_scope="durable-exhausted-retry-scope",
+            )
+
+        post_keys = [
+            headers["Idempotency-Key"]
+            for call, headers in zip(
+                fake.calls, fake.request_headers, strict=True,
+            )
+            if call[0] == "POST"
+        ]
+        assert captured.value.needs_reconciliation is True
+        assert len(post_keys) == 3
+        assert len(set(post_keys)) == 1
+
+    async def test_scoped_submit_sends_opaque_key_only_on_participant_post(self):
+        participant_sentinel = "participant-private-sentinel"
+        scope_sentinel = "durable-scope-private-sentinel"
+        client, fake = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+
+        await client.scrape_participant(
+            participant_sentinel,
+            [{"key": "census", "fields": ["First Name"]}],
+            dedupe_scope=scope_sentinel,
+        )
+
+        submit_headers, poll_headers = fake.request_headers
+        key = submit_headers["Idempotency-Key"]
+        assert re.fullmatch(r"[0-9a-f]{64}", key)
+        assert participant_sentinel not in key
+        assert scope_sentinel not in key
+        assert submit_headers["x-auth-token"] == "t0ken"
+        assert "Idempotency-Key" not in poll_headers
+        assert "Idempotency-Key" not in client._headers
+
+    async def test_participant_and_plan_use_distinct_operation_keys(self):
+        client, fake = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+            _resp(202, {"jobId": "j2", "estimate": {}}),
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+        modules = [{"key": "basic_info", "fields": []}]
+
+        await client.scrape_participant(
+            "same-entity", modules, dedupe_scope="same-durable-scope",
+        )
+        await client.scrape_plan(
+            "same-entity", modules, dedupe_scope="same-durable-scope",
+        )
+
+        post_keys = [
+            headers["Idempotency-Key"]
+            for call, headers in zip(
+                fake.calls, fake.request_headers, strict=True,
+            )
+            if call[0] == "POST"
+        ]
+        assert len(post_keys) == 2
+        assert post_keys[0] != post_keys[1]
+
+    async def test_same_operation_key_is_stable_across_client_instances(self):
+        first, first_http = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+        second, second_http = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+        modules = [{"key": "census", "fields": ["First Name"]}]
+
+        await first.scrape_participant(
+            "same-entity", modules, dedupe_scope="stable-durable-scope",
+        )
+        await second.scrape_participant(
+            "same-entity", modules, dedupe_scope="stable-durable-scope",
+        )
+
+        assert first_http.request_headers[0]["Idempotency-Key"] == \
+            second_http.request_headers[0]["Idempotency-Key"]
+
+    async def test_same_operation_in_different_scopes_uses_distinct_keys(self):
+        first, first_http = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+        second, second_http = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+        modules = [{"key": "census", "fields": []}]
+
+        await first.scrape_participant(
+            "same-entity", modules, dedupe_scope="durable-scope-a",
+        )
+        await second.scrape_participant(
+            "same-entity", modules, dedupe_scope="durable-scope-b",
+        )
+
+        assert first_http.request_headers[0]["Idempotency-Key"] != \
+            second_http.request_headers[0]["Idempotency-Key"]
+
+    async def test_operation_key_does_not_change_with_reconstructed_payload(self):
+        first, first_http = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+        second, second_http = _client([
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+
+        await first.scrape_participant(
+            "entity-a",
+            [{"key": "census", "fields": ["First Name"]}],
+            dedupe_scope="stable-durable-scope",
+        )
+        await second.scrape_participant(
+            "entity-b",
+            [{"key": "savings_rate", "fields": ["Account Balance"]}],
+            dedupe_scope="stable-durable-scope",
+        )
+
+        assert first_http.request_headers[0]["Idempotency-Key"] == \
+            second_http.request_headers[0]["Idempotency-Key"]
+
+    async def test_presend_retry_reuses_exact_same_operation_key(self):
+        client, fake = _client([
+            httpx.ConnectError("proved pre-send failure"),
+            _SUBMIT_OK,
+            _resp(200, {"state": "succeeded", "result": {}}),
+        ])
+
+        await client.scrape_plan(
+            "synthetic-plan",
+            [{"key": "basic_info", "fields": []}],
+            dedupe_scope="stable-retry-scope",
+        )
+
+        post_headers = [
+            headers
+            for call, headers in zip(
+                fake.calls, fake.request_headers, strict=True,
+            )
+            if call[0] == "POST"
+        ]
+        assert len(post_headers) == 2
+        assert post_headers[0]["Idempotency-Key"] == \
+            post_headers[1]["Idempotency-Key"]
+
+    async def test_409_is_not_retried_and_never_leaks_body_or_key(self, caplog):
+        private_body = "private-upstream-conflict-detail"
+        client, fake = _client([
+            _resp(409, {"error": private_body}),
+            _SUBMIT_OK,
+        ])
+
+        with caplog.at_level("INFO"), pytest.raises(
+            ForusBotsIdempotencyConflict
+        ) as captured:
+            await client.scrape_participant(
+                "private-entity",
+                [{"key": "census", "fields": []}],
+                dedupe_scope="stable-conflict-scope",
+            )
+
+        key = fake.request_headers[0]["Idempotency-Key"]
+        assert fake.count("POST") == 1
+        assert fake.count("GET") == 0
+        assert captured.value.needs_reconciliation is True
+        assert client._circuit_failures == 0
+        assert private_body not in str(captured.value)
+        assert private_body not in repr(captured.value)
+        assert private_body not in caplog.text
+        assert key not in str(captured.value)
+        assert key not in repr(captured.value)
+        assert key not in caplog.text
+
+
 class TestDedupe:
 
     async def test_logs_do_not_emit_raw_or_dictionary_hashable_entity_id(
@@ -472,6 +823,9 @@ class TestDedupe:
 
         assert second.job_id == "j2"
         assert fake.count("POST") == 2
+        for call, headers in zip(fake.calls, fake.request_headers, strict=True):
+            if call[0] == "POST":
+                assert "Idempotency-Key" not in headers
 
 
 # ---------------------------------------------------------------------------

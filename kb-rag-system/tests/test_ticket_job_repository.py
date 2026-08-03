@@ -539,6 +539,132 @@ class TestLeaseFencing:
         assert second.action == "reconcile"
         assert second.external_job_id is None
 
+    async def test_prepare_forusbots_operation_replays_contract_key_without_id(
+            self, repo):
+        rec, _ = await _create(repo, key="forusbots-prepare-keyed-replay")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+        contract = "forusbots-submit-v1"
+
+        first = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="e" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            idempotency_contract=contract,
+        )
+        replay = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="e" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            idempotency_contract=contract,
+        )
+
+        assert first.action == "submit"
+        assert replay.action == "submit"
+        assert replay.external_job_id is None
+        await repo.record_forusbots_external_job(
+            rec.job_id,
+            0,
+            operation="participant",
+            external_job_id="external-job-keyed-replay",
+            worker_id="worker-1",
+            lease_epoch=epoch,
+        )
+        resumed = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="e" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            idempotency_contract=contract,
+        )
+        assert resumed.action == "resume"
+        assert resumed.external_job_id == "external-job-keyed-replay"
+
+    async def test_prepare_forusbots_operation_never_replays_changed_payload(
+            self, repo):
+        rec, _ = await _create(repo, key="forusbots-prepare-keyed-conflict")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+
+        first = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="e" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            idempotency_contract="forusbots-submit-v1",
+        )
+        changed = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="f" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            idempotency_contract="forusbots-submit-v1",
+        )
+
+        assert first.action == "submit"
+        assert changed.action == "reconcile"
+
+    async def test_keyed_operation_rebinds_reservation_after_lease_loss(
+            self, repo, backend):
+        rec, _ = await _create(repo, key="forusbots-keyed-lease-replay")
+        old_epoch = await repo.claim(rec.job_id, worker_id="worker-old")
+        first = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="a" * 64,
+            worker_id="worker-old",
+            lease_epoch=old_epoch,
+            route="generate_response",
+            idempotency_contract="forusbots-submit-v1",
+        )
+        assert first.action == "submit"
+
+        control = await backend.get_doc(JOBS_COLLECTION, rec.job_id)
+        control["lease_expires_at"] = utcnow() - timedelta(seconds=1)
+        backend._data[JOBS_COLLECTION][rec.job_id] = control
+        new_epoch = await repo.claim(rec.job_id, worker_id="worker-new")
+        replay = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="a" * 64,
+            worker_id="worker-new",
+            lease_epoch=new_epoch,
+            route="generate_response",
+            idempotency_contract="forusbots-submit-v1",
+        )
+
+        assert replay.action == "submit"
+        await repo.record_forusbots_external_job(
+            rec.job_id,
+            0,
+            operation="participant",
+            external_job_id="external-job-after-keyed-replay",
+            worker_id="worker-new",
+            lease_epoch=new_epoch,
+        )
+        current = await repo.get(rec.job_id)
+        intent = current.per_inquiry_status[0]["forusbots_submit_intents"][0]
+        assert intent["lease_epoch"] == new_epoch
+        assert intent["worker_id"] == "worker-new"
+        assert current.forusbots_job_ids == ["external-job-after-keyed-replay"]
+
     async def test_prepare_forusbots_operation_reserves_participant_and_plan(
             self, repo):
         rec, _ = await _create(repo, key="forusbots-prepare-two-operations")

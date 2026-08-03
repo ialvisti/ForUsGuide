@@ -600,6 +600,39 @@ class TicketOrchestrator:
             plan_type=ext.plan_type, topic=ext.topic,
             related_inquiries=ext.related_inquiries,
         )
+        rd_metadata = getattr(rd, "metadata", None) or {}
+        if (
+            isinstance(rd_metadata, dict)
+            and rd_metadata.get("error") == "required_data_failed"
+        ):
+            transient_kinds = {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+            failure_kind = rd_metadata.get("retrieval_failure_kind")
+            if failure_kind not in transient_kinds | {
+                "client_error", "unknown",
+            }:
+                failure_kind = "unknown"
+            diag["required_data_failure"] = {
+                "failure_kind": failure_kind,
+                "retryable": (
+                    rd_metadata.get("retrieval_retryable") is True
+                    and failure_kind in transient_kinds
+                ),
+            }
+            # Fail before mapping, ForUsBots, ticket extraction, body building
+            # or response generation.  Empty required-data caused by a
+            # technical failure is not evidence that no fields are required.
+            return InquiryOutcome(
+                inquiry=ext.inquiry,
+                topic=ext.topic,
+                route="generate_response",
+                record_keeper=ext.record_keeper,
+                plan_type=ext.plan_type,
+                scrape_status="skipped",
+                diagnostics=diag,
+            )
         flat_fields = _flatten_required_fields(getattr(rd, "required_fields", {}))
         modules: List[Dict[str, Any]] = []
         extraction_candidates: List[Dict[str, Any]] = []

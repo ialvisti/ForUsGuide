@@ -409,6 +409,49 @@ class TestGenerateBranch:
         by_task.update(extra or {})
         return LLMStub(by_task)
 
+    @pytest.mark.parametrize(
+        ("failure_kind", "retryable", "expected_code"),
+        [
+            ("server_error", True, "PINECONE_TRANSIENT_FAILURE"),
+            ("client_error", False, "INTERNAL_ERROR"),
+        ],
+    )
+    async def test_required_data_failure_stops_gr_before_external_effects(
+        self, failure_kind, retryable, expected_code,
+    ):
+        from api.ticket_worker import outcome_is_degraded
+
+        llm = self._gr_llm()
+        deps, rag, _router, forusbots = _deps(
+            llm=llm, classify_route="generate_response"
+        )
+        rag.get_required_data.return_value = SimpleNamespace(
+            required_fields={},
+            metadata={
+                "error": "required_data_failed",
+                "retrieval_failure_kind": failure_kind,
+                "retrieval_retryable": retryable,
+            },
+        )
+        orch = TicketOrchestrator(deps, _settings())
+
+        out = await orch.handle_inquiry(
+            ExtractedInquiry("cash out", "LT Trust", "401(k)", "rollover"),
+            _req(),
+            total_inquiries=1,
+        )
+
+        assert out.scrape_status == "skipped"
+        assert out.generate_result is None
+        assert out.diagnostics["required_data_failure"] == {
+            "failure_kind": failure_kind,
+            "retryable": retryable,
+        }
+        assert outcome_is_degraded(out) == (True, expected_code)
+        forusbots.scrape_participant.assert_not_awaited()
+        rag.generate_response.assert_not_awaited()
+        assert "forusbots_field_map" not in llm.calls
+
     async def test_gr_happy_path_deterministic_no_llm_mapper(self):
         llm = self._gr_llm()
         deps, rag, _r, forusbots = _deps(llm=llm, classify_route="generate_response")

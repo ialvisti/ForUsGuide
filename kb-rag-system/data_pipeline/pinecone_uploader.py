@@ -504,17 +504,26 @@ class PineconeUploader:
                 return True
 
             except Exception as exc:
+                transient = _is_transient_pinecone_error(exc)
                 logger.warning(
-                    "Upload attempt %d/%d failed (error_type=%s)",
+                    "Upload attempt %d/%d failed (error_type=%s, "
+                    "retryable=%s)",
                     attempt + 1,
                     self.max_retries,
                     type(exc).__name__,
+                    transient,
                 )
 
+                if not transient:
+                    logger.error("Batch upload failed with non-retryable error")
+                    return False
                 if attempt < self.max_retries - 1:
                     time.sleep(self.retry_delay * (attempt + 1))
                 else:
-                    logger.error(f"Batch falló después de {self.max_retries} intentos")
+                    logger.error(
+                        "Batch falló después de %d intentos",
+                        self.max_retries,
+                    )
                     return False
 
         return False

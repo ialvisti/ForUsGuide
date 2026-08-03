@@ -405,6 +405,18 @@ def outcome_is_degraded(o: InquiryOutcome) -> Tuple[bool, Optional[str]]:
     diag = o.diagnostics or {}
     if diag.get("manual_reconciliation_required") is True:
         return True, PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value
+    required_data_failure = diag.get("required_data_failure")
+    if isinstance(required_data_failure, dict):
+        failure_kind = required_data_failure.get("failure_kind")
+        if (
+            required_data_failure.get("retryable") is True
+            and failure_kind in {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+        ):
+            return True, PublicErrorCode.PINECONE_TRANSIENT_FAILURE.value
+        return True, PublicErrorCode.INTERNAL_ERROR.value
     if o.scrape_status not in _SCRAPE_OK_STATES:
         code = (PublicErrorCode.FORUSBOTS_TIMEOUT
                 if o.scrape_status == "timeout"
@@ -524,6 +536,15 @@ def _aggregate_public_error(
     entries: List[Dict[str, Any]], unprocessed: int,
 ) -> Tuple[Optional[str], Optional[bool]]:
     """Select one coherent top-level code from per-inquiry failures."""
+    # A possibly accepted upstream effect must dominate every ordinary
+    # retryable failure.  Otherwise a transient error from another inquiry
+    # could invite a blind replay while this one still needs reconciliation.
+    if any(
+        entry.get("manual_reconciliation_required") is True
+        for entry in entries
+    ):
+        return PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value, False
+
     candidates: List[Tuple[str, bool]] = []
     for entry in entries:
         error = entry.get("error")
@@ -1494,6 +1515,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             timed_out_total = (deadline - time.monotonic()) <= 0
             code = (PublicErrorCode.TOTAL_JOB_TIMEOUT if timed_out_total
                     else PublicErrorCode.INQUIRY_TIMEOUT)
+            manual_reconciliation_required = (
+                getattr(cls, "route", None) == "generate_response"
+            )
             await _checkpoint(i, {
                 "route": getattr(cls, "route", None),
                 "execution_status": "timeout",
@@ -1504,8 +1528,11 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 # afirma "sin efectos" — queda para reconciliación manual
                 # (P1 review; plan Tarea 6 Paso 5).
                 "manual_reconciliation_required":
-                    getattr(cls, "route", None) == "generate_response",
-                "error": {"code": code.value, "retryable": True},
+                    manual_reconciliation_required,
+                "error": {
+                    "code": code.value,
+                    "retryable": not manual_reconciliation_required,
+                },
             })
             _emit_step_latency(
                 inquiry_started, step=inquiry_step, code="timeout"

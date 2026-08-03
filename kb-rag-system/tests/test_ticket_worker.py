@@ -1148,6 +1148,33 @@ class _ScrapeThenTimeoutOrch:
 
 class TestForusBotsIdTraceabilityOnDegraded:
 
+    async def test_generate_response_timeout_is_manual_and_non_retryable(self):
+        """A GR timeout may hide an accepted upstream effect.
+
+        It must therefore require reconciliation and must never invite a
+        consumer to retry the whole ticket blindly.
+        """
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            InMemoryTicketJobBackend, TicketJobRepository,
+        )
+
+        repo = TicketJobRepository(InMemoryTicketJobBackend())
+        rec = await _seed_repo_job(repo)
+
+        final = await run_ticket_job(
+            _worker_app(repo, _ScrapeThenTimeoutOrch()), rec.job_id
+        )
+
+        entry = final.per_inquiry_status[0]
+        assert entry["manual_reconciliation_required"] is True
+        assert entry["error"] == {
+            "code": "INQUIRY_TIMEOUT",
+            "retryable": False,
+        }
+        assert final.public_error_code == "FORUSBOTS_NEEDS_RECONCILIATION"
+        assert final.retryable is False
+
     async def test_forusbots_ids_preserved_when_inquiry_times_out(self):
         """P1 (review): un scrape que produjo job_id pero cuya inquiry terminó
         en timeout DEBE conservar el ID en forusbots_job_ids (reconciliación).
@@ -1176,6 +1203,26 @@ class TestForusBotsIdTraceabilityOnDegraded:
 
 
 class TestAggregatePublicationSafety:
+
+    def test_manual_reconciliation_cannot_be_masked_by_retryable_error(self):
+        from api.ticket_worker import _aggregate_public_error
+
+        entries = [
+            {
+                "error": {
+                    "code": "PINECONE_TRANSIENT_FAILURE",
+                    "retryable": True,
+                }
+            },
+            {
+                "manual_reconciliation_required": True,
+                "error": {"code": "INQUIRY_TIMEOUT", "retryable": False},
+            },
+        ]
+
+        assert _aggregate_public_error(entries, unprocessed=0) == (
+            "FORUSBOTS_NEEDS_RECONCILIATION", False
+        )
 
     def test_mixed_error_aggregation_keeps_code_and_retryability_coherent(self):
         from api.ticket_worker import _aggregate_public_error

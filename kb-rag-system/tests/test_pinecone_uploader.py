@@ -69,6 +69,33 @@ def test_query_does_not_retry_4xx():
 
 
 @pytest.mark.parametrize(
+    ("failure", "expected_calls"),
+    [
+        (_HTTPErr(400), 1),
+        (_HTTPErr(408), 1),
+        (ValueError("invalid record"), 1),
+        (_HTTPErr(503), 3),
+        (TimeoutError("transport timeout"), 3),
+    ],
+)
+def test_upload_retries_only_closed_transient_taxonomy(
+    failure, expected_calls,
+):
+    index = Mock()
+    index.upsert_records.side_effect = failure
+    uploader = _uploader_with_index(index)
+    uploader.max_retries = 3
+    uploader.retry_delay = 0
+
+    result = uploader._upload_batch([
+        {"id": "c1", "content": "retirement", "metadata": {}},
+    ])
+
+    assert result is False
+    assert index.upsert_records.call_count == expected_calls
+
+
+@pytest.mark.parametrize(
     ("status_code", "failure_kind"),
     [(429, "rate_limit"), (503, "server_error")],
 )

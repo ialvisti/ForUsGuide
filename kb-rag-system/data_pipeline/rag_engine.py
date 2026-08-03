@@ -24,7 +24,11 @@ from typing import Dict, Any, List, Optional
 from dataclasses import dataclass
 from cachetools import TTLCache
 
-from .pinecone_uploader import PineconeUploader
+from .pinecone_uploader import (
+    PineconeCircuitOpen,
+    PineconeRetrievalError,
+    PineconeUploader,
+)
 from .token_manager import TokenManager
 from .llm_router import LLMRouter, LLMResponse, LLMEmptyResponseError
 from collections import defaultdict
@@ -806,10 +810,29 @@ class RAGEngine:
                 }
             )
 
-        except Exception:
+        except Exception as exc:
             logger.error("Error en get_required_data")
+            transient_kinds = {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+            is_retrieval_failure = isinstance(
+                exc, (PineconeRetrievalError, PineconeCircuitOpen)
+            )
+            failure_kind = (
+                getattr(exc, "failure_kind", "unknown")
+                if is_retrieval_failure else "unknown"
+            )
+            if failure_kind not in transient_kinds | {"client_error"}:
+                failure_kind = "unknown"
             return self._build_empty_required_data_response(
-                "An internal error occurred while determining required data"
+                "required_data_failed",
+                retrieval_failure_kind=failure_kind,
+                retrieval_retryable=(
+                    is_retrieval_failure
+                    and getattr(exc, "retryable", False) is True
+                    and failure_kind in transient_kinds
+                ),
             )
 
     # ========================================================================
@@ -5702,8 +5725,36 @@ class RAGEngine:
             return True
         return all(isinstance(v, list) and len(v) == 0 for v in arrays)
 
-    def _build_empty_required_data_response(self, reason: str) -> RequiredDataResponse:
+    def _build_empty_required_data_response(
+        self,
+        reason: str,
+        *,
+        retrieval_failure_kind: Optional[str] = None,
+        retrieval_retryable: bool = False,
+    ) -> RequiredDataResponse:
         """Construye respuesta vacía para required_data."""
+        metadata: Dict[str, Any] = {
+            "error": reason,
+            "chunks_used": 0,
+            "sub_queries": [],
+            "per_query_scores": {},
+            "unique_articles": 0,
+            "relevant_articles": 0,
+            "coverage_gaps": [],
+        }
+        reviewed_failure_kinds = {
+            "timeout", "transport", "rate_limit", "server_error",
+            "circuit_open", "client_error", "unknown",
+        }
+        if retrieval_failure_kind in reviewed_failure_kinds:
+            metadata["retrieval_failure_kind"] = retrieval_failure_kind
+            metadata["retrieval_retryable"] = (
+                retrieval_retryable is True
+                and retrieval_failure_kind in {
+                    "timeout", "transport", "rate_limit", "server_error",
+                    "circuit_open",
+                }
+            )
         return RequiredDataResponse(
             article_reference={
                 "article_id": None,
@@ -5718,15 +5769,7 @@ class RAGEngine:
             source_articles=[],
             used_chunks=[],
             coverage_gaps=[],
-            metadata={
-                "error": reason,
-                "chunks_used": 0,
-                "sub_queries": [],
-                "per_query_scores": {},
-                "unique_articles": 0,
-                "relevant_articles": 0,
-                "coverage_gaps": []
-            }
+            metadata=metadata,
         )
 
     def _build_no_match_required_data_response(

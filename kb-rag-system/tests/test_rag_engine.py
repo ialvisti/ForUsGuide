@@ -120,6 +120,65 @@ async def test_knowledge_question_preserves_closed_retrieval_taxonomy():
     }
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("failure", "expected_kind", "expected_retryable"),
+    [
+        (TimeoutError("private required-data timeout"), "unknown", False),
+        (ValueError("private required-data failure"), "unknown", False),
+    ],
+)
+async def test_required_data_failure_uses_closed_non_private_taxonomy(
+    failure, expected_kind, expected_retryable,
+):
+    from data_pipeline.rag_engine import RAGEngine
+
+    engine = RAGEngine.__new__(RAGEngine)
+    engine._decompose_question = AsyncMock(side_effect=failure)
+
+    result = await engine.get_required_data(
+        inquiry="retirement rules",
+        record_keeper="LT Trust",
+        plan_type="401(k)",
+        topic="rollover",
+    )
+
+    assert result.metadata["error"] == "required_data_failed"
+    assert result.metadata["retrieval_failure_kind"] == expected_kind
+    assert result.metadata["retrieval_retryable"] is expected_retryable
+    assert "private required-data" not in repr(result.metadata)
+
+
+@pytest.mark.asyncio
+async def test_required_data_transient_retrieval_failure_stays_retryable():
+    from data_pipeline.rag_engine import RAGEngine
+    from data_pipeline.pinecone_uploader import PineconeRetrievalError
+
+    engine = RAGEngine.__new__(RAGEngine)
+    engine._decompose_question = AsyncMock(
+        side_effect=PineconeRetrievalError(
+            index_name="synthetic-index",
+            namespace="synthetic-namespace",
+            top_k=1,
+            filter_dict=None,
+            rerank=None,
+            cause=TimeoutError("private upstream body"),
+        )
+    )
+
+    result = await engine.get_required_data(
+        inquiry="retirement rules",
+        record_keeper="LT Trust",
+        plan_type="401(k)",
+        topic="rollover",
+    )
+
+    assert result.metadata["error"] == "required_data_failed"
+    assert result.metadata["retrieval_failure_kind"] == "timeout"
+    assert result.metadata["retrieval_retryable"] is True
+    assert "private upstream body" not in repr(result.metadata)
+
+
 @pytest.fixture
 def mock_router():
     """A minimal LLMRouter double with an awaitable `call()` method."""

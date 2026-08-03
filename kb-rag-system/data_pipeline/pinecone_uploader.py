@@ -15,13 +15,103 @@ import inspect
 import secrets
 import threading
 from typing import List, Dict, Any, Optional
-from pinecone import Pinecone
+from urllib.parse import quote
+
+import httpx
+from pinecone import Pinecone, PineconeConnectionError
 from tqdm import tqdm
+from urllib3 import exceptions as urllib3_exceptions
 
 from data_pipeline.retrieval_privacy import sanitize_retrieval_query
 from api import metrics as ticket_metrics
 
 logger = logging.getLogger(__name__)
+
+# The repository pins Pinecone 9.1.0, whose public ``Index`` constructor does
+# not expose ``RetryConfig`` for data-plane calls.  Its hidden default retries
+# 408 as well as 429/5xx and would multiply this module's reviewed three-attempt
+# policy.  Use the documented data-plane REST endpoint through httpx's public
+# zero-retry transport, leaving this module as the single retry authority.
+_PINECONE_DATA_PLANE_API_VERSION = "2025-10"
+
+_TRANSIENT_TRANSPORT_ERRORS = (
+    TimeoutError,
+    ConnectionError,
+    PineconeConnectionError,
+    urllib3_exceptions.TimeoutError,
+    urllib3_exceptions.NewConnectionError,
+    urllib3_exceptions.MaxRetryError,
+    urllib3_exceptions.ProtocolError,
+)
+
+
+class _PineconeDataPlaneHTTPError(RuntimeError):
+    """Value-free HTTP failure used by the closed retry taxonomy."""
+
+    def __init__(self, status_code: int):
+        self.status_code = status_code
+        super().__init__("Pinecone data-plane request failed")
+
+
+class _SingleAttemptPineconeSearch:
+    """Public REST client with exactly one transport attempt per call."""
+
+    def __init__(self, *, host: str, api_key: str, timeout_s: float = 30.0):
+        self._client = httpx.Client(
+            base_url=host.rstrip("/"),
+            headers={
+                "Api-Key": api_key,
+                "X-Pinecone-Api-Version": _PINECONE_DATA_PLANE_API_VERSION,
+                "User-Agent": "forus-guide-pinecone-search/1",
+            },
+            timeout=timeout_s,
+            transport=httpx.HTTPTransport(retries=0),
+        )
+
+    def search(self, **search_kwargs: Any) -> Dict[str, Any]:
+        namespace = str(search_kwargs.pop("namespace"))
+        legacy_query = search_kwargs.pop("query", None)
+        if legacy_query is not None:
+            query = dict(legacy_query)
+        else:
+            query = {
+                "top_k": search_kwargs.pop("top_k"),
+                "inputs": search_kwargs.pop("inputs"),
+            }
+            filter_dict = search_kwargs.pop("filter", None)
+            if filter_dict is not None:
+                query["filter"] = filter_dict
+
+        body: Dict[str, Any] = {"query": query}
+        for key in ("fields", "rerank"):
+            value = search_kwargs.pop(key, None)
+            if value is not None:
+                body[key] = value
+        if search_kwargs:
+            raise TypeError("unsupported Pinecone search arguments")
+
+        try:
+            response = self._client.post(
+                f"/records/namespaces/{quote(namespace, safe='')}/search",
+                json=body,
+            )
+        except httpx.TimeoutException:
+            raise TimeoutError("Pinecone search timed out") from None
+        except httpx.TransportError:
+            raise ConnectionError("Pinecone search transport failed") from None
+
+        if response.status_code >= 400:
+            raise _PineconeDataPlaneHTTPError(response.status_code)
+        try:
+            payload = response.json()
+        except ValueError:
+            raise RuntimeError("Pinecone returned invalid JSON") from None
+        if not isinstance(payload, dict):
+            raise RuntimeError("Pinecone returned an invalid response shape")
+        return payload
+
+    def close(self) -> None:
+        self._client.close()
 
 
 def _pinecone_status_code(exc: Exception) -> Optional[int]:
@@ -38,9 +128,9 @@ def _is_transient_pinecone_error(exc: Exception) -> bool:
     cualquier otro 4xx es un error del request y NUNCA se reintenta."""
     status = _pinecone_status_code(exc)
     if status is None:
-        # sin status: tratar errores de transporte como transitorios acotados
-        name = type(exc).__name__.lower()
-        return any(t in name for t in ("timeout", "connection", "unavailable"))
+        # Statusless failures retry only for concrete transport/timeout types;
+        # never infer availability from an arbitrary exception class name.
+        return isinstance(exc, _TRANSIENT_TRANSPORT_ERRORS)
     return status == 429 or status >= 500
 
 
@@ -48,14 +138,33 @@ def _pinecone_retry_reason(exc: Exception) -> str:
     status = _pinecone_status_code(exc)
     if status == 429:
         return "rate_limit"
-    name = type(exc).__name__.lower()
-    if "timeout" in name:
+    if isinstance(
+        exc, (TimeoutError, urllib3_exceptions.TimeoutError)
+    ):
         return "timeout"
     if status is not None and status >= 500:
         return "unavailable"
-    if any(value in name for value in ("connection", "unavailable")):
+    if isinstance(exc, _TRANSIENT_TRANSPORT_ERRORS):
         return "unavailable"
     return "other"
+
+
+def _pinecone_failure_kind(exc: Exception) -> str:
+    """Return a closed, value-free failure category for retry decisions."""
+    status = _pinecone_status_code(exc)
+    if status == 429:
+        return "rate_limit"
+    if status is not None and status >= 500:
+        return "server_error"
+    if status is not None and 400 <= status < 500:
+        return "client_error"
+    if isinstance(
+        exc, (TimeoutError, urllib3_exceptions.TimeoutError)
+    ):
+        return "timeout"
+    if isinstance(exc, _TRANSIENT_TRANSPORT_ERRORS):
+        return "transport"
+    return "unknown"
 
 
 class _CircuitBreaker:
@@ -111,9 +220,11 @@ class _CircuitBreaker:
             self._opened_at = time.monotonic()
             return None if was_open else "open"
 
-
 class PineconeCircuitOpen(RuntimeError):
     """El circuit breaker de Pinecone está abierto: falla rápido."""
+
+    retryable = True
+    failure_kind = "circuit_open"
 
 
 class PineconeRetrievalError(RuntimeError):
@@ -136,9 +247,11 @@ class PineconeRetrievalError(RuntimeError):
         self.index_name = index_name
         self.namespace = namespace
         self.top_k = top_k
-        self.filter_dict = filter_dict
-        self.rerank = rerank
         self.cause_type = type(cause).__name__
+        self.failure_kind = _pinecone_failure_kind(cause)
+        self.retryable = self.failure_kind in {
+            "timeout", "transport", "rate_limit", "server_error",
+        }
 
         filter_state = "present" if filter_dict else "absent"
         rerank_state = "enabled" if rerank else "disabled"
@@ -207,12 +320,42 @@ class PineconeUploader:
             logger.info(f"   Namespace: {self.namespace}")
             logger.info(f"   Total vectores: {stats.total_vector_count}")
 
+            self._query_search = _SingleAttemptPineconeSearch(
+                host=self.index.host,
+                api_key=self.api_key,
+            )
+
         except Exception as exc:
             logger.error(
                 "Error conectando al índice (error_type=%s)",
                 type(exc).__name__,
             )
             raise
+
+    def close(self) -> None:
+        """Release every Pinecone HTTP pool exactly once, best-effort."""
+        if getattr(self, "_closed", False):
+            return
+        self._closed = True
+
+        seen: set[int] = set()
+        for resource_name in ("_query_search", "index", "pc"):
+            resource = getattr(self, resource_name, None)
+            if resource is None or id(resource) in seen:
+                continue
+            seen.add(id(resource))
+            close = getattr(resource, "close", None)
+            if not callable(close):
+                continue
+            try:
+                close()
+            except Exception as exc:  # noqa: BLE001 - shutdown is best-effort
+                logger.error(
+                    "Error closing Pinecone resource "
+                    "(resource=%s, error_type=%s)",
+                    resource_name,
+                    type(exc).__name__,
+                )
 
     @staticmethod
     def _emit_query_metric(metric: str, **labels: str) -> None:
@@ -486,9 +629,25 @@ class PineconeUploader:
             raise PineconeCircuitOpen("circuito Pinecone abierto")
 
         last_exc: Optional[Exception] = None
+        query_search = getattr(self, "_query_search", self.index).search
         for attempt in range(self._query_max_attempts):
+            if attempt > 0:
+                allowed, transition = self._query_breaker.before_request()
+                if transition is not None:
+                    self._emit_query_metric(
+                        "ticket_pinecone_circuit_count", state=transition
+                    )
+                if not allowed:
+                    raise PineconeRetrievalError(
+                        index_name=self.index_name,
+                        namespace=self.namespace,
+                        top_k=top_k,
+                        filter_dict=filter_dict,
+                        rerank=rerank,
+                        cause=last_exc or RuntimeError("unknown"),
+                    ) from None
             try:
-                results = self.index.search(**search_kwargs)
+                results = query_search(**search_kwargs)
                 transition = self._query_breaker.record_success()
                 if transition is not None:
                     self._emit_query_metric(

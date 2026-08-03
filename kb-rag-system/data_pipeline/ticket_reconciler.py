@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import logging
+import time
 import uuid
 from datetime import datetime
 from typing import Callable, Dict, Optional, Protocol, Sequence
@@ -52,6 +53,8 @@ from data_pipeline.ticket_job_repository import (
 )
 
 logger = logging.getLogger(__name__)
+
+_monotonic = time.monotonic
 
 DEFAULT_BATCH_SIZE = 25
 ENQUEUED_RECHECK_AFTER_S = 60.0
@@ -120,6 +123,7 @@ class TicketReconciler:
 
     async def run_once(self) -> Dict[str, int]:
         """Un lote acotado. Devuelve conteos sanitizados por categoría."""
+        started_at = _monotonic()
         counts = {"scanned": 0, "requeued_outbox": 0, "fenced_leases": 0,
                   "deadline_terminalized": 0, "payload_expired": 0,
                   "skipped_locked": 0, "errors": 0}
@@ -236,6 +240,13 @@ class TicketReconciler:
                 logger.error("reconciler falló reparando un ticket job")
         self._metric("ticket_reconciler_run", **counts)
         await self._emit_active_gauges(utcnow())
+        try:
+            ticket_metrics.emit(
+                "ticket_reconciler_duration_seconds",
+                max(0.0, _monotonic() - started_at),
+            )
+        except (TypeError, ValueError):
+            logger.error("reconciler duration metric rejected")
         return counts
 
     async def _terminalize(

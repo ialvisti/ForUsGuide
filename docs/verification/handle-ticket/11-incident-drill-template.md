@@ -40,11 +40,15 @@ del incidente, recepción por cada canal, ack y recuperación.
 | `ticket_poll_not_found` | 404 > 0 durante 5m | comprobar receipt/control y ruta; no recrear el job | |
 | `ticket_poll_gone` | 410 > 0 durante 5m | tratar como terminal; revisar TTL/watch, no reintentar misma key | |
 | `ticket_terminal_incorrect_ratio` | terminales incorrectos >10% durante 15m | contener cohort en n8n y separar códigos técnicos | |
+| `ticket_accepted_terminal_ratio` | terminales/aceptados <99% durante 15m | buscar jobs activos o terminales sin evento; contener admisión sin reejecutar efectos | |
+| `ticket_terminal_failed` | primer terminal `failed` | inspeccionar código/fase sanitizados; no consultar payloads | |
+| `ticket_terminal_partial` | primer terminal `partial` | confirmar degradación publicable y contener la cohorte afectada | |
+| `ticket_terminal_internal_error` | primer terminal `INTERNAL_ERROR` | abrir incidente técnico y correlacionar sólo por hashes/traces sanitizados | |
 | `ticket_queue_backlog` | depth >50 o p99 dispatch delay >120s durante 10m | contener admisión; revisar worker antes de cambiar capacidad | |
 | `worker_5xx_ratio` | 5xx/requests >1% durante 5m | n8n a legacy; preservar store y polling | |
 | `producer_auth_failure_ratio` | 401/403 >5% durante 5m | revisar token IAM de `kb-rag-client` y `X-API-Key`; nunca relajar auth | |
 | `ticket_lease_fencing` | reconciler fencea un lease vencido | verificar heartbeat, epoch y generación; no revivir worker viejo | |
-| `ticket_oldest_active_job` | job activo >120s (lease 90s + gracia) | comprobar heartbeat/fencing; no repetir efectos externos | |
+| `ticket_oldest_active_job` | job activo >2400s (deadline absoluto) | comprobar heartbeat/fencing; no repetir efectos externos | |
 | `ticket_reconciler_health` | sin heartbeat 10m o errores >0 | revisar Job/Scheduler/locks; CLI sólo break-glass auditado | |
 | `ticket_forusbots_reconciliation` | circuit abierto, fallo o conciliación manual | consultar estado upstream; nunca repetir POST ambiguo | |
 | `ticket_pinecone_circuit` | circuit breaker abierto | mantener fail-fast y usar fallback/legacy | |
@@ -73,6 +77,8 @@ documentos Firestore en esta evidencia.
 
 - [ ] Provocar 5xx sostenido sólo en staging.
 - [ ] Confirmar que `worker_5xx_ratio` usa numerador 5xx y denominador total.
+- [ ] Confirmar que `ticket_accepted_terminal_ratio` compara eventos canónicos
+      y alcanza razón 1:1 después de la ventana terminal controlada.
 - [ ] Confirmar que ambos canales reciben y reconocen el incidente.
 - [ ] Ejecutar contención n8n→legacy; comprobar polling de aceptados.
 
@@ -87,7 +93,7 @@ documentos Firestore en esta evidencia.
 ### Lease/reconciler
 
 - [ ] Perder un heartbeat y observar fencing con epoch nuevo.
-- [ ] Confirmar `ticket_oldest_active_job` al superar lease + gracia.
+- [ ] Confirmar `ticket_oldest_active_job` al superar el deadline absoluto de 2400s.
 - [ ] Confirmar que el worker viejo no publica ni checkpointea.
 - [ ] Detener una ejecución programada y observar ausencia del reconciler.
 - [ ] Restaurar Scheduler/Job declarativamente y comprobar reanudación.

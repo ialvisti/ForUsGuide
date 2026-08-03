@@ -12,6 +12,7 @@ Endpoints:
 """
 
 import asyncio
+import hashlib
 import logging
 import math
 import re
@@ -38,7 +39,12 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from data_pipeline.rag_engine import RAGEngine
-from data_pipeline.pinecone_uploader import PineconeUploader
+from data_pipeline.pinecone_uploader import (
+    PineconeCircuitOpen,
+    PineconeRetrievalError,
+    PineconeUploader,
+)
+from data_pipeline.retrieval_privacy import UnsafeRetrievalQuery
 from data_pipeline.execution_logger import ExecutionLogger
 from data_pipeline.llm_router import (
     LLMRouter,
@@ -128,25 +134,62 @@ from .participant_plan import (
 from .auth import verify_workload_identity_token
 from . import metrics as ticket_metrics
 
-# Configurar logging
-logging.basicConfig(
-    level=getattr(logging, settings.LOG_LEVEL),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+def _configure_logging(
+    *,
+    production: bool,
+    root_logger: Optional[logging.Logger] = None,
+    cloud_setup: Optional[Any] = None,
+    handler_factory: Optional[Any] = None,
+) -> None:
+    """Install exactly one root handler for the selected runtime."""
+    root = root_logger or logging.getLogger()
+    level = getattr(logging, settings.LOG_LEVEL)
+    formatter = logging.Formatter(
+        "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    )
+    if not production:
+        logging.basicConfig(level=level, format=formatter._fmt)
+        return
 
-if settings.ENVIRONMENT == "production":
+    # Cloud Run previously installed a StreamHandler with basicConfig and
+    # then a CloudLoggingHandler, producing two ingested records per event.
+    for handler in list(root.handlers):
+        root.removeHandler(handler)
     try:
-        import google.cloud.logging as cloud_logging
-        cloud_logging.Client().setup_logging()
+        if cloud_setup is not None and handler_factory is not None:
+            raise ValueError("logging installer configuration is ambiguous")
+        if cloud_setup is not None:
+            cloud_setup()
+        else:
+            if handler_factory is None:
+                from google.cloud.logging_v2.handlers import StructuredLogHandler
+                handler_factory = StructuredLogHandler
+            root.addHandler(handler_factory())
+        if len(root.handlers) != 1:
+            raise RuntimeError("production logging requires exactly one handler")
     except Exception:
-        logging.getLogger(__name__).error(
+        for handler in list(root.handlers):
+            root.removeHandler(handler)
+        fallback = logging.StreamHandler()
+        fallback.setFormatter(formatter)
+        root.addHandler(fallback)
+        root.error(
             "Cloud Logging setup failed; continuing with standard logging"
         )
+    root.setLevel(level)
+
+
+def _uses_structured_logging(environment: str) -> bool:
+    """Cloud Run staging and production share the canonical JSON log path."""
+    return environment in {"staging", "production"}
+
+
+_configure_logging(production=_uses_structured_logging(settings.ENVIRONMENT))
 
 logger = logging.getLogger(__name__)
 
 
-def _emit_ticket_metric(metric: str, value: int | float, **labels: str) -> None:
+def _emit_ticket_metric(metric: str, value: int | float, **labels: Any) -> None:
     """Best-effort closed-schema telemetry for producer endpoints."""
     try:
         ticket_metrics.emit(metric, value, **labels)
@@ -241,12 +284,38 @@ def _make_coverage_pack_builder(rag_engine: RAGEngine):
             chunks = await rag_engine._cached_query(
                 query_text=inquiry, top_k=COVERAGE_TOP_K, filter_dict=None
             )
+        except UnsafeRetrievalQuery:
+            logger.warning(
+                "Coverage retrieval blocked by local privacy policy."
+            )
+            return CoveragePack.blocked(failure_kind="unsafe_query")
+        except PineconeCircuitOpen:
+            logger.warning(
+                "Coverage retrieval failed (circuit_open); returning failed pack."
+            )
+            return CoveragePack.failed(
+                "PineconeCircuitOpen",
+                failure_kind="circuit_open",
+                retryable=True,
+            )
+        except PineconeRetrievalError as exc:
+            logger.warning(
+                "Coverage retrieval failed (PineconeRetrievalError); "
+                "returning failed pack."
+            )
+            return CoveragePack.failed(
+                "PineconeRetrievalError",
+                failure_kind=exc.failure_kind,
+                retryable=exc.retryable,
+            )
         except Exception as exc:
             logger.warning(
                 "Coverage retrieval failed (%s); returning failed pack.",
                 type(exc).__name__,
             )
-            return CoveragePack.failed(type(exc).__name__)
+            return CoveragePack.failed(
+                type(exc).__name__, failure_kind="unknown", retryable=False,
+            )
 
         if not chunks:
             logger.info("Coverage retrieval returned 0 chunks.")
@@ -284,6 +353,29 @@ def _make_coverage_pack_builder(rag_engine: RAGEngine):
 # ============================================================================
 # Lifespan Context Manager
 # ============================================================================
+
+async def _close_runtime_resources(app: FastAPI) -> None:
+    """Close every process-owned client without skipping later resources."""
+    logger.info("Shutting down API...")
+    queue = getattr(app.state, "ticket_queue", None)
+    if queue is not None:
+        try:
+            await queue.aclose()
+        except Exception:
+            logger.error("Error closing ticket queue")
+    forusbots = getattr(app.state, "forusbots_client", None)
+    if forusbots is not None:
+        try:
+            await forusbots.aclose()
+        except Exception:
+            logger.error("Error closing ForusBots client")
+    pinecone = getattr(app.state, "pinecone_uploader", None)
+    if pinecone is not None:
+        try:
+            pinecone.close()
+        except Exception:
+            logger.error("Error closing Pinecone client")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -416,26 +508,18 @@ async def lifespan(app: FastAPI):
         logger.info(f"🚀 API Ready on http://{settings.API_HOST}:{settings.API_PORT}")
         logger.info("=" * 80)
 
+    except asyncio.CancelledError:
+        await _close_runtime_resources(app)
+        raise
     except Exception as exc:
         logger.error("Startup failed (error_type=%s)", type(exc).__name__)
+        await _close_runtime_resources(app)
         raise
 
-    yield
-
-    # Shutdown
-    logger.info("Shutting down API...")
-    queue = getattr(app.state, "ticket_queue", None)
-    if queue is not None:
-        try:
-            await queue.aclose()
-        except Exception:
-            logger.error("Error closing ticket queue")
-    forusbots = getattr(app.state, "forusbots_client", None)
-    if forusbots is not None:
-        try:
-            await forusbots.aclose()
-        except Exception:
-            logger.error("Error closing ForusBots client")
+    try:
+        yield
+    finally:
+        await _close_runtime_resources(app)
 
 
 def _build_ticket_job_backend():
@@ -1790,6 +1874,14 @@ async def _accept_ticket_job(
     ticket_metrics.increment(
         "ticket_jobs_replayed" if replayed else "ticket_jobs_accepted"
     )
+    if not replayed:
+        _emit_ticket_metric(
+            "ticket_job_accepted",
+            1,
+            job_hash=hashlib.sha256(record.job_id.encode()).hexdigest(),
+            trace_id=record.trace_id,
+            mode=effective_mode,
+        )
 
     # Cerrar la ventana record/task: un crash entre create_or_get y enqueue se
     # repara en el retry (task name determinístico). Un job ya terminal no se

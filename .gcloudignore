@@ -2,8 +2,8 @@
 # The verification/build configs only consume the application and Terraform.
 # Default-deny every other top-level path.  Two reviewed test inputs are
 # reopened below by exact type/path: canonical KB JSON metadata/content and the
-# incident-drill contract.  Business exports, planning notes and unrelated
-# worktree content remain excluded.
+# incident-drill contract, and the sanitized bounded n8n workflow.  Business
+# exports, planning notes and unrelated worktree content remain excluded.
 **
 !.gcloudignore
 !kb-rag-system/
@@ -35,6 +35,8 @@
 !docs/verification/
 !docs/verification/handle-ticket/
 !docs/verification/handle-ticket/11-incident-drill-template.md
+!flows_n8n/
+!flows_n8n/bounded_ticket_polling.json
 !External agents/
 !External agents/Inquiry Extraction & Required-Data Builder agent .md
 !External agents/Knowledge Question Inquiry Generator.md

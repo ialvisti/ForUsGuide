@@ -232,9 +232,13 @@ class TestCoveragePack:
             "distinct_articles",
             "chunk_types_present",
             "pinecone_error",
+            "failure_kind",
+            "retryable",
         }
         assert d["retrieval_status"] == "ok"
         assert d["pinecone_error"] is None
+        assert d["failure_kind"] is None
+        assert d["retryable"] is False
 
     def test_chunk_excerpt_truncated(self):
         long_content = "a" * 1000
@@ -615,6 +619,50 @@ class TestCoverageDrivenRouting:
 # ---------------------------------------------------------------------------
 
 class TestRetrievalFailureModes:
+
+    @pytest.mark.asyncio
+    async def test_unsafe_retrieval_forces_nmi_before_generate_response(
+            self, mock_llm_router):
+        mock_llm_router.call.return_value = _llm_response(
+            '{"route": "generate_response", "confidence": 0.99, '
+            '"reasoning": "synthetic high-confidence GR", '
+            '"coverage_basis": "participant_eligibility", '
+            '"user_message": null}'
+        )
+        pack = CoveragePack.blocked(failure_kind="unsafe_query")
+        engine, _ = _engine(mock_llm_router, pack=pack)
+
+        result = await engine.classify(inquiry="synthetic unreviewed inquiry")
+
+        assert result.route == "needs_more_info"
+        assert result.user_message
+        assert result.metadata["coverage_signals"] == {
+            "retrieval_status": "blocked",
+            "top_score": 0.0,
+            "chunk_count": 0,
+            "distinct_articles": [],
+            "chunk_types_present": [],
+            "pinecone_error": None,
+            "failure_kind": "unsafe_query",
+            "retryable": False,
+        }
+
+    @pytest.mark.asyncio
+    async def test_unsafe_retrieval_short_circuits_before_llm(
+            self, mock_llm_router):
+        mock_llm_router.call.side_effect = RuntimeError(
+            "LLM must not receive a locally blocked inquiry"
+        )
+        pack = CoveragePack.blocked(failure_kind="unsafe_query")
+        engine, _ = _engine(mock_llm_router, pack=pack)
+
+        result = await engine.classify(inquiry="synthetic unreviewed inquiry")
+
+        mock_llm_router.call.assert_not_awaited()
+        assert result.route == "needs_more_info"
+        assert result.metadata["classifier_parse_ok"] is True
+        assert result.metadata["coverage_signals"]["failure_kind"] == \
+            "unsafe_query"
 
     @pytest.mark.asyncio
     async def test_retrieval_empty_steers_nmi(self, mock_llm_router):

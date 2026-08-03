@@ -1,0 +1,624 @@
+{
+  "name": "[INACTIVE TEMPLATE] Bounded Handle Ticket Polling",
+  "nodes": [
+    {
+      "parameters": {
+        "inputSource": "passthrough"
+      },
+      "id": "27cbab68-b1df-4e0e-99e9-ceaf272edcba",
+      "name": "When Executed by Another Workflow",
+      "type": "n8n-nodes-base.executeWorkflowTrigger",
+      "typeVersion": 1.1,
+      "position": [
+        -1180,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const DEADLINE_S = 2700;\nconst MAX_ATTEMPTS = 40;\nconst BASE_INTERVAL_S = 65;\nconst MAX_INTERVAL_S = 120;\nconst ALLOWED_STATUS_ORIGIN = 'https://replace-with-producer-origin.invalid';\n\nconst rawUrl = typeof $json.status_url === 'string' ? $json.status_url : '';\nlet statusUrl = null;\ntry {\n  const parsed = new URL(rawUrl, ALLOWED_STATUS_ORIGIN);\n  const validPath = /^\\/api\\/v2\\/ticket-jobs\\/[0-9a-f]{32}$/.test(parsed.pathname);\n  if (parsed.origin === ALLOWED_STATUS_ORIGIN && validPath && !parsed.search && !parsed.hash) {\n    statusUrl = parsed.toString();\n  }\n} catch {\n  statusUrl = null;\n}\n\nconst startedAtMs = Date.now();\nreturn {\n  json: {\n    status_url: statusUrl,\n    poll_decision: 'evaluate',\n    poll_reason: statusUrl ? 'initialized' : 'invalid_status_url',\n    poll_state: {\n      started_at_ms: startedAtMs,\n      deadline_at_ms: startedAtMs + (DEADLINE_S * 1000),\n      attempt: 0,\n      next_delay_s: BASE_INTERVAL_S,\n      max_attempts: MAX_ATTEMPTS,\n      base_interval_s: BASE_INTERVAL_S,\n      max_interval_s: MAX_INTERVAL_S\n    }\n  }\n};"
+      },
+      "id": "988eefef-060d-44db-b06c-0a0344a39708",
+      "name": "Initialize Durable Poll State",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -960,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json ?? {};\nconst state = input.poll_state ?? {};\nlet decision;\nlet reason;\n\nif (Date.now() >= state.deadline_at_ms) {\n  decision = 'deadline';\n  reason = 'deadline_exceeded';\n} else if (state.attempt >= state.max_attempts) {\n  decision = 'exhausted';\n  reason = 'attempts_exhausted';\n} else if (!input.status_url) {\n  decision = 'fallback';\n  reason = 'invalid_status_url';\n} else if (input.poll_decision === 'continue') {\n  decision = 'wait';\n  reason = 'retry_scheduled';\n} else {\n  decision = 'poll';\n  reason = 'poll_allowed';\n}\n\nreturn { json: { ...input, poll_decision: decision, poll_reason: reason } };"
+      },
+      "id": "c8785b20-ea85-453e-b4e1-ff0d2c4e1127",
+      "name": "Evaluate Loop Guard",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -740,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "d330890f-02aa-47fa-8b41-bf9e60c9a099",
+              "leftValue": "={{ $json.poll_decision }}",
+              "rightValue": "deadline",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "6346bbba-1f47-4ff5-9bc4-429b94fc9f53",
+      "name": "Deadline Exceeded?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -520,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ec59c669-3a7d-4da8-85f8-9743673b5dc9",
+              "leftValue": "={{ $json.poll_decision }}",
+              "rightValue": "exhausted",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "2a947056-b26e-4ca0-bfb4-108f23e87bf3",
+      "name": "Attempts Exhausted?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -300,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "9e06f381-26d2-47ed-a538-fe74acdb2fa3",
+              "leftValue": "={{ $json.poll_decision }}",
+              "rightValue": "wait",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "cefe9da3-c50a-4414-bef3-e5b270437d23",
+      "name": "Wait Required?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        -80,
+        280
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "0bfce4d0-8145-466f-bb70-5a88b1333cb6",
+              "leftValue": "={{ $json.poll_decision }}",
+              "rightValue": "poll",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "a752998a-b48f-4ed3-aab8-f693a5c1bf2d",
+      "name": "Poll Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        140,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json ?? {};\nconst state = input.poll_state ?? {};\nreturn {\n  json: {\n    status_url: input.status_url,\n    poll_decision: 'request',\n    poll_reason: 'request_started',\n    poll_state: { ...state, attempt: state.attempt + 1 }\n  }\n};"
+      },
+      "id": "266c0aaa-30db-4cc6-84a5-3037dd0b5c30",
+      "name": "Increment Attempt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        360,
+        380
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json.status_url }}",
+        "options": {
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "autodetect"
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "2179f12c-2a8f-4b94-9dce-34b0ef4a061b",
+      "name": "Fetch Job Status",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        580,
+        380
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const prior = $('Increment Attempt').item.json;\nconst statusCode = Number($json.statusCode);\nconst body = $json.body;\nconst responseBody = body && typeof body === 'object' && !Array.isArray(body) ? body : null;\n\nreturn {\n  json: {\n    status_url: prior.status_url,\n    poll_state: prior.poll_state,\n    http_status: Number.isInteger(statusCode) ? statusCode : null,\n    response_body: responseBody\n  }\n};"
+      },
+      "id": "f0a28048-fe0d-40ec-a888-adcd27e3cdb2",
+      "name": "Join Poll State and Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const input = $json ?? {};\nconst body = input.response_body;\nconst state = body && typeof body.state === 'string' ? body.state : null;\nconst inquiries = body && Array.isArray(body.inquiries) ? body.inquiries : [];\nconst hasManualReview = inquiries.some((item) => item && item.manual_reconciliation_required === true);\nconst everyReplySafe = inquiries.length > 0 && inquiries.every((item) => item && item.participant_reply_safe === true && item.manual_reconciliation_required !== true);\n\nfunction projectReply(item) {\n  const result = item && item.result && typeof item.result === 'object' ? item.result : null;\n  if (!result) return null;\n\n  let replyKind = null;\n  let reply = null;\n  if (typeof result.needs_more_info_message === 'string' && result.needs_more_info_message.trim()) {\n    replyKind = 'needs_more_info';\n    reply = result.needs_more_info_message;\n  } else if (typeof result.knowledge_answer?.answer === 'string' && result.knowledge_answer.answer.trim()) {\n    replyKind = 'knowledge_answer';\n    reply = result.knowledge_answer.answer;\n  } else {\n    const generated = result.generate_response?.response?.response_to_participant;\n    if ((typeof generated === 'string' && generated.trim()) || (generated && typeof generated === 'object' && !Array.isArray(generated))) {\n      replyKind = 'generated_response';\n      reply = generated;\n    }\n  }\n\n  if (reply === null) return null;\n  return { reply_kind: replyKind, reply };\n}\n\nconst safeReplies = inquiries.map(projectReply).filter((item) => item !== null);\nconst projectionComplete = safeReplies.length === inquiries.length;\nconst succeededSafe = state === 'succeeded'\n  && body.next_action === 'send_participant_reply'\n  && body.metadata?.fallback !== true\n  && everyReplySafe\n  && !hasManualReview\n  && projectionComplete;\n\nlet decision = 'fallback';\nlet reason = 'unexpected_response';\nif (hasManualReview) {\n  reason = 'manual_reconciliation_required';\n} else if (input.http_status === 200 && succeededSafe) {\n  decision = 'succeeded';\n  reason = 'succeeded_safe';\n} else if (input.http_status === 200 && (state === 'queued' || state === 'running')) {\n  decision = 'continue';\n  reason = state;\n} else if (input.http_status === 202 || input.http_status === 429 || (input.http_status >= 500 && input.http_status <= 599)) {\n  decision = 'continue';\n  reason = 'retryable_http_status';\n} else if (input.http_status === 401 || input.http_status === 403) {\n  reason = 'access_failure';\n} else if (input.http_status === 404 || input.http_status === 410) {\n  reason = 'job_not_available';\n} else if (input.http_status !== 200) {\n  reason = 'poll_http_failure';\n} else if (!body) {\n  reason = 'invalid_json';\n} else if (state === 'succeeded') {\n  reason = 'unsafe_succeeded_result';\n} else if (['partial', 'failed', 'timeout', 'cancelled'].includes(state)) {\n  reason = 'technical_terminal_state';\n}\n\nreturn {\n  json: {\n    ...input,\n    poll_decision: decision,\n    poll_reason: reason,\n    safe_replies: decision === 'succeeded' ? safeReplies : []\n  }\n};"
+      },
+      "id": "701cabd1-93aa-4e73-a77b-9447b33e16d2",
+      "name": "Classify Poll Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "2f19309e-4bc5-468f-ad72-e14e6b622cca",
+              "leftValue": "={{ $json.poll_decision }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "46bf0785-c001-446a-8cdf-e19d19ea12a9",
+      "name": "Succeeded and Safe?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1240,
+        340
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "1933e454-93b4-4532-aeb1-4da423aa8564",
+              "leftValue": "={{ $json.poll_decision }}",
+              "rightValue": "continue",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "9aa9c90f-a62c-46ae-95f3-d6c434b2ba40",
+      "name": "Continue Polling?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        1460,
+        440
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const BASE_INTERVAL_S = 65;\nconst MAX_INTERVAL_S = 120;\nconst JITTER_RATIO = 0.2;\nconst input = $json ?? {};\nconst state = input.poll_state ?? {};\nconst exponent = Math.max(0, state.attempt - 1);\nconst rawDelay = Math.min(MAX_INTERVAL_S, BASE_INTERVAL_S * (2 ** exponent));\nconst deterministicUnit = ((state.attempt * 1103515245 + 12345) >>> 0) / 0xFFFFFFFF;\nconst jitteredDelay = rawDelay * (1 - JITTER_RATIO + (2 * JITTER_RATIO * deterministicUnit));\nconst nextDelay = Math.max(BASE_INTERVAL_S, Math.min(MAX_INTERVAL_S, Math.round(jitteredDelay)));\n\nreturn {\n  json: {\n    status_url: input.status_url,\n    poll_decision: 'wait',\n    poll_reason: 'retry_scheduled',\n    poll_state: { ...state, next_delay_s: nextDelay }\n  }\n};"
+      },
+      "id": "6757f19a-bc80-4919-9d10-800d20f06142",
+      "name": "Compute Bounded Backoff",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        140,
+        -80
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json.poll_state.next_delay_s }}",
+        "unit": "seconds"
+      },
+      "id": "0c41c4f8-c2d0-4379-8904-161f5de44a9a",
+      "name": "Wait Before Next Poll",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        360,
+        -80
+      ],
+      "webhookId": "7cd4605e-2309-4998-835e-500910862be1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const replies = Array.isArray($json.safe_replies) ? $json.safe_replies : [];\nreturn {\n  json: {\n    outcome: 'succeeded',\n    action: 'publish_participant_reply',\n    publishable: replies.length > 0,\n    safe_replies: replies\n  }\n};"
+      },
+      "id": "5bde12d2-0059-4df6-b5ec-9900aaf24f72",
+      "name": "Terminal Succeeded",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        260
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const allowedReasons = new Set([\n  'invalid_status_url',\n  'manual_reconciliation_required',\n  'unexpected_response',\n  'access_failure',\n  'job_not_available',\n  'poll_http_failure',\n  'invalid_json',\n  'unsafe_succeeded_result',\n  'technical_terminal_state',\n  'request_failed'\n]);\nconst candidate = typeof $json.poll_reason === 'string' ? $json.poll_reason : '';\nconst reason = allowedReasons.has(candidate) ? candidate : 'poll_failed';\nreturn {\n  json: {\n    outcome: 'fallback',\n    action: 'use_legacy_or_human',\n    publishable: false,\n    manual_reconciliation_required: reason === 'manual_reconciliation_required',\n    reason\n  }\n};"
+      },
+      "id": "22ddb357-9ed8-477c-9637-61fdfc45399a",
+      "name": "Terminal Safe Fallback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        540
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    outcome: 'deadline_exceeded',\n    action: 'use_legacy_or_human',\n    publishable: false,\n    manual_reconciliation_required: true,\n    reason: 'deadline_exceeded'\n  }\n};"
+      },
+      "id": "d45854ff-5f37-4bce-9545-6994c904a7e5",
+      "name": "Terminal Deadline Exceeded",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        -100
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "return {\n  json: {\n    outcome: 'attempts_exhausted',\n    action: 'use_legacy_or_human',\n    publishable: false,\n    manual_reconciliation_required: true,\n    reason: 'attempts_exhausted'\n  }\n};"
+      },
+      "id": "4c7272ef-76b2-4237-ad21-603d6181b9d3",
+      "name": "Terminal Attempts Exhausted",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        80
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "When Executed by Another Workflow": {
+      "main": [
+        [
+          {
+            "node": "Initialize Durable Poll State",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Initialize Durable Poll State": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Loop Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Evaluate Loop Guard": {
+      "main": [
+        [
+          {
+            "node": "Deadline Exceeded?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deadline Exceeded?": {
+      "main": [
+        [
+          {
+            "node": "Terminal Deadline Exceeded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Attempts Exhausted?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Attempts Exhausted?": {
+      "main": [
+        [
+          {
+            "node": "Terminal Attempts Exhausted",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Wait Required?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Required?": {
+      "main": [
+        [
+          {
+            "node": "Compute Bounded Backoff",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Poll Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Compute Bounded Backoff": {
+      "main": [
+        [
+          {
+            "node": "Wait Before Next Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait Before Next Poll": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Loop Guard",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Increment Attempt",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Terminal Safe Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Increment Attempt": {
+      "main": [
+        [
+          {
+            "node": "Fetch Job Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Job Status": {
+      "main": [
+        [
+          {
+            "node": "Join Poll State and Response",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Terminal Safe Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Join Poll State and Response": {
+      "main": [
+        [
+          {
+            "node": "Classify Poll Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Classify Poll Result": {
+      "main": [
+        [
+          {
+            "node": "Succeeded and Safe?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Succeeded and Safe?": {
+      "main": [
+        [
+          {
+            "node": "Terminal Succeeded",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Continue Polling?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue Polling?": {
+      "main": [
+        [
+          {
+            "node": "Evaluate Loop Guard",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Terminal Safe Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "executionTimeout": 3000,
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "060db7e7-a08f-4283-abdc-289245d77bab",
+  "meta": {
+    "templateCredsSetupCompleted": false
+  },
+  "tags": []
+}

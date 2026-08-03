@@ -49,10 +49,12 @@ from data_pipeline.ticket_job_models import (
     TicketJobRecord,
     TicketJobState,
 )
+from data_pipeline.durable_document import DurableDocumentValidationError
 from data_pipeline.ticket_job_repository import (
     StaleEnqueueGeneration,
     StaleLeaseEpoch,
     TicketJobRepository,
+    build_validated_inquiry_checkpoint,
 )
 from data_pipeline.ticket_orchestrator import (
     ExtractionInvalidOutput,
@@ -83,9 +85,160 @@ _HEARTBEAT_RENEW_TIMEOUT_CAP_S = 10.0
 _HEARTBEAT_RETRY_DELAY_CAP_S = 5.0
 _HEARTBEAT_MIN_STEP_S = 0.001
 
+_SAFE_EXCEPTION_TYPES = frozenset({
+    "AssertionError",
+    "AttributeError",
+    "DurableDocumentValidationError",
+    "Exception",
+    "ForusBotsCheckpointFailed",
+    "ForusBotsError",
+    "ForusBotsJobFailed",
+    "ForusBotsPollFailed",
+    "KeyError",
+    "PineconeCircuitOpen",
+    "PineconeRetrievalError",
+    "RuntimeError",
+    "StaleLeaseEpoch",
+    "TimeoutError",
+    "TypeError",
+    "ValidationError",
+    "ValueError",
+})
+_SAFE_DEPENDENCY_CODES = frozenset({
+    "OK", "CANCELLED", "UNKNOWN", "INVALID_ARGUMENT",
+    "DEADLINE_EXCEEDED", "NOT_FOUND", "ALREADY_EXISTS",
+    "PERMISSION_DENIED", "RESOURCE_EXHAUSTED", "FAILED_PRECONDITION",
+    "ABORTED", "OUT_OF_RANGE", "UNIMPLEMENTED", "INTERNAL",
+    "UNAVAILABLE", "DATA_LOSS", "UNAUTHENTICATED",
+    "400", "401", "403", "404", "408", "409", "412", "422",
+    "429", "500", "502", "503", "504",
+})
+_SAFE_FAILURE_PHASES = frozenset({
+    "handle_inquiry",
+    "convert_outcome",
+    "validate_durable_document",
+    "persist_inquiry_result",
+    "mark_terminal",
+})
+
 
 class _ForusBotsSubmitIntentAlreadyExists(RuntimeError):
     """Un attempt anterior pudo enviar el POST; nunca se reenvía a ciegas."""
+
+
+class _InquiryPhaseFailure(RuntimeError):
+    """Sanitized phase boundary; retains no exception message or payload."""
+
+    def __init__(self, phase: str, exc: Exception) -> None:
+        self.phase = _safe_failure_phase(phase)
+        self.error_type = _safe_exception_type(exc)
+        self.dependency_code = _safe_dependency_code(exc)
+        stats = getattr(exc, "stats", None)
+        self.estimated_size_bytes = _safe_nonnegative_stat(
+            getattr(stats, "estimated_size_bytes", None)
+        )
+        self.max_depth = _safe_nonnegative_stat(
+            getattr(stats, "max_depth", None)
+        )
+        self.invalid_nested_array_count = _safe_nonnegative_stat(
+            getattr(stats, "invalid_nested_array_count", None)
+        )
+        super().__init__(f"inquiry phase failed ({phase})")
+
+
+def _safe_exception_type(exc: Exception) -> str:
+    name = type(exc).__name__
+    return name if name in _SAFE_EXCEPTION_TYPES else "Exception"
+
+
+def _safe_failure_phase(value: Any) -> str:
+    return value if value in _SAFE_FAILURE_PHASES else "handle_inquiry"
+
+
+def _safe_nonnegative_stat(value: Any) -> Optional[int]:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return int(min(value, 2**63 - 1))
+
+
+def _failure_fingerprint(
+    *,
+    phase: str,
+    error_type: str,
+    dependency_code: Optional[str],
+    estimated_size_bytes: Optional[int],
+    max_depth: Optional[int],
+    invalid_nested_arrays: Optional[int],
+) -> str:
+    """Stable correlation derived only from closed structural metadata."""
+    structural = "|".join((
+        _safe_failure_phase(phase),
+        error_type if error_type in _SAFE_EXCEPTION_TYPES else "Exception",
+        dependency_code or "none",
+        str(estimated_size_bytes) if estimated_size_bytes is not None else "none",
+        str(max_depth) if max_depth is not None else "none",
+        str(invalid_nested_arrays)
+        if invalid_nested_arrays is not None else "none",
+    ))
+    return hashlib.sha256(structural.encode("ascii")).hexdigest()
+
+
+def _safe_dependency_code(exc: Exception) -> Optional[str]:
+    """Extract a gRPC/SDK code only when it matches a closed safe token."""
+    code: Any = getattr(exc, "code", None)
+    if callable(code):
+        try:
+            code = code()
+        except Exception:
+            return None
+    code = getattr(code, "name", code)
+    if isinstance(code, int):
+        code = str(code)
+    if isinstance(code, str) and code in _SAFE_DEPENDENCY_CODES:
+        return code
+    return None
+
+
+def _log_inquiry_failure(exc: Exception, *, default_phase: str) -> None:
+    if isinstance(exc, _InquiryPhaseFailure):
+        phase = exc.phase
+        error_type = exc.error_type
+        dependency_code = exc.dependency_code
+        estimated_size_bytes = exc.estimated_size_bytes
+        max_depth = exc.max_depth
+        invalid_nested_arrays = exc.invalid_nested_array_count
+    else:
+        phase = _safe_failure_phase(default_phase)
+        error_type = _safe_exception_type(exc)
+        dependency_code = _safe_dependency_code(exc)
+        stats = getattr(exc, "stats", None)
+        estimated_size_bytes = _safe_nonnegative_stat(
+            getattr(stats, "estimated_size_bytes", None)
+        )
+        max_depth = _safe_nonnegative_stat(getattr(stats, "max_depth", None))
+        invalid_nested_arrays = _safe_nonnegative_stat(
+            getattr(stats, "invalid_nested_array_count", None)
+        )
+    fingerprint = _failure_fingerprint(
+        phase=phase,
+        error_type=error_type,
+        dependency_code=dependency_code,
+        estimated_size_bytes=estimated_size_bytes,
+        max_depth=max_depth,
+        invalid_nested_arrays=invalid_nested_arrays,
+    )
+    logger.error(
+        "ticket inquiry failed phase=%s error_type=%s dependency_code=%s "
+        "fingerprint=%s estimated_size_bytes=%s max_depth=%s "
+        "invalid_nested_arrays=%s",
+        phase,
+        error_type,
+        dependency_code or "none",
+        fingerprint,
+        estimated_size_bytes if estimated_size_bytes is not None else "none",
+        max_depth if max_depth is not None else "none",
+        invalid_nested_arrays if invalid_nested_arrays is not None else "none",
+    )
 
 
 def _install_forusbots_intent_guard(
@@ -97,8 +250,51 @@ def _install_forusbots_intent_guard(
     worker_id: str,
     lease_epoch: int,
     route: str,
+    job_request_fingerprint: str,
 ) -> None:
     """Liga el hook del orquestador al CAS durable del job actual."""
+    operation_setter = getattr(
+        orchestrator, "set_forusbots_operation_hooks", None
+    )
+    if operation_setter is not None:
+        async def _prepare(operation: str) -> Any:
+            operation_fingerprint = hashlib.sha256(
+                (
+                    f"{job_request_fingerprint}|{inquiry_index}|"
+                    f"{operation}|forusbots-v1"
+                ).encode("utf-8")
+            ).hexdigest()
+            return await repo.prepare_forusbots_operation(
+                job_id,
+                inquiry_index,
+                operation=operation,
+                request_fingerprint=operation_fingerprint,
+                worker_id=worker_id,
+                lease_epoch=lease_epoch,
+                route=route,
+            )
+
+        async def _submitted(operation: str, external_job_id: str) -> None:
+            await repo.record_forusbots_external_job(
+                job_id,
+                inquiry_index,
+                operation=operation,
+                external_job_id=external_job_id,
+                worker_id=worker_id,
+                lease_epoch=lease_epoch,
+            )
+
+        stable_scope = hashlib.sha256(
+            (
+                f"{job_id}|{job_request_fingerprint}|{inquiry_index}|"
+                "forusbots-dedupe-v1"
+            ).encode("utf-8")
+        ).hexdigest()
+        operation_setter(
+            _prepare, _submitted, dedupe_scope=stable_scope,
+        )
+        return
+
     setter = getattr(orchestrator, "set_forusbots_intent_guard", None)
     if setter is None:
         # Los dobles de tests de rutas sin ForusBots no implementan el hook.
@@ -206,12 +402,14 @@ def minimize_inquiry_result(result: InquiryResult) -> Dict[str, Any]:
 
 def outcome_is_degraded(o: InquiryOutcome) -> Tuple[bool, Optional[str]]:
     """(degradado?, código público). Cualquier señal técnica cuenta."""
+    diag = o.diagnostics or {}
+    if diag.get("manual_reconciliation_required") is True:
+        return True, PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value
     if o.scrape_status not in _SCRAPE_OK_STATES:
         code = (PublicErrorCode.FORUSBOTS_TIMEOUT
                 if o.scrape_status == "timeout"
                 else PublicErrorCode.PLAN_SCRAPE_FAILED)
         return True, code.value
-    diag = o.diagnostics or {}
     if diag.get("kq_synthesis_failed"):
         # fallo técnico de síntesis KQ (Tarea 6 Paso 2): nunca publicable
         return True, PublicErrorCode.LLM_FAILURE.value
@@ -226,22 +424,45 @@ def outcome_is_degraded(o: InquiryOutcome) -> Tuple[bool, Optional[str]]:
     coverage_signals = (
         (diag.get("classifier") or {}).get("coverage_signals") or {}
     )
-    if isinstance(coverage_signals, dict) \
-            and coverage_signals.get("retrieval_status") == "failed":
-        return True, PublicErrorCode.PINECONE_TRANSIENT_FAILURE.value
+    if isinstance(coverage_signals, dict):
+        retrieval_status = coverage_signals.get("retrieval_status")
+        failure_kind = coverage_signals.get("failure_kind")
+        retrieval_retryable = coverage_signals.get("retryable") is True
+        if retrieval_status == "blocked" and failure_kind == "unsafe_query":
+            return True, PublicErrorCode.UNSAFE_RETRIEVAL_QUERY.value
+        if retrieval_status == "failed":
+            if retrieval_retryable and failure_kind in {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }:
+                return True, PublicErrorCode.PINECONE_TRANSIENT_FAILURE.value
+            return True, PublicErrorCode.INTERNAL_ERROR.value
     knowledge_metadata = getattr(o.knowledge_result, "metadata", None) or {}
     if isinstance(knowledge_metadata, dict) \
             and knowledge_metadata.get("error") is not None:
-        error_type = str(knowledge_metadata.get("error_type") or "").lower()
+        failure_kind = knowledge_metadata.get("retrieval_failure_kind")
         code = (
             PublicErrorCode.PINECONE_TRANSIENT_FAILURE
-            if "pinecone" in error_type
+            if knowledge_metadata.get("retrieval_retryable") is True
+            and failure_kind in {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
             else PublicErrorCode.INTERNAL_ERROR
         )
         return True, code.value
     generate_metadata = getattr(o.generate_result, "metadata", None) or {}
     if isinstance(generate_metadata, dict) \
             and generate_metadata.get("error") is not None:
+        failure_kind = generate_metadata.get("retrieval_failure_kind")
+        if (
+            generate_metadata.get("retrieval_retryable") is True
+            and failure_kind in {
+                "timeout", "transport", "rate_limit", "server_error",
+                "circuit_open",
+            }
+        ):
+            return True, PublicErrorCode.PINECONE_TRANSIENT_FAILURE.value
         return True, PublicErrorCode.LLM_FAILURE.value
     if diag.get("error"):
         return True, PublicErrorCode.INTERNAL_ERROR.value
@@ -277,6 +498,53 @@ def aggregate_states(entries: List[Dict[str, Any]],
     return TicketJobState.PARTIAL, NextAction.USE_LEGACY_OR_HUMAN
 
 
+_PUBLIC_ERROR_PRIORITY = {
+    PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value: 0,
+    PublicErrorCode.INTERNAL_ERROR.value: 1,
+    PublicErrorCode.UNSAFE_RETRIEVAL_QUERY.value: 2,
+    PublicErrorCode.LLM_FAILURE.value: 3,
+    PublicErrorCode.PLAN_SCRAPE_FAILED.value: 4,
+    PublicErrorCode.FORUSBOTS_FAILED.value: 5,
+    PublicErrorCode.PINECONE_TRANSIENT_FAILURE.value: 6,
+    PublicErrorCode.FORUSBOTS_TIMEOUT.value: 7,
+    PublicErrorCode.LLM_TIMEOUT.value: 8,
+    PublicErrorCode.INQUIRY_TIMEOUT.value: 9,
+    PublicErrorCode.TOTAL_JOB_TIMEOUT.value: 10,
+    PublicErrorCode.UNPROCESSED_INQUIRIES.value: 11,
+    PublicErrorCode.WORKER_CANCELLED.value: 12,
+}
+_ALWAYS_NONRETRYABLE_PUBLIC_ERRORS = {
+    PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value,
+    PublicErrorCode.INTERNAL_ERROR.value,
+    PublicErrorCode.UNSAFE_RETRIEVAL_QUERY.value,
+}
+
+
+def _aggregate_public_error(
+    entries: List[Dict[str, Any]], unprocessed: int,
+) -> Tuple[Optional[str], Optional[bool]]:
+    """Select one coherent top-level code from per-inquiry failures."""
+    candidates: List[Tuple[str, bool]] = []
+    for entry in entries:
+        error = entry.get("error")
+        if not isinstance(error, dict):
+            continue
+        code = error.get("code")
+        if isinstance(code, str) and code in _PUBLIC_ERROR_PRIORITY:
+            candidates.append((code, error.get("retryable") is True))
+    if unprocessed > 0:
+        candidates.append((PublicErrorCode.UNPROCESSED_INQUIRIES.value, True))
+    if not candidates:
+        return None, None
+
+    code, retryable = min(
+        candidates, key=lambda item: _PUBLIC_ERROR_PRIORITY[item[0]]
+    )
+    if code in _ALWAYS_NONRETRYABLE_PUBLIC_ERRORS:
+        retryable = False
+    return code, retryable
+
+
 def _collect_forusbots_ids(outcomes: List[InquiryOutcome]) -> List[str]:
     """Todos los job IDs de ForusBots (participant Y plan) para trazabilidad
     completa (HT-25)."""
@@ -298,6 +566,11 @@ def _entry_forusbots_ids(entry: Dict[str, Any]) -> List[str]:
     outcomes exitosos (P1 review: un scrape real cuya inquiry luego degrada no
     puede perder su job_id — la reconciliación lo necesita)."""
     ids: List[str] = list(entry.get("forusbots_job_ids") or [])
+    for receipt in entry.get("forusbots_external_jobs") or []:
+        if isinstance(receipt, dict):
+            external_id = receipt.get("job_id")
+            if isinstance(external_id, str) and external_id:
+                ids.append(external_id)
     diag = ((entry.get("result") or {}).get("diagnostics")) or {}
     for key in ("forusbots_participant_job_id", "forusbots_plan_job_id",
                 "forusbots_job_id"):
@@ -371,6 +644,10 @@ def _emit_step_latency(started: float, *, step: str, code: str) -> None:
     )
 
 
+def _emit_phase(phase: str) -> None:
+    _emit_worker_metric("ticket_phase_count", 1, phase=phase)
+
+
 def _route_metric_step(route: Any) -> str:
     return {
         "knowledge_question": "retrieve",
@@ -426,7 +703,6 @@ def _emit_terminal_metric(record: TicketJobRecord) -> None:
 
     job_hash = _hashlib.sha256(record.job_id.encode()).hexdigest()
     try:
-        ticket_metrics.increment("ticket_jobs_terminal", state=record.state.value)
         ticket_metrics.emit(
             "ticket_job_terminal",
             1,
@@ -435,6 +711,15 @@ def _emit_terminal_metric(record: TicketJobRecord) -> None:
             state=record.state.value,
             code=record.public_error_code or "none",
         )
+        for entry in record.per_inquiry_status:
+            error = entry.get("error")
+            code = error.get("code") if isinstance(error, dict) else None
+            ticket_metrics.emit(
+                "ticket_inquiry_terminal",
+                1,
+                route=entry.get("route"),
+                code=code or "none",
+            )
     except Exception:  # noqa: BLE001 - métricas jamás cambian el outcome
         logger.error("terminal metric emission failed")
 
@@ -766,6 +1051,39 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
     orchestrator = app.state.ticket_orchestrator_factory()
     started = time.monotonic()
 
+    async def _checkpoint(
+        inquiry_index: int, entry: Dict[str, Any]
+    ) -> TicketJobRecord:
+        # Defense in depth: validate the complete control and payload document
+        # here, then the repository rebuilds and validates them again inside
+        # the transaction immediately before the actual write.
+        _emit_phase("validate_durable_document")
+        try:
+            preview_source = await repo.get(job_id)
+            if preview_source is None:
+                raise StaleLeaseEpoch("ticket job missing before checkpoint")
+            build_validated_inquiry_checkpoint(
+                preview_source, inquiry_index, entry,
+            )
+        except StaleLeaseEpoch:
+            raise
+        except Exception as exc:
+            raise _InquiryPhaseFailure(
+                "validate_durable_document", exc,
+            ) from None
+        _emit_phase("persist_inquiry_result")
+        try:
+            return await repo.record_inquiry_result(
+                job_id,
+                inquiry_index,
+                entry,
+                lease_epoch=lease_epoch,
+            )
+        except StaleLeaseEpoch:
+            raise
+        except Exception as exc:
+            raise _InquiryPhaseFailure("persist_inquiry_result", exc) from None
+
     # Presupuesto del intento: min(TICKET_ATTEMPT_BUDGET_S, lo que reste del
     # deadline ABSOLUTO del job). Un intento no inicia un efecto que no cabe.
     budget = settings.TICKET_ATTEMPT_BUDGET_S
@@ -913,6 +1231,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                         worker_id=worker_id,
                         lease_epoch=lease_epoch,
                         route=getattr(cls, "route", "needs_more_info"),
+                        job_request_fingerprint=record.request_fingerprint,
                     )
                     for fault_point in (
                         "lease_lost", "timeout_reset", "dependency_down",
@@ -1020,8 +1339,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                  if s.get("index") == i and s.get("forusbots_job_ids")), None)
             if shadow_entry_ids:
                 entry["forusbots_job_ids"] = shadow_entry_ids
-            await repo.record_inquiry_result(job_id, i, entry,
-                                             lease_epoch=lease_epoch)
+            await _checkpoint(i, entry)
             _inject_staging_fault(
                 fault_plan,
                 point="post_checkpoint",
@@ -1062,18 +1380,19 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         if remaining <= 0:
             # Presupuesto agotado: lo que falta queda explícitamente
             # sin procesar; lo ya persistido sobrevive (invariante 8).
-            await repo.record_inquiry_result(job_id, i, {
+            await _checkpoint(i, {
                 "route": getattr(cls, "route", None),
                 "execution_status": "unprocessed",
                 "participant_reply_safe": False,
                 "degraded": True,
                 "error": {"code": PublicErrorCode.TOTAL_JOB_TIMEOUT.value,
                           "retryable": True},
-            }, lease_epoch=lease_epoch)
+            })
             continue
 
         inquiry_started = time.monotonic()
         inquiry_step = _route_metric_step(getattr(cls, "route", None))
+        failure_phase = "handle_inquiry"
         try:
             if override_reason is not None:
                 # Coerción de rollout (knowledge_only): NO es un outcome de
@@ -1085,12 +1404,14 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                                    "confidence": getattr(cls, "confidence", None)},
                     "ticket_handler_override": override_reason,
                 })
+                failure_phase = "convert_outcome"
+                _emit_phase("convert_outcome")
                 entry = _entry_from_outcome(i, outcome)
                 entry["participant_reply_safe"] = False
                 entry["coerced_by_mode"] = True
                 outcomes.append(outcome)
-                await repo.record_inquiry_result(job_id, i, entry,
-                                                 lease_epoch=lease_epoch)
+                failure_phase = "validate_durable_document"
+                await _checkpoint(i, entry)
                 _inject_staging_fault(
                     fault_plan,
                     point="post_checkpoint",
@@ -1111,6 +1432,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 worker_id=worker_id,
                 lease_epoch=lease_epoch,
                 route=getattr(cls, "route", "needs_more_info"),
+                job_request_fingerprint=record.request_fingerprint,
             )
             for fault_point in (
                 "lease_lost", "timeout_reset", "dependency_down",
@@ -1121,6 +1443,8 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     inquiry_index=i,
                     record=record,
                 )
+            failure_phase = "handle_inquiry"
+            _emit_phase("handle_inquiry")
             outcome = await asyncio.wait_for(
                 orchestrator.handle_inquiry(
                     ext, req, total_inquiries=total, classification=cls
@@ -1128,11 +1452,13 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 timeout=min(settings.TICKET_INQUIRY_BUDGET_S, remaining),
             )
             outcomes.append(outcome)
+            failure_phase = "convert_outcome"
+            _emit_phase("convert_outcome")
+            checkpoint_entry = _entry_from_outcome(i, outcome)
             # el checkpoint es la verificación DESPUÉS del efecto: escritura
             # condicional al epoch (un intento fenced no puede guardar)
-            await repo.record_inquiry_result(
-                job_id, i, _entry_from_outcome(i, outcome),
-                lease_epoch=lease_epoch)
+            failure_phase = "validate_durable_document"
+            await _checkpoint(i, checkpoint_entry)
             _inject_staging_fault(
                 fault_plan,
                 point="post_checkpoint",
@@ -1149,7 +1475,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             # No sabemos si el attempt anterior alcanzó ForusBots y perdió
             # la respuesta. Sin idempotencia/reconcile upstream, la única
             # opción segura es no reenviar y pedir reconciliación manual.
-            await repo.record_inquiry_result(job_id, i, {
+            await _checkpoint(i, {
                 "route": getattr(cls, "route", None),
                 "execution_status": "failed",
                 "participant_reply_safe": False,
@@ -1160,7 +1486,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     "code": PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value,
                     "retryable": False,
                 },
-            }, lease_epoch=lease_epoch)
+            })
             _emit_step_latency(
                 inquiry_started, step=inquiry_step, code="failed"
             )
@@ -1168,7 +1494,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             timed_out_total = (deadline - time.monotonic()) <= 0
             code = (PublicErrorCode.TOTAL_JOB_TIMEOUT if timed_out_total
                     else PublicErrorCode.INQUIRY_TIMEOUT)
-            await repo.record_inquiry_result(job_id, i, {
+            await _checkpoint(i, {
                 "route": getattr(cls, "route", None),
                 "execution_status": "timeout",
                 "participant_reply_safe": False,
@@ -1180,7 +1506,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "manual_reconciliation_required":
                     getattr(cls, "route", None) == "generate_response",
                 "error": {"code": code.value, "retryable": True},
-            }, lease_epoch=lease_epoch)
+            })
             _emit_step_latency(
                 inquiry_started, step=inquiry_step, code="timeout"
             )
@@ -1193,18 +1519,30 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             raise
         except (FaultInjectionRejected, InjectedFault):
             raise
-        except Exception:  # noqa: BLE001
-            logger.error("ticket inquiry failed (inquiry_index=%d)", i)
-            await repo.record_inquiry_result(job_id, i, {
+        except Exception as exc:  # noqa: BLE001
+            pre_effect_validation_failure = isinstance(
+                exc, DurableDocumentValidationError
+            )
+            logged_exc: Exception = exc
+            if pre_effect_validation_failure:
+                logged_exc = _InquiryPhaseFailure(
+                    "validate_durable_document", exc
+                )
+            _log_inquiry_failure(
+                logged_exc,
+                default_phase=failure_phase,
+            )
+            await _checkpoint(i, {
                 "route": getattr(cls, "route", None),
                 "execution_status": "failed",
                 "participant_reply_safe": False,
                 "degraded": True,
                 "manual_reconciliation_required":
-                    getattr(cls, "route", None) == "generate_response",
+                    getattr(cls, "route", None) == "generate_response"
+                    and not pre_effect_validation_failure,
                 "error": {"code": PublicErrorCode.INTERNAL_ERROR.value,
                           "retryable": False},
-            }, lease_epoch=lease_epoch)
+            })
             _emit_step_latency(
                 inquiry_started, step=inquiry_step, code="failed"
             )
@@ -1220,31 +1558,35 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
     if (state == TicketJobState.SUCCEEDED
             and any(e.get("coerced_by_mode") for e in entries)):
         next_action = NextAction.USE_LEGACY
-    error_code = None
+    error_code: Optional[str] = None
+    error_retryable: Optional[bool] = None
     if state != TicketJobState.SUCCEEDED:
-        codes = [e.get("error", {}).get("code") for e in entries
-                 if e.get("error")]
-        if unprocessed > 0:
-            codes.append(PublicErrorCode.UNPROCESSED_INQUIRIES.value)
-        error_code = codes[0] if codes else None
+        error_code, error_retryable = _aggregate_public_error(
+            entries, unprocessed
+        )
 
-    final = await repo.update(
-        job_id,
-        state=state,
-        expected_lease_epoch=lease_epoch,
-        next_action=next_action,
-        current_step="done",
-        # trazabilidad COMPLETA: IDs de ForusBots de TODOS los attempts
-        # persistidos, no sólo de los outcomes de este intento (Paso 4)
-        forusbots_job_ids=_collect_forusbots_ids_from_entries(entries),
-        public_error_code=error_code,
-        retryable=any(e.get("error", {}).get("retryable") for e in entries) or None,
-        public_result={
-            "route_taken": (entries[0].get("result") or {}).get("route")
-            if entries else None,
-            "metadata": {"ticket_handler_mode": mode},
-        },
-    )
+    _emit_phase("mark_terminal")
+    try:
+        final = await repo.update(
+            job_id,
+            state=state,
+            expected_lease_epoch=lease_epoch,
+            next_action=next_action,
+            current_step="done",
+            # trazabilidad COMPLETA: IDs de ForusBots de TODOS los attempts
+            # persistidos, no sólo de los outcomes de este intento (Paso 4)
+            forusbots_job_ids=_collect_forusbots_ids_from_entries(entries),
+            public_error_code=error_code,
+            retryable=error_retryable,
+            public_result={
+                "route_taken": (entries[0].get("result") or {}).get("route")
+                if entries else None,
+                "metadata": {"ticket_handler_mode": mode},
+            },
+        )
+    except Exception as exc:
+        _log_inquiry_failure(exc, default_phase="mark_terminal")
+        raise
     await _log_execution_safe(app, record, final)
     _emit_step_latency(
         finalize_started,

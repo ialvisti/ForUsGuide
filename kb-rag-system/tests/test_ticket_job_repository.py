@@ -474,6 +474,286 @@ class TestAtomicQuotas:
 
 class TestLeaseFencing:
 
+    async def test_prepare_forusbots_operation_resumes_confirmed_id(self, repo):
+        rec, _ = await _create(repo, key="forusbots-prepare-resume")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+
+        first = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="a" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        )
+        assert first.action == "submit"
+        assert first.external_job_id is None
+
+        await repo.record_forusbots_external_job(
+            rec.job_id,
+            0,
+            operation="participant",
+            external_job_id="external-job-synthetic-resume",
+            worker_id="worker-1",
+            lease_epoch=epoch,
+        )
+        second = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="a" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        )
+
+        assert second.action == "resume"
+        assert second.external_job_id == "external-job-synthetic-resume"
+
+    async def test_prepare_forusbots_operation_never_resubmits_intent_without_id(
+            self, repo):
+        rec, _ = await _create(repo, key="forusbots-prepare-reconcile")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+
+        first = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="b" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        )
+        second = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="b" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        )
+
+        assert first.action == "submit"
+        assert second.action == "reconcile"
+        assert second.external_job_id is None
+
+    async def test_prepare_forusbots_operation_reserves_participant_and_plan(
+            self, repo):
+        rec, _ = await _create(repo, key="forusbots-prepare-two-operations")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+
+        participant = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="participant",
+            request_fingerprint="c" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        )
+        plan = await repo.prepare_forusbots_operation(
+            rec.job_id,
+            0,
+            operation="plan",
+            request_fingerprint="d" * 64,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        )
+
+        assert participant.action == "submit"
+        assert plan.action == "submit"
+
+        current = await repo.get(rec.job_id)
+        assert [
+            intent["operation"]
+            for intent in current.per_inquiry_status[0][
+                "forusbots_submit_intents"
+            ]
+        ] == ["participant", "plan"]
+
+    async def test_forusbots_submit_intent_is_reserved_per_operation(self, repo):
+        rec, _ = await _create(repo, key="forusbots-intent-per-operation")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            operation="participant",
+        ) is True
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            operation="plan",
+        ) is True
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            operation="participant",
+        ) is False
+
+        current = await repo.get(rec.job_id)
+        assert current.per_inquiry_status[0]["forusbots_submit_intents"] == [
+            {
+                "operation": "participant",
+                "lease_epoch": epoch,
+                "worker_id": "worker-1",
+            },
+            {
+                "operation": "plan",
+                "lease_epoch": epoch,
+                "worker_id": "worker-1",
+            },
+        ]
+
+    async def test_final_checkpoint_cannot_erase_forusbots_submit_intent(
+            self, repo):
+        rec, _ = await _create(repo, key="forusbots-intent-merge")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        ) is True
+
+        await repo.record_inquiry_result(
+            rec.job_id,
+            0,
+            {
+                "route": "generate_response",
+                "execution_status": "succeeded",
+                "participant_reply_safe": True,
+            },
+            lease_epoch=epoch,
+        )
+
+        current = await repo.get(rec.job_id)
+        checkpoint = current.per_inquiry_status[0]
+        assert checkpoint["forusbots_submit_intent"] is True
+        assert checkpoint["forusbots_submit_intent_epoch"] == epoch
+
+    async def test_external_job_id_is_durable_before_final_checkpoint(self, repo):
+        rec, _ = await _create(repo, key="forusbots-external-id")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+        ) is True
+
+        await repo.record_forusbots_external_job(
+            rec.job_id,
+            0,
+            operation="participant",
+            external_job_id="external-job-synthetic-1",
+            worker_id="worker-1",
+            lease_epoch=epoch,
+        )
+        await repo.record_inquiry_result(
+            rec.job_id,
+            0,
+            {
+                "route": "generate_response",
+                "execution_status": "succeeded",
+                "participant_reply_safe": True,
+            },
+            lease_epoch=epoch,
+        )
+
+        current = await repo.get(rec.job_id)
+        checkpoint = current.per_inquiry_status[0]
+        assert checkpoint["forusbots_external_jobs"] == [
+            {"operation": "participant", "job_id": "external-job-synthetic-1"}
+        ]
+        assert current.forusbots_job_ids == ["external-job-synthetic-1"]
+
+    async def test_post_submit_job_id_receipt_survives_lease_expiry(
+            self, repo, monkeypatch):
+        import data_pipeline.ticket_job_repository as repository_module
+
+        rec, _ = await _create(repo, key="forusbots-post-submit-expired-lease")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            operation="participant",
+        ) is True
+
+        after_lease_expiry = utcnow() + timedelta(minutes=2)
+        monkeypatch.setattr(
+            repository_module, "utcnow", lambda: after_lease_expiry
+        )
+
+        await repo.record_forusbots_external_job(
+            rec.job_id,
+            0,
+            operation="participant",
+            external_job_id="external-job-synthetic-late",
+            worker_id="worker-1",
+            lease_epoch=epoch,
+        )
+
+        current = await repo.get(rec.job_id)
+        assert current.forusbots_job_ids == ["external-job-synthetic-late"]
+
+    async def test_stale_terminal_snapshot_cannot_erase_late_external_id(
+            self, repo):
+        """A receipt may commit after the worker collected terminal entries."""
+        from data_pipeline.ticket_job_models import TicketJobState
+
+        rec, _ = await _create(repo, key="forusbots-terminal-race")
+        epoch = await repo.claim(rec.job_id, worker_id="worker-1")
+        assert await repo.reserve_forusbots_submit_intent(
+            rec.job_id,
+            0,
+            worker_id="worker-1",
+            lease_epoch=epoch,
+            route="generate_response",
+            operation="participant",
+        ) is True
+
+        stale_ids = []
+        await repo.record_forusbots_external_job(
+            rec.job_id,
+            0,
+            operation="participant",
+            external_job_id="external-job-after-snapshot",
+            worker_id="worker-1",
+            lease_epoch=epoch,
+        )
+        final = await repo.update(
+            rec.job_id,
+            state=TicketJobState.FAILED,
+            expected_lease_epoch=epoch,
+            forusbots_job_ids=stale_ids,
+        )
+
+        assert final.forusbots_job_ids == ["external-job-after-snapshot"]
+        assert final.per_inquiry_status[0]["forusbots_external_jobs"] == [
+            {
+                "operation": "participant",
+                "job_id": "external-job-after-snapshot",
+            }
+        ]
+
     async def test_forusbots_submit_intent_survives_lease_loss_and_blocks_resubmit(
             self, repo, backend):
         """El lease fencea escrituras, pero no puede deshacer un POST que ya

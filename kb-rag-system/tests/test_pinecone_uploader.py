@@ -4,6 +4,7 @@ Unit tests for Pinecone uploader retrieval behavior.
 
 from __future__ import annotations
 
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from types import SimpleNamespace
 from unittest.mock import Mock, patch
 import logging
@@ -60,9 +61,195 @@ def test_query_does_not_retry_4xx():
     index = Mock()
     index.search.side_effect = _HTTPErr(400)
     uploader = _uploader_with_index(index)
-    with pytest.raises(pinecone_uploader.PineconeRetrievalError):
+    with pytest.raises(pinecone_uploader.PineconeRetrievalError) as exc_info:
         uploader.query_chunks("retirement plan guidance", top_k=1)
     assert index.search.call_count == 1, "un 4xx no debe reintentarse"
+    assert exc_info.value.retryable is False
+    assert exc_info.value.failure_kind == "client_error"
+
+
+@pytest.mark.parametrize(
+    ("status_code", "failure_kind"),
+    [(429, "rate_limit"), (503, "server_error")],
+)
+def test_transient_retrieval_error_exposes_closed_retry_taxonomy(
+        status_code, failure_kind):
+    index = Mock()
+    index.search.side_effect = _HTTPErr(status_code)
+    uploader = _uploader_with_index(index)
+
+    with pytest.raises(pinecone_uploader.PineconeRetrievalError) as exc_info:
+        uploader.query_chunks("retirement plan guidance", top_k=1)
+
+    assert exc_info.value.retryable is True
+    assert exc_info.value.failure_kind == failure_kind
+
+
+@pytest.mark.parametrize(
+    ("failure", "failure_kind", "retryable", "expected_calls"),
+    [
+        (TimeoutError("synthetic timeout"), "timeout", True, 3),
+        (ConnectionError("synthetic connection"), "transport", True, 3),
+        (ValueError("synthetic invalid request"), "unknown", False, 1),
+    ],
+)
+def test_statusless_failures_use_concrete_types_not_name_heuristics(
+        failure, failure_kind, retryable, expected_calls):
+    index = Mock()
+    index.search.side_effect = failure
+    uploader = _uploader_with_index(index)
+
+    with pytest.raises(pinecone_uploader.PineconeRetrievalError) as exc_info:
+        uploader.query_chunks("retirement plan guidance", top_k=1)
+
+    assert exc_info.value.failure_kind == failure_kind
+    assert exc_info.value.retryable is retryable
+    assert index.search.call_count == expected_calls
+
+
+def test_sdk_connection_failure_is_retryable_transport_error():
+    """The pinned SDK wraps network failures in its own non-OSError type."""
+    from pinecone import PineconeConnectionError
+
+    index = Mock()
+    index.search.side_effect = PineconeConnectionError(
+        "synthetic connection failure"
+    )
+    uploader = _uploader_with_index(index)
+
+    with pytest.raises(pinecone_uploader.PineconeRetrievalError) as exc_info:
+        uploader.query_chunks("retirement plan guidance", top_k=1)
+
+    assert exc_info.value.failure_kind == "transport"
+    assert exc_info.value.retryable is True
+    assert index.search.call_count == 3
+
+
+@pytest.mark.parametrize(
+    ("status_code", "expected_requests"),
+    [(408, 1), (503, 3)],
+)
+def test_query_has_one_retry_authority_over_real_sdk_http_transport(
+    status_code, expected_requests
+):
+    """The pinned SDK must not multiply the uploader's three attempts.
+
+    Pinecone 9.1.0 performs three retries of its own by default (four HTTP
+    requests per ``Index.search`` call).  The uploader owns the reviewed
+    policy, so one logical query must produce at most three HTTP requests.
+    """
+    from pinecone import RetryConfig
+    from pinecone.index import Index
+
+    class AlwaysUnavailable(BaseHTTPRequestHandler):
+        requests = 0
+
+        def do_POST(self):  # noqa: N802 - stdlib handler API
+            type(self).requests += 1
+            length = int(self.headers.get("Content-Length", "0"))
+            self.rfile.read(length)
+            body = b'{"message":"synthetic unavailable"}'
+            self.send_response(status_code)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, _format, *_args):
+            return
+
+    assert RetryConfig().max_retries == 3, (
+        "the pinned SDK retry default changed; re-audit the single authority"
+    )
+    assert 408 in RetryConfig().retryable_status_codes
+    server = ThreadingHTTPServer(("127.0.0.1", 0), AlwaysUnavailable)
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
+    sdk_index = Index(
+        host=f"http://127.0.0.1:{server.server_port}",
+        api_key="synthetic-api-key",  # pragma: allowlist secret
+        timeout=1.0,
+    )
+    index = SimpleNamespace(
+        host=sdk_index.host,
+        search=sdk_index.search,
+        describe_index_stats=lambda: SimpleNamespace(total_vector_count=0),
+    )
+    pinecone_client = Mock()
+    pinecone_client.Index.return_value = index
+
+    try:
+        with patch(
+            "data_pipeline.pinecone_uploader.Pinecone",
+            return_value=pinecone_client,
+        ), patch("time.sleep", return_value=None):
+            uploader = PineconeUploader(
+                api_key="synthetic-api-key",  # pragma: allowlist secret
+                index_name="synthetic-index",
+            )
+            with pytest.raises(pinecone_uploader.PineconeRetrievalError):
+                uploader.query_chunks("retirement plan guidance", top_k=1)
+
+        assert AlwaysUnavailable.requests == expected_requests
+    finally:
+        close = getattr(locals().get("uploader"), "close", None)
+        if callable(close):
+            close()
+        sdk_index.close()
+        server.shutdown()
+        server.server_close()
+        server_thread.join(timeout=2)
+
+
+def test_retrieval_error_does_not_retain_filter_or_rerank_values():
+    private_sentinel = "participant-private-sentinel"
+    index = Mock()
+    index.search.side_effect = _HTTPErr(400)
+    uploader = _uploader_with_index(index)
+
+    with pytest.raises(pinecone_uploader.PineconeRetrievalError) as exc_info:
+        uploader.query_chunks(
+            "retirement plan guidance",
+            top_k=1,
+            filter_dict={"participant": private_sentinel},
+            rerank={"model": private_sentinel},
+        )
+
+    serialized = repr(vars(exc_info.value)) + repr(exc_info.value)
+    assert private_sentinel not in serialized
+    assert "filter_dict" not in vars(exc_info.value)
+    assert "rerank" not in vars(exc_info.value)
+
+
+def test_close_releases_all_pinecone_clients_once():
+    uploader = PineconeUploader.__new__(PineconeUploader)
+    uploader._query_search = Mock()
+    uploader.index = Mock()
+    uploader.pc = Mock()
+
+    uploader.close()
+    uploader.close()
+
+    uploader._query_search.close.assert_called_once_with()
+    uploader.index.close.assert_called_once_with()
+    uploader.pc.close.assert_called_once_with()
+
+
+def test_close_continues_after_failure_without_logging_exception_details(caplog):
+    private_sentinel = "participant-private-close-sentinel"
+    uploader = PineconeUploader.__new__(PineconeUploader)
+    uploader._query_search = Mock()
+    uploader._query_search.close.side_effect = RuntimeError(private_sentinel)
+    uploader.index = Mock()
+    uploader.pc = Mock()
+
+    with caplog.at_level(logging.ERROR, logger=pinecone_uploader.__name__):
+        uploader.close()
+
+    uploader.index.close.assert_called_once_with()
+    uploader.pc.close.assert_called_once_with()
+    assert private_sentinel not in caplog.text
+    assert "RuntimeError" in caplog.text
 
 
 def test_circuit_opens_after_consecutive_failures():
@@ -79,6 +266,49 @@ def test_circuit_opens_after_consecutive_failures():
     assert index.search.call_count == calls_after_first, (
         "con el circuito abierto no debe llamarse a Pinecone"
     )
+
+
+def test_inflight_query_does_not_retry_after_another_query_opens_circuit():
+    entered = threading.Event()
+    release = threading.Event()
+
+    class CoordinatedIndex:
+        def __init__(self):
+            self.calls_by_query = {}
+            self.lock = threading.Lock()
+
+        def search(self, **kwargs):
+            query = kwargs.get("query") or kwargs
+            query_text = query["inputs"]["text"]
+            with self.lock:
+                query_calls = self.calls_by_query.get(query_text, 0) + 1
+                self.calls_by_query[query_text] = query_calls
+            if query_text == "retirement plan" and query_calls == 1:
+                entered.set()
+                assert release.wait(timeout=2)
+            raise _HTTPErr(503)
+
+    index = CoordinatedIndex()
+    uploader = _uploader_with_index(index)
+    uploader._query_breaker = pinecone_uploader._CircuitBreaker(
+        threshold=1, cooldown_s=30.0
+    )
+
+    with patch("data_pipeline.pinecone_uploader.time.sleep"):
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            inflight = pool.submit(
+                uploader.query_chunks, "retirement plan overview", 1
+            )
+            assert entered.wait(timeout=2)
+            try:
+                with pytest.raises(pinecone_uploader.PineconeRetrievalError):
+                    uploader.query_chunks("401(k) rollover", top_k=1)
+            finally:
+                release.set()
+            with pytest.raises(pinecone_uploader.PineconeRetrievalError):
+                inflight.result(timeout=2)
+
+    assert index.calls_by_query["retirement plan"] == 1
 
 
 def test_half_open_allows_exactly_one_concurrent_probe(caplog):

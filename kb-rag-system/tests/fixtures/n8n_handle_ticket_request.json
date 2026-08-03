@@ -23,10 +23,10 @@
       }
     },
     "polling": {
-      "interval_s": 3,
+      "interval_s": 65,
       "deadline_s": 2700,
       "workflow_timeout_s": 3000,
-      "deadline_rationale": "Watch durable de 2700 s, mayor que TICKET_JOB_DEADLINE_S=2400 y con timeout de workflow >=3000 s; no abandona jobs que el servidor aún considera vivos.",
+      "deadline_rationale": "Watch durable de 2700 s, mayor que TICKET_JOB_DEADLINE_S=2400 y con timeout de workflow >=3000 s; el intervalo mínimo de 65 s obliga al Wait node de n8n a descargar el estado de ejecución a su base en cada pausa.",
       "terminal_states": ["succeeded", "partial", "failed", "timeout", "cancelled"]
     }
   },

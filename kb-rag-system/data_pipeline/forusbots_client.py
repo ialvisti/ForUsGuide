@@ -27,7 +27,7 @@ import logging
 import random
 import time
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Awaitable, Callable, Dict, List, Optional, cast
 from urllib.parse import quote, urlsplit
 
 import httpx
@@ -138,6 +138,23 @@ class ForusBotsCircuitOpen(ForusBotsError):
 
     def __init__(self) -> None:
         super().__init__("ForusBots circuit open; request rejected before submit")
+
+
+class ForusBotsCheckpointFailed(ForusBotsError):
+    """A confirmed upstream job could not be durably checkpointed."""
+
+    code = "FORUSBOTS_CHECKPOINT_FAILED"
+    needs_reconciliation = True
+
+    def __init__(self, job_id: str) -> None:
+        self.job_id = job_id
+        super().__init__(
+            "ForUsBots job receipt could not be checkpointed; "
+            "manual reconciliation required"
+        )
+
+
+SubmittedJobObserver = Callable[[str, str], Awaitable[None]]
 
 
 @dataclass
@@ -314,6 +331,7 @@ class ForusBotsClient:
         strict: bool = False,
         return_: str = "data",
         dedupe_scope: Optional[str] = None,
+        on_submitted: Optional[SubmittedJobObserver] = None,
     ) -> ScrapeResult:
         payload: Dict[str, Any] = {
             "participantId": participant_id,
@@ -328,6 +346,7 @@ class ForusBotsClient:
         return await self._deduped(
             idem, "/forusbot/scrape-participant", payload,
             label="participant",
+            on_submitted=on_submitted,
         )
 
     async def scrape_plan(
@@ -338,6 +357,7 @@ class ForusBotsClient:
         strict: bool = False,
         return_: str = "data",
         dedupe_scope: Optional[str] = None,
+        on_submitted: Optional[SubmittedJobObserver] = None,
     ) -> ScrapeResult:
         payload: Dict[str, Any] = {
             "planId": plan_id,
@@ -351,7 +371,58 @@ class ForusBotsClient:
         ) if dedupe_scope else None
         return await self._deduped(
             idem, "/forusbot/scrape-plan", payload, label="plan",
+            on_submitted=on_submitted,
         )
+
+    async def resume_job(self, job_id: str, *, operation: str) -> ScrapeResult:
+        """Resume polling a confirmed job ID without issuing another POST."""
+        if operation not in {"participant", "plan"}:
+            raise ForusBotsError("ForUsBots operation is invalid")
+        if (
+            not isinstance(job_id, str)
+            or not job_id.strip()
+            or len(job_id.encode("utf-8")) > 512
+            or any(ord(char) < 32 for char in job_id)
+        ):
+            raise ForusBotsError("ForUsBots job identifier is invalid")
+        async with self._semaphore:
+            self._before_circuit_request()
+            try:
+                result = await self._poll(
+                    job_id, None, {}, label=operation,
+                )
+            except asyncio.CancelledError:
+                self._record_circuit_cancelled()
+                raise
+            except ForusBotsJobFailed:
+                self._emit_metric(
+                    "ticket_forusbots_count", step=operation, code="failure"
+                )
+                self._record_circuit_success()
+                raise
+            except ForusBotsTimeout:
+                self._emit_metric(
+                    "ticket_forusbots_count", step=operation, code="timeout"
+                )
+                self._record_circuit_failure()
+                raise
+            except ForusBotsPollFailed:
+                self._emit_metric(
+                    "ticket_forusbots_count", step=operation, code="failure"
+                )
+                self._record_circuit_failure()
+                raise
+            except Exception:
+                self._emit_metric(
+                    "ticket_forusbots_count", step=operation, code="failure"
+                )
+                self._record_circuit_failure()
+                raise ForusBotsPollFailed(job_id) from None
+            self._emit_metric(
+                "ticket_forusbots_count", step=operation, code="poll_success"
+            )
+            self._record_circuit_success()
+            return result
 
     # ------------------------------------------------------------------
     # De-duplication + result cache
@@ -377,12 +448,15 @@ class ForusBotsClient:
         payload: Dict[str, Any],
         *,
         label: str,
+        on_submitted: Optional[SubmittedJobObserver] = None,
     ) -> ScrapeResult:
         # El cliente vive como singleton de proceso. Sin un scope explícito no
         # existe una frontera segura para compartir datos de participante/plan,
         # por lo que se desactiva caché y coalescing (fail closed).
         if idem is None:
-            return await self._submit_and_poll(path, payload, label=label)
+            return await self._submit_and_poll(
+                path, payload, label=label, on_submitted=on_submitted,
+            )
 
         cached = self._result_cache.get(idem)
         if cached is not None:
@@ -402,6 +476,7 @@ class ForusBotsClient:
                 payload,
                 label=label,
                 submit_boundary=submit_boundary,
+                on_submitted=on_submitted,
             ))
             entry = _InflightScrape(
                 task=task,
@@ -503,6 +578,7 @@ class ForusBotsClient:
         *,
         label: str,
         submit_boundary: Optional[_SubmitBoundary] = None,
+        on_submitted: Optional[SubmittedJobObserver] = None,
     ) -> ScrapeResult:
         try:
             async with self._semaphore:
@@ -522,6 +598,27 @@ class ForusBotsClient:
                         "ticket_forusbots_count", step=label, code="ambiguous"
                     )
                     raise
+                if on_submitted is not None:
+                    observer = on_submitted
+
+                    async def _persist_submitted_checkpoint() -> None:
+                        await observer(label, job_id)
+
+                    checkpoint_task: asyncio.Task[None] = asyncio.create_task(
+                        _persist_submitted_checkpoint()
+                    )
+                    try:
+                        await asyncio.shield(checkpoint_task)
+                    except asyncio.CancelledError:
+                        # Once the 202 crossed the boundary, finish the durable
+                        # receipt before honoring cancellation.
+                        try:
+                            await checkpoint_task
+                        except Exception:
+                            raise ForusBotsCheckpointFailed(job_id) from None
+                        raise
+                    except Exception:
+                        raise ForusBotsCheckpointFailed(job_id) from None
                 self._emit_metric(
                     "ticket_forusbots_count", step=label, code="submit_success"
                 )
@@ -561,6 +658,11 @@ class ForusBotsClient:
             # A terminal business/data outcome proves submit+poll dependency
             # availability. It is observable as a failed scrape but must not
             # poison the global availability circuit for unrelated tickets.
+            self._record_circuit_success()
+            raise
+        except ForusBotsCheckpointFailed:
+            # Upstream accepted the request; only the local durable receipt
+            # failed.  Do not poison the dependency availability circuit.
             self._record_circuit_success()
             raise
         except ForusBotsCircuitOpen:

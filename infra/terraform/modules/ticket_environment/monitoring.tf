@@ -16,10 +16,12 @@ locals {
   producer_log_filter   = <<-EOT
     resource.type="cloud_run_revision"
     resource.labels.service_name="${var.producer_service_name}"
+    labels.python_logger="ticket_metrics"
   EOT
   worker_log_filter     = <<-EOT
     resource.type="cloud_run_revision"
     resource.labels.service_name="${var.worker_service_name}"
+    labels.python_logger="ticket_metrics"
   EOT
   reconciler_log_filter = <<-EOT
     resource.type="cloud_run_job"
@@ -59,7 +61,7 @@ resource "google_logging_metric" "poll_not_found" {
   description = "Poll de ticket que devolvió 404; sin IDs ni payloads."
   filter      = <<-EOT
     ${local.producer_log_filter}
-    textPayload:"ticket_metric ticket_poll_not_found"
+    jsonPayload.message:"ticket_metric ticket_poll_not_found"
   EOT
 
   metric_descriptor {
@@ -75,7 +77,24 @@ resource "google_logging_metric" "poll_gone" {
   description = "Poll de ticket que devolvió 410 tras expirar payload."
   filter      = <<-EOT
     ${local.producer_log_filter}
-    textPayload:"ticket_metric ticket_poll_gone"
+    jsonPayload.message:"ticket_metric ticket_poll_gone"
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "accepted_total" {
+  project     = var.project_id
+  name        = "${local.metric_prefix}_accepted_total"
+  description = "Nuevos ticket jobs aceptados por el producer; replays excluidos."
+  filter      = <<-EOT
+    ${local.producer_log_filter}
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_job_accepted\""
   EOT
 
   metric_descriptor {
@@ -91,8 +110,8 @@ resource "google_logging_metric" "terminal_total" {
   description = "Todos los jobs terminales observados por el worker."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_job_terminal\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_job_terminal\""
   EOT
 
   metric_descriptor {
@@ -108,15 +127,77 @@ resource "google_logging_metric" "terminal_incorrect" {
   description = "Terminales partial/failed/timeout/cancelled."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_job_terminal\""
-    (textPayload:"\"state\":\"partial\"" OR textPayload:"\"state\":\"failed\"" OR textPayload:"\"state\":\"timeout\"" OR textPayload:"\"state\":\"cancelled\"")
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_job_terminal\""
+    (jsonPayload.message:"\"state\":\"partial\"" OR jsonPayload.message:"\"state\":\"failed\"" OR jsonPayload.message:"\"state\":\"timeout\"" OR jsonPayload.message:"\"state\":\"cancelled\"")
   EOT
 
   metric_descriptor {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "terminal_failed" {
+  project     = var.project_id
+  name        = "${local.metric_prefix}_terminal_failed"
+  description = "Jobs terminalizados en failed; contador sin IDs ni payloads."
+  filter      = <<-EOT
+    ${local.worker_log_filter}
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_job_terminal\""
+    jsonPayload.message:"\"state\":\"failed\""
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "terminal_partial" {
+  project     = var.project_id
+  name        = "${local.metric_prefix}_terminal_partial"
+  description = "Jobs terminalizados en partial; contador sin IDs ni payloads."
+  filter      = <<-EOT
+    ${local.worker_log_filter}
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_job_terminal\""
+    jsonPayload.message:"\"state\":\"partial\""
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "terminal_internal_error" {
+  project     = var.project_id
+  name        = "${local.metric_prefix}_terminal_internal_error"
+  description = "Inquiries terminales INTERNAL_ERROR por ruta cerrada; sin IDs."
+  filter      = <<-EOT
+    ${local.worker_log_filter}
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_inquiry_terminal\""
+    jsonPayload.message:"\"code\":\"INTERNAL_ERROR\""
+  EOT
+  label_extractors = {
+    route = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"route\\\":\\\"([a-z_]+)\\\"\")"
+  }
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+    labels {
+      key         = "route"
+      value_type  = "STRING"
+      description = "knowledge_question, generate_response o needs_more_info."
+    }
   }
 }
 
@@ -146,6 +227,7 @@ resource "google_logging_metric" "reconciler_fenced_leases" {
     textPayload:"ticket_metric_event"
     textPayload:"\"metric\":\"ticket_reconciler_count\""
     textPayload:"\"reason\":\"fenced_leases\""
+    textPayload=~"\"value\":[1-9][0-9]*"
   EOT
   metric_descriptor {
     metric_kind = "DELTA"
@@ -163,6 +245,7 @@ resource "google_logging_metric" "reconciler_errors" {
     textPayload:"ticket_metric_event"
     textPayload:"\"metric\":\"ticket_reconciler_count\""
     textPayload:"\"reason\":\"errors\""
+    textPayload=~"\"value\":[1-9][0-9]*"
   EOT
   metric_descriptor {
     metric_kind = "DELTA"
@@ -180,6 +263,7 @@ resource "google_logging_metric" "deadline_terminalized" {
     textPayload:"ticket_metric_event"
     textPayload:"\"metric\":\"ticket_reconciler_count\""
     textPayload:"\"reason\":\"deadline_terminalized\""
+    textPayload=~"\"value\":[1-9][0-9]*"
   EOT
   metric_descriptor {
     metric_kind = "DELTA"
@@ -194,8 +278,8 @@ resource "google_logging_metric" "manual_reconciliation" {
   description = "Resultado técnico marcado para reconciliación manual."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"ticket_manual_reconciliation_required"
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"ticket_manual_reconciliation_required"
   EOT
 
   metric_descriptor {
@@ -211,9 +295,9 @@ resource "google_logging_metric" "forusbots_failure" {
   description = "Timeout/fallo de ForusBots, sin extraer el job ID upstream."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_forusbots_count\""
-    (textPayload:"\"code\":\"ambiguous\"" OR textPayload:"\"code\":\"failure\"" OR textPayload:"\"code\":\"timeout\"")
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_forusbots_count\""
+    (jsonPayload.message:"\"code\":\"ambiguous\"" OR jsonPayload.message:"\"code\":\"failure\"" OR jsonPayload.message:"\"code\":\"timeout\"")
   EOT
 
   metric_descriptor {
@@ -229,9 +313,9 @@ resource "google_logging_metric" "pinecone_circuit_open" {
   description = "Circuit breaker de Pinecone abierto."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_pinecone_circuit_count\""
-    textPayload:"\"state\":\"open\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_pinecone_circuit_count\""
+    jsonPayload.message:"\"state\":\"open\""
   EOT
 
   metric_descriptor {
@@ -247,18 +331,15 @@ resource "google_logging_metric" "pinecone_circuit_open" {
 resource "google_logging_metric" "queue_delay" {
   project         = var.project_id
   name            = "${local.metric_prefix}_queue_delay_seconds"
-  description     = "Distribución de demora observada al encolar/reencolar."
+  description     = "Distribución de demora observada al evaluar admisión."
   filter          = <<-EOT
-    (
-      (${local.producer_log_filter}) OR
-      (${local.reconciler_log_filter})
-    )
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_queue_delay_seconds\""
+    ${local.producer_log_filter}
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_queue_delay_seconds\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+  value_extractor = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
   label_extractors = {
-    code = "REGEXP_EXTRACT(textPayload, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
+    code = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -330,19 +411,44 @@ resource "google_logging_metric" "jobs_oldest_age" {
   }
 }
 
+resource "google_logging_metric" "reconciler_duration" {
+  project         = var.project_id
+  name            = "${local.metric_prefix}_reconciler_duration_seconds"
+  description     = "Distribución del tiempo de aplicación del reconciliador; excluye aprovisionamiento."
+  filter          = <<-EOT
+    ${local.reconciler_log_filter}
+    textPayload:"ticket_metric_event"
+    textPayload:"\"metric\":\"ticket_reconciler_duration_seconds\""
+  EOT
+  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "s"
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 20
+      growth_factor      = 2
+      scale              = 0.01
+    }
+  }
+}
+
 resource "google_logging_metric" "step_latency" {
   project         = var.project_id
   name            = "${local.metric_prefix}_step_latency_seconds"
   description     = "Latencia por step y outcome público acotado."
   filter          = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_step_latency_seconds\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_step_latency_seconds\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+  value_extractor = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
   label_extractors = {
-    step = "REGEXP_EXTRACT(textPayload, \"\\\"step\\\":\\\"([a-z_]+)\\\"\")"
-    code = "REGEXP_EXTRACT(textPayload, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
+    step = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"step\\\":\\\"([a-z_]+)\\\"\")"
+    code = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -375,11 +481,11 @@ resource "google_logging_metric" "result_count" {
   description = "Resultados partial, truncated o unprocessed."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_result_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_result_count\""
   EOT
   label_extractors = {
-    reason = "REGEXP_EXTRACT(textPayload, \"\\\"reason\\\":\\\"([a-z_]+)\\\"\")"
+    reason = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"reason\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -400,12 +506,12 @@ resource "google_logging_metric" "forusbots_count" {
   description = "Submit/poll/outcome de ForUsBots sin job ID upstream."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_forusbots_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_forusbots_count\""
   EOT
   label_extractors = {
-    step = "REGEXP_EXTRACT(textPayload, \"\\\"step\\\":\\\"([a-z_]+)\\\"\")"
-    code = "REGEXP_EXTRACT(textPayload, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
+    step = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"step\\\":\\\"([a-z_]+)\\\"\")"
+    code = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -431,11 +537,11 @@ resource "google_logging_metric" "forusbots_circuit" {
   description = "Transiciones del circuit breaker de ForUsBots."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_forusbots_circuit_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_forusbots_circuit_count\""
   EOT
   label_extractors = {
-    state = "REGEXP_EXTRACT(textPayload, \"\\\"state\\\":\\\"([a-z_]+)\\\"\")"
+    state = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"state\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -456,11 +562,11 @@ resource "google_logging_metric" "pinecone_retry" {
   description = "Retries acotados de Pinecone por clase sanitizada."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_pinecone_retry_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_pinecone_retry_count\""
   EOT
   label_extractors = {
-    reason = "REGEXP_EXTRACT(textPayload, \"\\\"reason\\\":\\\"([a-z_]+)\\\"\")"
+    reason = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"reason\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -481,11 +587,11 @@ resource "google_logging_metric" "pinecone_circuit" {
   description = "Transiciones del circuit breaker de Pinecone."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_pinecone_circuit_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_pinecone_circuit_count\""
   EOT
   label_extractors = {
-    state = "REGEXP_EXTRACT(textPayload, \"\\\"state\\\":\\\"([a-z_]+)\\\"\")"
+    state = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"state\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -506,11 +612,11 @@ resource "google_logging_metric" "llm_parse" {
   description = "Parse success/failed del LLM sin contenido de respuesta."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_llm_parse_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_llm_parse_count\""
   EOT
   label_extractors = {
-    code = "REGEXP_EXTRACT(textPayload, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
+    code = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -531,11 +637,11 @@ resource "google_logging_metric" "llm_fallback" {
   description = "Uso del fallback del LLM."
   filter      = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_llm_fallback_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_llm_fallback_count\""
   EOT
   label_extractors = {
-    code = "REGEXP_EXTRACT(textPayload, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
+    code = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"code\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -556,12 +662,12 @@ resource "google_logging_metric" "llm_tokens" {
   description     = "Tokens input/output agregables, sin prompt ni respuesta."
   filter          = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_llm_tokens\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_llm_tokens\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+  value_extractor = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
   label_extractors = {
-    reason = "REGEXP_EXTRACT(textPayload, \"\\\"reason\\\":\\\"([a-z_]+)\\\"\")"
+    reason = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"reason\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -589,10 +695,10 @@ resource "google_logging_metric" "llm_cost" {
   description     = "Costo LLM estimado en USD por evento."
   filter          = <<-EOT
     ${local.worker_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_llm_cost_usd\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_llm_cost_usd\""
   EOT
-  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+  value_extractor = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
 
   metric_descriptor {
     metric_kind = "DELTA"
@@ -614,11 +720,11 @@ resource "google_logging_metric" "n8n_poll" {
   description = "Estado observado por el endpoint de poll consumido por n8n."
   filter      = <<-EOT
     ${local.producer_log_filter}
-    textPayload:"ticket_metric_event"
-    textPayload:"\"metric\":\"ticket_n8n_poll_count\""
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_n8n_poll_count\""
   EOT
   label_extractors = {
-    state = "REGEXP_EXTRACT(textPayload, \"\\\"state\\\":\\\"([a-z_]+)\\\"\")"
+    state = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"state\\\":\\\"([a-z_]+)\\\"\")"
   }
 
   metric_descriptor {
@@ -768,6 +874,131 @@ resource "google_monitoring_alert_policy" "ticket_terminal_incorrect_ratio" {
   documentation {
     mime_type = "text/markdown"
     content   = "Separar fallos técnicos de respuestas publicables; inspeccionar sólo code/state/trace_id sanitizados."
+  }
+  notification_channels = var.notification_channels
+}
+
+resource "google_monitoring_alert_policy" "ticket_accepted_terminal_ratio" {
+  count        = local.monitoring_policy_count
+  project      = var.project_id
+  display_name = "[${var.env}] accepted-to-terminal ratio < 99% (15m)"
+  combiner     = "OR"
+  user_labels  = local.alert_labels
+
+  conditions {
+    display_name = "worker terminales sobre nuevos jobs aceptados"
+    condition_threshold {
+      filter             = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.terminal_total.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
+      denominator_filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.accepted_total.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.producer_service_name}\""
+      comparison         = "COMPARISON_LT"
+      threshold_value    = 0.99
+      duration           = "900s"
+      aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+      denominator_aggregations {
+        alignment_period     = "300s"
+        per_series_aligner   = "ALIGN_RATE"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Una brecha sostenida indica jobs aceptados sin terminalización del worker; correlacionar sólo job_hash/trace_id sanitizados y revisar reconciler/deadlines."
+  }
+  notification_channels = var.notification_channels
+}
+
+resource "google_monitoring_alert_policy" "ticket_terminal_failed" {
+  count        = local.monitoring_policy_count
+  project      = var.project_id
+  display_name = "[${var.env}] terminal failed > 0"
+  combiner     = "OR"
+  user_labels  = local.alert_labels
+
+  conditions {
+    display_name = "failed terminal > 0"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.terminal_failed.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
+      }
+    }
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Investigar code/fase sanitizados; no consultar ni incluir payloads o identificadores en la alerta."
+  }
+  notification_channels = var.notification_channels
+}
+
+resource "google_monitoring_alert_policy" "ticket_terminal_partial" {
+  count        = local.monitoring_policy_count
+  project      = var.project_id
+  display_name = "[${var.env}] terminal partial > 0"
+  combiner     = "OR"
+  user_labels  = local.alert_labels
+
+  conditions {
+    display_name = "partial terminal > 0"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.terminal_partial.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["resource.label.service_name"]
+      }
+    }
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Revisar sólo estado, código y fase sanitizados para distinguir degradación publicable de fallo técnico."
+  }
+  notification_channels = var.notification_channels
+}
+
+resource "google_monitoring_alert_policy" "ticket_terminal_internal_error" {
+  count        = local.monitoring_policy_count
+  project      = var.project_id
+  display_name = "[${var.env}] INTERNAL_ERROR > 0"
+  combiner     = "OR"
+  user_labels  = local.alert_labels
+
+  conditions {
+    display_name = "INTERNAL_ERROR terminal > 0"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.terminal_internal_error.name}\" AND resource.type=\"cloud_run_revision\" AND resource.label.service_name=\"${var.worker_service_name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+        group_by_fields      = ["metric.label.route"]
+      }
+    }
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "Incidente técnico inmediato: correlacionar únicamente trace_id/job_hash sanitizados y fase; nunca payloads."
   }
   notification_channels = var.notification_channels
 }
@@ -922,17 +1153,17 @@ resource "google_monitoring_alert_policy" "ticket_lease_fencing" {
 resource "google_monitoring_alert_policy" "ticket_oldest_active_job" {
   count        = local.monitoring_policy_count
   project      = var.project_id
-  display_name = "[${var.env}] active job older than worker lease"
+  display_name = "[${var.env}] active job exceeded 2400s deadline"
   combiner     = "OR"
   user_labels  = local.alert_labels
 
   conditions {
-    display_name = "oldest active job > 120s (90s lease + grace)"
+    display_name = "oldest active job > 2400s absolute job SLA"
     condition_threshold {
       filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.jobs_oldest_age.name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
       comparison      = "COMPARISON_GT"
-      threshold_value = 120
-      duration        = "120s"
+      threshold_value = 2400
+      duration        = "0s"
       aggregations {
         alignment_period     = "60s"
         per_series_aligner   = "ALIGN_PERCENTILE_99"
@@ -943,7 +1174,7 @@ resource "google_monitoring_alert_policy" "ticket_oldest_active_job" {
 
   documentation {
     mime_type = "text/markdown"
-    content   = "El lease runtime es 90s; 30s de gracia evita ruido. Verificar heartbeat/fencing y no reenviar efectos externos a ciegas."
+    content   = "2400s coincide con TICKET_JOB_DEADLINE_S. Verificar heartbeat/fencing y no reenviar efectos externos a ciegas."
   }
   notification_channels = var.notification_channels
 }
@@ -1372,7 +1603,7 @@ locals {
             title = "Active jobs and oldest age"
             xyChart = {
               dataSets = [
-                for metric_name in [google_logging_metric.jobs_active.name, google_logging_metric.jobs_oldest_age.name] : {
+                for metric_name in [google_logging_metric.jobs_active.name, google_logging_metric.jobs_oldest_age.name, google_logging_metric.reconciler_duration.name] : {
                   plotType   = "LINE"
                   targetAxis = "Y1"
                   timeSeriesQuery = { timeSeriesFilter = {

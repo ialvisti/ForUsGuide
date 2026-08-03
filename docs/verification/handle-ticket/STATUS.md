@@ -1,61 +1,61 @@
-# Estado de finalización de handle-ticket
+# Estado de remediación de handle-ticket
 
-Revisado el 2026-07-27 en la rama
-`handle-ticket-production-finalization`.
+Revisado el 2026-08-03 en la rama
+`codex/fix-ticket-execution-failures`.
 
-## Resultado
+## Resultado actual
 
-La corrección de compatibilidad preserva el sistema existente:
+El incidente del 2026-08-02 está **contenido**, y la remediación P0–P2 está
+implementada y verificada localmente en un worktree limpio derivado de
+`origin/main`. El checkout obsoleto `handle-ticket-hardening` no fue modificado.
 
-- n8n continúa con `Authorization` de Cloud Run mediante
-  `kb-rag-client` y el `X-API-Key` actual;
-- no existe dependencia desplegable de AWS WIF, cuentas, ARN ni keys AWS;
-- v1 y v2 aceptan la credencial legacy de n8n;
-- el payload del n8n autenticado es válido sin directorio participant-plan;
-- ForUsBots usa el contrato 2.5 observado, incluido el origen legacy exacto
-  `http://35.224.156.104:10000`;
-- submits ambiguos de ForUsBots permanecen fail-closed y no se reenvían a
-  ciegas;
-- la publicación al participante permanece en n8n/DevRev, sin cambios.
+La última observación autenticada de producción dejó el productor en la
+revisión `kb-rag-system-00053-jmx`, `Ready=True`, con 100% del tráfico y
+`TICKET_HANDLER_MODE=knowledge_only`. Conserva el mismo digest y service
+account que la revisión anterior; `kb-rag-system-00052-gxw` permanece como
+rollback técnico, pero restaurarla reabriría la ruta defectuosa.
 
-## Verificación actual
+El modo `full` continúa bloqueado. ForUsBots 2.5 no ofrece idempotency key ni
+lookup por correlation ID y usa un origen HTTP legacy; un POST ambiguo no puede
+reconciliarse de forma segura. La corrección evita reenvíos ciegos, pero no
+inventa una garantía upstream inexistente.
 
-- suite CI local: **1349 passed, 14 skipped, 23 deselected**;
-- Terraform 1.9.8 local: platform **20 passed**, staging **1 passed**,
-  production validado y módulo **25 passed**;
-- contrato vivo de ForUsBots: documentación/OpenAPI/health accesibles;
-- Terraform ya no contiene pools/providers AWS WIF, cuentas
-  `n8n-ticket-invoker-*` ni variables `ticket_wif_*`;
-- `kb-rag-client` permanece como invocador IAM declarativo;
-- el verificador mínimo de Cloud Build y su lectura `objectViewer` del bucket
-  de source están declarados/importables; no posee publish/deploy/state;
-- Cloud Build `1ab86e09-1a95-4695-96e2-6bbcba82d083`: **SUCCESS** sobre el
-  commit de código `0405bf32fdf93cc44041dd4539428740a45fc25a`; pasaron los
-  nueve steps de Python 3.12, Terraform, emulador Firestore, imagen runtime,
-  imagen CI, E2E y release-controller con sus smokes;
-- producción no fue mutada: no hubo apply, deploy, cambio de secretos,
-  tráfico ni n8n.
+## Verificación local fresca
 
-Este build fue verify-only: no contiene push de imágenes, deploy, Terraform
-apply, escritura de evidencia ni cambios de tráfico.
+- suite Python no-live: **1489 passed, 16 skipped, 23 deselected**;
+- controlador/IAM/monitoring/Terraform contracts: **322 passed**;
+- Terraform 1.9.8 oficial verificado por checksum: fmt/init/validate y tests
+  platform **21 passed**, staging **1 passed**, production validado y módulo
+  **26 passed**;
+- Ruff, mypy configurado, `pip check`, `pip-audit`, secret baseline, secret
+  scan de inputs externos y `git diff --check`: pass;
+- Firestore Emulator RPC y los smokes de imágenes quedan para Cloud Build,
+  porque Docker no está instalado localmente.
 
-## Estado de tareas
+## Producción y efectos históricos
+
+- Los ocho `INTERNAL_ERROR` se correlacionaron con ocho
+  `job.succeeded` de ForUsBots; se decidió **cero replays**.
+- Los dos falsos `PINECONE_TRANSIENT_FAILURE` se documentaron como bloqueos
+  locales `UnsafeRetrievalQuery`, no outages del proveedor.
+- No se aplicaron los cambios Terraform: Cloud Tasks live sigue sin logging y
+  Scheduler mantiene la cadencia anterior hasta un plan remoto revisado con
+  cero deletes/replaces.
+- El workflow n8n acotado está sanitizado e importable, pero no está importado
+  ni activado en la instancia efectiva.
+
+## Estado de entrega
 
 | Área | Estado |
 |---|---|
-| Código API/worker/Firestore/Tasks/reconciler | completo localmente |
-| Compatibilidad n8n | resuelta con el contrato existente |
-| Contrato ForUsBots | resuelto contra docs y código 2.5 |
-| Contratos externos que bloqueen merge | ninguno |
-| CI/Terraform remoto del código actual | completo y verde |
-| Merge | pendiente únicamente de push y revisión/aprobación del PR |
-| Staging/producción | no iniciado; requiere gates de mutación explícitos |
+| Firestore-safe diagnostics y validación durable | implementado y probado |
+| Intent, external IDs, resume y reconciliación | implementado y probado |
+| Pinecone, privacidad, logging y métricas de negocio | implementado y probado |
+| Terraform/IAM/Cloud Tasks/reconciliador | implementado; apply pendiente |
+| Polling n8n | artefacto listo; activación externa pendiente |
+| Cloud Build autoritativo Python 3.12/Emulator/imágenes | pendiente |
+| Commit/push/PR | pendiente |
+| Canary y 20 GR consecutivos | bloqueado por gates upstream/live |
 
-## Definition of Done
-
-Para merge: diff revisado, suite local y build remoto verdes, Terraform
-validado, PR actualizado y sin checks pendientes.
-
-Para rollout: sigue abierta hasta desplegar staging, ejecutar E2E real,
-aprobar promociones y crear un rollback anchor endurecido. El merge no
-autoriza esas mutaciones.
+El reporte completo y los IDs de reconciliación sanitizados están en
+`REMEDIACION_EJECUCIONES_GCP_2026-08-02.md`.

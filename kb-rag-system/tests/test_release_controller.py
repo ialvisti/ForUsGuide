@@ -10,6 +10,7 @@ from pathlib import Path
 import pytest
 
 from scripts.release_controller import (
+    ALLOWED_TERRAFORM_IMPORT_BLOCKS,
     ControllerRejected,
     E2E_SECRET_ENV_KEYS,
     GATE_SERVICE_ACCOUNT_IDS,
@@ -19,6 +20,7 @@ from scripts.release_controller import (
     MemoryArtifactStore,
     PLATFORM_RUNTIME_SERVICE_ACCOUNTS,
     ProductionToolchain,
+    RELEASE_PHASE_HANDLER_MODES,
     RUNTIME_SERVICE_ACCOUNTS,
     ReleaseController,
     Toolchain,
@@ -723,6 +725,49 @@ def _runtime_service_plan(
     return plan, tfvars
 
 
+def _runtime_reconciler_plan(
+    environment: str, release_phase: str,
+) -> tuple[dict, dict]:
+    tfvars = _plan_tfvars(environment, release_phase)
+    suffix = "stg" if environment == "staging" else "prod"
+    reconciler_name = (
+        "ticket-reconciler-staging"
+        if environment == "staging"
+        else "ticket-reconciler-prod"
+    )
+    plan = {
+        "format_version": "1.2",
+        "resource_changes": [{
+            "address": (
+                f"module.{environment}.google_cloud_run_v2_job.reconciler[0]"
+            ),
+            "mode": "managed",
+            "type": "google_cloud_run_v2_job",
+            "name": "reconciler",
+            "change": {"actions": ["update"], "before": None, "after": {
+                "project": PROJECT,
+                "name": reconciler_name,
+                "template": [{"template": [{
+                    "service_account": (
+                        f"ticket-reconciler-{suffix}@{PROJECT}."
+                        "iam.gserviceaccount.com"
+                    ),
+                    "max_retries": 0,
+                    "timeout": "300s",
+                    "containers": [{"image": IMAGE, "env": [
+                        {"name": "APP_ROLE", "value": "reconciler"},
+                        {
+                            "name": "TICKET_HANDLER_MODE",
+                            "value": RELEASE_PHASE_HANDLER_MODES[release_phase],
+                        },
+                    ]}],
+                }]}],
+            }},
+        }],
+    }
+    return plan, tfvars
+
+
 @pytest.fixture
 def candidate(tmp_path):
     root = tmp_path / "candidate"
@@ -1343,6 +1388,72 @@ def test_terraform_policy_allows_only_exact_reviewed_import(candidate):
     )
 
     validate_terraform_tree(candidate)
+
+
+def test_terraform_policy_allows_controller_verifier_service_account_import(
+    candidate,
+):
+    target = (
+        candidate / "infra" / "terraform" / "live" / "platform" /
+        "imports.tf"
+    )
+    target.write_text(
+        "import {\n"
+        "  to = google_service_account.controller_verifier\n"
+        '  id = "projects/${var.project_id}/serviceAccounts/'
+        'ticket-controller-verify@${var.project_id}.iam.gserviceaccount.com"\n'
+        "}\n",
+        encoding="utf-8",
+    )
+
+    validate_terraform_tree(candidate)
+
+
+def test_platform_queue_broker_can_pause_and_resume_only_exact_queues():
+    pipeline_iam = (
+        Path(__file__).resolve().parents[2] /
+        "infra" / "terraform" / "live" / "platform" /
+        "pipeline_iam.tf"
+    ).read_text()
+    block = pipeline_iam.split(
+        'resource "google_project_iam_custom_role" "platform_queue_broker" {',
+        1,
+    )[1].split('\nresource "', 1)[0]
+
+    assert block.count('"cloudtasks.queues.pause"') == 1
+    assert block.count('"cloudtasks.queues.resume"') == 1
+    assert "cloudtasks.tasks.create" not in block
+    assert "cloudtasks.tasks.run" not in block
+    assert "cloudtasks.tasks.delete" not in block
+
+
+def test_reviewed_imports_adopt_existing_production_ticket_containers():
+    blocks = "\n".join(
+        ALLOWED_TERRAFORM_IMPORT_BLOCKS["live/platform/environment_containers.tf"]
+    )
+
+    for target, resource_id in (
+        (
+            'google_cloud_tasks_queue.environment[each.key]',
+            'projects/${var.project_id}/locations/${var.region}/queues/'
+            'ticket-jobs-prod',
+        ),
+        (
+            'google_cloud_scheduler_job.environment[each.key]',
+            'projects/${var.project_id}/locations/${var.region}/jobs/'
+            'ticket-reconciler-prod-tick',
+        ),
+        (
+            'google_project_iam_custom_role.ticket_queue_enqueuer[each.key]',
+            'projects/${var.project_id}/roles/ticketQueueEnqueuerProduction',
+        ),
+    ):
+        assert target in blocks
+        assert resource_id in blocks
+
+    assert blocks.count(
+        'var.environment_container_phase.production == "managed"'
+    ) >= 4
 
 
 def test_terraform_policy_rejects_preseeded_provider_cache(candidate):
@@ -2058,6 +2169,35 @@ def test_environment_plan_accepts_exact_runtime_contract_by_phase(
     )
 
 
+def test_environment_plan_accepts_non_overlapping_reconciler_contract():
+    plan, tfvars = _runtime_reconciler_plan("production", "full")
+
+    _validate_environment_plan(
+        plan, environment="production", project_id=PROJECT, tfvars=tfvars,
+        image_digest=IMAGE, release_phase="full",
+    )
+
+
+@pytest.mark.parametrize(
+    ("field", "unsafe_value"),
+    [("max_retries", 1), ("timeout", "360s")],
+)
+def test_environment_plan_rejects_overlapping_reconciler_contract(
+    field, unsafe_value,
+):
+    plan, tfvars = _runtime_reconciler_plan("production", "full")
+    task = plan["resource_changes"][0]["change"]["after"]["template"][0][
+        "template"
+    ][0]
+    task[field] = unsafe_value
+
+    with pytest.raises(ControllerRejected, match="reconciler execution contract"):
+        _validate_environment_plan(
+            plan, environment="production", project_id=PROJECT, tfvars=tfvars,
+            image_digest=IMAGE, release_phase="full",
+        )
+
+
 @pytest.mark.parametrize(
     ("environment", "release_phase", "mutation", "message"),
     [
@@ -2150,6 +2290,60 @@ def test_environment_plan_accepts_execution_log_ttl_resource():
         plan, environment="staging", project_id=PROJECT,
         tfvars=_plan_tfvars("staging", "dark_100"), image_digest=IMAGE,
         release_phase="dark_100",
+    )
+
+
+def test_environment_plan_accepts_new_business_and_reconciler_metrics():
+    plan = {
+        "format_version": "1.2",
+        "resource_changes": [
+            {
+                "address": (
+                    "module.production.google_logging_metric."
+                    "reconciler_duration"
+                ),
+                "mode": "managed",
+                "type": "google_logging_metric",
+                "name": "reconciler_duration",
+                "change": {"actions": ["create"], "before": None, "after": {
+                    "project": PROJECT,
+                    "name": "ticket_reconciler_duration_seconds",
+                }},
+            },
+            {
+                "address": (
+                    "module.production.google_logging_metric.accepted_total"
+                ),
+                "mode": "managed",
+                "type": "google_logging_metric",
+                "name": "accepted_total",
+                "change": {"actions": ["create"], "before": None, "after": {
+                    "project": PROJECT,
+                    "name": "ticket_accepted_total",
+                }},
+            },
+            {
+                "address": (
+                    "module.production.google_monitoring_alert_policy."
+                    "ticket_accepted_terminal_ratio"
+                ),
+                "mode": "managed",
+                "type": "google_monitoring_alert_policy",
+                "name": "ticket_accepted_terminal_ratio",
+                "change": {"actions": ["create"], "before": None, "after": {
+                    "project": PROJECT,
+                    "display_name": (
+                        "[production] Ticket accepted-to-terminal ratio"
+                    ),
+                }},
+            },
+        ],
+    }
+
+    _validate_environment_plan(
+        plan, environment="production", project_id=PROJECT,
+        tfvars=_plan_tfvars("production", "full"), image_digest=IMAGE,
+        release_phase="full",
     )
 
 
@@ -2488,6 +2682,67 @@ def test_platform_plan_accepts_only_exact_verifier_source_bucket_binding():
         )
 
 
+def test_platform_plan_accepts_only_exact_environment_inputs_reader():
+    expected_condition = [{
+        "title": "platform_plan_environment_inputs_only",
+        "description": (
+            "Lectura exclusiva de manifests versionados environment-inputs."
+        ),
+        "expression": (
+            'resource.name.startsWith("projects/_/buckets/'
+            'rag-kb-system-ticket-evidence-900340137010/objects/'
+            'environment-inputs/")'
+        ),
+    }]
+    after = {
+        "bucket": "rag-kb-system-ticket-evidence-900340137010",
+        "role": "roles/storage.objectViewer",
+        "member": (
+            f"serviceAccount:ticket-plan-platform@{PROJECT}."
+            "iam.gserviceaccount.com"
+        ),
+        "condition": expected_condition,
+    }
+    change = {
+        "address": (
+            "google_storage_bucket_iam_member."
+            "platform_plan_environment_inputs_reader[0]"
+        ),
+        "mode": "managed",
+        "type": "google_storage_bucket_iam_member",
+        "name": "platform_plan_environment_inputs_reader",
+        "change": {"actions": ["create"], "before": None, "after": after},
+    }
+    plan = {"format_version": "1.2", "resource_changes": [change]}
+
+    _validate_platform_plan(
+        plan, project_id=PROJECT,
+        container_phases={"staging": "disabled", "production": "disabled"},
+    )
+
+    invalid_values = {
+        "member": (
+            f"serviceAccount:ticket-plan-staging@{PROJECT}."
+            "iam.gserviceaccount.com"
+        ),
+        "bucket": "unrelated-sensitive-bucket",
+        "condition": [],
+    }
+    for field, invalid in invalid_values.items():
+        original = after[field]
+        after[field] = invalid
+        with pytest.raises(
+            ControllerRejected, match="platform environment-inputs binding",
+        ):
+            _validate_platform_plan(
+                plan, project_id=PROJECT,
+                container_phases={
+                    "staging": "disabled", "production": "disabled",
+                },
+            )
+        after[field] = original
+
+
 def test_platform_plan_accepts_exact_run_invoker_without_queue_state(controller):
     rc, _tools, _artifacts = controller
     plan = {
@@ -2743,6 +2998,337 @@ def _managed_runtime_iam_changes(environment: str) -> list[dict]:
     return changes
 
 
+def _platform_environment_container_change(
+    environment: str, resource_type: str,
+) -> dict:
+    suffix = "staging" if environment == "staging" else "prod"
+    reconciler = (
+        "ticket-reconciler-staging"
+        if environment == "staging"
+        else "ticket-reconciler-prod"
+    )
+    if resource_type == "google_cloud_tasks_queue":
+        after = {
+            "project": PROJECT,
+            "location": "us-central1",
+            "name": f"ticket-jobs-{suffix}",
+            "rate_limits": [{
+                "max_concurrent_dispatches": 1 if environment == "staging" else 2,
+                "max_dispatches_per_second": 1 if environment == "staging" else 2,
+            }],
+            "retry_config": [{
+                "max_attempts": 5,
+                "max_retry_duration": "1800s",
+                "min_backoff": "30s",
+                "max_backoff": "120s",
+                "max_doublings": 2,
+            }],
+            "stackdriver_logging_config": [{"sampling_ratio": 1.0}],
+        }
+    elif resource_type == "google_cloud_scheduler_job":
+        scheduler_suffix = "stg" if environment == "staging" else "prod"
+        after = {
+            "project": PROJECT,
+            "region": "us-central1",
+            "name": f"ticket-reconciler-{suffix}-tick",
+            "schedule": "*/6 * * * *",
+            "time_zone": "Etc/UTC",
+            "paused": True,
+            "http_target": [{
+                "http_method": "POST",
+                "uri": (
+                    f"https://us-central1-run.googleapis.com/apis/run.googleapis.com/"
+                    f"v1/namespaces/{PROJECT}/jobs/{reconciler}:run"
+                ),
+                "oauth_token": [{
+                    "service_account_email": (
+                        f"ticket-scheduler-{scheduler_suffix}@{PROJECT}."
+                        "iam.gserviceaccount.com"
+                    ),
+                }],
+            }],
+        }
+    else:  # pragma: no cover - test helper misuse
+        raise AssertionError(resource_type)
+    return {
+        "address": f'{resource_type}.environment["{environment}"]',
+        "mode": "managed",
+        "type": resource_type,
+        "name": "environment",
+        "change": {
+            "actions": ["update"],
+            "before": dict(after),
+            "after": after,
+        },
+    }
+
+
+def _replace_nested(mapping: dict, path: tuple[object, ...], value: object) -> None:
+    target: object = mapping
+    for part in path[:-1]:
+        target = target[part]  # type: ignore[index]
+    target[path[-1]] = value  # type: ignore[index]
+
+
+def _platform_active_handoff_changes(environment: str) -> list[dict]:
+    reconciler = (
+        "ticket-reconciler-staging"
+        if environment == "staging"
+        else "ticket-reconciler-prod"
+    )
+    apply_account = f"ticket-apply-{environment}"
+    return [
+        {
+            "address": (
+                f'google_project_iam_member.environment_run_creator["{environment}"]'
+            ),
+            "mode": "managed",
+            "type": "google_project_iam_member",
+            "name": "environment_run_creator",
+            "change": {"actions": ["create"], "before": None, "after": {
+                "project": PROJECT,
+                "role": f"projects/{PROJECT}/roles/ticketTfEnvironmentRunCreate",
+                "member": (
+                    f"serviceAccount:{apply_account}@{PROJECT}.iam."
+                    "gserviceaccount.com"
+                ),
+            }},
+        },
+        {
+            "address": (
+                "google_cloud_run_v2_job_iam_member.environment_apply_developer"
+                f'["{environment}-{reconciler}"]'
+            ),
+            "mode": "managed",
+            "type": "google_cloud_run_v2_job_iam_member",
+            "name": "environment_apply_developer",
+            "change": {"actions": ["create"], "before": None, "after": {
+                "project": PROJECT,
+                "name": reconciler,
+                "role": "roles/run.developer",
+                "member": (
+                    f"serviceAccount:{apply_account}@{PROJECT}.iam."
+                    "gserviceaccount.com"
+                ),
+            }},
+        },
+    ]
+
+
+@pytest.mark.parametrize(
+    ("resource_type", "path", "unsafe_value"),
+    [
+        (
+            "google_cloud_tasks_queue",
+            ("rate_limits", 0, "max_concurrent_dispatches"),
+            999,
+        ),
+        (
+            "google_cloud_tasks_queue",
+            ("rate_limits", 0, "max_dispatches_per_second"),
+            999,
+        ),
+        ("google_cloud_tasks_queue", ("retry_config", 0, "max_attempts"), 99),
+        (
+            "google_cloud_tasks_queue",
+            ("retry_config", 0, "max_retry_duration"),
+            "86400s",
+        ),
+        (
+            "google_cloud_tasks_queue",
+            ("retry_config", 0, "min_backoff"),
+            "0s",
+        ),
+        (
+            "google_cloud_tasks_queue",
+            ("retry_config", 0, "max_backoff"),
+            "3600s",
+        ),
+        ("google_cloud_tasks_queue", ("retry_config", 0, "max_doublings"), 16),
+        (
+            "google_cloud_tasks_queue",
+            ("stackdriver_logging_config", 0, "sampling_ratio"),
+            0.0,
+        ),
+        ("google_cloud_scheduler_job", ("schedule",), "*/5 * * * *"),
+        ("google_cloud_scheduler_job", ("time_zone",), "America/Chicago"),
+        (
+            "google_cloud_scheduler_job",
+            ("http_target", 0, "http_method"),
+            "GET",
+        ),
+        (
+            "google_cloud_scheduler_job",
+            ("http_target", 0, "uri"),
+            "https://example.invalid/run",
+        ),
+        (
+            "google_cloud_scheduler_job",
+            ("http_target", 0, "oauth_token", 0, "service_account_email"),
+            f"ticket-scheduler-stg@{PROJECT}.iam.gserviceaccount.com",
+        ),
+    ],
+)
+def test_platform_plan_rejects_operational_queue_or_scheduler_drift(
+    resource_type, path, unsafe_value,
+):
+    change = _platform_environment_container_change("production", resource_type)
+    _replace_nested(change["change"]["after"], path, unsafe_value)
+    plan = {
+        "format_version": "1.2",
+        "resource_changes": [
+            *_managed_runtime_iam_changes("production"),
+            change,
+        ],
+    }
+
+    with pytest.raises(ControllerRejected, match="operational contract"):
+        _validate_platform_plan(
+            plan,
+            project_id=PROJECT,
+            container_phases={"staging": "disabled", "production": "managed"},
+        )
+
+
+def test_platform_plan_accepts_unpaused_scheduler_only_for_bound_active_phase():
+    scheduler = _platform_environment_container_change(
+        "production", "google_cloud_scheduler_job",
+    )
+    scheduler["change"]["after"]["paused"] = False
+    resources = ["jobs/ticket-reconciler-prod"]
+    plan = {
+        "format_version": "1.2",
+        "resource_changes": [
+            *_managed_runtime_iam_changes("production"),
+            *_platform_active_handoff_changes("production"),
+            scheduler,
+        ],
+    }
+
+    _validate_platform_plan(
+        plan,
+        project_id=PROJECT,
+        handoff={
+            "phases": {"staging": "disabled", "production": "bootstrap"},
+            "resources": {"staging": [], "production": resources},
+        },
+        container_phases={"staging": "disabled", "production": "managed"},
+        release_phases={"staging": "disabled", "production": "full"},
+    )
+
+
+@pytest.mark.parametrize("actions", [["delete"], ["delete", "create"]])
+def test_environment_plan_rejects_every_delete_or_replacement(actions):
+    plan = {
+        "format_version": "1.2",
+        "resource_changes": [{
+            "address": (
+                "module.production.google_logging_metric.terminal_total"
+            ),
+            "mode": "managed",
+            "type": "google_logging_metric",
+            "name": "terminal_total",
+            "change": {
+                "actions": actions,
+                "before": {"project": PROJECT},
+                "after": {"project": PROJECT} if "create" in actions else None,
+            },
+        }],
+    }
+
+    with pytest.raises(ControllerRejected, match="delete"):
+        _validate_environment_plan(
+            plan,
+            environment="production",
+            project_id=PROJECT,
+            tfvars=_plan_tfvars("production", "full"),
+            image_digest=IMAGE,
+            release_phase="full",
+        )
+
+
+@pytest.mark.parametrize("actions", [["delete"], ["delete", "create"]])
+def test_platform_plan_rejects_every_delete_or_replacement(actions):
+    plan = {
+        "format_version": "1.2",
+        "resource_changes": [{
+            "address": 'google_project_service.enabled["logging.googleapis.com"]',
+            "mode": "managed",
+            "type": "google_project_service",
+            "name": "enabled",
+            "change": {
+                "actions": actions,
+                "before": {
+                    "project": PROJECT,
+                    "service": "logging.googleapis.com",
+                },
+                "after": ({
+                    "project": PROJECT,
+                    "service": "logging.googleapis.com",
+                } if "create" in actions else None),
+            },
+        }],
+    }
+
+    with pytest.raises(ControllerRejected, match="delete"):
+        _validate_platform_plan(plan, project_id=PROJECT)
+
+
+@pytest.mark.parametrize(
+    ("resource_type", "resource_name", "after"),
+    [
+        (
+            "google_cloud_tasks_queue",
+            "environment",
+            {"project": PROJECT, "name": "ticket-jobs-prod"},
+        ),
+        (
+            "google_cloud_scheduler_job",
+            "environment",
+            {
+                "project": PROJECT,
+                "name": "ticket-reconciler-prod-tick",
+                "paused": True,
+            },
+        ),
+        (
+            "google_project_iam_custom_role",
+            "ticket_queue_enqueuer",
+            {
+                "project": PROJECT,
+                "role_id": "ticketQueueEnqueuerProduction",
+                "permissions": [
+                    "cloudtasks.tasks.create",
+                    "cloudtasks.tasks.get",
+                    "cloudtasks.queues.get",
+                ],
+            },
+        ),
+    ],
+)
+def test_platform_plan_rejects_create_for_existing_production_containers(
+    resource_type, resource_name, after,
+):
+    changes = _managed_runtime_iam_changes("production")
+    changes.append({
+        "address": f'{resource_type}.{resource_name}["production"]',
+        "mode": "managed",
+        "type": resource_type,
+        "name": resource_name,
+        "change": {"actions": ["create"], "before": None, "after": after},
+    })
+
+    with pytest.raises(ControllerRejected, match="must be imported"):
+        _validate_platform_plan(
+            {"format_version": "1.2", "resource_changes": changes},
+            project_id=PROJECT,
+            container_phases={
+                "staging": "disabled",
+                "production": "managed",
+            },
+        )
+
+
 @pytest.mark.parametrize("environment", ["staging", "production"])
 def test_platform_plan_accepts_complete_managed_runtime_iam_inventory(environment):
     plan = {
@@ -2911,6 +3497,135 @@ def test_platform_post_g1b_plan_binds_exact_pipeline_vars(controller):
             "apply", "platform", "--plan-uri", planned["plan_uri"],
             "--plan-sha256", planned["plan_sha256"],
         ])
+
+
+def test_active_production_platform_adoption_requires_exact_g6b_quorum(
+    controller,
+):
+    rc, tools, _artifacts = controller
+    scope = {
+        "_CANDIDATE_SHA": SHA,
+        "_CONTROLLER_DIGEST": CONTROLLER_IMAGE,
+        "_PLAN_URI": "gs://release-evidence/plans/platform/build/plan.tfplan#1",
+        "_PLAN_SHA256": "1" * 64,
+        "_ROOT": "platform",
+        "_RELEASE_PHASE": "firestore-disabled",
+        "_IMAGE_DIGEST": "none",
+        "_PLATFORM_CONTAINER_PHASES_SHA256": "2" * 64,
+        "_PLATFORM_APPROVED_IMAGE_DIGESTS_SHA256": "3" * 64,
+        "_PLATFORM_RELEASE_PHASES_SHA256": "4" * 64,
+    }
+    manifest = {
+        "root": "platform",
+        "release_phase": "firestore-disabled",
+        "platform_pipeline_inputs": {},
+        "platform_container_phases": {
+            "staging": "disabled", "production": "managed",
+        },
+        "platform_release_phases": {
+            "staging": "disabled", "production": "full",
+        },
+        "gate_scope": scope,
+    }
+    expected = {
+        "g6b-gcp-owner", "g6b-release-owner", "g6b-forusbots-owner",
+    }
+
+    required = rc._required_apply_gate_roles(manifest)  # noqa: SLF001
+    assert set(required) == expected
+    receipts = _install_scoped_receipts(tools, required, scope)
+    hashes = rc._validate_apply_gate_receipts(manifest, receipts)  # noqa: SLF001
+    assert set(hashes) == expected
+
+
+def test_active_staging_platform_transition_remains_blocked_without_g4_evidence(
+    controller,
+):
+    rc, _tools, _artifacts = controller
+    manifest = {
+        "root": "platform",
+        "release_phase": "firestore-disabled",
+        "platform_container_phases": {
+            "staging": "managed", "production": "disabled",
+        },
+        "platform_release_phases": {
+            "staging": "shadow", "production": "disabled",
+        },
+    }
+
+    with pytest.raises(ControllerRejected, match="G4.*plan and evidence"):
+        rc._validate_apply_gate_receipts(manifest, "")  # noqa: SLF001
+
+
+def test_active_platform_apply_resumes_queue_after_exact_terraform_apply(controller):
+    rc, tools, artifacts = controller
+    environment_uri = _write_environment_tfvars(
+        artifacts, "production", active=True,
+    )
+    environment_input = json.loads(artifacts.read(environment_uri))
+    secret_ids = sorted(
+        environment_input["tfvars"]["secret_containers"]["ids"].values()
+    )
+    secret_changes = [{
+        "address": (
+            'google_secret_manager_secret.environment['
+            f'"production-{secret_id}"]'
+        ),
+        "mode": "managed",
+        "type": "google_secret_manager_secret",
+        "name": "environment",
+        "change": {"actions": ["create"], "before": None, "after": {
+            "project": PROJECT, "secret_id": secret_id,
+        }},
+    } for secret_id in secret_ids]
+    scheduler = _platform_environment_container_change(
+        "production", "google_cloud_scheduler_job",
+    )
+    scheduler["change"]["after"]["paused"] = False
+    tools.semantic_plan = {
+        "format_version": "1.2",
+        "resource_changes": [
+            *_managed_runtime_iam_changes("production"),
+            *_platform_active_handoff_changes("production"),
+            _platform_environment_container_change(
+                "production", "google_cloud_tasks_queue",
+            ),
+            scheduler,
+            *secret_changes,
+        ],
+    }
+    planned = rc.execute([
+        "plan", "platform", "--candidate-sha", SHA,
+        "--firestore-scope-phase", "disabled",
+        "--production-container-phase", "managed",
+        "--production-handoff-phase", "bootstrap",
+        "--production-run-resources", "jobs/ticket-reconciler-prod",
+        "--production-release-phase", "full",
+        "--production-approved-image-digest", IMAGE,
+        "--production-environment-tfvars-uri", environment_uri,
+        "--cicd-bootstrap-controller-digest", CONTROLLER_IMAGE,
+        "--gate-approver-accounts-json", _gate_accounts_json(),
+        "--production-release-group-email", "release@example.com",
+    ])
+    applied = rc.execute([
+        "apply", "platform", "--plan-uri", planned["plan_uri"],
+        "--plan-sha256", planned["plan_sha256"],
+        "--gate-receipts", _install_gate_receipts(tools, artifacts, planned),
+    ])
+
+    preflight = tools.calls.index((
+        "queue", "pause-existing-and-verify-empty", "ticket-jobs-prod",
+    ))
+    terraform_apply = next(
+        index for index, call in enumerate(tools.calls)
+        if call[:2] == ("terraform", "apply")
+    )
+    resume = tools.calls.index((
+        "queue", "resume-and-verify", "ticket-jobs-prod",
+    ))
+    assert preflight < terraform_apply < resume
+    assert applied["operationally_active_queues"] == ["ticket-jobs-prod"]
+    assert applied["operationally_paused_empty_queues"] == []
 
 
 @pytest.mark.parametrize(
@@ -3630,6 +4345,65 @@ def test_queue_preflight_treats_only_exact_not_found_as_absent(monkeypatch):
     assert len(calls) == 1
     assert "--project=rag-kb-system" in calls[0]
     assert "--location=us-central1" in calls[0]
+
+
+def test_queue_resume_uses_exact_scope_and_verifies_running(monkeypatch):
+    monkeypatch.setenv("PROJECT_ID", PROJECT)
+    tools = ProductionToolchain()
+    queue_path = (
+        f"projects/{PROJECT}/locations/us-central1/queues/ticket-jobs-prod"
+    )
+    calls = []
+
+    def run(argv, **_kwargs):
+        calls.append(tuple(argv))
+        if tuple(argv[:4]) == ("gcloud", "tasks", "queues", "describe"):
+            return json.dumps({"name": queue_path, "state": "RUNNING"})
+        return ""
+
+    monkeypatch.setattr(tools, "run", run)
+    tools.resume_and_verify_queue("ticket-jobs-prod")
+
+    assert calls[0][:5] == (
+        "gcloud", "tasks", "queues", "resume", queue_path,
+    )
+    assert calls[1][:5] == (
+        "gcloud", "tasks", "queues", "describe", queue_path,
+    )
+    for call in calls:
+        assert f"--project={PROJECT}" in call
+        assert "--location=us-central1" in call
+
+
+def test_queue_resume_failure_restores_verified_paused_empty_state(monkeypatch):
+    monkeypatch.setenv("PROJECT_ID", PROJECT)
+    tools = ProductionToolchain()
+    queue_path = (
+        f"projects/{PROJECT}/locations/us-central1/queues/ticket-jobs-prod"
+    )
+    calls = []
+    descriptions = iter([
+        {"name": queue_path, "state": "UNKNOWN"},
+        {"name": queue_path, "state": "PAUSED"},
+    ])
+
+    def run(argv, **_kwargs):
+        calls.append(tuple(argv))
+        command = tuple(argv[:4])
+        if command == ("gcloud", "tasks", "queues", "describe"):
+            return json.dumps(next(descriptions))
+        if tuple(argv[:3]) == ("gcloud", "tasks", "list"):
+            return "[]"
+        return ""
+
+    monkeypatch.setattr(tools, "run", run)
+
+    with pytest.raises(ControllerRejected, match="activation failed"):
+        tools.resume_and_verify_queue("ticket-jobs-prod")
+
+    assert any(call[:5] == (
+        "gcloud", "tasks", "queues", "pause", queue_path,
+    ) for call in calls)
 
 
 @pytest.mark.parametrize("returncode", [1, 4, 14])

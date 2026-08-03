@@ -47,6 +47,7 @@ def test_secret_scans_are_fresh_and_reproduce_reviewed_filter_configuration() ->
             "../PA",
             '"../External agents"',
             "../docs/verification/handle-ticket/11-incident-drill-template.md",
+            "../flows_n8n/bounded_ticket_polling.json",
             "--require-empty",
         ):
             assert required in controller

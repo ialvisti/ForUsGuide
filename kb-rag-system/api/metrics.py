@@ -74,6 +74,9 @@ def _values(*values: str) -> frozenset[str]:
 _TERMINAL_STATES = _values(
     "succeeded", "partial", "failed", "timeout", "cancelled"
 )
+_TICKET_ROUTES = _values(
+    "knowledge_question", "generate_response", "needs_more_info"
+)
 _PUBLIC_CODES = _values(
     "none",
     "EXPIRED_PAYLOAD",
@@ -84,6 +87,7 @@ _PUBLIC_CODES = _values(
     "FORUSBOTS_NEEDS_RECONCILIATION",
     "LLM_TIMEOUT",
     "LLM_FAILURE",
+    "UNSAFE_RETRIEVAL_QUERY",
     "PINECONE_TRANSIENT_FAILURE",
     "PLAN_SCRAPE_FAILED",
     "INTERNAL_ERROR",
@@ -100,6 +104,7 @@ _METRIC_SPECS: Mapping[str, _MetricSpec] = {
     ),
     "ticket_jobs_active": _MetricSpec(_COUNT_MAX, {}, True),
     "ticket_jobs_oldest_age_seconds": _MetricSpec(2_678_400.0, {}),
+    "ticket_reconciler_duration_seconds": _MetricSpec(600.0, {}),
     "ticket_reconciler_count": _MetricSpec(
         _COUNT_MAX,
         {
@@ -131,6 +136,19 @@ _METRIC_SPECS: Mapping[str, _MetricSpec] = {
                 "success", "partial", "fallback", "timeout", "failed", "cancelled"
             ),
         },
+    ),
+    "ticket_phase_count": _MetricSpec(
+        _COUNT_MAX,
+        {
+            "phase": _values(
+                "handle_inquiry",
+                "convert_outcome",
+                "validate_durable_document",
+                "persist_inquiry_result",
+                "mark_terminal",
+            )
+        },
+        True,
     ),
     "ticket_result_count": _MetricSpec(
         _COUNT_MAX,
@@ -180,6 +198,14 @@ _METRIC_SPECS: Mapping[str, _MetricSpec] = {
     ),
     "ticket_job_terminal": _MetricSpec(
         _COUNT_MAX, {"state": _TERMINAL_STATES, "code": _PUBLIC_CODES}, True
+    ),
+    "ticket_job_accepted": _MetricSpec(
+        _COUNT_MAX,
+        {"mode": _values("shadow", "knowledge_only", "full")},
+        True,
+    ),
+    "ticket_inquiry_terminal": _MetricSpec(
+        _COUNT_MAX, {"route": _TICKET_ROUTES, "code": _PUBLIC_CODES}, True
     ),
     "ticket_manual_reconciliation_required": _MetricSpec(
         _COUNT_MAX, {"code": _values("manual_reconciliation")}, True

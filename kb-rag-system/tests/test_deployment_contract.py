@@ -279,6 +279,8 @@ def test_cloud_build_source_upload_is_default_deny() -> None:
         "!docs/verification/",
         "!docs/verification/handle-ticket/",
         "!docs/verification/handle-ticket/11-incident-drill-template.md",
+        "!flows_n8n/",
+        "!flows_n8n/bounded_ticket_polling.json",
         "!External agents/",
         "!External agents/Inquiry Extraction & Required-Data Builder agent .md",
         "!External agents/Knowledge Question Inquiry Generator.md",

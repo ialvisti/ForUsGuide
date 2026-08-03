@@ -18,9 +18,11 @@ import pytest
 import data_pipeline.forusbots_client as fb
 from data_pipeline.forusbots_client import (
     ForusBotsClient,
+    ForusBotsCheckpointFailed,
     ForusBotsCircuitOpen,
     ForusBotsError,
     ForusBotsJobFailed,
+    ForusBotsPollFailed,
     ForusBotsTimeout,
 )
 
@@ -130,6 +132,99 @@ class TestScrapeHappyPath:
         assert fake.count("GET") == 2
         assert fake.calls[0][1].endswith("/forusbot/scrape-participant")
         assert fake.calls[1][1].endswith("/forusbot/jobs/j1")
+
+    async def test_external_job_id_is_observed_before_first_poll(self, monkeypatch):
+        client, fake = _client([_SUBMIT_OK])
+        observed = []
+
+        async def on_submitted(operation: str, job_id: str) -> None:
+            observed.append((operation, job_id))
+
+        async def poll_after_checkpoint(
+            job_id, queue_position, estimate, *, label
+        ):
+            assert observed == [("participant", "j1")]
+            return fb.ScrapeResult(
+                job_id=job_id,
+                state="succeeded",
+                result={},
+                queue_position=queue_position,
+            )
+
+        monkeypatch.setattr(client, "_poll", poll_after_checkpoint)
+
+        result = await client.scrape_participant(
+            "synthetic-participant",
+            [{"key": "census", "fields": ["First Name"]}],
+            on_submitted=on_submitted,
+        )
+
+        assert result.job_id == "j1"
+        assert fake.count("POST") == 1
+        assert fake.count("GET") == 0
+
+    async def test_resume_job_polls_existing_id_without_submit(self):
+        client, fake = _client([
+            _resp(200, {"state": "succeeded", "result": {"census": {}}}),
+        ])
+
+        result = await client.resume_job("j-existing", operation="participant")
+
+        assert result.job_id == "j-existing"
+        assert fake.count("POST") == 0
+        assert fake.count("GET") == 1
+
+    @pytest.mark.parametrize(
+        "poll_response",
+        [
+            _resp(404, {"error": "private-upstream-body"}),
+            httpx.Response(200, content=b"not-json"),
+            httpx.Response(200, json=["unexpected-shape"]),
+        ],
+    )
+    async def test_resume_failure_preserves_id_and_requires_reconciliation(
+            self, poll_response):
+        client, fake = _client([poll_response])
+
+        with pytest.raises(ForusBotsPollFailed) as exc_info:
+            await client.resume_job("j-existing", operation="participant")
+
+        assert exc_info.value.job_id == "j-existing"
+        assert exc_info.value.needs_reconciliation is True
+        assert fake.count("POST") == 0
+        assert fake.count("GET") == 1
+        assert "private-upstream-body" not in str(exc_info.value)
+
+    async def test_resume_malformed_response_releases_half_open_probe(self):
+        client, _ = _client([httpx.Response(200, content=b"not-json")])
+        client._circuit_state = "half_open"
+        client._half_open_inflight = False
+
+        with pytest.raises(ForusBotsPollFailed):
+            await client.resume_job("j-existing", operation="plan")
+
+        assert client._circuit_state == "open"
+        assert client._half_open_inflight is False
+
+    async def test_failed_job_id_checkpoint_never_polls_or_echoes_error(self):
+        client, fake = _client([_SUBMIT_OK])
+        sentinel = "private-checkpoint-message-must-not-appear"
+
+        async def fail_checkpoint(operation: str, job_id: str) -> None:
+            raise RuntimeError(sentinel)
+
+        with pytest.raises(ForusBotsCheckpointFailed) as exc_info:
+            await client.scrape_participant(
+                "synthetic-participant",
+                [{"key": "census", "fields": ["First Name"]}],
+                on_submitted=fail_checkpoint,
+            )
+
+        assert exc_info.value.job_id == "j1"
+        assert fake.count("POST") == 1
+        assert fake.count("GET") == 0
+        assert sentinel not in str(exc_info.value)
+        assert sentinel not in repr(exc_info.value)
 
     async def test_scrape_plan_uses_plan_endpoint(self):
         client, fake = _client([

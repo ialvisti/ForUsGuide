@@ -50,6 +50,18 @@ override_resource {
   target = google_firestore_database.environment["production"]
 }
 
+override_resource {
+  target = google_cloud_tasks_queue.environment["production"]
+}
+
+override_resource {
+  target = google_cloud_scheduler_job.environment["production"]
+}
+
+override_resource {
+  target = google_project_iam_custom_role.ticket_queue_enqueuer["production"]
+}
+
 variables {
   cicd_bootstrap = {
     enabled                         = true
@@ -679,5 +691,26 @@ run "g1c_enforce_removes_only_the_legacy_grant" {
       length(google_project_iam_member.kb_rag_runner_firestore_scoped) == 1
     )
     error_message = "G1C enforce debe retirar el grant project-wide y conservar el scoped."
+  }
+}
+
+run "production_adoption_enables_task_logs_and_uses_safe_reconciler_cadence" {
+  command = plan
+
+  variables {
+    environment_container_phase = {
+      staging    = "disabled"
+      production = "managed"
+    }
+  }
+
+  assert {
+    condition     = google_cloud_tasks_queue.environment["production"].stackdriver_logging_config[0].sampling_ratio == 1
+    error_message = "La cola de producción adoptada debe registrar todos los intentos durante el incidente."
+  }
+
+  assert {
+    condition     = google_cloud_scheduler_job.environment["production"].schedule == "*/6 * * * *"
+    error_message = "La cadencia de 360s debe superar el timeout de 300s y mantener recuperación menor a 10m."
   }
 }

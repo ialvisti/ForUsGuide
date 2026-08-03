@@ -16,9 +16,11 @@ import pytest
 from api.models import HandleTicketRequest
 from data_pipeline.forusbots_client import (
     ForusBotsAmbiguousSubmit,
+    ForusBotsCircuitOpen,
     ForusBotsJobFailed,
     ForusBotsTimeout,
 )
+from data_pipeline.ticket_job_repository import ForusBotsOperationDecision
 from data_pipeline.ticket_orchestrator import (
     ExtractedInquiry,
     OrchestratorDeps,
@@ -79,7 +81,10 @@ def _deps(*, llm, classify_route="knowledge_question", classification=None):
     router = SimpleNamespace(
         classify=AsyncMock(return_value=classification or _classification(classify_route))
     )
-    forusbots = SimpleNamespace(scrape_participant=AsyncMock())
+    forusbots = SimpleNamespace(
+        scrape_participant=AsyncMock(),
+        resume_job=AsyncMock(),
+    )
     return OrchestratorDeps(rag_engine=rag, inquiry_router=router,
                             llm_router=llm, forusbots=forusbots), rag, router, forusbots
 
@@ -424,6 +429,11 @@ class TestGenerateBranch:
         # canonical slug resolved deterministically — LLM mapper NOT called
         assert "forusbots_field_map" not in llm.calls
         assert out.diagnostics["field_mapping"]["llm_called"] is False
+        assert out.diagnostics["field_mapping"]["deterministic_mapped"] == {
+            "account_balance": [
+                {"module": "savings_rate", "field": "Account Balance"}
+            ]
+        }
         assert out.diagnostics["mapped_modules"] == [{"key": "savings_rate", "fields": ["Account Balance"]}]
         assert out.diagnostics["forusbots_job_id"] == "job-1"
         # the wrapped real-payload result was NORMALIZED before gr_body_build:
@@ -738,6 +748,49 @@ class TestGenerateBranch:
         assert out.diagnostics["scrape_meta"]["participant"] == {
             "error_code": "FORUSBOTS_TIMEOUT",
             "job_id": "job-x",
+            "manual_reconciliation_required": True,
+        }
+
+    async def test_gr_resume_circuit_open_preserves_confirmed_job_for_reconciliation(
+        self,
+    ):
+        llm = self._gr_llm()
+        deps, rag, _r, forusbots = _deps(
+            llm=llm, classify_route="generate_response"
+        )
+        rag.get_required_data.return_value = SimpleNamespace(required_fields={
+            "participant_data": [
+                {"field": "account_balance", "required": True}
+            ]
+        })
+        forusbots.resume_job.side_effect = ForusBotsCircuitOpen()
+        rag.generate_response.return_value = SimpleNamespace(
+            decision="uncertain", confidence=0.4
+        )
+        orch = TicketOrchestrator(deps, _settings())
+        orch.set_forusbots_operation_hooks(
+            AsyncMock(return_value=ForusBotsOperationDecision(
+                "resume", "external-job-confirmed"
+            )),
+            AsyncMock(),
+            dedupe_scope="job-scope",
+        )
+
+        out = await orch.handle_inquiry(
+            ExtractedInquiry(
+                "cash out", "LT Trust", "401(k)", "rollover"
+            ),
+            _req(),
+            total_inquiries=1,
+        )
+
+        assert out.scrape_status == "failed"
+        assert out.diagnostics["manual_reconciliation_required"] is True
+        assert out.diagnostics["forusbots_participant_job_id"] == \
+            "external-job-confirmed"
+        assert out.diagnostics["scrape_meta"]["participant"] == {
+            "error_code": "FORUSBOTS_POLL_FAILED",
+            "job_id": "external-job-confirmed",
             "manual_reconciliation_required": True,
         }
 

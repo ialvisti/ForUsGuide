@@ -14,6 +14,7 @@ from fastapi import FastAPI
 class _StartupSpies:
     def __init__(self) -> None:
         self.pinecone = Mock()
+        self.pinecone.close = Mock()
         self.pinecone.get_index_stats.return_value = {"total_vectors": 0}
         self.pinecone.query_chunks.return_value = []
         self.llm_router = Mock()
@@ -144,6 +145,23 @@ async def test_worker_initializes_execution_dependencies_without_producer_depend
         spies.queue_builder.assert_not_called()
         spies.validator_builder.assert_not_called()
         spies.llm_router.configure_pricing.assert_called_once_with({})
+
+    spies.pinecone.close.assert_called_once_with()
+
+
+async def test_worker_closes_clients_when_lifespan_body_raises(monkeypatch):
+    observed_spies = None
+
+    with pytest.raises(RuntimeError, match="synthetic lifespan failure"):
+        async with _run_lifespan(
+            "worker", "disabled", monkeypatch
+        ) as (_application, spies):
+            observed_spies = spies
+            raise RuntimeError("synthetic lifespan failure")
+
+    assert observed_spies is not None
+    observed_spies.forusbots.aclose.assert_awaited_once_with()
+    observed_spies.pinecone.close.assert_called_once_with()
 
 
 async def test_reconciler_initializes_only_repository_and_queue(monkeypatch):

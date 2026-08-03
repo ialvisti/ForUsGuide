@@ -7,30 +7,68 @@
 **Documento de origen:** `AUDITORIA_EJECUCIONES_GCP_2026-08-02.md`
 **Rama de trabajo:** `codex/fix-ticket-execution-failures`
 **Commits de código:** `ae0a81d031dcb0d3cae7032e32ed74c2ef14103f`,
-`ba9c060ac9e7ced428b64aeb9b94fbb89b36de3e`
-**PR de código:** [#14](https://github.com/ialvisti/ForUsGuide/pull/14)
-**Merge en `main`:** `8055c2a2d4aaed283e043c9ff41a1b6d85d08d52`
+`ba9c060ac9e7ced428b64aeb9b94fbb89b36de3e`,
+`d60388b413379a21e04e552c7edf5b7af25e6462`
+**PRs de código:** [ForUsGuide #14](https://github.com/ialvisti/ForUsGuide/pull/14),
+[#16](https://github.com/ialvisti/ForUsGuide/pull/16),
+[#17](https://github.com/ialvisti/ForUsGuide/pull/17) y
+[ForUsBots #5](https://github.com/ialvisti/ForUsBots/pull/5)
+**Merge final de código en `main`:** `d60388b413379a21e04e552c7edf5b7af25e6462`
 
 ## Estado ejecutivo
 
-El incidente quedó **corregido y desplegado en producción bajo contención
-`knowledge_only`**. La corrección se integró mediante el PR #14 en la rama
-canónica `main`; `main` local y remota se sincronizaron sin usar ni alterar el
-checkout obsoleto `handle-ticket-hardening`, que conserva cambios del usuario.
+El incidente quedó **corregido, desplegado y habilitado en producción bajo
+`full`**. La corrección Firestore inicial se integró mediante el PR #14; el
+fail-closed de required-data mediante #16; el contrato idempotente final del
+cliente mediante #17; y la garantía durable upstream mediante ForUsBots #5.
 
 Una auditoría independiente no encontró P0 residuales y los dos P1 y el P2 que
 detectó quedaron corregidos con pruebas RED→GREEN antes del gate remoto final.
-El producer, worker y reconciliador productivos usan ahora el digest corregido
-`sha256:0711f1f55e5e38d9becbac77fa2853fb96996369b8ed4fb8d8f03bff28b6a9c4`.
+El producer, worker y reconciliador productivos usan ahora el digest
+`sha256:eb2c3af9cae3200b6b2d433bd2879d42048beeac123077f1d861ec8569068aca`.
+ForUsBots usa el digest
+`sha256:f9cebd31f2eb63ecd21e556695ca0f86c03afd6071943726ca8451202f969d1f`.
+La ruta `generate_response` fue validada en una revisión `full` sin tráfico y
+sólo después promovida al 100%.
 
-La ruta `generate_response` no debe volver a activarse en producción hasta
-completar los gates live indicados al final de este documento. La razón no es
-ya el defecto Firestore —corregido y cubierto— sino que ForUsBots 2.5 no ofrece
-idempotency key ni lookup por correlation ID para resolver un POST ambiguo. Por
-ello, el modo `full` permanece bloqueado; no se afirmará una finalización live
-que todavía no existe.
+## Cierre productivo `full` — 2026-08-03
 
-## Contención productiva
+ForUsBots 2.6 reserva atómicamente receipt + job en Firestore antes de encolar,
+devuelve el mismo job para la misma `Idempotency-Key` y request, rechaza con
+`409` un request cambiado, cerca running/terminal por owner+epoch y no
+reejecuta un job huérfano tras reinicio. El build
+`f9fcea3d-a3c9-4f9e-8a45-6a1d36016ddf` terminó `SUCCESS`; el MIG quedó estable
+en `forusbots-template-70befb4-f9cebd31f2eb` y el smoke live participant/plan
+confirmó replay, conflicto, terminales `succeeded`, receipts, fingerprints y
+TTL.
+
+ForUsGuide `main` build
+`bb9dd27f-71b5-4667-a46b-35b28675e788` terminó `SUCCESS` sobre el merge exacto
+`d60388b…`, con tests, secret gates, locks, container smoke, SBOM, provenance y
+scan. Se promovieron de forma controlada:
+
+| Superficie | Resultado final |
+|---|---|
+| Producer | `kb-rag-system-fulld60388b`, 100%, `Ready=True`, `full` |
+| Worker | `kb-rag-ticket-worker-incd60388b`, 100%, `Ready=True`, `full` |
+| Reconciliador | generación 6, digest final, timeout 300 s, cero retries |
+| Rollback inmediato | `kb-rag-system-incd60388bko`, `knowledge_only`, sin tráfico |
+| Cola / scheduler | `RUNNING` / `ENABLED`, sin backlog, `*/6`, deadline 300 s, cero retries |
+
+El smoke GR autenticado usó un ticket sintético y el par participant/plan
+autorizado sin registrar esos valores. Confirmó aceptación y replay al mismo
+ticket job, `409` para payload cambiado, ruta `generate_response`, external job
+ID durable, terminal `succeeded`, cero fallos/reconciliación manual y
+`next_action=send_participant_reply`. No publicó nada al participante. El
+reconciliador tuvo una ejecución manual y el primer tick automático posterior al
+rollout con `Completed=True`; producer y worker nuevos quedaron sin logs severos,
+`INTERNAL_ERROR` ni `DURABLE_STATE_FAILED`.
+
+Las secciones siguientes conservan el detalle de la contención y promoción
+iniciales como historial del incidente; el estado vigente es el cierre `full`
+anterior.
+
+## Contención productiva inicial (histórico)
 
 Al revalidar producción se encontraron dos admisiones posteriores al corte de
 la auditoría, a las 18:37 y 21:10 UTC. Ambas terminaron `succeeded`, pero seguían
@@ -65,7 +103,7 @@ gcloud run services update-traffic kb-rag-system \
 
 Ese rollback reabriría el defecto original y no debe usarse para activar GR.
 
-## Promoción productiva del código corregido
+## Promoción productiva inicial del código corregido (histórico)
 
 El merge `8055c2a2d4aaed283e043c9ff41a1b6d85d08d52` activó únicamente el
 trigger CI de `main`: no contiene deploy, apply ni cambio de tráfico. Cloud
@@ -145,9 +183,13 @@ reintentable. En la agregación, esa señal domina cualquier error transitorio d
 otra inquiry y publica `FORUSBOTS_NEEDS_RECONCILIATION`; así un consumidor no
 puede convertir un efecto posiblemente aceptado en un replay ciego.
 
-El `dedupe_scope` evita coalescing entre tickets o tenants dentro del proceso,
-pero **no se envía como header upstream**, porque el contrato ForUsBots 2.5 no
-define uno. Esta limitación externa es el motivo para no habilitar `full`.
+El `dedupe_scope` evita coalescing entre tickets o tenants dentro del proceso.
+Desde el cierre final deriva además una `Idempotency-Key` opaca y estable por
+job/inquiry/operación, registrada con el contrato `forusbots-submit-v1`. Sólo se
+envía en los POST participant/plan scoped. Timeouts, 408, 429 y 5xx reutilizan la
+misma key; `409`, `INTERRUPTED` y `DURABLE_STATE_FAILED` permanecen fail-closed
+para reconciliación. Un worker con lease nuevo ejecuta su propio observer
+cercado aunque comparta la identidad upstream del job.
 
 ## Reconciliación de los ocho casos históricos
 
@@ -323,6 +365,13 @@ SBOM, provenance y scan write-once del merge exacto. Los planes y applies
 Terraform continúan perteneciendo al flujo gobernado y no se sustituyeron por
 este build.
 
+La verificación final añadió **1527 passed, 16 skipped, 23 deselected**, Ruff,
+mypy, `pip check`, `pip-audit`, secrets y el build canónico `bb9dd27f…`
+`SUCCESS`. Dos builds manuales `test-only` aprobaron todos esos gates y fallaron
+únicamente en `revalidate-digest` por drift de permisos Artifact Registry de sus
+SAs; no fueron artefactos de release. El digest se revalidó con la identidad
+operadora y el pipeline canónico `ticket-ci` publicó/escaneó el artefacto final.
+
 ## Gates cumplidos
 
 1. Corrección y hardening publicados, PR #14 integrado y `main` local/remota
@@ -334,19 +383,26 @@ este build.
 4. Queue y scheduler reanudados con la configuración operativa corregida.
 5. Ocho efectos históricos confirmados como exitosos, con decisión de cero
    replays; dos falsos outages Pinecone reclasificados.
+6. ForUsBots 2.6 desplegado con receipts/jobs durables, replay al mismo job,
+   conflicto de payload y recuperación fail-closed verificados en vivo.
+7. Cliente RAG idempotente desplegado; canary GR real terminal, promoción
+   `full` al 100%, ejecución manual y tick automático del reconciliador verdes.
 
-## Gates live pendientes y criterio de cierre
+## Pendientes posteriores al cierre
 
 1. Bootstrap publisher/controlador pre-G1B y planes Terraform revisados: cero
    delete/replace; adopción/apply sólo con quorum exacto.
-2. Importar, validar y activar el workflow n8n sanitizado en su instancia; el
-   repositorio no contiene URL ni credencial operable de esa instancia.
-3. Contrato upstream ForUsBots HTTPS/privado con idempotencia o lookup de
-   reconciliación; mientras falte, GR permanece legacy/knowledge-only.
-4. Sólo después: canary GR, paridad 1:1 de evento terminal/métrica y al menos 20
-   GR consecutivos seguros. Cualquier `INTERNAL_ERROR`, ID externo ausente o
-   discrepancia de métricas aborta y revierte.
+2. Validar el workflow real desde n8n con sus credenciales existentes. El owner
+   operativo no otorgó acceso administrativo y realizará esa prueba; el backend
+   `full` ya está listo y verificado.
+3. Migrar el origen HTTP legacy de ForUsBots a HTTPS/ingress privado. Es deuda
+   de transporte, no de idempotencia; no requiere desactivar `full`.
+4. Restaurar el permiso mínimo de lectura Artifact Registry para la SA manual
+   de `test-only`, sin ampliar privilegios de deploy.
+5. Mantener observación de ejecuciones reales y revertir a
+   `kb-rag-system-incd60388bko` ante cualquier `INTERNAL_ERROR`, external ID
+   ausente o discrepancia durable.
 
-El resultado correcto es **remediación desplegada y verificada en producción
-bajo `knowledge_only`; rollout `full` bloqueado de forma segura por el contrato
-upstream y los gates externos restantes**.
+El resultado correcto es **remediación desplegada, verificada y operativa en
+producción bajo `full`, con rollback `knowledge_only` preservado y la prueba
+n8n real delegada a su operador**.

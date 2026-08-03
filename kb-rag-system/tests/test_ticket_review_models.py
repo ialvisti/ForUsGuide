@@ -181,7 +181,7 @@ from api.tickets_console_config import (
 FIXTURES = Path(__file__).parent / "fixtures" / "devrev"
 
 # A deterministic, obviously-synthetic 32-byte AEAD key for tests only.
-TEST_AEAD_KEY_B64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="
+TEST_AEAD_KEY_B64 = "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY="  # pragma: allowlist secret
 SYNTHETIC_DON = "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234"
 SYNTHETIC_PART = "don:core:dvrv-us-1:devo/SYNTHETIC00:product/1"
 PROD_BROKER_URL = "https://tickets-evidence-broker-000000.us-central1.run.app"
@@ -249,7 +249,7 @@ def _production_settings(monkeypatch, **overrides) -> TicketConsoleSettings:
         "IAP_AUDIENCE": "/projects/1/global/backendServices/2",
         "ALLOWED_EMAIL_DOMAINS": ["example.invalid"],
         "ROLE_BINDINGS_JSON": '{"admin@example.invalid": "admin"}',
-        "CSRF_SIGNING_SECRET": "synthetic-csrf-value",
+        "CSRF_SIGNING_SECRET": "synthetic-csrf-value",  # pragma: allowlist secret
         "CURSOR_AEAD_KEY": TEST_AEAD_KEY_B64,
         "GCP_PROJECT": "rag-kb-system",
         "GCP_REGION": "us-central1",
@@ -1996,7 +1996,12 @@ class TestCursorAead:
 
     @pytest.mark.parametrize(
         "value",
-        ("", "not-base64!!", "c2hvcnQ=", "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWZmZg=="),
+        (
+            "",
+            "not-base64!!",
+            "c2hvcnQ=",
+            "MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWZmZg==",  # pragma: allowlist secret
+        ),
         ids=("empty", "not-base64", "too-short", "too-long"),
     )
     def test_a_key_that_is_not_thirty_two_bytes_is_rejected(self, value):

@@ -2614,7 +2614,7 @@ class TestBaseUrlHardening:
     @pytest.mark.parametrize(
         "bad",
         [
-            "https://user:secret@api.devrev.ai",
+            "https://user:secret@api.devrev.ai",  # pragma: allowlist secret
             "https://api.devrev.ai/?token=abc",
             "https://api.devrev.ai/#frag",
             "http://api.devrev.ai",

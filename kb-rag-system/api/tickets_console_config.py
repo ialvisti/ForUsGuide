@@ -87,9 +87,9 @@ CORRELATION_LOOKUP_KEYRING_ENV = "TICKETS_CORRELATION_LOOKUP_KEYRING_JSON"
 # This is the NAME of an environment variable, not a credential value. It is
 # listed here so the broker and producer planes can refuse to start when a
 # DevRev token is delivered to the wrong revision.
-DEVREV_TOKEN_ENV = "TICKETS_DEVREV_TOKEN"  # noqa: S105
+DEVREV_TOKEN_ENV = "TICKETS_DEVREV_TOKEN"  # noqa: S105  # pragma: allowlist secret
 
-CSRF_SECRET_ENV = "TICKETS_CSRF_SIGNING_SECRET"  # noqa: S105 - env var NAME
+CSRF_SECRET_ENV = "TICKETS_CSRF_SIGNING_SECRET"  # noqa: S105  # pragma: allowlist secret
 CURSOR_KEY_ENV = "TICKETS_CURSOR_AEAD_KEY"  # noqa: S105 - env var NAME
 
 # Each plane refuses every secret it does not own, in both directions.

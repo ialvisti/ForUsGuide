@@ -405,6 +405,21 @@ class TestRequiredDataSafetyNetHelpers:
         }
         assert not mock_rag_engine._should_retry_required_data(parsed, [], 0.80)
 
+    def test_retry_triggers_on_invalid_payload_schema(self, mock_rag_engine):
+        parsed = {
+            "participant_data": [],
+            "plan_data": [],
+            "unexpected_fields": [{
+                "field": "termination_date",
+                "description": "date",
+                "why_needed": "eligibility",
+                "data_type": "date",
+                "required": True,
+            }],
+        }
+
+        assert mock_rag_engine._should_retry_required_data(parsed, [], 0.80)
+
 
 class TestRequiredDataSafetyNetIntegration:
     """End-to-end test of get_required_data: safety net must retry with
@@ -499,6 +514,90 @@ class TestRequiredDataSafetyNetIntegration:
         assert resp.required_fields["participant_data"][0]["field"] == "termination_date"
         assert resp.metadata["model"] == "gpt-5.5"
         assert resp.metadata["provider"] == "openai"
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "fallback_mode", ["empty", "invalid", "invalid_schema", "exception"]
+    )
+    async def test_fallback_retry_exhaustion_returns_explicit_error(
+        self, mock_router, fallback_mode,
+    ):
+        from data_pipeline.rag_engine import RAGEngine
+        from data_pipeline.llm_router import LLMResponse
+
+        empty_resp = LLMResponse(
+            content=_json.dumps({"participant_data": [], "plan_data": []}),
+            usage={"prompt_tokens": 100, "completion_tokens": 5, "total_tokens": 105},
+            provider_used="gemini",
+            model_used="gemini-2.5-flash",
+        )
+        invalid_resp = LLMResponse(
+            content="not valid required-data json",
+            usage={"prompt_tokens": 100, "completion_tokens": 5, "total_tokens": 105},
+            provider_used="openai",
+            model_used="gpt-5.5",
+        )
+        invalid_schema_resp = LLMResponse(
+            content=_json.dumps({
+                "participant_data": [],
+                "plan_data": [],
+                "unexpected_fields": [{
+                    "field": "termination_date",
+                    "description": "date terminated",
+                    "why_needed": "eligibility",
+                    "data_type": "date",
+                    "required": True,
+                }],
+            }),
+            usage={"prompt_tokens": 100, "completion_tokens": 20, "total_tokens": 120},
+            provider_used="openai",
+            model_used="gpt-5.5",
+        )
+        call_log = []
+
+        async def router_call(**kwargs):
+            call_log.append(kwargs)
+            if not kwargs.get("force_fallback"):
+                return empty_resp
+            if fallback_mode == "exception":
+                raise RuntimeError("private fallback failure")
+            if fallback_mode == "invalid_schema":
+                return invalid_schema_resp
+            return invalid_resp if fallback_mode == "invalid" else empty_resp
+
+        mock_router.call = AsyncMock(side_effect=router_call)
+
+        with patch("data_pipeline.rag_engine.PineconeUploader"):
+            engine = RAGEngine(llm_router=mock_router)
+
+        chunks = self._rdmh_chunks(engine.RD_RETRIEVAL_MIN_SCORE + 0.20)
+
+        async def fake_decompose(inquiry, **kwargs):
+            return [inquiry]
+
+        async def fake_search(**kwargs):
+            return chunks, {}
+
+        engine._decompose_question = fake_decompose
+        engine._search_for_required_data = fake_search
+
+        resp = await engine.get_required_data(
+            inquiry="How do I roll over my 401k?",
+            record_keeper="LT Trust",
+            plan_type="401(k)",
+            topic="rollover",
+        )
+
+        assert len(call_log) == 2
+        assert call_log[1].get("force_fallback") is True
+        assert resp.metadata["error"] == "required_data_failed"
+        assert resp.metadata["retrieval_failure_kind"] == "unknown"
+        assert resp.metadata["retrieval_retryable"] is False
+        assert resp.required_fields == {
+            "participant_data": [],
+            "plan_data": [],
+        }
+        assert "private fallback failure" not in repr(resp.metadata)
 
     @pytest.mark.asyncio
     async def test_no_retry_when_primary_returns_populated(self, mock_router):

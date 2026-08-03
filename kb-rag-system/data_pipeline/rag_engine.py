@@ -723,6 +723,21 @@ class RAGEngine:
                         type(retry_error).__name__,
                     )
 
+            # Relevant must-have evidence plus an empty/invalid extraction is
+            # not a valid "no fields required" result.  If the fallback still
+            # cannot resolve it (including a failed fallback call), emit the
+            # same closed sentinel used by other required-data failures so GR
+            # cannot generate a participant-facing answer from missing data.
+            if self._should_retry_required_data(
+                parsed, coverage_gaps, best_rdmh_score
+            ):
+                logger.error("Required-data safety retry exhausted")
+                return self._build_empty_required_data_response(
+                    "required_data_failed",
+                    retrieval_failure_kind="unknown",
+                    retrieval_retryable=False,
+                )
+
             # Remove coverage_gaps from required_fields (it's a separate response field)
             required_fields = {k: v for k, v in parsed.items() if k != "coverage_gaps"}
 
@@ -5718,11 +5733,50 @@ class RAGEngine:
         retrieval gate finding a relevant required_data_must_have chunk."""
         if best_rdmh_score < self.RD_RETRIEVAL_MIN_SCORE:
             return False
+        allowed_top_level = {"participant_data", "plan_data", "coverage_gaps"}
+        required_field_keys = {
+            "field", "description", "why_needed", "data_type", "required",
+        }
+        allowed_data_types = {
+            "text", "currency", "date", "boolean", "number",
+            "list[text]", "list[currency]", "list[date]",
+            "list[boolean]", "list[number]",
+        }
+        if (
+            not isinstance(parsed, dict)
+            or set(parsed) - allowed_top_level
+            or "participant_data" not in parsed
+            or "plan_data" not in parsed
+        ):
+            return True
+        for category in ("participant_data", "plan_data"):
+            fields = parsed.get(category)
+            if not isinstance(fields, list):
+                return True
+            for field in fields:
+                if (
+                    not isinstance(field, dict)
+                    or set(field) != required_field_keys
+                    or any(
+                        not isinstance(field.get(key), str)
+                        or not field[key].strip()
+                        for key in (
+                            "field", "description", "why_needed", "data_type",
+                        )
+                    )
+                    or field.get("data_type") not in allowed_data_types
+                    or not isinstance(field.get("required"), bool)
+                ):
+                    return True
+        raw_coverage_gaps = parsed.get("coverage_gaps", [])
+        if (
+            not isinstance(raw_coverage_gaps, list)
+            or any(not isinstance(gap, str) for gap in raw_coverage_gaps)
+        ):
+            return True
         if coverage_gaps:
             return False
-        arrays = [v for k, v in parsed.items() if k != "coverage_gaps"]
-        if not arrays:
-            return True
+        arrays = [parsed["participant_data"], parsed["plan_data"]]
         return all(isinstance(v, list) and len(v) == 0 for v in arrays)
 
     def _build_empty_required_data_response(

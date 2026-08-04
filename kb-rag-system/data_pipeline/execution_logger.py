@@ -4,17 +4,75 @@ Firestore execution logger.
 Logs structured API execution data to a Firestore ``execution_logs``
 collection.  Logging failures are caught and never propagate to the
 API response so that a Firestore outage cannot break the service.
+
+Schema versioning (Stage 4)
+---------------------------
+Both documents carry ``schema_version``. Every field added since v0 is
+*additive*: a legacy document simply has no ``schema_version`` and no
+``provenance``, and
+:func:`data_pipeline.ticket_review_provenance.execution_schema_version`
+reads that absence as v0 rather than as a corrupt v1 record.
+
+Provenance arrives as one explicit ``provenance`` argument built by trusted
+server-side code, never by inspecting ``request_data``/``response_data``. That
+is the whole point: a caller controls its own request body and can put a
+participant's name in ``metadata.model`` or ``source_articles[].article_id``,
+so scraping provenance out of a payload would quietly turn this collection
+into a second PII retention path. The existing aggregate-only rule still
+holds — no request body, response text, chunk text, participant field, token,
+or raw external identifier is ever written here.
 """
 
 import hashlib
 import logging
 import math
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Callable, Dict, Mapping, Optional
 
 from google.cloud import firestore
 
 logger = logging.getLogger(__name__)
+
+# The additive schema version both collections stamp. Kept as a literal rather
+# than imported so this hot-path module stays free of the console contracts.
+EXECUTION_LOG_SCHEMA_VERSION = 1
+
+# A fixed, parseable prefix so a failed write is a log-based metric rather than
+# free text. The reviewed ``api.metrics`` catalog is closed and belongs to the
+# ticket flow, so widening it is not this module's call.
+WRITE_FAILURE_METRIC = "execution_log_write_failed"
+
+# Only these keys may cross from a provenance fragment into a document. An
+# unknown key is dropped, so a future caller cannot widen the schema by
+# accident.
+_PROVENANCE_KEYS = frozenset(
+    {
+        "provenance_schema_version",
+        "correlation",
+        "job",
+        "pipeline",
+        "retrieval",
+        "response_sha256",
+        "missing_provenance",
+    }
+)
+
+
+def _safe_provenance(value: Any) -> Optional[Dict[str, Any]]:
+    """Keep only the allowlisted provenance keys, or nothing at all.
+
+    Deliberately total: it cannot raise, because document construction runs
+    outside the write's ``try`` block and an exception here would break the
+    "logging never changes the API result" property.
+    """
+    if not isinstance(value, Mapping):
+        return None
+    kept = {
+        key: value[key]
+        for key in _PROVENANCE_KEYS
+        if key in value and not isinstance(value[key], (bytes, bytearray))
+    }
+    return kept or None
 
 
 def _safe_nonnegative_int(value: Any) -> int:
@@ -85,6 +143,7 @@ class ExecutionLogger:
         *,
         database: str = "(default)",
         retention_days: int = 90,
+        metrics_sink: Optional[Callable[[str, str], None]] = None,
     ):
         if retention_days < 1:
             raise ValueError("retention_days must be positive")
@@ -93,6 +152,29 @@ class ExecutionLogger:
         self.db = firestore.AsyncClient(project=project_id, database=database)
         self.collection = self.db.collection("execution_logs")
         self.retention_days = retention_days
+        self._metrics_sink = metrics_sink
+
+    def _record_write_failure(self, collection: str, error: BaseException) -> None:
+        """Report a failed write as a structured metric, then swallow it.
+
+        Read through ``getattr`` because the runtime-safety tests construct this
+        class with ``__new__`` and set only the two attributes they need; an
+        unconditional ``self._metrics_sink`` would turn those tests into
+        ``AttributeError`` and, worse, would make a Firestore outage raise here.
+        """
+        error_type = type(error).__name__
+        sink = getattr(self, "_metrics_sink", None)
+        if sink is not None:
+            try:
+                sink(collection, error_type)
+            except Exception:  # noqa: BLE001 - a metric must never break a request
+                logger.debug("execution log metric sink failed", exc_info=False)
+        logger.error(
+            "%s collection=%s error_type=%s",
+            WRITE_FAILURE_METRIC,
+            collection,
+            error_type,
+        )
 
     async def log_execution(
         self,
@@ -102,6 +184,7 @@ class ExecutionLogger:
         request_data: Dict[str, Any],
         response_data: Dict[str, Any],
         error: Optional[str] = None,
+        provenance: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """Log a single API execution to Firestore.
 
@@ -121,6 +204,10 @@ class ExecutionLogger:
             logging time).
         error : str | None
             Error message if the request failed; ``None`` on success.
+        provenance : Mapping | None
+            An already-sanitized fragment from
+            :meth:`data_pipeline.ticket_review_provenance.ExecutionProvenance.as_document_fields`.
+            Never derived from ``request_data``/``response_data``.
         """
         now = datetime.now(timezone.utc)
         metadata = response_data.get("metadata")
@@ -130,6 +217,8 @@ class ExecutionLogger:
         source_articles = response_data.get("source_articles")
         confidence = response_data.get("confidence")
         doc = {
+            # Additive: v0 documents simply have no schema_version.
+            "schema_version": EXECUTION_LOG_SCHEMA_VERSION,
             # X-Request-ID puede venir del caller. Sólo se conserva un hash
             # correlacionable; nunca texto, IDs externos ni errores raw.
             "request_id_hash": hashlib.sha256(
@@ -177,14 +266,14 @@ class ExecutionLogger:
             },
             "failed": error is not None,
         }
+        sanitized = _safe_provenance(provenance)
+        if sanitized is not None:
+            doc["provenance"] = sanitized
 
         try:
             await self.collection.add(doc)
         except Exception as e:
-            logger.error(
-                "Failed to log execution to Firestore; error_type=%s",
-                type(e).__name__,
-            )
+            self._record_write_failure("execution_logs", e)
 
     async def log_ticket_execution(
         self,
@@ -197,6 +286,7 @@ class ExecutionLogger:
         duration_ms: float,
         error: Optional[str] = None,
         idempotency_key: Optional[str] = None,
+        provenance: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """Log one end-to-end ticket orchestration to the ``ticket_executions``
         collection. Like ``log_execution`` it never propagates failures."""
@@ -205,7 +295,15 @@ class ExecutionLogger:
         # reconciliation ledger. Keep only bounded aggregates: copying job,
         # idempotency, or upstream IDs here would create a second unbounded
         # PII-bearing retention path outside the ticket payload TTL.
+        #
+        # Stage 4 does not relax that. ``request_id``, ``ticket_job_id`` and
+        # ``idempotency_key`` are still never written from these parameters:
+        # they are caller-influenced strings. The only identifiers that may
+        # appear are inside ``provenance``, where the correlation reference is
+        # a keyed HMAC of the DON and the job id has already been checked
+        # against the server-minted shape.
         doc = {
+            "schema_version": EXECUTION_LOG_SCHEMA_VERSION,
             "ticket_handler_mode": mode if mode in {
                 "disabled", "shadow", "knowledge_only", "full",
             } else "unknown",
@@ -220,10 +318,10 @@ class ExecutionLogger:
             }) if isinstance(forusbots_job_ids, list) else 0,
             "failed": error is not None,
         }
+        sanitized = _safe_provenance(provenance)
+        if sanitized is not None:
+            doc["provenance"] = sanitized
         try:
             await self.db.collection("ticket_executions").add(doc)
         except Exception as e:
-            logger.error(
-                "Failed to log ticket execution to Firestore; error_type=%s",
-                type(e).__name__,
-            )
+            self._record_write_failure("ticket_executions", e)

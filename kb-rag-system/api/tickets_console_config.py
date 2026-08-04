@@ -28,6 +28,7 @@ import base64
 import binascii
 import json
 import os
+import re
 from collections.abc import Mapping
 from typing import Optional
 from urllib.parse import urlparse
@@ -191,6 +192,83 @@ def resolve_tickets_firestore_database(database: object, *, environment: str) ->
     return normalized
 
 
+# =====================================================================
+# Message-classification identity configuration
+# =====================================================================
+#
+# These three lists are the ONLY basis for deciding whether a timeline entry
+# came from a participant, a human agent, or an AI/system author. They hold
+# DevRev *identities* — a DON or an opaque object id — and never display names:
+# a Rev user can be called "Support Bot" and an automation can be called "Ana",
+# so a name match would classify by coincidence. When identity is ambiguous the
+# service must fall back to `unknown` and surface an operator warning rather
+# than guess.
+#
+# No organization-specific id appears here or in the tests. These are shape
+# rules only; the actual ids are delivered as a confidential config secret.
+
+# A DevRev DON, or a bounded opaque object id. Whitespace and "@" are refused
+# precisely because they are what a display name or an email looks like.
+_DEVREV_IDENTITY_PATTERN = re.compile(r"^(?:don:[A-Za-z0-9_.:/+-]+|[A-Za-z0-9_.:/+-]{3,})\Z")
+_MAX_AUTHOR_IDS = 100
+
+# Bounded operator-warning vocabulary for session diagnostics. These strings
+# reach an operator-facing surface, so they carry no configuration values.
+DIAGNOSTIC_NO_AI_AUTHOR_IDS = "devrev_ai_author_ids_unconfigured"
+DIAGNOSTIC_NO_SYSTEM_AUTHOR_IDS = "devrev_system_author_ids_unconfigured"
+DIAGNOSTIC_AUTHOR_ID_OVERLAP = "devrev_author_id_sets_overlap"
+
+
+def _author_id_errors(label: str, values: list[str]) -> list[str]:
+    """Refuse a display name, a blank entry, or an unbounded list.
+
+    Applied in every environment: a name where an id belongs is a bug in
+    local too, and it is far cheaper to reject at startup than to discover
+    later that every message was classified ``unknown``.
+    """
+    errors: list[str] = []
+    if len(values) > _MAX_AUTHOR_IDS:
+        errors.append(f"{label} must not exceed {_MAX_AUTHOR_IDS} identities")
+    for value in values:
+        candidate = value.strip()
+        if not candidate:
+            errors.append(f"{label} must not contain a blank identity")
+            continue
+        if len(candidate) > 256:
+            errors.append(f"{label} contains an identity that is too long")
+            continue
+        if not _DEVREV_IDENTITY_PATTERN.match(candidate):
+            # Deliberately does not echo the value: it may be a real identity.
+            errors.append(
+                f"{label} must hold DevRev DONs or object ids, never display "
+                "names or email addresses"
+            )
+    return errors
+
+
+def classification_diagnostics(settings: "TicketConsoleSettings") -> list[str]:
+    """Operator warnings about message-classification configuration.
+
+    Empty AI/system configuration is *not* a startup failure: a deployment may
+    legitimately not know its automation identities yet. It is, however, a
+    silent correctness problem — every ambiguous author becomes ``unknown`` —
+    so the console surfaces it in session diagnostics instead of hiding it.
+    """
+    warnings: list[str] = []
+    ai = {value.strip() for value in settings.DEVREV_AI_AUTHOR_IDS if value.strip()}
+    system = {value.strip() for value in settings.DEVREV_SYSTEM_AUTHOR_IDS if value.strip()}
+    human = {value.strip() for value in settings.DEVREV_HUMAN_AUTHOR_IDS if value.strip()}
+    if not ai:
+        warnings.append(DIAGNOSTIC_NO_AI_AUTHOR_IDS)
+    if not system:
+        warnings.append(DIAGNOSTIC_NO_SYSTEM_AUTHOR_IDS)
+    # An identity in two sets has no defensible classification, so report it
+    # rather than letting precedence order decide silently.
+    if (ai & human) or (system & human) or (ai & system):
+        warnings.append(DIAGNOSTIC_AUTHOR_ID_OVERLAP)
+    return warnings
+
+
 def _is_https_url(value: str) -> bool:
     if not value:
         return False
@@ -333,6 +411,15 @@ def validate_ticket_console_settings(
         errors.append("AUTH_MODE=local requires ALLOW_LOCAL_AUTH=true")
     if settings.DEVREV_VERSION != DEVREV_PINNED_VERSION:
         errors.append(f"DEVREV_VERSION must be pinned to {DEVREV_PINNED_VERSION}")
+
+    # Shape-checked in every environment. Emptiness is allowed and reported by
+    # `classification_diagnostics`; a display name where an id belongs is not.
+    for label, values in (
+        ("DEVREV_AI_AUTHOR_IDS", settings.DEVREV_AI_AUTHOR_IDS),
+        ("DEVREV_SYSTEM_AUTHOR_IDS", settings.DEVREV_SYSTEM_AUTHOR_IDS),
+        ("DEVREV_HUMAN_AUTHOR_IDS", settings.DEVREV_HUMAN_AUTHOR_IDS),
+    ):
+        errors.extend(_author_id_errors(label, values))
 
     strict = settings.ENVIRONMENT in STRICT_ENVIRONMENTS
 

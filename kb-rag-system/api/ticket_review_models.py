@@ -140,6 +140,32 @@ CURSOR_TAG_BYTES = 16
 CURSOR_DEFAULT_TTL_S = CACHE_TTL_S
 CURSOR_EXPIRY_KEY = "_exp"
 
+# Stage 4 — hydration, correlation, and the evidence broker.
+#
+# A manual-evidence candidate token is short lived on purpose: it authorizes
+# one reviewer to link one already-observed broker result, so it must expire
+# well inside a review session rather than living as long as a page cursor.
+EVIDENCE_CANDIDATE_TTL_S = 10 * 60
+MAX_EVIDENCE_CANDIDATES = 10
+# The broker never fans out over an unbounded keyring, and never returns an
+# unbounded result set, whatever a caller asks for.
+MAX_BROKER_KEY_VERSIONS = 5
+MAX_BROKER_RESULTS = 25
+# The versioned, additive execution-log schema. v0 is every legacy document
+# written before Stage 4, which carries none of the provenance fields.
+EXECUTION_LOG_SCHEMA_VERSION = 1
+LEGACY_EXECUTION_LOG_SCHEMA_VERSION = 0
+# The lookup HMAC is a hex SHA-256 digest, so it obeys the same shape rule as
+# every other hash in this module.
+CORRELATION_HMAC_VERSION = 1
+# Replay window for the n8n ingress signature, per the master plan.
+INGRESS_SIGNATURE_MAX_SKEW_S = 5 * 60
+
+# The only body types the console renders as text. Everything else — HTML,
+# Markdown, an unknown remote value — becomes a bounded placeholder, so no
+# remote markup can reach the browser.
+PLAIN_TEXT_BODY_TYPES = frozenset({"text", "text/plain", "plain", "plaintext"})
+
 
 # =====================================================================
 # Errors
@@ -411,6 +437,63 @@ class DevRevActorType(str, Enum):
     UNKNOWN = "unknown"
 
 
+class MessageActorClass(str, Enum):
+    """Who authored a normalized conversation entry.
+
+    Derived in the service layer from configured identity sets and DevRev
+    actor *types* only. A display name is never sufficient evidence: a Rev user
+    may be called "Support Bot" and an automation may be called "Ana", so an
+    ambiguous entry becomes :attr:`UNKNOWN` rather than a guess.
+    """
+
+    PARTICIPANT = "participant"
+    HUMAN_AGENT = "human_agent"
+    AI_OR_SYSTEM = "ai_or_system"
+    EVENT = "event"
+    UNKNOWN = "unknown"
+
+
+class MessageClassificationBasis(str, Enum):
+    """The evidence that produced a :class:`MessageActorClass`.
+
+    Recorded so the UI and the tests can prove a classification came from an
+    identity/type and never from a display-name string match.
+    """
+
+    CONFIGURED_AI_AUTHOR_ID = "configured_ai_author_id"
+    CONFIGURED_SYSTEM_AUTHOR_ID = "configured_system_author_id"
+    CONFIGURED_HUMAN_AUTHOR_ID = "configured_human_author_id"
+    EXTERNAL_ACTOR_TYPE = "external_actor_type"
+    SYSTEM_ACTOR_TYPE = "system_actor_type"
+    INTERNAL_ACTOR_TYPE = "internal_actor_type"
+    CHANGE_EVENT = "change_event"
+    AMBIGUOUS = "ambiguous"
+    NO_AUTHOR = "no_author"
+
+
+class MessageRendering(str, Enum):
+    """How the UI may render a normalized body.
+
+    ``PLACEHOLDER`` is how an unmodelled or non-plain-text body survives
+    without ever handing markup to the browser.
+    """
+
+    TEXT = "text"
+    PLACEHOLDER = "placeholder"
+
+
+class CacheState(str, Enum):
+    """Whether the bounded message cache behaved on this request.
+
+    ``DEGRADED`` exists so a failed cache write can be reported without
+    failing an otherwise valid read.
+    """
+
+    FRESH = "fresh"
+    DEGRADED = "degraded"
+    DISABLED = "disabled"
+
+
 # =====================================================================
 # Identity
 # =====================================================================
@@ -511,6 +594,54 @@ class DevRevTimelineEntry(_Base):
     unsupported_type: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
     created_at: AwareDatetime = Field(...)
     modified_at: Optional[AwareDatetime] = Field(default=None)
+
+
+class NormalizedMessage(_Base):
+    """One classified, render-safe conversation entry.
+
+    A separate wrapper rather than extra fields on
+    :class:`DevRevTimelineEntry`, which is ``extra="forbid"`` and owned by the
+    Stage 2 adapter. Three invariants matter:
+
+    * ``actor_class``/``basis`` come from identities and DevRev actor types,
+      never from a display-name string match;
+    * ``participant_facing`` is false for every internal/private entry, so a
+      caller cannot accidentally splice an agent-only note into the reply;
+    * ``body`` is populated only for a plain-text body. Anything else becomes
+      a :attr:`MessageRendering.PLACEHOLDER` with metadata, so no remote markup
+      reaches the UI.
+    """
+
+    entry_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
+    object_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
+    kind: TimelineEntryKind = Field(...)
+    visibility: TimelineVisibility = Field(default=TimelineVisibility.PRIVATE)
+    actor_class: MessageActorClass = Field(default=MessageActorClass.UNKNOWN)
+    basis: MessageClassificationBasis = Field(default=MessageClassificationBasis.AMBIGUOUS)
+    actor: Optional[DevRevActor] = Field(default=None)
+    internal: bool = Field(default=True)
+    participant_facing: bool = Field(default=False)
+    rendering: MessageRendering = Field(default=MessageRendering.PLACEHOLDER)
+    body: Optional[str] = Field(default=None, max_length=MAX_MESSAGE_BODY_LENGTH)
+    body_type: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    placeholder_reason: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    body_length: StrictInt = Field(default=0, ge=0)
+    change_summary: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    unsupported_type: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    thread_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    in_reply_to: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    created_at: AwareDatetime = Field(...)
+    modified_at: Optional[AwareDatetime] = Field(default=None)
+
+    @model_validator(mode="after")
+    def _placeholder_carries_no_body(self) -> NormalizedMessage:
+        if self.rendering is MessageRendering.PLACEHOLDER and self.body is not None:
+            raise ValueError("a placeholder message must not carry a rendered body")
+        if self.rendering is MessageRendering.TEXT and self.placeholder_reason is not None:
+            raise ValueError("a rendered message must not carry a placeholder reason")
+        if self.participant_facing and self.internal:
+            raise ValueError("an internal message can never be participant facing")
+        return self
 
 
 class DevRevTicketFilters(_Base):
@@ -1011,6 +1142,285 @@ class CursorPage(_Base, Generic[T]):
 
 class TimelinePage(CursorPage[DevRevTimelineEntry]):
     """One bounded, forward-only timeline page (``mode=after`` always)."""
+
+
+class ClassifiedTimelinePage(TimelinePage):
+    """A timeline page whose entries also carry a service classification.
+
+    Subclasses :class:`TimelinePage` so a hydration service can satisfy the
+    Stage 4 interface without widening the Stage 2 adapter's return type.
+    ``items`` stays the adapter's normalized source order; ``messages`` is the
+    parallel classified projection the UI renders.
+    """
+
+    messages: list[NormalizedMessage] = Field(
+        default_factory=list, max_length=MAX_PAGE_SIZE
+    )
+    cache_state: CacheState = Field(default=CacheState.FRESH)
+    diagnostics: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)
+
+    @model_validator(mode="after")
+    def _one_message_per_entry(self) -> ClassifiedTimelinePage:
+        if len(self.messages) != len(self.items):
+            raise ValueError("every timeline entry needs exactly one classified message")
+        return self
+
+
+class TicketReviewSummary(_Base):
+    """The bounded review projection a live list row may carry.
+
+    A list page overlays this and never the full review: it must not become a
+    second copy of reviewer comments, resolution evidence, or chunk refs.
+    """
+
+    review_id: Sha256Hex = Field(...)
+    status: ReviewStatus = Field(...)
+    topic: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    legacy_type: Optional[str] = Field(default=None, max_length=MAX_LEGACY_TYPE_LENGTH)
+    observation_type: Optional[ObservationType] = Field(default=None)
+    rating: Optional[Rating] = Field(default=None)
+    severity: Optional[Severity] = Field(default=None)
+    remediation_target: RemediationTarget = Field(default=RemediationTarget.UNKNOWN)
+    assigned_reviewer_email: Optional[str] = Field(default=None, max_length=MAX_EMAIL_LENGTH)
+    correlation_status: CorrelationStatus = Field(default=CorrelationStatus.UNAVAILABLE)
+    import_state: ImportState = Field(default=ImportState.ACTIVE)
+    updated_at: AwareDatetime = Field(...)
+    version: StrictInt = Field(..., ge=1)
+
+    @classmethod
+    def of(cls, review: TicketReview) -> TicketReviewSummary:
+        """Project a durable review, dropping every unbounded judgment field."""
+        return cls(
+            review_id=review.review_id,
+            status=review.status,
+            topic=review.topic,
+            legacy_type=review.legacy_type,
+            observation_type=review.observation_type,
+            rating=review.rating,
+            severity=review.severity,
+            remediation_target=review.remediation_target,
+            assigned_reviewer_email=(
+                review.assigned_reviewer.email if review.assigned_reviewer else None
+            ),
+            correlation_status=review.correlation_status,
+            import_state=review.import_state,
+            updated_at=review.updated_at,
+            version=review.version,
+        )
+
+
+class DevRevTicketWithReviewSummary(_Base):
+    """One live list row joined to its durable review, if one exists.
+
+    Composition rather than inheritance: ``DevRevTicketSummary`` and
+    ``TicketReview`` both declare ``severity``, ``created_at`` and
+    ``devrev_display_id`` with different meanings and types, so merging them
+    into one flat model would silently conflate live DevRev state with human
+    judgment. ``review=None`` means "no durable review exists" and is never a
+    fabricated unreviewed document.
+    """
+
+    ticket: DevRevTicketSummary = Field(...)
+    review: Optional[TicketReviewSummary] = Field(default=None)
+
+
+class EvidenceCandidateLink(_Base):
+    """A suggested — never stored — correlation between a review and evidence.
+
+    ``candidate_token`` is an authenticated-encrypted server token bound to
+    ticket, review, actor, the sanitized broker reference/digest, the broker
+    result digest, and an expiry. The caller echoes it back verbatim; it can
+    neither be edited into another ticket's evidence nor extended.
+    """
+
+    candidate_token: str = Field(..., min_length=1, max_length=MAX_CURSOR_LENGTH)
+    evidence_reference: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
+    evidence_digest: Sha256Hex = Field(...)
+    broker_result_digest: Sha256Hex = Field(...)
+    rationale: str = Field(..., min_length=1, max_length=MAX_REASON_LENGTH)
+    correlation_trust: CorrelationTrust = Field(default=CorrelationTrust.CANDIDATE)
+    expires_at: AwareDatetime = Field(...)
+
+    @field_validator("correlation_trust")
+    @classmethod
+    def _a_candidate_is_never_verified(cls, value: CorrelationTrust) -> CorrelationTrust:
+        # A suggestion must not be able to describe itself as a verified
+        # workload correlation; only the producer's signed path may do that.
+        if value is not CorrelationTrust.CANDIDATE:
+            raise ValueError("a candidate link is always CorrelationTrust.CANDIDATE")
+        return value
+
+
+class TicketEvidenceSummary(_Base):
+    """What can be defended about a ticket's RAG evidence, and nothing more.
+
+    Defaults assert nothing: an absent correlation is ``unavailable`` with an
+    explicit reason, never an inferred link.
+    """
+
+    correlation_status: CorrelationStatus = Field(default=CorrelationStatus.UNAVAILABLE)
+    correlation_trust: CorrelationTrust = Field(default=CorrelationTrust.NONE)
+    correlation_source: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    unavailable_reason: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
+    provenance: list[RagProvenance] = Field(
+        default_factory=list, max_length=MAX_BROKER_RESULTS
+    )
+    linked_count: StrictInt = Field(default=0, ge=0)
+    candidate_links: list[EvidenceCandidateLink] = Field(
+        default_factory=list, max_length=MAX_EVIDENCE_CANDIDATES
+    )
+    broker_available: bool = Field(default=False)
+    warnings: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)
+
+    @model_validator(mode="after")
+    def _a_candidate_never_implies_a_link(self) -> TicketEvidenceSummary:
+        if self.candidate_links and self.correlation_status is CorrelationStatus.LINKED:
+            raise ValueError(
+                "a suggestion must not be reported alongside an automatic link"
+            )
+        return self
+
+
+class TicketDetailEnvelope(_Base):
+    """One ticket detail: live DevRev data, durable review, and evidence.
+
+    Every component is optional and each failure is explicit. A DevRev outage
+    yields ``ticket=None`` with ``partial=True``; it never erases ``review``
+    and never lets the envelope claim completeness.
+    """
+
+    ticket_ref: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
+    ticket: Optional[DevRevTicketDetail] = Field(default=None)
+    review: Optional[TicketReview] = Field(default=None)
+    timeline: Optional[ClassifiedTimelinePage] = Field(default=None)
+    evidence: TicketEvidenceSummary = Field(default_factory=TicketEvidenceSummary)
+    partial: bool = Field(default=False)
+    cache_state: CacheState = Field(default=CacheState.FRESH)
+    warnings: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)
+    diagnostics: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)
+
+    @model_validator(mode="after")
+    def _missing_live_data_is_always_partial(self) -> TicketDetailEnvelope:
+        if self.ticket is None and not self.partial:
+            raise ValueError("an envelope without live ticket data is partial by definition")
+        return self
+
+
+# =====================================================================
+# Evidence broker transport (shared by the console and the broker app)
+# =====================================================================
+#
+# These models live here rather than in either service so the broker app can
+# import them without reaching into the console repository, and so the
+# console cannot drift from the envelope the broker actually returns.
+
+
+class EvidenceSourceCollection(str, Enum):
+    """The only ``(default)`` collections the broker may ever read."""
+
+    EXECUTION_LOGS = "execution_logs"
+    TICKET_EXECUTIONS = "ticket_executions"
+    TICKET_JOBS = "ticket_jobs"
+
+
+class MissingProvenance(str, Enum):
+    """Explicit gaps. A gap is rendered as a gap, never inferred as fact."""
+
+    INDEX_VERSION = "index_version"
+    DEPLOYED_REVISION = "deployed_revision"
+    PROMPT_TEMPLATE = "prompt_template"
+    MODEL = "model"
+    OBSERVED_CHUNKS = "observed_chunks"
+    RESPONSE_HASH = "response_hash"
+    SOURCE_ARTICLES = "source_articles"
+    LEGACY_SCHEMA = "legacy_schema"
+
+
+class RagEvidenceRecord(_Base):
+    """One sanitized, allowlisted execution record.
+
+    Deliberately absent: prompts, responses, chunk text, participant data,
+    API keys, and any raw external identifier. ``evidence_reference`` is an
+    opaque server digest, not a Firestore path a caller could dereference.
+    """
+
+    evidence_reference: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
+    evidence_digest: Sha256Hex = Field(...)
+    source_collection: EvidenceSourceCollection = Field(...)
+    schema_version: StrictInt = Field(default=LEGACY_EXECUTION_LOG_SCHEMA_VERSION, ge=0)
+    occurred_at: Optional[AwareDatetime] = Field(default=None)
+    endpoint: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    correlation_source: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    correlation_trust: CorrelationTrust = Field(default=CorrelationTrust.NONE)
+    lookup_key_version: Optional[StrictInt] = Field(default=None, ge=1)
+    ingress_key_version: Optional[StrictInt] = Field(default=None, ge=1)
+    internal_job_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    request_id_hash: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    principal_hash: Optional[Sha256Hex] = Field(default=None)
+    # Generation identity. ``RagProvenance`` predates Stage 4 and models the
+    # retrieval/index side only, so these live here rather than being forced
+    # into it: which model answered is evidence about the *execution*, not
+    # about the index it read.
+    model: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    provider: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    route: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    config_version: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    # Labelled at the field, not just in prose: a trace hash correlates one
+    # rendered prompt and is never a template version.
+    rendered_prompt_trace_sha256: Optional[Sha256Hex] = Field(default=None)
+    deployed_commit_sha: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    deployed_image_digest: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    provenance: RagProvenance = Field(default_factory=RagProvenance)
+    source_article_ids: list[str] = Field(
+        default_factory=list, max_length=MAX_EVIDENCE_REFS_PER_REVIEW
+    )
+    duration_ms: Optional[float] = Field(default=None, ge=0.0)
+    failed: Optional[bool] = Field(default=None)
+    missing: list[MissingProvenance] = Field(default_factory=list, max_length=MAX_LIST_ITEMS)
+
+
+class RagEvidenceEnvelope(_Base):
+    """The broker's whole answer. Bounded, allowlisted, and self-describing."""
+
+    correlation_status: CorrelationStatus = Field(default=CorrelationStatus.UNAVAILABLE)
+    records: list[RagEvidenceRecord] = Field(
+        default_factory=list, max_length=MAX_BROKER_RESULTS
+    )
+    result_digest: Sha256Hex = Field(...)
+    key_versions_queried: list[StrictInt] = Field(
+        default_factory=list, max_length=MAX_BROKER_KEY_VERSIONS
+    )
+    truncated: bool = Field(default=False)
+    unavailable_reason: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
+    warnings: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)
+
+    @model_validator(mode="after")
+    def _no_records_is_never_linked(self) -> RagEvidenceEnvelope:
+        if not self.records and self.correlation_status is not CorrelationStatus.UNAVAILABLE:
+            raise ValueError("an empty evidence envelope is always 'unavailable'")
+        return self
+
+
+class TicketEvidenceLookupRequest(_Base):
+    """The broker's only request body.
+
+    It carries one bounded, transient DevRev DON from the authenticated
+    console service. The broker hashes it in memory and never persists,
+    echoes, or logs it.
+    """
+
+    devrev_work_id: SecretStr = Field(...)
+    max_results: StrictInt = Field(default=MAX_BROKER_RESULTS, ge=1, le=MAX_BROKER_RESULTS)
+
+    @field_validator("devrev_work_id")
+    @classmethod
+    def _bounded_don(cls, value: SecretStr) -> SecretStr:
+        raw = value.get_secret_value()
+        if not raw.strip():
+            raise ValueError("a DevRev work id is required")
+        if len(raw) > MAX_ID_LENGTH:
+            raise ValueError("the DevRev work id is too long")
+        return value
 
 
 # =====================================================================

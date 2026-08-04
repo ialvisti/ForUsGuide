@@ -322,6 +322,16 @@ class TicketConsoleSettings(BaseSettings):
     CSRF_SIGNING_SECRET: SecretStr = Field(default=SecretStr(""))
     CSRF_TOKEN_TTL_S: int = CSRF_TOKEN_TTL_S
 
+    # The console's own public origin, e.g. ``https://tickets-console-x-uc.a.run.app``.
+    # Stage 5 needs it as configuration rather than as a request header: the
+    # whole point of the Origin/Fetch-Metadata check is that a cross-site caller
+    # cannot choose what it is compared against, and ``Host``/``X-Forwarded-Host``
+    # are attacker-controllable. It stays optional here — a blank value is only
+    # an error for the app that actually enforces CSRF, and
+    # ``api.reviewer_auth.validate_console_auth_startup`` fails that revision
+    # closed rather than widening this module's contract for every plane.
+    CONSOLE_ORIGIN: str = ""
+
     # Google Cloud.
     GCP_PROJECT: str = ""
     # Needed to enforce the plan's rule that a production broker URL must live

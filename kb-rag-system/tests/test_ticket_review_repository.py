@@ -69,6 +69,7 @@ from data_pipeline.ticket_review_repository import (
     EXPORTS_COLLECTION,
     GLOBAL_AUDIT_EVENTS_COLLECTION,
     GLOBAL_CHAIN_HEAD_DOC_ID,
+    HELD_RETENTION_FIELD,
     IDEMPOTENCY_KEYS_COLLECTION,
     IMPORT_ROWS_SUBCOLLECTION,
     IMPORT_STAGING_COLLECTION,
@@ -2641,3 +2642,373 @@ class TestRetention:
         # A cache sweep never touches the durable review or its ledger.
         assert review.review_id in await backend.dump_collection(REVIEWS_COLLECTION)
         assert (await repo.list_audit_events(review.review_id)).items
+
+
+# =====================================================================
+# Regressions found by the Stage 3 adversarial review. Each of these
+# passed a green suite before the defect it pins was fixed.
+# =====================================================================
+
+
+class TestReviewedRegressions:
+    async def test_a_save_during_a_retention_run_is_never_tombstoned(self, repo, backend, clock):
+        """The purge decision is re-taken transactionally.
+
+        Candidates are found by a scan that runs outside any transaction, so a
+        write that lands in the gap must survive: otherwise the tombstone write
+        carries no read, Firestore has nothing to detect contention on, and a
+        reviewer's save is destroyed permanently.
+        """
+        review = await _seed(repo)
+        clock.advance(days=REVIEW_RETENTION_DAYS + 1)
+        stale = (await backend.dump_collection(REVIEWS_COLLECTION))[review.review_id]
+
+        # The reviewer saves after the scan, restarting the 730-day clock.
+        saved = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(comments="URGENT new finding"),
+            expected_version=review.version,
+            context=_context(),
+        )
+
+        tombstoned = await repo._tombstone(
+            REVIEWS_COLLECTION, review.review_id, stale, clock.now
+        )
+
+        assert tombstoned is False
+        current = await repo.get_review(review.review_id)
+        assert current.comments == "URGENT new finding"
+        assert current.version == saved.version
+
+    async def test_a_hold_placed_during_a_retention_run_is_never_overwritten(
+        self, repo, backend, clock
+    ):
+        review = await _seed(repo)
+        clock.advance(days=REVIEW_RETENTION_DAYS + 1)
+        stale = (await backend.dump_collection(REVIEWS_COLLECTION))[review.review_id]
+
+        await repo.set_legal_hold(review.review_id, True, context=ADMIN_CONTEXT)
+
+        assert (
+            await repo._tombstone(REVIEWS_COLLECTION, review.review_id, stale, clock.now)
+            is False
+        )
+        doc = (await backend.dump_collection(REVIEWS_COLLECTION))[review.review_id]
+        assert doc["legal_hold"] is True
+        assert doc["doc_kind"] == "review"
+
+    async def test_many_legal_holds_do_not_starve_the_bounded_purge(
+        self, repo, backend, clock
+    ):
+        """A held document is invisible to the scan, not merely skipped.
+
+        Holding its `retention_expires_at` would park an ever-earlier timestamp
+        at the head of the ascending scan order and consume the whole window
+        forever, while the run still reported a clean, complete pass.
+        """
+        held = []
+        for index in range(4):
+            don = f"don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/{900 + index}"
+            aged = await _seed(repo, don, devrev_display_id=f"TKT-{900 + index}")
+            await repo.set_legal_hold(aged.review_id, True, context=ADMIN_CONTEXT)
+            held.append(aged.review_id)
+        clock.advance(days=1)
+        ordinary = await _seed(
+            repo, OTHER_DON, devrev_display_id="TKT-9999"
+        )
+        clock.advance(days=REVIEW_RETENTION_DAYS + 1)
+
+        # A budget smaller than the number of holds must still make progress.
+        report = await repo.purge_expired(
+            max_documents=2, run_id="run-1", context=ADMIN_CONTEXT
+        )
+
+        assert report.tombstoned == [ordinary.review_id]
+        docs = await backend.dump_collection(REVIEWS_COLLECTION)
+        for review_id in held:
+            assert docs[review_id]["doc_kind"] == "review"
+            assert RETENTION_FIELD not in docs[review_id]
+            assert isinstance(docs[review_id][HELD_RETENTION_FIELD], datetime)
+
+    async def test_a_fully_filtered_page_still_advances_the_cursor(self, repo, clock):
+        """One reversed import chunk must not empty the queue.
+
+        `import_state` is filtered after the backend limit, so a cursor minted
+        from the last KEPT item ends pagination whenever a whole page is
+        filtered out -- and reversal bumps `updated_at`, which puts every
+        reversed review at the top of the queue.
+        """
+        live = []
+        for index in range(4):
+            don = f"don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/{910 + index}"
+            clock.advance(minutes=1)
+            live.append((await _seed(repo, don, devrev_display_id=f"TKT-{910 + index}")).review_id)
+        reversed_ids = []
+        for index in range(2):
+            don = f"don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/{920 + index}"
+            clock.advance(minutes=1)
+            review = await _seed(repo, don, devrev_display_id=f"TKT-{920 + index}")
+            await repo.mark_import_state(
+                review.review_id,
+                ImportState.REVERSED,
+                expected_version=review.version,
+                context=ADMIN_CONTEXT,
+            )
+            reversed_ids.append(review.review_id)
+
+        seen, cursor = [], None
+        for _ in range(10):
+            page = await repo.list_reviews(ReviewListQuery(page_size=2, cursor=cursor))
+            seen.extend(item.review_id for item in page.items)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+
+        assert sorted(seen) == sorted(live)
+        assert not any(review_id in seen for review_id in reversed_ids)
+
+    async def test_live_evidence_links_stay_reachable_past_retired_ones(self, repo):
+        review = await _seed(repo)
+        current = review
+        made = []
+        for index in range(5):
+            candidate = _candidate(review.review_id, evidence_digest=f"{index:064x}")
+            link, current = await repo.create_evidence_link(
+                review.review_id,
+                candidate=candidate,
+                reason=f"match {index}",
+                expected_version=current.version,
+                context=_context(),
+            )
+            made.append(link.link_id)
+        # Retire the three whose document ids sort first, so a page-sized read
+        # of the head of the subcollection sees only retired links.
+        for link_id in sorted(made)[:3]:
+            current = await repo.unlink_evidence_link(
+                review.review_id,
+                link_id,
+                reason="retracted",
+                expected_version=current.version,
+                context=_context(),
+            )
+
+        seen, cursor = [], None
+        for _ in range(10):
+            page = await repo.list_evidence_links(review.review_id, page_size=2, cursor=cursor)
+            seen.extend(item.link_id for item in page.items)
+            cursor = page.next_cursor
+            if cursor is None:
+                break
+
+        assert sorted(seen) == sorted(made)[3:]
+        assert len(seen) == 2
+
+    async def test_relinking_a_retired_candidate_keeps_the_version_monotonic(self, repo):
+        review = await _seed(repo)
+        candidate = _candidate(review.review_id)
+        link, after_link = await repo.create_evidence_link(
+            review.review_id,
+            candidate=candidate,
+            reason="matches",
+            expected_version=1,
+            context=_context(),
+        )
+        after_unlink = await repo.unlink_evidence_link(
+            review.review_id,
+            link.link_id,
+            reason="WRONG TRACE - retracted",
+            expected_version=after_link.version,
+            context=_context(),
+        )
+
+        relinked, _ = await repo.create_evidence_link(
+            review.review_id,
+            candidate=candidate,
+            reason="re-linking after all",
+            expected_version=after_unlink.version,
+            context=_context(),
+        )
+
+        # A client holding the retired ETag must be able to tell it moved.
+        assert relinked.version == 3
+        assert [item.link_id for item in (await repo.list_evidence_links(review.review_id)).items] == [
+            link.link_id
+        ]
+
+    async def test_a_blank_exact_ticket_id_lookup_is_a_typed_filter_error(self, repo):
+        for blank in ("", "   ", "\u00a0"):
+            with pytest.raises(UnsupportedFilterCombination):
+                await repo.list_reviews(ReviewListQuery(devrev_display_id=blank))
+            with pytest.raises(ReviewRepositoryError):
+                await repo.find_review_by_display_id(blank)
+
+    async def test_an_import_chunk_applies_every_row_under_one_idempotency_key(self, repo):
+        """A chunk carries ONE Idempotency-Key but fans out per row.
+
+        Reusing the key verbatim made row 1 store a receipt that rows 2..N then
+        collided with, so a 100-row chunk applied exactly one row.
+        """
+        rows = []
+        for index in range(3):
+            don = f"don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/{930 + index}"
+            review = await _seed(repo, don, devrev_display_id=f"TKT-{930 + index}")
+            rows.append(
+                ImportRowSpec(
+                    row_number=index + 1,
+                    review_id=review.review_id,
+                    expected_review_version=review.version,
+                    patch=ReviewPatch(rating=3),
+                )
+            )
+        record = await repo.create_import(_import(total_rows=3), context=ADMIN_CONTEXT)
+        context = _context(ADMIN, ReviewerRole.ADMIN, idempotency_key="apply-chunk-1")
+
+        result = await repo.apply_import_rows(record.import_id, rows, context=context)
+
+        assert result.applied_rows == 3
+        assert result.failed_rows == 0
+        for spec in rows:
+            assert (await repo.get_review(spec.review_id)).rating == 3
+
+        # Retrying the identical chunk must not double-count the counters.
+        replay = await repo.apply_import_rows(record.import_id, rows, context=context)
+        assert replay.applied_rows == 3
+
+    async def test_a_bulk_patch_applies_every_spec_under_one_idempotency_key(self, repo):
+        specs = []
+        for index in range(3):
+            don = f"don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/{940 + index}"
+            review = await _seed(repo, don, devrev_display_id=f"TKT-{940 + index}")
+            specs.append(
+                ReviewPatchSpec(
+                    review_id=review.review_id,
+                    patch=ReviewPatch(rating=4),
+                    expected_version=review.version,
+                )
+            )
+
+        result = await repo.patch_reviews(
+            specs, context=_context(idempotency_key="bulk-1")
+        )
+
+        assert len(result.applied) == 3
+        assert result.failures == []
+        assert result.conflicts == []
+
+    async def test_lease_operations_dedupe_a_repeated_idempotency_key(self, repo, clock):
+        batch, _refs = await _ready_batch(repo)
+        agent = _context(AGENT, ReviewerRole.AGENT, idempotency_key="claim-1")
+        claim = await repo.claim_batch(batch.batch_id, lease_token="a", context=agent)
+
+        replay = await repo.claim_batch(batch.batch_id, lease_token="a", context=agent)
+        assert replay.batch.version == claim.batch.version
+
+        clock.advance(minutes=1)
+        beat = _context(AGENT, ReviewerRole.AGENT, idempotency_key="beat-1")
+        first = await repo.heartbeat_batch(
+            batch.batch_id,
+            expected_version=claim.batch.version,
+            lease_token="a",
+            context=beat,
+        )
+        second = await repo.heartbeat_batch(
+            batch.batch_id,
+            expected_version=claim.batch.version,
+            lease_token="a",
+            context=beat,
+        )
+        assert second.version == first.version
+
+        # The same key with a DIFFERENT body is a conflict, not a silent second
+        # write: previously neither landed in idempotency_keys at all.
+        op = _context(AGENT, ReviewerRole.AGENT, idempotency_key="op-1")
+        planned = await repo.patch_batch(
+            batch.batch_id,
+            expected_version=first.version,
+            lease_token="a",
+            branch="fix/one",
+            context=op,
+        )
+        with pytest.raises(IdempotencyConflict):
+            await repo.patch_batch(
+                batch.batch_id,
+                expected_version=planned.version,
+                lease_token="a",
+                branch="fix/two",
+                context=op,
+            )
+        assert (await repo.get_batch(batch.batch_id)).branch == "fix/one"
+
+    async def test_an_elapsed_lease_is_reclaimed_not_extended(self, repo, clock):
+        batch, _refs = await _ready_batch(repo)
+        claim = await repo.claim_batch(batch.batch_id, lease_token="a", context=AGENT_CONTEXT)
+        clock.advance(seconds=REMEDIATION_LEASE_S + 60)
+
+        with pytest.raises(LeaseExtensionRefused):
+            await repo.extend_lease(
+                batch.batch_id,
+                expected_version=claim.batch.version,
+                additional_minutes=30,
+                reason="resurrect",
+                context=ADMIN_CONTEXT,
+            )
+        # The correct path stays open: any agent may reclaim it.
+        other = _context(_identity("agent2@example.invalid"), ReviewerRole.AGENT)
+        reclaim = await repo.claim_batch(batch.batch_id, lease_token="b", context=other)
+        assert reclaim.reclaimed is True
+
+    async def test_release_refuses_when_the_frozen_item_page_is_incomplete(
+        self, repo, backend, clock
+    ):
+        """The drift check is bounded by the batch's OWN item_count.
+
+        Bounding it by the configured cap lets a later settings change lower the
+        page below an already-frozen batch and silently skip the tail.
+        """
+        batch, refs = await _ready_batch(repo, count=4)
+        claim = await repo.claim_batch(batch.batch_id, lease_token="a", context=AGENT_CONTEXT)
+        # Drift the frozen review whose document id sorts LAST, so only a check
+        # that reads every item can see it.
+        last_review_id, last_version = max(refs, key=lambda ref: ref[0])
+        await repo.patch_review(
+            last_review_id,
+            ReviewPatch(rating=2),
+            expected_version=last_version,
+            context=_context(),
+        )
+        # A repository configured with a smaller cap than this already-frozen
+        # batch must still verify all four frozen versions.
+        narrowed = TicketReviewRepository(
+            backend,
+            cursor_key=TEST_CURSOR_KEY,
+            clock=clock,
+            id_factory=_Ids(),
+            max_batch_reviews=2,
+        )
+
+        with pytest.raises(BatchReleaseRefused):
+            await narrowed.release_batch(
+                batch.batch_id,
+                expected_version=claim.batch.version,
+                lease_token="a",
+                disposition=BatchStatus.READY,
+                reason="give it back",
+                context=AGENT_CONTEXT,
+            )
+        assert (await repo.get_batch(batch.batch_id)).status is BatchStatus.CLAIMED
+
+    async def test_an_over_byte_limit_batch_is_refused_before_any_write(
+        self, repo, backend, monkeypatch
+    ):
+        from data_pipeline import ticket_review_repository as module
+
+        review = await _seed(repo)
+        monkeypatch.setattr(module, "FIRESTORE_MAX_DOCUMENT_BYTES", 64)
+
+        with pytest.raises(ReviewRepositoryError):
+            await repo.create_batch(
+                review_refs=[{"review_id": review.review_id, "review_version": 1}],
+                context=ADMIN_CONTEXT,
+            )
+
+        assert await backend.dump_collection(BATCHES_COLLECTION) == {}

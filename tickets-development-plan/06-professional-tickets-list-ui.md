@@ -16,9 +16,13 @@
 set -euo pipefail
 export PLAN_ROOT="${PLAN_ROOT:-/Users/ivanalvis/Desktop/ForUsGuide/tickets-development-plan}"
 export TICKETS_BASE_SHA="${TICKETS_BASE_SHA:-eed9b34967c59b8bfec34026c9a8637581f2036a}"
-export IMPL_ROOT="${IMPL_ROOT:-/Users/ivanalvis/Desktop/ForUsGuide-tickets-console}"
+# Corrected 2026-08-04: the sibling worktrees this block originally named
+# (ForUsGuide-tickets-console, ForUsGuide-handle-ticket-finalization) no longer
+# exist. All stage work now lives on local `main` in the primary checkout, and
+# the only usable interpreter is .venv-local. See STAGE-06-PREFLIGHT.md.
+export IMPL_ROOT="${IMPL_ROOT:-/Users/ivanalvis/Desktop/ForUsGuide}"
 export KBRAG_ROOT="$IMPL_ROOT/kb-rag-system"
-export PYTHON_BIN="${PYTHON_BIN:-/Users/ivanalvis/Desktop/ForUsGuide-handle-ticket-finalization/kb-rag-system/.venv/bin/python}"
+export PYTHON_BIN="${PYTHON_BIN:-/Users/ivanalvis/Desktop/ForUsGuide/.venv-local/bin/python}"
 test -r "$PLAN_ROOT/README.md"
 test "$(git -C "$IMPL_ROOT" rev-parse --show-toplevel)" = "$IMPL_ROOT"
 test -x "$PYTHON_BIN"

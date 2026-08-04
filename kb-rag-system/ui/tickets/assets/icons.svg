@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg">
+  <!--
+    A sprite of bare <symbol> elements and nothing else.
+
+    It is fetched once, parsed as XML rather than HTML, and only its <symbol>
+    children are copied into the document. Anything else added here by hand -
+    executable content, embedded HTML, an event attribute - is dropped rather
+    than run. Every symbol is stroke-only and inherits currentColor, so one file
+    serves the light and dark schemes.
+
+    No xlink, because these are cloned rather than referenced: an external
+    <use href="..."> is blocked outright by some browsers, which would leave
+    every icon silently missing.
+  -->
+  <symbol id="logo" viewBox="0 0 24 24">
+    <path d="M4 5h16M4 12h10M4 19h6" />
+  </symbol>
+  <symbol id="refresh" viewBox="0 0 24 24">
+    <path d="M20 11a8 8 0 1 0-2.3 5.7" />
+    <path d="M20 4v7h-7" />
+  </symbol>
+  <symbol id="filter" viewBox="0 0 24 24">
+    <path d="M3 5h18l-7 8v6l-4-2v-4z" />
+  </symbol>
+  <symbol id="close" viewBox="0 0 24 24">
+    <path d="M6 6l12 12M18 6L6 18" />
+  </symbol>
+  <symbol id="next" viewBox="0 0 24 24">
+    <path d="M9 5l7 7-7 7" />
+  </symbol>
+  <symbol id="previous" viewBox="0 0 24 24">
+    <path d="M15 5l-7 7 7 7" />
+  </symbol>
+</svg>

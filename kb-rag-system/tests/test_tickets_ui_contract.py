@@ -1,0 +1,1107 @@
+"""Stage 6 Step 1 — the static contract the `/tickets` browser UI must satisfy.
+
+These are not "does the page look right" tests. Every assertion here is a
+property that cannot be checked by looking at the screen, and that a later edit
+could silently break:
+
+*   the page has to load under a ``Content-Security-Policy`` with no
+    ``'unsafe-inline'`` and no external host, so an inline ``<script>``, an
+    inline ``style=`` attribute, or a CDN reference is a *server-side* failure
+    that a developer with a warm cache would not notice;
+*   every remote string on this page is a participant's ticket title, a
+    reviewer's comment, or an email address, so the renderer may never touch
+    ``innerHTML`` and friends — the console's whole XSS story is the CSP plus
+    that discipline;
+*   the browser must not persist tickets, comments, cursors, or the CSRF token,
+    because this console's data is customer-linked and its token is deliberately
+    memory-only (Stage 5 issues it from ``GET /session`` for exactly that
+    reason);
+*   the legacy sheet's reviewer column and the *authenticated* session actor are
+    different facts about different people. Conflating them would relabel two
+    years of migrated review history with whoever happens to be logged in.
+
+The DOM is parsed with a small ``html.parser`` tree builder rather than a
+third-party parser: this repository ships none, and a structural contract test
+that cannot run is not a contract.
+"""
+
+from __future__ import annotations
+
+import re
+import xml.etree.ElementTree as ElementTree
+from html.parser import HTMLParser
+from pathlib import Path
+from typing import Iterator, Optional
+
+import pytest
+from fastapi.testclient import TestClient
+
+from api.reviewer_auth import IAP_ASSERTION_HEADER, IAP_ISSUER
+from api.ticket_review_models import (
+    MIN_TOUCH_TARGET_PX,
+    RESPONSIVE_BREAKPOINT_PX,
+)
+from api.tickets_console_config import TicketConsoleSettings
+from api.tickets_console_main import (
+    SECURITY_HEADERS,
+    UI_ASSETS_DIRECTORY,
+    UI_DIRECTORY,
+    UI_INDEX_FILE,
+    build_console_app,
+)
+
+import base64
+import os
+from datetime import datetime, timezone
+
+CURSOR_KEY_B64 = base64.b64encode(bytes(range(32))).decode("ascii")
+CONSOLE_ORIGIN = "https://tickets-console-abc-uc.a.run.app"
+CSRF_SECRET = "synthetic-csrf-value"  # pragma: allowlist secret
+IAP_AUDIENCE = "/projects/1234567890/locations/us-central1/services/tickets-console"
+ADMIN_EMAIL = "admin@example.invalid"
+ASSERTION = "synthetic.iap.assertion"
+SYNTHETIC_PART = "don:core:dvrv-us-1:devo/synthetic:product/1"
+T0 = datetime(2026, 8, 4, 12, 0, 0, tzinfo=timezone.utc)
+
+#: The asset the mount must expose, and the media type Starlette has to pick.
+#: ``text/javascript`` is what Python 3.12+ guesses; the older spelling is
+#: accepted so the assertion pins *correctness*, not an interpreter version.
+EXPECTED_ASSET_TYPES: dict[str, tuple[str, ...]] = {
+    "tickets.css": ("text/css",),
+    "app.js": ("text/javascript", "application/javascript"),
+    "api.js": ("text/javascript", "application/javascript"),
+    "state.js": ("text/javascript", "application/javascript"),
+    "render.js": ("text/javascript", "application/javascript"),
+    "icons.svg": ("image/svg+xml",),
+}
+
+#: Sheet columns the console has to replace before anyone can stop using the
+#: spreadsheet, plus the one column the sheet never had.
+REQUIRED_SHEET_COLUMNS = ("Ticket ID", "Topic", "Legacy Type", "Rating", "Reviewer", "Comments")
+ADDED_COLUMN = "Observation"
+
+#: Browser sinks that turn a ticket title into script. ``document.write`` and
+#: ``eval`` are here for the same reason, not for tidiness.
+FORBIDDEN_SINKS = (
+    "innerHTML",
+    "outerHTML",
+    "insertAdjacentHTML",
+    "document.write",
+    "eval(",
+    "Function(",
+)
+
+#: Anything that survives a tab close. The CSRF token, a cursor, a ticket body,
+#: and a reviewer's comment must all be gone when the page is.
+FORBIDDEN_STORAGE = ("localStorage", "sessionStorage", "indexedDB", "document.cookie")
+
+#: Credentials that belong to other service boundaries, and the one ticket id
+#: that appears in the product screenshots.
+FORBIDDEN_LITERALS = ("X-API-Key", "Bearer ", "Authorization", "forusall", "TKT-")
+
+_EMAIL_LITERAL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_INLINE_EVENT_ATTRIBUTE = re.compile(r"\son[a-z]+\s*=", re.IGNORECASE)
+
+
+# =====================================================================
+# A minimal DOM
+# =====================================================================
+
+
+class Node:
+    """One element, its attributes, its children, and its text."""
+
+    __slots__ = ("tag", "attrs", "children", "parent", "text")
+
+    def __init__(self, tag: str, attrs: dict[str, str], parent: Optional[Node]) -> None:
+        self.tag = tag
+        self.attrs = attrs
+        self.children: list[Node] = []
+        self.parent = parent
+        self.text = ""
+
+    def walk(self) -> Iterator[Node]:
+        yield self
+        for child in self.children:
+            yield from child.walk()
+
+    def find_all(self, *tags: str) -> list[Node]:
+        wanted = {tag.lower() for tag in tags}
+        return [node for node in self.walk() if node.tag in wanted]
+
+    def all_text(self) -> str:
+        return " ".join(part for part in (node.text for node in self.walk()) if part).strip()
+
+    def get(self, name: str) -> Optional[str]:
+        return self.attrs.get(name)
+
+    def ancestors(self) -> Iterator[Node]:
+        current = self.parent
+        while current is not None:
+            yield current
+            current = current.parent
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging aid
+        return f"<{self.tag} {self.attrs}>"
+
+
+class _TreeBuilder(HTMLParser):
+    """Build a forgiving element tree, tracking void and self-closing tags."""
+
+    VOID = frozenset(
+        {
+            "area",
+            "base",
+            "br",
+            "col",
+            "embed",
+            "hr",
+            "img",
+            "input",
+            "link",
+            "meta",
+            "source",
+            "track",
+            "wbr",
+        }
+    )
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.root = Node("#document", {}, None)
+        self._stack = [self.root]
+
+    def handle_starttag(self, tag, attrs):
+        node = Node(tag, {key: (value or "") for key, value in attrs}, self._stack[-1])
+        self._stack[-1].children.append(node)
+        if tag not in self.VOID:
+            self._stack.append(node)
+
+    def handle_startendtag(self, tag, attrs):
+        node = Node(tag, {key: (value or "") for key, value in attrs}, self._stack[-1])
+        self._stack[-1].children.append(node)
+
+    def handle_endtag(self, tag):
+        for index in range(len(self._stack) - 1, 0, -1):
+            if self._stack[index].tag == tag:
+                del self._stack[index:]
+                return
+
+    def handle_data(self, data):
+        stripped = data.strip()
+        if stripped:
+            node = self._stack[-1]
+            node.text = f"{node.text} {stripped}".strip() if node.text else stripped
+
+
+def parse(markup: str) -> Node:
+    builder = _TreeBuilder()
+    builder.feed(markup)
+    builder.close()
+    return builder.root
+
+
+# =====================================================================
+# Fixtures
+# =====================================================================
+
+
+def _settings(monkeypatch, **overrides) -> TicketConsoleSettings:
+    for name in list(os.environ):
+        if name.startswith("TICKETS_"):
+            monkeypatch.delenv(name, raising=False)
+    values: dict[str, object] = {
+        "ENVIRONMENT": "local",
+        "AUTH_MODE": "iap",
+        "IAP_AUDIENCE": IAP_AUDIENCE,
+        "ALLOWED_EMAIL_DOMAINS": ["example.invalid"],
+        "ROLE_BINDINGS_JSON": f'{{"{ADMIN_EMAIL}": "admin"}}',
+        "CSRF_SIGNING_SECRET": CSRF_SECRET,
+        "CURSOR_AEAD_KEY": CURSOR_KEY_B64,
+        "CONSOLE_ORIGIN": CONSOLE_ORIGIN,
+        "GCP_PROJECT": "emulator-project",
+        "GCP_REGION": "us-central1",
+        "FIRESTORE_DATABASE": "tickets-console-emulator",
+        "DEVREV_ALLOWED_PART_DONS": [SYNTHETIC_PART],
+        "DEVREV_ALLOWED_TICKET_VISIBILITY_IDS": [2],
+        "DEVREV_ALLOWED_TIMELINE_VISIBILITIES": ["internal", "external"],
+    }
+    values.update(overrides)
+    return TicketConsoleSettings(_env_file=None, **values)
+
+
+@pytest.fixture
+def client(monkeypatch) -> TestClient:
+    def verifier(token: str, audience: str):
+        return {
+            "iss": IAP_ISSUER,
+            "aud": audience,
+            "sub": f"accounts.google.com:{ADMIN_EMAIL}",
+            "email": ADMIN_EMAIL,
+        }
+
+    app = build_console_app(
+        _settings(monkeypatch),
+        claims_verifier=verifier,
+        clock=lambda: T0,
+        firestore_database="tickets-console-emulator",
+    )
+    return TestClient(app, raise_server_exceptions=False)
+
+
+def _auth() -> dict[str, str]:
+    return {IAP_ASSERTION_HEADER: ASSERTION}
+
+
+@pytest.fixture(scope="module")
+def html_source() -> str:
+    return UI_INDEX_FILE.read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def dom(html_source: str) -> Node:
+    return parse(html_source)
+
+
+@pytest.fixture(scope="module")
+def css_source() -> str:
+    return (UI_ASSETS_DIRECTORY / "tickets.css").read_text(encoding="utf-8")
+
+
+def _script_paths() -> list[Path]:
+    return sorted(UI_ASSETS_DIRECTORY.glob("*.js"))
+
+
+@pytest.fixture(scope="module")
+def scripts() -> dict[str, str]:
+    return {path.name: path.read_text(encoding="utf-8") for path in _script_paths()}
+
+
+@pytest.fixture(scope="module")
+def shipped_sources() -> dict[str, str]:
+    """Every file the browser is served, keyed by name."""
+    sources = {UI_INDEX_FILE.name: UI_INDEX_FILE.read_text(encoding="utf-8")}
+    for path in sorted(UI_ASSETS_DIRECTORY.iterdir()):
+        if path.is_file():
+            sources[path.name] = path.read_text(encoding="utf-8")
+    return sources
+
+
+# =====================================================================
+# 1 — the routes and the media types
+# =====================================================================
+
+
+class TestServedFiles:
+
+    def test_the_ui_lives_outside_the_api_package(self):
+        """The UI is a sibling of ``api/``, not a directory inside it.
+
+        Stage 5 shipped a placeholder under ``api/tickets_ui``; keeping the real
+        UI there would put browser assets on the Python import path.
+        """
+        assert UI_DIRECTORY.name == "tickets"
+        assert UI_DIRECTORY.parent.name == "ui"
+        assert UI_DIRECTORY.parent.parent.name == "kb-rag-system"
+        assert UI_INDEX_FILE.is_file()
+        assert UI_ASSETS_DIRECTORY.is_dir()
+
+    def test_the_index_is_not_inside_the_mounted_directory(self):
+        """The mount serves assets only.
+
+        Mounting the UI root at ``/tickets/assets`` would publish
+        ``index.html`` — and any stray file beside it — under a second URL,
+        reversing a documented Stage 5 decision that no test otherwise pins.
+        """
+        assert UI_INDEX_FILE.parent != UI_ASSETS_DIRECTORY
+        assert not (UI_ASSETS_DIRECTORY / "index.html").exists()
+
+    def test_the_index_route_serves_html(self, client):
+        response = client.get("/tickets", headers=_auth())
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("text/html")
+        assert response.text.lstrip().lower().startswith("<!doctype html>")
+
+    @pytest.mark.parametrize("name,expected", sorted(EXPECTED_ASSET_TYPES.items()))
+    def test_each_asset_is_served_with_the_right_media_type(self, client, name, expected):
+        response = client.get(f"/tickets/assets/{name}", headers=_auth())
+        assert response.status_code == 200, name
+        assert response.headers["content-type"].split(";")[0].strip() in expected
+
+    def test_the_assets_still_require_a_verified_identity(self, client):
+        assert client.get("/tickets/assets/app.js").status_code == 401
+
+    def test_a_deep_link_serves_the_same_document(self, client):
+        index = client.get("/tickets", headers=_auth())
+        deep = client.get("/tickets/TKT-424242", headers=_auth())
+        assert deep.status_code == 200
+        assert deep.text == index.text
+
+    def test_the_document_never_names_a_ticket_id(self, html_source):
+        """``TKT-`` may not appear in the page at all.
+
+        A Stage 5 test proves the deep-link route does not reflect its path into
+        the document by asserting ``TKT-`` is absent from the response, so an
+        example ticket id in a placeholder would break that test from a distance
+        and read as a reflection bug.
+        """
+        assert "TKT-" not in html_source
+
+
+# =====================================================================
+# 2 — document structure and accessibility scaffolding
+# =====================================================================
+
+
+class TestDocumentStructure:
+
+    def test_there_is_exactly_one_main(self, dom):
+        assert len(dom.find_all("main")) == 1
+
+    def test_the_skip_link_is_first_and_points_at_main(self, dom):
+        body = dom.find_all("body")[0]
+        focusable = [
+            node
+            for node in body.walk()
+            if node.tag in {"a", "button", "input", "select", "textarea"}
+        ]
+        assert focusable, "the page has no focusable content"
+        first = focusable[0]
+        assert first.tag == "a"
+        target = first.get("href") or ""
+        assert target.startswith("#")
+        main = dom.find_all("main")[0]
+        assert main.get("id") == target[1:]
+
+    def test_the_headings_are_real_and_never_skip_a_level(self, dom):
+        levels = [
+            int(node.tag[1])
+            for node in dom.walk()
+            if re.fullmatch(r"h[1-6]", node.tag)
+        ]
+        assert levels, "the page has no headings"
+        assert levels.count(1) == 1
+        assert levels[0] == 1
+        for previous, current in zip(levels, levels[1:]):
+            assert current <= previous + 1, levels
+
+    def test_the_heading_text_is_never_empty(self, dom):
+        for node in dom.walk():
+            if re.fullmatch(r"h[1-6]", node.tag):
+                assert node.all_text(), f"{node.tag} carries no text"
+
+    def test_a_live_region_exists_for_announcements(self, dom):
+        regions = [
+            node
+            for node in dom.walk()
+            if node.get("aria-live") or node.get("role") in {"status", "alert"}
+        ]
+        assert regions, "no live region: state changes would be silent"
+        assert any((node.get("aria-live") or "") == "polite" for node in regions)
+
+    def test_the_table_has_a_caption_and_column_headers(self, dom):
+        tables = dom.find_all("table")
+        assert tables, "no data table"
+        for table in tables:
+            assert table.find_all("caption"), "a data table with no caption"
+            headers = [
+                node for node in table.find_all("th") if node.get("scope") == "col"
+            ]
+            assert len(headers) >= len(REQUIRED_SHEET_COLUMNS)
+
+    def test_every_form_control_is_labeled(self, dom):
+        label_targets = {
+            node.get("for") for node in dom.find_all("label") if node.get("for")
+        }
+        for node in dom.find_all("input", "select", "textarea"):
+            if (node.get("type") or "").lower() in {"hidden", "submit", "reset"}:
+                continue
+            named = bool(node.get("aria-label") or node.get("aria-labelledby"))
+            identified = node.get("id") in label_targets
+            assert named or identified, f"unlabeled control: {node!r}"
+
+    def test_the_document_declares_a_language_and_a_viewport(self, dom):
+        html = dom.find_all("html")[0]
+        assert (html.get("lang") or "").startswith("en")
+        viewports = [
+            node
+            for node in dom.find_all("meta")
+            if (node.get("name") or "").lower() == "viewport"
+        ]
+        assert viewports, "no viewport: the mobile layout would never apply"
+        assert "width=device-width" in (viewports[0].get("content") or "")
+
+    def test_the_required_regions_are_all_present(self, dom):
+        ids = {node.get("id") for node in dom.walk() if node.get("id")}
+        for required in (
+            "environment-badge",
+            "session-email",
+            "session-role",
+            "health-state",
+            "kpi-strip",
+            "tab-devrev",
+            "tab-reviews",
+            "filters-devrev",
+            "filters-reviews",
+            "bulk-bar",
+            "tickets-table",
+            "pagination",
+            "toast-region",
+            "ticket-detail",
+        ):
+            assert required in ids, f"missing region: {required}"
+
+    def test_both_tabs_are_declared_as_tabs_of_one_panel(self, dom):
+        tabs = [node for node in dom.walk() if node.get("role") == "tab"]
+        assert len(tabs) == 2
+        labels = {tab.all_text() for tab in tabs}
+        assert labels == {"All DevRev tickets", "Review queue"}
+        panels = {tab.get("aria-controls") for tab in tabs}
+        assert len(panels) == 1
+        panel_id = panels.pop()
+        matching = [node for node in dom.walk() if node.get("id") == panel_id]
+        assert len(matching) == 1
+        assert matching[0].get("role") == "tabpanel"
+        assert sum(1 for tab in tabs if tab.get("aria-selected") == "true") == 1
+
+
+# =====================================================================
+# 3 and 4 — the sheet's columns, and whose name goes in them
+# =====================================================================
+
+
+class TestColumns:
+
+    def _column_headers(self, dom: Node) -> list[str]:
+        return [
+            node.all_text()
+            for table in dom.find_all("table")
+            for node in table.find_all("th")
+            if node.get("scope") == "col"
+        ]
+
+    @pytest.mark.parametrize("column", REQUIRED_SHEET_COLUMNS)
+    def test_every_replaced_sheet_column_is_present(self, dom, column):
+        assert column in self._column_headers(dom)
+
+    def test_observation_is_its_own_column(self, dom):
+        headers = self._column_headers(dom)
+        assert ADDED_COLUMN in headers
+        # The sheet's ``Type`` and the new root-cause taxonomy are different
+        # facts: one column holding both would make the migration lossy.
+        assert "Legacy Type" in headers
+        assert headers.index(ADDED_COLUMN) != headers.index("Legacy Type")
+
+    def test_the_column_order_is_the_specified_order(self, dom):
+        headers = self._column_headers(dom)
+        wanted = [
+            "Ticket ID",
+            "Topic",
+            "Legacy Type",
+            "Observation",
+            "Rating",
+            "Reviewer",
+            "Status",
+            "Updated",
+            "Comments",
+        ]
+        positions = [headers.index(name) for name in wanted]
+        assert positions == sorted(positions), headers
+
+
+class TestReviewerIsNotTheSessionActor:
+
+    def test_the_session_actor_is_rendered_only_in_the_header(self, dom, scripts):
+        header = dom.find_all("header")[0]
+        session = [node for node in dom.walk() if node.get("id") == "session-email"]
+        assert len(session) == 1
+        assert header in list(session[0].ancestors())
+
+    def test_the_row_reviewer_comes_from_the_review_record(self, scripts):
+        renderer = scripts["render.js"]
+        assert "assigned_reviewer_email" in renderer
+        assert "legacy_reviewer_display_name" in renderer
+
+    def test_the_renderer_cannot_reach_the_session_identity(self, scripts):
+        """``render.js`` is handed rows, never the session.
+
+        If the renderer could read the session it would be one typo away from
+        stamping the logged-in reviewer onto every migrated sheet row.
+        """
+        renderer = scripts["render.js"]
+        for forbidden in ("session", "csrf", "identity."):
+            assert forbidden not in renderer.lower(), forbidden
+
+    def test_the_legacy_fallback_is_labeled_as_legacy(self, scripts):
+        renderer = scripts["render.js"]
+        assert "Legacy sheet value" in renderer
+
+    def test_an_unassigned_review_is_not_silently_attributed(self, scripts):
+        assert "Unassigned" in scripts["render.js"]
+
+
+# =====================================================================
+# 5 — how the scripts are loaded
+# =====================================================================
+
+
+class TestScriptLoading:
+
+    def test_every_script_is_a_same_origin_module(self, dom):
+        scripts = dom.find_all("script")
+        assert scripts, "the page loads no script"
+        for node in scripts:
+            assert node.get("type") == "module", node.attrs
+            source = node.get("src") or ""
+            assert source.startswith("/tickets/assets/"), source
+            assert not node.all_text(), "an inline script body"
+
+    def test_every_stylesheet_is_a_same_origin_file(self, dom):
+        sheets = [
+            node
+            for node in dom.find_all("link")
+            if "stylesheet" in (node.get("rel") or "").lower()
+        ]
+        assert sheets
+        for node in sheets:
+            assert (node.get("href") or "").startswith("/tickets/assets/")
+
+    def test_no_reference_names_a_remote_host(self, html_source, css_source, scripts):
+        for name, source in [("index.html", html_source), ("tickets.css", css_source)] + list(
+            scripts.items()
+        ):
+            for marker in ("http://", "https://", "//cdn", "fonts.googleapis"):
+                assert marker not in source, f"{name} names a remote host: {marker}"
+
+    def test_the_module_graph_is_relative_and_same_origin(self, scripts):
+        for name, source in scripts.items():
+            for match in re.finditer(r"""from\s+["']([^"']+)["']""", source):
+                target = match.group(1)
+                assert target.startswith("./"), f"{name} imports {target}"
+                assert target.endswith(".js"), f"{name} imports {target}"
+
+
+# =====================================================================
+# 6 — sinks, storage, and credentials
+# =====================================================================
+
+
+class TestNoDangerousBrowserPatterns:
+
+    @pytest.mark.parametrize("sink", FORBIDDEN_SINKS)
+    def test_no_shipped_source_uses_an_html_injection_sink(self, shipped_sources, sink):
+        offenders = [name for name, source in shipped_sources.items() if sink in source]
+        assert offenders == [], f"{sink} in {offenders}"
+
+    @pytest.mark.parametrize("api", FORBIDDEN_STORAGE)
+    def test_no_shipped_source_persists_anything_in_the_browser(self, shipped_sources, api):
+        offenders = [name for name, source in shipped_sources.items() if api in source]
+        assert offenders == [], f"{api} in {offenders}"
+
+    @pytest.mark.parametrize("literal", FORBIDDEN_LITERALS)
+    def test_no_shipped_source_carries_a_foreign_credential_or_id(
+        self, shipped_sources, literal
+    ):
+        offenders = [name for name, source in shipped_sources.items() if literal in source]
+        assert offenders == [], f"{literal} in {offenders}"
+
+    def test_no_shipped_source_carries_an_email_address(self, shipped_sources):
+        for name, source in shipped_sources.items():
+            found = _EMAIL_LITERAL.findall(source)
+            assert found == [], f"{name} carries {found}"
+
+    def test_the_document_has_no_inline_event_attribute(self, html_source):
+        assert _INLINE_EVENT_ATTRIBUTE.search(html_source) is None
+
+    def test_the_document_has_no_inline_style(self, html_source, dom):
+        assert "<style" not in html_source.lower()
+        for node in dom.walk():
+            assert node.get("style") is None, node
+
+    def test_the_scripts_register_listeners_rather_than_attributes(self, scripts):
+        assert any("addEventListener" in source for source in scripts.values())
+        for name, source in scripts.items():
+            assert not re.search(r"\.on(click|change|input|submit)\s*=", source), name
+
+    def test_the_renderer_writes_only_text_and_created_nodes(self, scripts):
+        renderer = scripts["render.js"]
+        assert "textContent" in renderer
+        assert "createElement" in renderer
+
+    def test_the_adapter_never_sets_a_browser_controlled_header(self, scripts):
+        """``Origin`` and ``Sec-Fetch-Site`` are forbidden headers in ``fetch``.
+
+        Stage 5 requires both on every write, and the browser supplies both. A
+        JavaScript attempt to set them is silently dropped, so code that looks
+        like it satisfies the policy would ship a console whose writes all 403.
+        """
+        adapter = scripts["api.js"]
+        for forbidden in ('"Origin"', "'Origin'", "Sec-Fetch-Site"):
+            assert forbidden not in adapter, forbidden
+
+    def test_no_cursor_is_ever_written_to_the_url(self, scripts):
+        """Console cursors travel in ``X-Tickets-Cursor`` and nowhere else.
+
+        Stage 5 refuses a ``cursor``-shaped query parameter outright, because a
+        URL is the one place a token is guaranteed to reach an access log.
+        """
+        for name, source in scripts.items():
+            for banned in (
+                'searchParams.set("cursor"',
+                "searchParams.set('cursor'",
+                'set("next_cursor"',
+                'set("page_token"',
+            ):
+                assert banned not in source, f"{name}: {banned}"
+
+    def test_the_cursor_travels_in_the_documented_header(self, scripts):
+        assert "X-Tickets-Cursor" in scripts["api.js"]
+
+
+# =====================================================================
+# 7 — the page has to load under the shipped CSP
+# =====================================================================
+
+
+class TestContentSecurityPolicy:
+
+    def _directives(self) -> dict[str, list[str]]:
+        policy = SECURITY_HEADERS["Content-Security-Policy"]
+        parsed: dict[str, list[str]] = {}
+        for chunk in policy.split(";"):
+            parts = chunk.split()
+            if parts:
+                parsed[parts[0]] = parts[1:]
+        return parsed
+
+    def test_the_policy_still_forbids_inline_code(self):
+        policy = SECURITY_HEADERS["Content-Security-Policy"]
+        assert "unsafe-inline" not in policy
+        assert "unsafe-eval" not in policy
+
+    def test_every_referenced_asset_is_allowed_by_script_and_style_src(self, dom):
+        directives = self._directives()
+        assert directives["script-src"] == ["'self'"]
+        assert directives["style-src"] == ["'self'"]
+        for node in dom.find_all("script"):
+            assert (node.get("src") or "").startswith("/")
+        for node in dom.find_all("link"):
+            href = node.get("href") or ""
+            if "stylesheet" in (node.get("rel") or ""):
+                assert href.startswith("/")
+
+    def test_every_image_source_is_self_or_a_data_uri(self, dom):
+        allowed = self._directives()["img-src"]
+        assert allowed == ["'self'", "data:"]
+        for node in dom.find_all("img"):
+            source = node.get("src") or ""
+            assert source.startswith("/") or source.startswith("data:"), source
+        for node in dom.find_all("link"):
+            if "icon" in (node.get("rel") or ""):
+                href = node.get("href") or ""
+                assert href.startswith("data:") or href.startswith("/"), href
+
+    def test_the_api_is_reachable_under_connect_src(self, scripts):
+        assert self._directives()["connect-src"] == ["'self'"]
+        adapter = scripts["api.js"]
+        for match in re.finditer(r"""["'](/api/[^"']*)["']""", adapter):
+            assert match.group(1).startswith("/api/admin/v1")
+
+    def test_every_asset_the_document_references_actually_resolves(self, client, dom):
+        """A 404 on an asset is a broken page the CSP would never explain."""
+        references = [
+            node.get("src")
+            for node in dom.find_all("script")
+            if node.get("src")
+        ] + [
+            node.get("href")
+            for node in dom.find_all("link")
+            if "stylesheet" in (node.get("rel") or "") and node.get("href")
+        ]
+        assert references
+        for path in references:
+            assert client.get(path, headers=_auth()).status_code == 200, path
+
+
+# =====================================================================
+# 8, 9 and 10 — the stylesheet, the narrow layout, and icon buttons
+# =====================================================================
+
+
+class TestStylesheet:
+
+    def test_focus_is_always_visible(self, css_source):
+        assert ":focus-visible" in css_source
+        focus_blocks = re.findall(r":focus-visible[^{]*\{([^}]*)\}", css_source)
+        assert focus_blocks
+        assert any("outline" in block for block in focus_blocks)
+
+    def test_no_rule_removes_the_focus_ring_outright(self, css_source):
+        assert not re.search(r"outline\s*:\s*(none|0)\s*;", css_source)
+
+    def test_reduced_motion_is_respected(self, css_source):
+        assert "@media (prefers-reduced-motion: reduce)" in css_source
+        block = css_source.split("@media (prefers-reduced-motion: reduce)", 1)[1]
+        # A skeleton that keeps pulsing is exactly the animation this query
+        # exists to stop.
+        assert "animation" in block[:1200]
+
+    def test_the_canonical_breakpoint_is_the_shared_constant(self, css_source):
+        assert f"max-width: {RESPONSIVE_BREAKPOINT_PX}px" in css_source
+
+    def test_touch_targets_meet_the_shared_minimum(self, css_source):
+        assert f"{MIN_TOUCH_TARGET_PX}px" in css_source
+
+    def test_wide_content_scrolls_inside_its_own_container(self, css_source):
+        assert "overflow-x: auto" in css_source
+
+    def test_status_carries_a_cue_that_is_not_colour(self, css_source):
+        """Colour alone fails for ~8% of men and every monochrome print-out."""
+        assert "content: var(--pill-glyph)" in css_source
+        assert css_source.count("--pill-glyph:") >= 4
+
+    def test_the_table_header_sticks(self, css_source):
+        assert "position: sticky" in css_source
+
+    def test_the_hidden_attribute_outranks_the_author_display_rules(self, css_source):
+        """`hidden` is a user-agent `display: none`, and this file overrides it.
+
+        The toolbars are `display: grid` and several regions are `display: flex`,
+        each of which beats the user-agent rule. Without an explicit override the
+        inactive tab's filter form stays visible *and* keyboard-reachable, so a
+        reviewer can tab into controls that filter a tab they are not on.
+        """
+        assert re.search(r"\[hidden\][^{]*\{[^}]*display:\s*none\s*!important", css_source)
+
+    def test_both_colour_schemes_are_styled(self, css_source):
+        assert "prefers-color-scheme: dark" in css_source
+
+
+class TestNarrowLayout:
+
+    def _narrow_block(self, css_source: str) -> str:
+        marker = f"@media (max-width: {RESPONSIVE_BREAKPOINT_PX}px)"
+        assert marker in css_source
+        return css_source.split(marker, 1)[1]
+
+    def test_the_desktop_header_row_is_hidden(self, css_source):
+        block = self._narrow_block(css_source)
+        assert re.search(r"thead[^{]*\{[^}]*display:\s*none", block)
+
+    def test_each_row_becomes_a_labeled_card(self, css_source, scripts):
+        block = self._narrow_block(css_source)
+        assert 'content: attr(data-label)' in block
+        # The label has to exist on the cell for the card to be readable.
+        assert "data-label" in scripts["render.js"]
+
+    def test_the_filters_open_as_an_accessible_sheet(self, css_source, dom, scripts):
+        ids = {node.get("id") for node in dom.walk() if node.get("id")}
+        assert "filter-sheet-toggle" in ids
+        assert "aria-expanded" in scripts["app.js"]
+
+
+class TestIconButtons:
+
+    def test_every_static_button_has_an_accessible_name(self, dom):
+        for node in dom.find_all("button"):
+            name = node.all_text() or node.get("aria-label") or node.get("aria-labelledby")
+            assert name, f"nameless button: {node!r}"
+
+    def test_a_decorative_glyph_is_hidden_from_assistive_technology(self, dom):
+        for node in dom.find_all("button"):
+            if node.all_text():
+                continue
+            for child in node.find_all("svg", "span"):
+                assert child.get("aria-hidden") == "true" or child.all_text()
+
+    def test_created_buttons_go_through_one_labeled_factory(self, scripts):
+        """Exactly one place creates a ``<button>``, and it demands a name.
+
+        A second creation site is how an unlabeled icon button gets shipped, so
+        the count is the assertion.
+        """
+        renderer = scripts["render.js"]
+        assert renderer.count('createElement("button")') == 1
+        factory = re.search(
+            r"export function button\([^)]*\)\s*\{(.*?)\n\}", renderer, re.DOTALL
+        )
+        assert factory, "render.js exposes no button() factory"
+        body = factory.group(1)
+        assert "aria-label" in body
+        assert "throw" in body, "the factory accepts a nameless button"
+        for name, source in scripts.items():
+            if name == "render.js":
+                continue
+            assert 'createElement("button")' not in source, name
+
+
+class TestIconSprite:
+
+    def test_the_sprite_is_valid_xml_with_only_symbols(self):
+        root = ElementTree.parse(UI_ASSETS_DIRECTORY / "icons.svg").getroot()
+        assert root.tag.endswith("svg")
+        children = list(root)
+        assert children
+        for child in children:
+            assert child.tag.endswith("symbol"), child.tag
+            assert child.get("id")
+            assert child.get("viewBox")
+
+    def test_the_sprite_carries_no_script_or_foreign_object(self):
+        source = (UI_ASSETS_DIRECTORY / "icons.svg").read_text(encoding="utf-8")
+        for forbidden in ("<script", "foreignObject", "onload", "xlink:href"):
+            assert forbidden not in source, forbidden
+
+    def test_the_sprite_is_imported_without_an_html_parser(self, scripts):
+        """The sprite is XML, parsed as XML, and only ``<symbol>`` survives.
+
+        ``DOMParser`` with ``image/svg+xml`` is not an HTML sink, and the guard
+        keeps it that way even if the file is ever edited by hand.
+        """
+        source = scripts["app.js"] + scripts["render.js"]
+        assert "image/svg+xml" in source
+        assert "symbol" in source
+
+
+# =====================================================================
+# The state and adapter contracts the plan pins by name
+# =====================================================================
+
+
+class TestStateContract:
+
+    def test_the_store_declares_both_modes(self, scripts):
+        state = scripts["state.js"]
+        assert '"devrev"' in state and '"reviews"' in state
+
+    def test_the_store_models_every_load_state(self, scripts):
+        state = scripts["state.js"]
+        for phase in ("loading", "refreshing", "partial", "stale", "error"):
+            assert phase in state, phase
+
+    def test_the_url_carries_filters_but_never_a_cursor(self, scripts):
+        """The serialized key list is the allowlist, so it is asserted directly.
+
+        Reload therefore returns to page one of the URL's filters, which is the
+        intended behaviour rather than a limitation: the alternative is a token
+        in a bookmark.
+        """
+        state = scripts["state.js"]
+        assert "URLSearchParams" in state
+        keys = re.search(
+            r"const URL_FILTER_KEYS = (?:Object\.freeze\()?\[(.*?)\]", state, re.DOTALL
+        )
+        assert keys, "state.js declares no URL_FILTER_KEYS allowlist"
+        for banned in ("cursor", "token", "csrf"):
+            assert banned not in keys.group(1), banned
+
+    def test_the_cursor_back_stack_lives_only_in_memory(self, scripts):
+        state = scripts["state.js"]
+        assert "cursorStack" in state
+        assert "pushState" not in state
+
+    def test_a_selection_is_a_set_of_row_ids(self, scripts):
+        assert "selectedIds" in scripts["state.js"]
+
+    def test_a_reset_can_overrule_the_control_the_reviewer_is_using(self, scripts):
+        """Two opposite requirements, reconciled by one counter.
+
+        A background render must not overwrite a field mid-word, because text
+        input is debounced and the store is deliberately behind it. But `Clear
+        all` is a command *about* those fields: without an override, clearing
+        while a field has focus leaves the old text on screen and, worse, in the
+        next submitted query — which the server then refuses.
+        """
+        assert "formGeneration" in scripts["state.js"]
+        app = scripts["app.js"]
+        assert "formGeneration" in app
+        assert "activeElement" in app
+
+
+class TestAdapterContract:
+
+    def test_every_request_is_same_origin_with_same_origin_credentials(self, scripts):
+        adapter = scripts["api.js"]
+        assert 'credentials: "same-origin"' in adapter
+        assert adapter.count("fetch(") >= 1
+        for match in re.finditer(r"""fetch\(\s*["']([^"']*)["']""", adapter):
+            assert match.group(1).startswith("/"), match.group(1)
+
+    def test_the_csrf_token_is_held_in_a_module_variable(self, scripts):
+        adapter = scripts["api.js"]
+        assert "X-CSRF-Token" in adapter
+        assert re.search(r"let\s+\w*[Ss]ession\w*\s*=", adapter)
+
+    def test_unsafe_requests_carry_an_idempotency_key(self, scripts):
+        adapter = scripts["api.js"]
+        assert "Idempotency-Key" in adapter
+        assert "randomUUID" in adapter
+
+    def test_versioned_writes_send_a_quoted_etag(self, scripts):
+        adapter = scripts["api.js"]
+        assert "If-Match" in adapter
+        assert re.search(r'`"v\$\{', adapter) or '\'"v\'' in adapter
+
+    @pytest.mark.parametrize(
+        "status", ["401", "403", "409", "412", "428", "429", "502", "503"]
+    )
+    def test_every_documented_failure_maps_to_a_user_safe_message(self, scripts, status):
+        assert status in scripts["api.js"], status
+
+    def test_retry_after_is_honoured_with_a_fallback(self, scripts):
+        adapter = scripts["api.js"]
+        assert "Retry-After" in adapter
+        # DevRev's 429 does not always carry the header, so a bare header read
+        # would leave the UI hammering an upstream that asked it to stop.
+        assert "FALLBACK_RETRY_AFTER_S" in adapter
+
+    def test_stale_requests_are_cancelled(self, scripts):
+        assert "AbortController" in scripts["api.js"]
+
+    def test_the_request_id_is_surfaced_for_support(self, scripts):
+        assert "X-Request-ID" in scripts["api.js"]
+
+    def test_the_error_envelope_is_parsed_from_the_documented_shape(self, scripts):
+        adapter = scripts["api.js"]
+        assert "error" in adapter and "code" in adapter
+        assert "current_version" in adapter
+
+
+class TestFilterContract:
+
+    def test_the_review_queue_offers_no_substring_search(self, dom, scripts):
+        """``title_contains`` is always a 422; a search box would be a lie."""
+        for name, source in scripts.items():
+            assert "title_contains" not in source, name
+        for node in dom.find_all("input"):
+            if (node.get("type") or "text").lower() in {"search", "text"}:
+                label = (node.get("aria-label") or "") + (node.get("placeholder") or "")
+                assert "title" not in label.lower(), node.attrs
+
+    def test_only_one_queue_facet_can_be_active(self, scripts):
+        app = scripts["app.js"]
+        assert "facet" in app
+        # The server accepts a status set plus at most one facet; a second one is
+        # a 422, so the UI disables it rather than discovering that at runtime.
+        assert "disabled" in app
+
+    def test_the_facet_names_are_exactly_the_server_grammar(self, scripts):
+        from data_pipeline.ticket_review_repository import ALLOWED_REVIEW_FACETS
+
+        app = scripts["app.js"] + scripts["state.js"]
+        for facet in ALLOWED_REVIEW_FACETS:
+            assert facet in app, facet
+
+    def test_an_unsupported_combination_is_not_filtered_client_side(self, scripts):
+        app = scripts["app.js"]
+        assert "UNSUPPORTED_FILTER_COMBINATION" in app
+
+    def test_only_text_input_is_debounced(self, scripts):
+        app = scripts["app.js"]
+        assert "debounce" in app.lower()
+
+    def test_active_filters_are_shown_as_clearable_chips(self, dom, scripts):
+        ids = {node.get("id") for node in dom.walk() if node.get("id")}
+        assert "active-filters" in ids
+        assert "Clear all" in scripts["app.js"] or any(
+            "Clear all" in node.all_text() for node in dom.find_all("button")
+        )
+
+
+class TestRowRendering:
+
+    def test_a_rating_is_never_stars_alone(self, scripts):
+        renderer = scripts["render.js"]
+        assert "of 5" in renderer
+
+    def test_dates_use_a_machine_readable_time_element(self, scripts):
+        renderer = scripts["render.js"]
+        assert 'createElement("time")' in renderer
+        assert "dateTime" in renderer
+
+    def test_a_comment_preview_is_text_only_and_clamped(self, scripts, css_source):
+        assert "comment" in scripts["render.js"].lower()
+        assert "-webkit-line-clamp" in css_source or "line-clamp" in css_source
+
+    def test_truncated_text_is_reachable_without_a_tooltip(self, scripts):
+        """``title`` is invisible to touch and to most keyboard users."""
+        renderer = scripts["render.js"]
+        assert "visually-hidden" in renderer or "sr-only" in renderer
+
+    def test_an_unimported_ticket_offers_an_import_action(self, scripts):
+        renderer = scripts["render.js"]
+        assert "Not reviewed" in renderer
+        assert "Add to review queue" in renderer
+
+    def test_creating_a_review_is_gated_on_the_reviewer_role(self, scripts):
+        app = scripts["app.js"]
+        assert "reviewer" in app
+        assert "canCreateReview" in app or "canReview" in app
+
+    def test_the_selection_checkbox_does_not_navigate(self, scripts):
+        app = scripts["app.js"]
+        assert "stopPropagation" in app or "closest" in app
+
+    def test_a_row_opens_on_enter(self, scripts):
+        app = scripts["app.js"]
+        assert '"Enter"' in app
+
+    def test_partial_pages_are_rendered_as_partial(self, scripts):
+        renderer = scripts["render.js"] + scripts["app.js"]
+        assert "partial" in renderer
+        assert "devrev_unavailable" in renderer
+
+
+class TestKpiHonesty:
+
+    def test_the_four_indicators_are_the_named_ones(self, dom):
+        strip = [node for node in dom.walk() if node.get("id") == "kpi-strip"][0]
+        labels = [
+            node.all_text()
+            for node in strip.find_all("p", "span", "dt")
+            if "kpi-label" in (node.get("class") or "")
+        ]
+        assert labels == ["Unreviewed", "Rating 1–2", "High/Critical", "Active remediation"]
+
+    def test_no_indicator_claims_a_global_total_it_cannot_have(self, dom, html_source):
+        """The admin API exposes no aggregate, so the value is an em dash.
+
+        A page count labeled as a global total is the failure mode this pins:
+        it looks authoritative and is wrong by however much the queue exceeds
+        one page.
+        """
+        strip = [node for node in dom.walk() if node.get("id") == "kpi-strip"][0]
+        values = [
+            node.all_text()
+            for node in strip.walk()
+            if "kpi-value" in (node.get("class") or "")
+        ]
+        assert values == ["—"] * 4
+
+    def test_the_missing_total_is_explained_in_visible_text(self, dom):
+        notes = [node for node in dom.walk() if node.get("id") == "kpi-note"]
+        assert notes and len(notes[0].all_text()) > 40
+
+    def test_the_page_scoped_count_is_labeled_as_page_scoped(self, dom):
+        strip = [node for node in dom.walk() if node.get("id") == "kpi-strip"][0]
+        scopes = [
+            node.all_text()
+            for node in strip.walk()
+            if "kpi-scope" in (node.get("class") or "")
+        ]
+        assert len(scopes) == 4
+        assert all("this page" in text for text in scopes), scopes
+
+
+class TestFeatureFlagBranching:
+
+    def test_the_ui_branches_on_the_server_feature_flags(self, scripts):
+        app = scripts["app.js"]
+        assert "remediation_enabled" in app
+        assert "import_export_enabled" in app
+
+    def test_no_absent_route_is_ever_called(self, scripts):
+        """Stage 8 and Stage 9 routes are absent from OpenAPI, not stubbed."""
+        for name, source in scripts.items():
+            for absent in ("/remediation", "/batches", "/imports", "/exports"):
+                assert absent not in source, f"{name}: {absent}"

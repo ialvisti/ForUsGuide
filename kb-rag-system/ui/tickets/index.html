@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<title>Ticket Review Console</title>
+<!--
+  Every reference below is a root-absolute same-origin path. Two reasons, both
+  load-bearing:
+
+  * the shipped Content-Security-Policy is `default-src 'self'` with no
+    'unsafe-inline' and no external host, so a CDN link, a remote font, an
+    inline stylesheet, an inline script body, or an event-handler attribute
+    would be blocked rather than merely frowned upon;
+  * this same document is served for `/tickets` and for every
+    `/tickets/{display_id}` deep link, and a relative href resolves differently
+    against those two paths.
+
+  The data URI icon exists so the browser stops asking for /favicon.ico, which
+  is behind the same identity check as everything else and would otherwise log a
+  401 on every page load.
+-->
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="/tickets/assets/tickets.css">
+<script type="module" src="/tickets/assets/app.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#tickets-main">Skip to the ticket list</a>
+
+<header class="app-header">
+  <div class="brand">
+    <span class="brand-mark icon" data-icon="logo" aria-hidden="true"></span>
+    <p class="brand-name">ForUs Ticket Review</p>
+  </div>
+
+  <p class="env-badge" id="environment-badge" data-state="unknown">
+    <span class="env-label">Environment</span>
+    <span class="env-value" id="environment-value">unknown</span>
+  </p>
+
+  <!--
+    The signed-in reviewer appears here and only here. The table's Reviewer
+    column is the *assigned* reviewer, or the legacy sheet's reviewer name, and
+    those are facts about different people; rendering the session actor into a
+    row would relabel migrated history with whoever is logged in.
+  -->
+  <div class="session">
+    <p class="session-line">
+      <span class="session-label">Signed in</span>
+      <span class="session-value" id="session-email">&mdash;</span>
+    </p>
+    <p class="session-line">
+      <span class="session-label">Role</span>
+      <span class="session-value" id="session-role">&mdash;</span>
+    </p>
+  </div>
+
+  <p class="health" id="health-state" data-state="unknown">
+    <span class="health-dot" aria-hidden="true"></span>
+    <span class="health-text" id="health-text">Checking the console&hellip;</span>
+  </p>
+</header>
+
+<main id="tickets-main">
+  <h1>Ticket review</h1>
+
+  <section class="kpi-section" aria-labelledby="kpi-heading">
+    <h2 id="kpi-heading">Queue indicators</h2>
+    <p class="kpi-note" id="kpi-note">
+      The administrative API returns bounded pages and exposes no aggregate
+      count, so no global total can be shown honestly yet. Each indicator shows
+      an em dash for the global figure and, separately, a count that is
+      explicitly scoped to the page you are looking at.
+    </p>
+    <ul class="kpi-strip" id="kpi-strip">
+      <li class="kpi">
+        <p class="kpi-label">Unreviewed</p>
+        <p class="kpi-value" id="kpi-unreviewed-value" aria-describedby="kpi-note">&mdash;</p>
+        <p class="kpi-scope" id="kpi-unreviewed-scope">0 on this page</p>
+      </li>
+      <li class="kpi">
+        <p class="kpi-label">Rating 1&ndash;2</p>
+        <p class="kpi-value" id="kpi-low-rating-value" aria-describedby="kpi-note">&mdash;</p>
+        <p class="kpi-scope" id="kpi-low-rating-scope">0 on this page</p>
+      </li>
+      <li class="kpi">
+        <p class="kpi-label">High/Critical</p>
+        <p class="kpi-value" id="kpi-severity-value" aria-describedby="kpi-note">&mdash;</p>
+        <p class="kpi-scope" id="kpi-severity-scope">0 on this page</p>
+      </li>
+      <li class="kpi">
+        <p class="kpi-label">Active remediation</p>
+        <p class="kpi-value" id="kpi-remediation-value" aria-describedby="kpi-note">&mdash;</p>
+        <p class="kpi-scope" id="kpi-remediation-scope">0 on this page</p>
+      </li>
+    </ul>
+  </section>
+
+  <h2 id="tabs-heading">Ticket sources</h2>
+  <!--
+    Two tabs, one panel. The panel's whole contents are re-rendered on a tab
+    change and its `aria-labelledby` follows the selected tab, so duplicating an
+    eleven-column table, a filter form set, and a bulk bar would only create two
+    places for the same bug to live.
+  -->
+  <div class="tablist" role="tablist" aria-labelledby="tabs-heading">
+    <button type="button" role="tab" id="tab-devrev" data-mode="devrev"
+            aria-controls="tickets-panel" aria-selected="true">All DevRev tickets</button>
+    <button type="button" role="tab" id="tab-reviews" data-mode="reviews"
+            aria-controls="tickets-panel" aria-selected="false" tabindex="-1">Review queue</button>
+  </div>
+
+  <section class="panel" id="tickets-panel" role="tabpanel"
+           aria-labelledby="tab-devrev" tabindex="0">
+
+    <h3 id="filters-heading">Filters</h3>
+    <button type="button" class="sheet-toggle" id="filter-sheet-toggle"
+            aria-expanded="false" aria-controls="filter-forms">
+      <span class="icon" data-icon="filter" aria-hidden="true"></span>
+      <span>Filters</span>
+    </button>
+
+    <div class="filter-forms" id="filter-forms" aria-labelledby="filters-heading">
+
+      <form class="toolbar" id="filters-devrev" novalidate>
+        <div class="field">
+          <label for="devrev-ticket-id">Exact ticket ID</label>
+          <input type="search" id="devrev-ticket-id" name="ticket_id" autocomplete="off"
+                 maxlength="64" placeholder="Exact ticket ID"
+                 aria-describedby="devrev-ticket-id-help">
+          <p class="field-help" id="devrev-ticket-id-help">
+            Resolved on its own; not combinable with the filters below.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="devrev-stage">Stage</label>
+          <input type="search" id="devrev-stage" name="stage" autocomplete="off"
+                 maxlength="80" placeholder="Exact stage name">
+        </div>
+
+        <div class="field">
+          <label for="devrev-state">State</label>
+          <select id="devrev-state" name="state">
+            <option value="">Any state</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="devrev-source-channel">Source channel</label>
+          <input type="search" id="devrev-source-channel" name="ticket_source_channel"
+                 autocomplete="off" maxlength="80" placeholder="Exact channel name">
+        </div>
+
+        <div class="field">
+          <label for="devrev-subtype">Subtype</label>
+          <input type="search" id="devrev-subtype" name="ticket_subtype"
+                 autocomplete="off" maxlength="80" placeholder="Exact subtype name">
+        </div>
+
+        <div class="field">
+          <label for="devrev-visibility">Visibility ID</label>
+          <select id="devrev-visibility" name="ticket_visibility" disabled
+                  aria-describedby="devrev-visibility-help">
+            <option value="">Every permitted visibility</option>
+          </select>
+          <p class="field-help" id="devrev-visibility-help">
+            Unavailable: the server scopes every request to its own allow-list
+            and does not publish it.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="devrev-created">Created</label>
+          <select id="devrev-created" name="created_date"
+                  aria-describedby="devrev-window-help">
+            <option value="">Any time</option>
+            <option value="last_7_days">Last 7 days</option>
+            <option value="last_30_days">Last 30 days</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="devrev-modified">Modified</label>
+          <select id="devrev-modified" name="modified_date"
+                  aria-describedby="devrev-window-help">
+            <option value="">Any time</option>
+            <option value="last_7_days">Last 7 days</option>
+            <option value="last_30_days">Last 30 days</option>
+          </select>
+          <p class="field-help" id="devrev-window-help">
+            Only the relative windows the upstream is known to accept.
+          </p>
+        </div>
+
+        <div class="field field-actions">
+          <button type="button" class="button" id="devrev-refresh">
+            <span class="icon" data-icon="refresh" aria-hidden="true"></span>
+            <span>Refresh</span>
+          </button>
+          <button type="reset" class="button button-quiet" id="devrev-clear">Clear all</button>
+        </div>
+      </form>
+
+      <form class="toolbar" id="filters-reviews" novalidate hidden>
+        <div class="field">
+          <label for="reviews-display-id">Exact ticket ID</label>
+          <input type="search" id="reviews-display-id" name="devrev_display_id"
+                 autocomplete="off" maxlength="64" placeholder="Exact ticket ID"
+                 aria-describedby="reviews-display-id-help">
+          <p class="field-help" id="reviews-display-id-help">
+            A standalone lookup; no substring search exists to fall back on.
+          </p>
+        </div>
+
+        <fieldset class="field field-statuses">
+          <legend>Status</legend>
+          <div class="checks" id="reviews-statuses"></div>
+        </fieldset>
+
+        <div class="field">
+          <label for="reviews-facet">Facet</label>
+          <select id="reviews-facet" name="facet" aria-describedby="reviews-facet-help">
+            <option value="">No facet</option>
+            <option value="observation_type">Observation type</option>
+            <option value="severity">Severity</option>
+            <option value="rating">Rating</option>
+            <option value="remediation_target">Remediation target</option>
+            <option value="topic" disabled>Topic &mdash; exact-value lookup not enabled</option>
+            <option value="assigned_reviewer.email" disabled>
+              Assigned reviewer &mdash; exact-value lookup not enabled
+            </option>
+          </select>
+          <p class="field-help" id="reviews-facet-help">
+            A status set plus at most one facet. Two facets match a free-text
+            value and need a lookup control that is not approved yet.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="reviews-facet-value">Facet value</label>
+          <select id="reviews-facet-value" name="facet_value" disabled>
+            <option value="">Choose a facet first</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="reviews-updated-after">Updated on or after</label>
+          <input type="date" id="reviews-updated-after" name="updated_after">
+        </div>
+
+        <div class="field">
+          <label for="reviews-updated-before">Updated on or before</label>
+          <input type="date" id="reviews-updated-before" name="updated_before">
+        </div>
+
+        <div class="field field-checkbox">
+          <input type="checkbox" id="reviews-include-reversed" name="include_reversed">
+          <label for="reviews-include-reversed">Include reversed imports</label>
+        </div>
+
+        <div class="field field-actions">
+          <button type="button" class="button" id="reviews-refresh">
+            <span class="icon" data-icon="refresh" aria-hidden="true"></span>
+            <span>Refresh</span>
+          </button>
+          <button type="reset" class="button button-quiet" id="reviews-clear">Clear all</button>
+        </div>
+      </form>
+
+      <div class="active-filters" id="active-filters" aria-label="Active filters"></div>
+    </div>
+
+    <h3 id="bulk-heading">Selected tickets</h3>
+    <div class="bulk-bar" id="bulk-bar" role="group" aria-labelledby="bulk-heading">
+      <p class="bulk-count" id="bulk-count">No tickets selected</p>
+      <div class="bulk-actions">
+        <!--
+          The table header's select-all checkbox is not displayed below the
+          narrow breakpoint, where the header row is hidden and rows are cards.
+          This control is the one that is reachable in every layout.
+        -->
+        <button type="button" class="button button-quiet" id="bulk-select-all">
+          Select all on this page
+        </button>
+        <button type="button" class="button" id="bulk-import" disabled>
+          Add to review queue
+        </button>
+        <button type="button" class="button button-quiet" id="bulk-clear" disabled>
+          Clear selection
+        </button>
+        <button type="button" class="button button-quiet" id="bulk-remediation" disabled
+                aria-describedby="bulk-remediation-help">
+          Create remediation batch
+        </button>
+        <p class="field-help" id="bulk-remediation-help">
+          Unavailable in this build: the server reports remediation batches as
+          disabled and exposes no route for them.
+        </p>
+      </div>
+    </div>
+
+    <h3 id="results-heading">Results</h3>
+    <p class="table-status" id="table-status" role="status" aria-live="polite"></p>
+
+    <div class="table-wrap">
+      <table id="tickets-table" aria-labelledby="results-heading" aria-describedby="tickets-caption">
+        <caption id="tickets-caption">
+          Live DevRev tickets with the durable review overlaid on each row.
+        </caption>
+        <thead>
+          <tr>
+            <th scope="col" class="col-select">
+              <input type="checkbox" id="select-all"
+                     aria-label="Select every ticket on this page">
+            </th>
+            <th scope="col" class="col-id">Ticket ID</th>
+            <th scope="col" class="col-topic">Topic</th>
+            <th scope="col" class="col-legacy-type">Legacy Type</th>
+            <th scope="col" class="col-observation">Observation</th>
+            <th scope="col" class="col-rating">Rating</th>
+            <th scope="col" class="col-reviewer">Reviewer</th>
+            <th scope="col" class="col-status">Status</th>
+            <th scope="col" class="col-updated" aria-sort="descending">Updated</th>
+            <th scope="col" class="col-comments">Comments</th>
+            <th scope="col" class="col-actions">Actions</th>
+          </tr>
+        </thead>
+        <tbody id="tickets-body"></tbody>
+      </table>
+    </div>
+
+    <nav class="pagination" id="pagination" aria-label="Pagination">
+      <button type="button" class="button button-quiet" id="page-prev" disabled>
+        <span class="icon" data-icon="previous" aria-hidden="true"></span>
+        <span>Previous page</span>
+      </button>
+      <p class="page-position" id="page-position">Page 1</p>
+      <button type="button" class="button button-quiet" id="page-next" disabled>
+        <span>Next page</span>
+        <span class="icon" data-icon="next" aria-hidden="true"></span>
+      </button>
+    </nav>
+  </section>
+
+  <!--
+    Stage 7 fills this region. It exists now so row activation has a real
+    destination, the URL round-trips a selection, and the focus target is not
+    invented later.
+  -->
+  <section class="detail" id="ticket-detail" aria-labelledby="detail-heading" tabindex="-1" hidden>
+    <h2 id="detail-heading">Ticket detail</h2>
+    <p class="detail-target" id="detail-target"></p>
+    <p class="detail-pending" id="detail-pending">
+      The full evaluation view arrives in the next stage. This panel currently
+      confirms the selection and keeps it in the address bar so the link can be
+      shared and reloaded.
+    </p>
+    <button type="button" class="icon-button" id="detail-close" aria-label="Close ticket detail">
+      <span class="icon" data-icon="close" aria-hidden="true"></span>
+    </button>
+  </section>
+</main>
+
+<div class="toasts" id="toast-region" role="status" aria-live="polite" aria-atomic="false"></div>
+<div class="sprite" id="icon-sprite" aria-hidden="true"></div>
+</body>
+</html>

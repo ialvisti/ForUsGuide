@@ -102,7 +102,12 @@ APP_VERSION = "1.0.0"
 #: on those requests too.
 PUBLIC_PATHS = frozenset({"/livez", "/readyz"})
 
-UI_DIRECTORY = Path(__file__).resolve().parent / "tickets_ui"
+#: The browser UI. It lives in ``ui/tickets/`` rather than inside this package so
+#: static assets are not on the Python import path, and ``index.html`` stays a
+#: sibling of the assets directory rather than a member of it: the mount below
+#: publishes everything in ``UI_ASSETS_DIRECTORY``, so a document placed there
+#: would be served under a second URL as a static file.
+UI_DIRECTORY = Path(__file__).resolve().parent.parent / "ui" / "tickets"
 UI_ASSETS_DIRECTORY = UI_DIRECTORY / "assets"
 UI_INDEX_FILE = UI_DIRECTORY / "index.html"
 UI_PLACEHOLDER = (

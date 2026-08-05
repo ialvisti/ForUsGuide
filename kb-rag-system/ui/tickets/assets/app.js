@@ -27,6 +27,8 @@ import {
   REVIEW_FACETS,
   REVIEW_STATUSES,
   activeFilters,
+  batchableSelection,
+  canCurateBatches,
   canGoBack,
   createStore,
   pageTallies,
@@ -508,8 +510,21 @@ function renderAll(state) {
   dom.bulkClear.disabled = count === 0;
   dom.bulkSelectAll.disabled = state.rows.length === 0;
   const flags = state.session?.featureFlags ?? {};
-  dom.bulkRemediation.disabled = flags.remediation_enabled !== true;
-  dom.bulkRemediationHelp.textContent = describeDisabledCapabilities(flags);
+  // Three independent reasons this control can be unusable, and the help text
+  // names whichever applies: the deployment has no agent configured, the role may
+  // not curate, or nothing selected has a durable review to freeze.
+  const role = state.session?.role ?? "viewer";
+  const { refs: batchable } = batchableSelection(state.rows, state.selectedIds);
+  const batchesOn = flags.remediation_enabled === true;
+  dom.bulkRemediation.disabled =
+    !batchesOn || !canCurateBatches(role) || batchable.length === 0 || paused;
+  dom.bulkRemediationHelp.textContent = !batchesOn
+    ? describeDisabledCapabilities(flags)
+    : !canCurateBatches(role)
+      ? "Freezing a batch needs the remediator role."
+      : batchable.length === 0
+        ? "Select rows that already have a review; a ticket with no review cannot be frozen."
+        : `${batchable.length} review${batchable.length === 1 ? "" : "s"} will be frozen at the version shown.`;
 
   detail.render(state);
 
@@ -670,6 +685,76 @@ async function importSelected(displayIds) {
   }
   store.dispatch({ type: "selection/clear" });
   await load({ refresh: true });
+}
+
+/**
+ * Freeze the selected reviews into a remediation batch.
+ *
+ * The confirmation is not ceremony. Creating a batch pins every selected review
+ * at the exact version on screen, and the server refuses the whole request if any
+ * of them has since moved — so the reviewer needs to see the count *and* the
+ * versions they are committing to before it goes, not a 412 afterwards.
+ *
+ * Rows without a durable review are named and skipped rather than failing the
+ * request: a mixed selection meant the imported ones.
+ */
+async function createBatchFromSelection() {
+  const state = store.getState();
+  const role = state.session?.role ?? "viewer";
+  if (!canCurateBatches(role)) {
+    toast({
+      title: "Your role does not allow this",
+      body: "Freezing a remediation batch needs the remediator role.",
+      tone: "error",
+    });
+    return;
+  }
+  const { refs, skipped } = batchableSelection(state.rows, state.selectedIds);
+  if (refs.length === 0) {
+    toast({
+      title: "Nothing to freeze",
+      body: "None of the selected tickets has a durable review yet.",
+      tone: "warning",
+    });
+    return;
+  }
+  const listed = refs
+    .slice(0, 10)
+    .map((ref) => `${ref.displayId} at version ${ref.reviewVersion}`)
+    .join("\n");
+  const more = refs.length > 10 ? `\n…and ${refs.length - 10} more` : "";
+  const note =
+    skipped.length > 0
+      ? `\n\n${skipped.length} selected ticket${skipped.length === 1 ? "" : "s"} ` +
+        "will be skipped for having no review."
+      : "";
+  const proceed = globalThis.confirm(
+    `Freeze ${refs.length} review${refs.length === 1 ? "" : "s"} into a ` +
+      `remediation batch?\n\n${listed}${more}${note}`
+  );
+  if (!proceed) {
+    return;
+  }
+  try {
+    const created = await api.createRemediationBatch(refs);
+    const batchId = created?.batch?.batch_id ?? "";
+    const planned = created?.planned_review_ids?.length ?? 0;
+    toast({
+      title: `Created remediation batch ${batchId}`,
+      body:
+        `${created?.batch?.item_count ?? refs.length} observation(s) frozen` +
+        (planned > 0 ? `, ${planned} review(s) moved to planned` : "") +
+        ". Copy the Codex prompt from the remediation panel to hand it over.",
+      tone: "info",
+    });
+    store.dispatch({ type: "selection/clear" });
+    await load({ refresh: true });
+  } catch (error) {
+    if (error instanceof api.AbortedError) {
+      return;
+    }
+    reportError(error);
+  }
 }
 
 function wireTabs() {
@@ -871,6 +956,9 @@ function wireTable() {
       .filter((row) => state.selectedIds.includes(row.displayId) && row.review === null)
       .map((row) => row.displayId);
     importSelected(targets);
+  });
+  dom.bulkRemediation.addEventListener("click", () => {
+    createBatchFromSelection();
   });
 
   dom.prev.addEventListener("click", () => {

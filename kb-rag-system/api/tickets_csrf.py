@@ -59,6 +59,7 @@ import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
+from functools import lru_cache
 from typing import Any, Mapping, Optional
 
 from cryptography.hazmat.primitives import hashes
@@ -72,6 +73,7 @@ from api.reviewer_auth import (
     validate_console_origin,
 )
 from api.ticket_review_models import (
+    BATCH_ID_PATTERN,
     CURSOR_AEAD_KEY_BYTES,
     MAX_ID_LENGTH,
     CursorError,
@@ -315,7 +317,15 @@ class UnsafeRequestPolicy:
     console_origin: str
     csrf_secret: str = field(repr=False)
     csrf_ttl_s: int
+    #: Exact paths the agent exception covers. Useful for a fixed path; a batch
+    #: route carries an id, so those go in ``agent_route_templates`` instead.
     agent_routes: frozenset[str] = frozenset()
+    #: Path *templates* the agent exception covers, each containing at most one
+    #: ``{batch_id}`` placeholder. A template is expanded to a strict regex whose
+    #: placeholder matches only a server-minted batch id, so the allowlist stays
+    #: as narrow as an exact path while still naming a parameterized route. A
+    #: bare wildcard is impossible to express here on purpose.
+    agent_route_templates: frozenset[str] = frozenset()
 
 
 def policy_from_settings(settings: TicketConsoleSettings) -> UnsafeRequestPolicy:
@@ -360,6 +370,39 @@ def _media_type(raw: object) -> tuple[str, dict[str, str]]:
     return head.strip().lower(), parameters
 
 
+#: The only placeholder an agent route template may contain, and the only thing
+#: it may stand for. Expanding to the batch-id charset rather than to ``[^/]+``
+#: is what keeps a template from quietly covering a sibling route.
+_AGENT_ROUTE_PLACEHOLDER = "{batch_id}"
+_AGENT_ROUTE_ID_PATTERN = BATCH_ID_PATTERN.removeprefix("^").removesuffix("$")
+
+
+@lru_cache(maxsize=64)
+def _compiled_agent_route(template: str) -> re.Pattern[str]:
+    """Compile one allowlist template. Cached: it is fixed at startup."""
+    head, placeholder, tail = template.partition(_AGENT_ROUTE_PLACEHOLDER)
+    if not placeholder:
+        # No placeholder: the template is an exact path and is matched as one.
+        return re.compile(f"^{re.escape(template)}\\Z")
+    if _AGENT_ROUTE_PLACEHOLDER in tail:
+        raise AuthConfigurationError(
+            "an agent route template may name at most one batch id"
+        )
+    return re.compile(
+        f"^{re.escape(head)}(?:{_AGENT_ROUTE_ID_PATTERN}){re.escape(tail)}\\Z"
+    )
+
+
+def agent_route_allowlisted(policy: UnsafeRequestPolicy, path: str) -> bool:
+    """Whether ``path`` is one of the routes the agent exception covers."""
+    if path in policy.agent_routes:
+        return True
+    return any(
+        _compiled_agent_route(template).match(path)
+        for template in policy.agent_route_templates
+    )
+
+
 def agent_exception_applies(
     policy: UnsafeRequestPolicy,
     *,
@@ -374,7 +417,8 @@ def agent_exception_applies(
     1. the caller authenticated as the configured service account — ``is_agent``
        is set only by :mod:`api.reviewer_auth` after signed IAP verification, so
        a self-declared ``role: agent`` cannot reach it;
-    2. the route is explicitly allowlisted;
+    2. the route is explicitly allowlisted, by exact path or by a template whose
+       one placeholder matches only a server-minted batch id;
     3. no cookies are present, because cookies mean a browser and a browser must
        prove same-origin intent;
     4. any ``Origin`` that *is* present still has to be the console's own, so a
@@ -382,7 +426,7 @@ def agent_exception_applies(
     """
     if not (reviewer.is_agent and reviewer.role is ReviewerRole.AGENT):
         return False
-    if path not in policy.agent_routes:
+    if not agent_route_allowlisted(policy, path):
         return False
     lookup = _headers_view(headers)
     if (lookup.get(COOKIE_HEADER) or "").strip():
@@ -748,6 +792,7 @@ __all__ = [
     "UnsafeRequestRejected",
     "VerificationHandoffError",
     "agent_exception_applies",
+    "agent_route_allowlisted",
     "assert_unsafe_request_allowed",
     "derive_handoff_key",
     "handoff_enabled",

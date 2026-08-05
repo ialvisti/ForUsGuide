@@ -30,7 +30,7 @@ import json
 import os
 import re
 import unicodedata
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime, timedelta, timezone
 from enum import Enum
 from typing import Annotated, Any, Generic, Optional, TypeVar
@@ -129,6 +129,11 @@ MAX_METADATA_KEYS = 8
 MAX_METADATA_KEY_LENGTH = 64
 MAX_METADATA_VALUE_LENGTH = 200
 MAX_IF_MATCH_HEADER_LENGTH = 64
+#: One repository path per changed file, and a branch/ref is not a free-text
+#: field. Both are agent-supplied, so both are bounded here rather than at the
+#: route: the repository is the layer that has to survive a lying client.
+MAX_CHANGED_FILE_PATH_LENGTH = 512
+MAX_GIT_REF_LENGTH = 255
 SHA256_HEX_PATTERN = r"^[0-9a-f]{64}$"
 
 # Cursor authenticated encryption.
@@ -274,7 +279,37 @@ StrictInt = Annotated[int, BeforeValidator(_reject_non_integer)]
 Rating = Annotated[int, BeforeValidator(_reject_non_integer), Field(ge=1, le=5)]
 Sha256Hex = Annotated[str, Field(pattern=SHA256_HEX_PATTERN)]
 
+#: A batch id is server-minted. The repository mints ``uuid4().hex``; the
+#: canonical dashed form is accepted too so an operator can paste either the
+#: value this console printed or the one a UUID tool produced. Nothing else is
+#: allowed: this string reaches a Firestore document path and a URL path
+#: segment, so a slash, a dot-segment, or a colon here would be a traversal.
+#: ``$`` rather than ``\Z`` because a ``Field(pattern=...)`` is compiled by
+#: pydantic-core's Rust engine, which has no ``\Z``. Routes do not rely on this
+#: pattern alone: they pass the path segment through
+#: :func:`validated_batch_id`, which strips and re-checks it.
+BATCH_ID_PATTERN = (
+    r"^(?:[0-9a-f]{32}"
+    r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$"
+)
+BatchId = Annotated[str, Field(pattern=BATCH_ID_PATTERN)]
+_BATCH_ID_PATTERN = re.compile(
+    r"^(?:[0-9a-f]{32}"
+    r"|[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\Z"
+)
+
+#: A commit is a full 40-hex object name. An abbreviated SHA is refused because
+#: it stops identifying one commit as soon as the repository grows.
+GIT_COMMIT_SHA_PATTERN = r"^[0-9a-f]{40}$"
+
 _EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+#: `git check-ref-format` in the subset this console needs: no space, no control
+#: character, no `..`, no leading/trailing slash or dot, none of `~^:?*[\`.
+_GIT_REF_PATTERN = re.compile(r"^(?!/)(?!.*//)(?!.*\.\.)[A-Za-z0-9._/-]+(?<!/)(?<!\.)\Z")
+#: A repository-relative path. Never absolute, never a dot-segment, never a
+#: backslash: an agent reporting `../../etc/passwd` as "changed" is reporting
+#: something this console must not record as if it were part of the repository.
+_REPO_PATH_PATTERN = re.compile(r"^(?!/)(?!.*//)(?!.*\.\.)[A-Za-z0-9._/-]+(?<!/)\Z")
 # \Z rather than $: in Python `$` also matches just before a trailing newline,
 # which would accept '"v3"\n' as a valid strong validator.
 _IF_MATCH_PATTERN = re.compile(r'^"v([1-9][0-9]*)"\Z')
@@ -283,6 +318,45 @@ _IF_MATCH_PATTERN = re.compile(r'^"v([1-9][0-9]*)"\Z')
 # rejected rather than silently normalized, so one cursor has one encoding.
 _CURSOR_TOKEN_PATTERN = re.compile(r"^[A-Za-z0-9_-]+\Z")
 _B64URL_TO_STD = str.maketrans("-_", "+/")
+
+
+def validated_batch_id(value: str) -> str:
+    """Accept one server-minted batch id, or raise ``ValueError``.
+
+    Applied to the path segment before it ever reaches a Firestore document
+    path. Surrounding whitespace is stripped (an id pasted from a file arrives
+    with a newline) and the *stripped* value is what the caller then uses, so
+    the laxness ``$`` would allow cannot survive past this function.
+    """
+    candidate = (value or "").strip()
+    if not _BATCH_ID_PATTERN.match(candidate):
+        raise ValueError("that batch id is not usable")
+    return candidate
+
+
+def validated_git_ref(value: str) -> str:
+    """Accept one branch or ref name, or raise ``ValueError``.
+
+    This value is rendered into a copied prompt and compared against what the
+    CLI reports about the working repository, so a newline or a shell
+    metacharacter here would travel into an operator's terminal.
+    """
+    candidate = (value or "").strip()
+    if not candidate or len(candidate) > MAX_GIT_REF_LENGTH:
+        raise ValueError("a git ref must be 1..255 characters")
+    if not _GIT_REF_PATTERN.match(candidate):
+        raise ValueError("that git ref is not a well-formed ref name")
+    return candidate
+
+
+def validated_repo_path(value: str) -> str:
+    """Accept one repository-relative file path, or raise ``ValueError``."""
+    candidate = (value or "").strip()
+    if not candidate or len(candidate) > MAX_CHANGED_FILE_PATH_LENGTH:
+        raise ValueError("a changed-file path must be 1..512 characters")
+    if not _REPO_PATH_PATTERN.match(candidate):
+        raise ValueError("a changed-file path must be repository-relative")
+    return candidate
 
 
 class _Base(BaseModel):
@@ -1033,6 +1107,14 @@ class RemediationBatchItem(_Base):
     remediation_target: Optional[RemediationTarget] = Field(default=None)
     comments_excerpt: Optional[str] = Field(default=None, max_length=MAX_SUMMARY_LENGTH)
     outcome: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    #: The agent's own bounded note for this one review. It lives on the item
+    #: document rather than the parent so a 100-review batch cannot grow the
+    #: parent past the Firestore document limit.
+    outcome_summary: Optional[str] = Field(default=None, max_length=MAX_SUMMARY_LENGTH)
+    #: The independent human verdict, recorded only by ``:complete``. Kept
+    #: separate from ``outcome`` so an agent claim and a human decision are
+    #: never conflated when this record is read back years later.
+    verified_outcome: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
 
 
 class RemediationBatch(_Base):
@@ -1049,9 +1131,19 @@ class RemediationBatch(_Base):
     item_count: StrictInt = Field(..., ge=0, le=MAX_BATCH_REVIEWS)
     item_set_digest: Sha256Hex = Field(...)
     lease: Optional[BatchLease] = Field(default=None)
+    #: Who last claimed this batch. Retained after the lease is invalidated
+    #: because the independent-verifier rule has to be enforced at
+    #: ``:start-verification`` and ``:complete`` — long after submission cleared
+    #: the lease. Without this the rule would silently pass for everyone.
+    claimed_by: Optional[ReviewerIdentity] = Field(default=None)
     plan_artifact: Optional[str] = Field(default=None, max_length=MAX_SUMMARY_LENGTH)
-    branch: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
-    commit_sha: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    branch: Optional[str] = Field(default=None, max_length=MAX_GIT_REF_LENGTH)
+    commit_sha: Optional[str] = Field(default=None, pattern=GIT_COMMIT_SHA_PATTERN)
+    #: Why there is no commit. Exactly one of ``commit_sha``/this field is
+    #: required to submit: "the work is not committed" is an acceptable state to
+    #: report and an unacceptable one to leave unexplained.
+    uncommitted_reason: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
+    changed_files: list[str] = Field(default_factory=list, max_length=MAX_CHANGED_FIELDS)
     pr_url: Optional[str] = Field(default=None, max_length=MAX_URL_LENGTH)
     # The master plan's Firestore contract requires the batch parent to store
     # "bounded test evidence" alongside the plan/branch/commit references.
@@ -1059,12 +1151,124 @@ class RemediationBatch(_Base):
         default_factory=list, max_length=MAX_LIST_ITEMS
     )
     verification_summary: Optional[str] = Field(default=None, max_length=MAX_SUMMARY_LENGTH)
+    #: The independent human's evidence, kept apart from the agent's
+    #: ``test_evidence`` so "the agent says its tests passed" can never be read
+    #: as "a second person checked".
+    verification_evidence: list[VerificationEvidence] = Field(
+        default_factory=list, max_length=MAX_LIST_ITEMS
+    )
+    #: What the independent verifier asserted when they took the batch on. Kept
+    #: durably rather than only in the audit metadata because ``metadata`` values
+    #: are capped at 200 characters and this is the record that says a second
+    #: person looked, and on what basis.
+    verification_attestation: Optional[str] = Field(
+        default=None, max_length=MAX_REASON_LENGTH
+    )
+    verified_by: Optional[ReviewerIdentity] = Field(default=None)
+    verified_at: Optional[AwareDatetime] = Field(default=None)
     outcome: Optional[BatchOutcome] = Field(default=None)
+    #: Which prompt text was handed to the agent. The digest is recorded rather
+    #: than the prompt so the record proves *which* instructions were issued
+    #: without storing a second copy of them.
+    prompt_template_sha256: Optional[Sha256Hex] = Field(default=None)
+    prompt_template_version: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    prompt_issued_at: Optional[AwareDatetime] = Field(default=None)
     retention_expires_at: Optional[AwareDatetime] = Field(default=None)
     legal_hold: bool = Field(default=False)
     version: StrictInt = Field(default=1, ge=1)
     created_at: AwareDatetime = Field(default_factory=utc_now)
     updated_at: AwareDatetime = Field(default_factory=utc_now)
+
+    @field_validator("branch")
+    @classmethod
+    def _well_formed_branch(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else validated_git_ref(value)
+
+    @field_validator("changed_files")
+    @classmethod
+    def _repo_relative_changed_files(cls, value: list[str]) -> list[str]:
+        return [validated_repo_path(item) for item in value]
+
+
+class BatchLeaseSummary(_Base):
+    """A lease as a human may see it: the window, never the credential.
+
+    ``BatchLease.lease_token_hash`` is deliberately absent. It is only a digest,
+    but a reviewer verifying a batch has no use for it, and the narrower the
+    human-facing shape is the fewer ways there are to widen it by accident.
+    """
+
+    holder: str = Field(..., min_length=1, max_length=MAX_EMAIL_LENGTH)
+    acquired_at: AwareDatetime = Field(...)
+    expires_at: AwareDatetime = Field(...)
+    last_heartbeat_at: AwareDatetime = Field(...)
+    continuous_since: Optional[AwareDatetime] = Field(default=None)
+
+
+class RemediationBatchView(_Base):
+    """The batch as a human role reads it.
+
+    Identical to :class:`RemediationBatch` except that the lease is reduced to
+    :class:`BatchLeaseSummary`. Built only by :func:`batch_view`.
+    """
+
+    batch_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
+    schema_version: str = Field(default=SCHEMA_VERSION, max_length=MAX_TOPIC_LENGTH)
+    status: BatchStatus = Field(...)
+    created_by: ReviewerIdentity = Field(...)
+    item_count: StrictInt = Field(..., ge=0, le=MAX_BATCH_REVIEWS)
+    item_set_digest: Sha256Hex = Field(...)
+    lease: Optional[BatchLeaseSummary] = Field(default=None)
+    claimed_by: Optional[ReviewerIdentity] = Field(default=None)
+    plan_artifact: Optional[str] = Field(default=None, max_length=MAX_SUMMARY_LENGTH)
+    branch: Optional[str] = Field(default=None, max_length=MAX_GIT_REF_LENGTH)
+    commit_sha: Optional[str] = Field(default=None, pattern=GIT_COMMIT_SHA_PATTERN)
+    uncommitted_reason: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
+    changed_files: list[str] = Field(default_factory=list, max_length=MAX_CHANGED_FIELDS)
+    pr_url: Optional[str] = Field(default=None, max_length=MAX_URL_LENGTH)
+    test_evidence: list[VerificationEvidence] = Field(
+        default_factory=list, max_length=MAX_LIST_ITEMS
+    )
+    verification_summary: Optional[str] = Field(default=None, max_length=MAX_SUMMARY_LENGTH)
+    verification_evidence: list[VerificationEvidence] = Field(
+        default_factory=list, max_length=MAX_LIST_ITEMS
+    )
+    #: What the independent verifier asserted when they took the batch on. Kept
+    #: durably rather than only in the audit metadata because ``metadata`` values
+    #: are capped at 200 characters and this is the record that says a second
+    #: person looked, and on what basis.
+    verification_attestation: Optional[str] = Field(
+        default=None, max_length=MAX_REASON_LENGTH
+    )
+    verified_by: Optional[ReviewerIdentity] = Field(default=None)
+    verified_at: Optional[AwareDatetime] = Field(default=None)
+    outcome: Optional[BatchOutcome] = Field(default=None)
+    prompt_template_sha256: Optional[Sha256Hex] = Field(default=None)
+    prompt_template_version: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    prompt_issued_at: Optional[AwareDatetime] = Field(default=None)
+    retention_expires_at: Optional[AwareDatetime] = Field(default=None)
+    legal_hold: bool = Field(default=False)
+    version: StrictInt = Field(..., ge=1)
+    created_at: AwareDatetime = Field(...)
+    updated_at: AwareDatetime = Field(...)
+
+
+def batch_view(batch: RemediationBatch) -> RemediationBatchView:
+    """Project a batch onto its human-readable view, dropping the token hash."""
+    payload = batch.model_dump()
+    lease = payload.pop("lease", None)
+    summary = (
+        None
+        if not lease
+        else BatchLeaseSummary(
+            holder=lease["holder"],
+            acquired_at=lease["acquired_at"],
+            expires_at=lease["expires_at"],
+            last_heartbeat_at=lease["last_heartbeat_at"],
+            continuous_since=lease.get("continuous_since"),
+        )
+    )
+    return RemediationBatchView(lease=summary, **payload)
 
 
 # =====================================================================
@@ -1525,12 +1729,54 @@ class CreateRemediationBatchRequest(_Base):
         return self
 
 
+class CreateRemediationBatchResponse(_Base):
+    """The frozen batch, plus exactly which reviews the creation moved.
+
+    The two id lists are reported rather than implied: ``transition_to_planned``
+    is best-effort by design (a review already past ``planned``, or not yet
+    triaged, is left alone), and a caller that could not tell which happened
+    would have to re-read every review to find out.
+    """
+
+    batch: RemediationBatchView = Field(...)
+    planned_review_ids: list[Sha256Hex] = Field(
+        default_factory=list, max_length=MAX_BATCH_REVIEWS
+    )
+    unchanged_review_ids: list[Sha256Hex] = Field(
+        default_factory=list, max_length=MAX_BATCH_REVIEWS
+    )
+
+
+#: The response header that carries a freshly minted lease token, exactly once.
+#:
+#: The token deliberately does **not** travel in the JSON body.
+#: :class:`ClaimBatchResponse` keeps ``lease_token`` as a masked
+#: :class:`SecretStr`, and ``TestClosedMutationEnvelopes`` pins that no dump of
+#: that model ever renders the plaintext — an invariant worth more than the
+#: convenience of one field, because it holds for every future code path that
+#: serializes the model for a log, an audit record, or an error body. The one
+#: place the plaintext is allowed to exist is this header, set by the claim route
+#: and read by the CLI. The console's access log records method, route template,
+#: status, duration, and a subject hash; it never records a response header.
+LEASE_TOKEN_HEADER = "X-Tickets-Lease-Token"
+
+
 class ClaimBatchResponse(_Base):
-    """Returned once at claim time. Only the token's hash is persisted."""
+    """Returned once at claim time. Only the token's hash is persisted.
+
+    ``lease_token`` is a masked :class:`SecretStr` here on purpose: the field
+    documents that a token exists and belongs to this claim, while the plaintext
+    reaches the caller through :data:`LEASE_TOKEN_HEADER`. See that constant for
+    why the split is worth the small awkwardness.
+    """
 
     batch: RemediationBatch = Field(...)
     lease_token: SecretStr = Field(...)
     lease_expires_at: AwareDatetime = Field(...)
+    heartbeat_interval_s: StrictInt = Field(default=REMEDIATION_HEARTBEAT_S, ge=1)
+    max_continuous_lease_s: StrictInt = Field(
+        default=REMEDIATION_MAX_CONTINUOUS_LEASE_S, ge=1
+    )
 
 
 class HeartbeatBatchRequest(_Base):
@@ -1587,8 +1833,9 @@ class PatchBatchRequest(_Base):
     lease_token: SecretStr = Field(...)
     transition: Optional[BatchStatus] = Field(default=None)
     plan_artifact: Optional[str] = Field(default=None, max_length=MAX_SUMMARY_LENGTH)
-    branch: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
-    commit_sha: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    branch: Optional[str] = Field(default=None, max_length=MAX_GIT_REF_LENGTH)
+    commit_sha: Optional[str] = Field(default=None, pattern=GIT_COMMIT_SHA_PATTERN)
+    uncommitted_reason: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
     pr_url: Optional[str] = Field(default=None, max_length=MAX_URL_LENGTH)
     changed_files: list[str] = Field(default_factory=list, max_length=MAX_CHANGED_FIELDS)
     test_evidence: list[VerificationEvidence] = Field(
@@ -1605,6 +1852,25 @@ class PatchBatchRequest(_Base):
         if value is not None and not value.startswith("https://"):
             raise ValueError("pr_url must use https")
         return value
+
+    @field_validator("branch")
+    @classmethod
+    def _well_formed_branch(cls, value: Optional[str]) -> Optional[str]:
+        return None if value is None else validated_git_ref(value)
+
+    @field_validator("changed_files")
+    @classmethod
+    def _repo_relative_changed_files(cls, value: list[str]) -> list[str]:
+        return [validated_repo_path(item) for item in value]
+
+    @model_validator(mode="after")
+    def _reject_duplicate_review_outcomes(self) -> PatchBatchRequest:
+        seen = {entry.review_id for entry in self.per_review_outcomes}
+        if len(seen) != len(self.per_review_outcomes):
+            raise ValueError("per_review_outcomes must not repeat a review_id")
+        if self.commit_sha is not None and self.uncommitted_reason is not None:
+            raise ValueError("supply a commit_sha or an uncommitted_reason, never both")
+        return self
 
 
 class ReleaseBatchRequest(_Base):
@@ -1652,6 +1918,26 @@ class CompleteBatchRequest(_Base):
         default_factory=list, max_length=MAX_BATCH_REVIEWS
     )
     reason: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
+
+    @model_validator(mode="after")
+    def _resolved_decisions_need_evidence(self) -> CompleteBatchRequest:
+        seen = {entry.review_id for entry in self.per_review_decisions}
+        if len(seen) != len(self.per_review_decisions):
+            raise ValueError("per_review_decisions must not repeat a review_id")
+        # The agent's own test records are NOT accepted here. A completion that
+        # could lean on them would let "the author says it works" close a review,
+        # which is exactly what independent verification exists to prevent.
+        resolving = [
+            entry
+            for entry in self.per_review_decisions
+            if entry.resolution is not None
+            and entry.resolution.outcome is ResolutionOutcome.FIXED
+        ]
+        if resolving and not self.verification_evidence:
+            raise ValueError(
+                "a 'fixed' review decision requires recorded verification evidence"
+            )
+        return self
 
 
 class ExtendLeaseRequest(_Base):
@@ -1900,6 +2186,104 @@ def assert_batch_transition(
                 "an independent reviewer or admin must perform "
                 f"'{current.value}' -> '{target.value}'"
             )
+
+
+#: The statuses a *human* may move a batch to. The agent's forward path
+#: (``planning``/``in_progress``/``changes_proposed``) is deliberately absent:
+#: an agent authors, a human decides, and neither borrows the other's edge.
+HUMAN_BATCH_TARGETS = frozenset(
+    {
+        BatchStatus.READY,
+        BatchStatus.CANCELLED,
+        BatchStatus.VERIFYING,
+        BatchStatus.COMPLETED,
+        BatchStatus.IN_PROGRESS,
+        BatchStatus.BLOCKED,
+    }
+)
+
+#: What an agent may transition to through ``PATCH``. ``verifying`` and
+#: ``completed`` are absent by construction, which is the whole
+#: human-in-the-loop invariant: an agent that could reach either would be able
+#: to declare its own work verified.
+AGENT_BATCH_TARGETS = frozenset(
+    {BatchStatus.PLANNING, BatchStatus.IN_PROGRESS, BatchStatus.CHANGES_PROPOSED}
+)
+
+
+def assert_batch_submission_complete(
+    *,
+    branch: Optional[str],
+    commit_sha: Optional[str],
+    uncommitted_reason: Optional[str],
+    changed_files: Sequence[str],
+    test_evidence: Sequence[VerificationEvidence],
+    summary: Optional[str],
+    per_review_outcomes: Sequence[ReviewOutcome],
+    frozen_review_ids: Sequence[str],
+) -> None:
+    """Everything ``changes_proposed`` must carry, or raise.
+
+    A submission is a handoff to a person who has to decide whether to trust it.
+    Each requirement below is something that person cannot reconstruct later:
+    which branch, which commit (or why there is none), which files, what was
+    actually run, and a per-review verdict for every review that was frozen —
+    silence about one review is indistinguishable from having missed it.
+    """
+    missing: list[str] = []
+    if not branch:
+        missing.append("a branch")
+    if not commit_sha and not uncommitted_reason:
+        missing.append("a commit_sha or an explicit uncommitted_reason")
+    if not changed_files:
+        missing.append("a changed-file list")
+    if not test_evidence:
+        missing.append("at least one test command/outcome record")
+    if not (summary or "").strip():
+        missing.append("a resolution summary")
+    if missing:
+        raise InvalidBatchTransition(
+            "a submission to 'changes_proposed' requires " + ", ".join(missing)
+        )
+
+    reported = {entry.review_id for entry in per_review_outcomes}
+    frozen = set(frozen_review_ids)
+    unreported = sorted(frozen - reported)
+    if unreported:
+        raise InvalidBatchTransition(
+            f"{len(unreported)} frozen review(s) carry no per-review outcome"
+        )
+    foreign = sorted(reported - frozen)
+    if foreign:
+        raise InvalidBatchTransition(
+            "a per-review outcome names a review this batch did not freeze"
+        )
+
+
+def assert_independent_verifier(
+    *,
+    actor: ReviewerIdentity,
+    actor_role: ReviewerRole,
+    claimed_by: Optional[ReviewerIdentity],
+    created_by: Optional[ReviewerIdentity] = None,
+) -> None:
+    """Refuse a verifier who authored the work, or raise.
+
+    Compared on ``subject``, not on email: an email can be re-pointed at another
+    principal, whereas the IAP subject is the stable identifier the console
+    already hashes into its audit chain. ``created_by`` is *not* excluded — the
+    remediator who selected the observations is allowed to verify the fix; the
+    rule that matters is that whoever *made* the change cannot sign it off.
+    """
+    del created_by
+    if actor_role not in {ReviewerRole.REVIEWER, ReviewerRole.ADMIN}:
+        raise InvalidBatchTransition("only a reviewer or an admin may verify a batch")
+    if actor_role is ReviewerRole.AGENT:  # pragma: no cover - unreachable above
+        raise InvalidBatchTransition("an agent may never verify its own batch")
+    if claimed_by is not None and claimed_by.subject == actor.subject:
+        raise InvalidBatchTransition(
+            "the identity that claimed this batch may not verify it"
+        )
 
 
 _IMPORT_TRANSITIONS: dict[ImportStatus, frozenset[ImportStatus]] = {

@@ -63,15 +63,19 @@ from api.ticket_review_models import (
     MAX_METADATA_VALUE_LENGTH,
     MAX_PAGE_SIZE,
     MAX_REASON_LENGTH,
+    MAX_SUMMARY_LENGTH,
     MAX_TITLE_LENGTH,
     MAX_TOPIC_LENGTH,
+    MAX_WARNINGS,
     MESSAGE_CACHE_TTL_S,
     REMEDIATION_LEASE_S,
     REMEDIATION_MAX_CONTINUOUS_LEASE_S,
     REVIEW_RETENTION_DAYS,
     SCHEMA_VERSION,
+    AGENT_BATCH_TARGETS,
     AuditEvent,
     BatchLease,
+    BatchOutcome,
     BatchStatus,
     CorrelationTrust,
     CursorError,
@@ -80,10 +84,14 @@ from api.ticket_review_models import (
     ImportStatus,
     RemediationBatch,
     RemediationBatchItem,
+    ResolutionOutcome,
+    ReviewDecision,
     ReviewerIdentity,
     ReviewerRole,
+    ReviewOutcome,
     ReviewPatch,
     ReviewRef,
+    ReviewResolution,
     ReviewStatus,
     Sha256Hex,
     StrictInt,
@@ -92,8 +100,10 @@ from api.ticket_review_models import (
     TicketImportRow,
     TicketReview,
     VerificationEvidence,
+    assert_batch_submission_complete,
     assert_batch_transition,
     assert_import_transition,
+    assert_independent_verifier,
     assert_review_transition,
     can_assign_reviewer,
     compute_audit_event_hash,
@@ -384,6 +394,20 @@ def _assert_review_transition(*args: Any, **kwargs: Any) -> None:
 def _assert_batch_transition(*args: Any, **kwargs: Any) -> None:
     try:
         assert_batch_transition(*args, **kwargs)
+    except ContractInvalidBatchTransition as exc:
+        raise InvalidBatchTransition(str(exc)) from exc
+
+
+def _assert_independent_verifier(*args: Any, **kwargs: Any) -> None:
+    try:
+        assert_independent_verifier(*args, **kwargs)
+    except ContractInvalidBatchTransition as exc:
+        raise InvalidBatchTransition(str(exc)) from exc
+
+
+def _assert_batch_submission_complete(*args: Any, **kwargs: Any) -> None:
+    try:
+        assert_batch_submission_complete(*args, **kwargs)
     except ContractInvalidBatchTransition as exc:
         raise InvalidBatchTransition(str(exc)) from exc
 
@@ -707,6 +731,25 @@ class ImportRowSpec(_RepoBase):
     patch: ReviewPatch = Field(...)
     raw_ticket_id: Optional[str] = Field(default=None, max_length=MAX_DISPLAY_ID_LENGTH)
     created_by_import: bool = Field(default=False)
+
+
+class BatchMaterialization(_RepoBase):
+    """One audited page of frozen records, with drift stated rather than implied."""
+
+    batch: RemediationBatch = Field(...)
+    items: list[RemediationBatchItem] = Field(default_factory=list)
+    next_cursor: Optional[str] = Field(default=None)
+    drifted_review_ids: list[str] = Field(default_factory=list)
+    conversation_included: bool = Field(default=False)
+    warnings: list[str] = Field(default_factory=list)
+
+
+class BatchCompletion(_RepoBase):
+    """A completed batch, and exactly which reviews the completion closed."""
+
+    batch: RemediationBatch = Field(...)
+    resolved_review_ids: list[str] = Field(default_factory=list)
+    unchanged_review_ids: list[str] = Field(default_factory=list)
 
 
 class BatchClaim(_RepoBase):
@@ -1278,9 +1321,19 @@ _BATCH_WORK_FIELDS = (
     "plan_artifact",
     "branch",
     "commit_sha",
+    "uncommitted_reason",
     "pr_url",
     "verification_summary",
 )
+
+#: Human roles that may create, ready, or cancel a remediation batch. The master
+#: route table sets the minimum at ``remediator``; ``reviewer`` is deliberately
+#: excluded here even though it may *verify* one, because selecting work for an
+#: autonomous agent is a different decision from judging the result.
+BATCH_CURATOR_ROLES = frozenset({ReviewerRole.REMEDIATOR, ReviewerRole.ADMIN})
+
+#: Human roles that may independently verify and complete a batch.
+BATCH_VERIFIER_ROLES = frozenset({ReviewerRole.REVIEWER, ReviewerRole.ADMIN})
 
 
 class TicketReviewRepository:
@@ -2482,9 +2535,17 @@ class TicketReviewRepository:
         *,
         review_refs: Sequence[Mapping[str, Any]],
         context: MutationContext,
+        prompt_template_sha256: Optional[str] = None,
+        prompt_template_version: Optional[str] = None,
     ) -> RemediationBatch:
-        """Freeze unique ``(review_id, review_version)`` pairs into item docs."""
-        if context.actor_role not in {ReviewerRole.ADMIN, ReviewerRole.REVIEWER}:
+        """Freeze unique ``(review_id, review_version)`` pairs into item docs.
+
+        The prompt-template digest is stamped here, at creation, rather than when
+        the prompt is later copied: the template is part of the deployed image,
+        so recording it once pins *which instructions this batch was created
+        against*, and the read that hands the prompt out stays a pure read.
+        """
+        if context.actor_role not in BATCH_CURATOR_ROLES:
             raise NotAuthorized("this role may not create a remediation batch")
         refs = [ReviewRef.model_validate(dict(ref)) for ref in review_refs]
         if not refs:
@@ -2538,6 +2599,8 @@ class TicketReviewRepository:
                 created_by=context.actor,
                 item_count=len(items),
                 item_set_digest=digest,
+                prompt_template_sha256=prompt_template_sha256,
+                prompt_template_version=prompt_template_version,
                 created_at=now,
                 updated_at=now,
                 version=1,
@@ -2764,6 +2827,10 @@ class TicketReviewRepository:
                 update={
                     "status": BatchStatus.CLAIMED,
                     "lease": new_lease,
+                    # Recorded on the parent, and never cleared by a release, so
+                    # the independent-verifier rule still has something to
+                    # compare against once the lease is gone.
+                    "claimed_by": context.actor,
                     "version": current.version + 1,
                     "updated_at": now,
                 }
@@ -2974,6 +3041,19 @@ class TicketReviewRepository:
 
         return _from_doc(RemediationBatch, await self.backend.transact(_txn))
 
+    async def _frozen_item_docs(self, batch_id: str, item_count: int) -> list[tuple[str, Document]]:
+        """Every frozen item of one batch, bounded by that batch's own count.
+
+        Bounded by ``item_count`` rather than by the currently configured cap:
+        lowering ``MAX_BATCH_REVIEWS`` later must not silently truncate a batch
+        that was already frozen at the old ceiling.
+        """
+        return await self.backend.list_subcollection(
+            (BATCHES_COLLECTION, batch_id),
+            BATCH_ITEMS_SUBCOLLECTION,
+            limit=item_count + 1,
+        )
+
     async def patch_batch(
         self,
         batch_id: str,
@@ -2985,24 +3065,52 @@ class TicketReviewRepository:
         plan_artifact: Optional[str] = None,
         branch: Optional[str] = None,
         commit_sha: Optional[str] = None,
+        uncommitted_reason: Optional[str] = None,
         pr_url: Optional[str] = None,
+        changed_files: Optional[Sequence[str]] = None,
         test_evidence: Optional[Sequence[VerificationEvidence]] = None,
         verification_summary: Optional[str] = None,
+        per_review_outcomes: Optional[Sequence[ReviewOutcome]] = None,
     ) -> RemediationBatch:
-        """Record plan, progress, or results under version and lease checks."""
+        """Record plan, progress, or results under version and lease checks.
+
+        A transition to ``changes_proposed`` is the agent's submission and is
+        held to a stricter contract than an intermediate progress note: it must
+        carry the whole handoff (see
+        :func:`api.ticket_review_models.assert_batch_submission_complete`), it
+        writes one outcome onto every frozen item, and it invalidates the lease
+        in the same transaction. Submitting and *keeping* the claim would leave
+        an agent able to keep editing work a human had started reviewing.
+        """
         now = self._now()
+        outcomes = list(per_review_outcomes or ())
         updates: dict[str, Any] = {}
         for field, value in (
             ("plan_artifact", plan_artifact),
             ("branch", branch),
             ("commit_sha", commit_sha),
+            ("uncommitted_reason", uncommitted_reason),
             ("pr_url", pr_url),
             ("verification_summary", verification_summary),
         ):
             if value is not None:
                 updates[field] = value
+        if changed_files is not None:
+            updates["changed_files"] = list(changed_files)
         if test_evidence is not None:
             updates["test_evidence"] = list(test_evidence)
+        submitting = transition is BatchStatus.CHANGES_PROPOSED
+        # The idempotency digest is JSON, and ``_plain`` does not reach inside a
+        # Pydantic model, so the evidence records are dumped explicitly. Without
+        # this, any patch carrying test evidence dies in ``canonical_json``.
+        request_updates = {
+            key: (
+                [entry.model_dump(mode="json") for entry in value]
+                if key == "test_evidence"
+                else _plain(value)
+            )
+            for key, value in updates.items()
+        }
 
         async def _txn(view: TransactionView) -> Document:
             replay, key_hash, digest = await self._claim_idempotency(
@@ -3013,14 +3121,14 @@ class TicketReviewRepository:
                     "batch_id": batch_id,
                     "expected_version": expected_version,
                     "transition": None if transition is None else transition.value,
-                    "updates": _plain(dict(updates)),
+                    "updates": request_updates,
+                    "outcomes": [entry.model_dump(mode="json") for entry in outcomes],
                 },
                 now=now,
             )
             if replay is not None:
                 stored = await view.get((BATCHES_COLLECTION, batch_id))
                 if stored is not None and not _is_tombstone(stored):
-                    return stored
                     return stored
             doc = await view.get((BATCHES_COLLECTION, batch_id))
             if doc is None or _is_tombstone(doc):
@@ -3030,9 +3138,19 @@ class TicketReviewRepository:
             if context.actor_role is ReviewerRole.AGENT or lease_token is not None:
                 self._assert_lease(doc, lease_token=lease_token, context=context, now=now)
                 has_lease = True
-            elif context.actor_role not in {ReviewerRole.ADMIN, ReviewerRole.REVIEWER}:
+            elif context.actor_role not in (BATCH_CURATOR_ROLES | BATCH_VERIFIER_ROLES):
                 raise NotAuthorized("this role may not change a remediation batch")
             self._assert_batch_version(doc, expected_version)
+
+            if context.actor_role is ReviewerRole.AGENT and transition is not None:
+                # Closed set, checked before the table: the table's own
+                # human-only edges would reject `verifying`, but an agent must
+                # never even be measured against the human path.
+                if transition not in AGENT_BATCH_TARGETS:
+                    raise InvalidBatchTransition(
+                        f"an agent may not move a batch to '{transition.value}'"
+                    )
+
             if transition is not None and transition is not current.status:
                 _assert_batch_transition(
                     current.status,
@@ -3041,22 +3159,83 @@ class TicketReviewRepository:
                     has_lease=has_lease,
                 )
                 updates["status"] = transition
+            elif submitting:
+                # `transition is current.status` for a re-submission: refuse
+                # rather than silently re-running the whole handoff.
+                raise InvalidBatchTransition("this batch is already 'changes_proposed'")
+
+            item_writes: list[tuple[DocPath, Document]] = []
+            if submitting:
+                rows = await self._frozen_item_docs(batch_id, current.item_count)
+                if len(rows) != current.item_count:
+                    raise BatchContractViolation(
+                        "cannot read every frozen review; submission refused"
+                    )
+                merged_updates = {**current.model_dump(), **updates}
+                _assert_batch_submission_complete(
+                    branch=merged_updates.get("branch"),
+                    commit_sha=merged_updates.get("commit_sha"),
+                    uncommitted_reason=merged_updates.get("uncommitted_reason"),
+                    changed_files=merged_updates.get("changed_files") or [],
+                    test_evidence=[
+                        VerificationEvidence.model_validate(entry)
+                        for entry in (merged_updates.get("test_evidence") or [])
+                    ],
+                    summary=merged_updates.get("verification_summary"),
+                    per_review_outcomes=outcomes,
+                    frozen_review_ids=[review_id for review_id, _ in rows],
+                )
+                by_id = {entry.review_id: entry for entry in outcomes}
+                for review_id, item_doc in rows:
+                    reported = by_id[review_id]
+                    item = _from_doc(RemediationBatchItem, item_doc)
+                    updated_item = item.model_copy(
+                        update={
+                            "outcome": reported.outcome,
+                            "outcome_summary": reported.summary,
+                        }
+                    )
+                    stamped = _to_doc(updated_item, **self._product_envelope(now))
+                    if _document_bytes(stamped) >= FIRESTORE_MAX_DOCUMENT_BYTES:
+                        raise BatchContractViolation(
+                            "a per-review outcome would exceed the document limit"
+                        )
+                    item_writes.append(
+                        (
+                            (
+                                BATCHES_COLLECTION,
+                                batch_id,
+                                BATCH_ITEMS_SUBCOLLECTION,
+                                review_id,
+                            ),
+                            stamped,
+                        )
+                    )
+                # The claim ends with the submission, atomically.
+                updates["lease"] = None
+
             merged = current.model_copy(
                 update={**updates, "version": current.version + 1, "updated_at": now}
             )
             new_doc = self._batch_doc(merged, doc, now)
+            if submitting:
+                new_doc["lease"] = None
+            for item_path, item_doc in item_writes:
+                view.set(item_path, item_doc)
             await self._append_event(
                 view,
                 ledger_path=(BATCHES_COLLECTION, batch_id, BATCH_EVENTS_SUBCOLLECTION),
                 parent_doc=new_doc,
                 parent_kind="batch",
                 parent_id=batch_id,
-                event_type="batch_updated",
+                event_type="batch_submitted" if submitting else "batch_updated",
                 context=context,
                 now=now,
                 previous_version=current.version,
                 new_version=merged.version,
-                changed_fields=sorted(updates),
+                changed_fields=sorted(
+                    set(updates) | ({"per_review_outcomes"} if outcomes else set())
+                ),
             )
             view.set((BATCHES_COLLECTION, batch_id), new_doc)
             self._record_idempotency(
@@ -3183,6 +3362,583 @@ class TicketReviewRepository:
             return new_doc
 
         return _from_doc(RemediationBatch, await self.backend.transact(_txn))
+
+    # -- materialization -------------------------------------------------
+
+    async def materialize_batch(
+        self,
+        batch_id: str,
+        *,
+        expected_version: int,
+        lease_token: str,
+        context: MutationContext,
+        include_conversation: bool = False,
+        page_size: int = DEFAULT_PAGE_SIZE,
+        cursor: Optional[str] = None,
+    ) -> BatchMaterialization:
+        """One bounded, lease-checked, audited page of the frozen records.
+
+        Two things this deliberately does *not* return.
+
+        **Participant conversation.** No DevRev message body is ever durable
+        (the Stage 1 rule), so there is nothing here to include even if it were
+        wanted. ``include_conversation`` therefore widens the read to the
+        reviewer's own recorded ``comments`` — the only narrative text this
+        console owns — and says so in a warning. An agent that needs live
+        participant text has to go through the audited ticket-detail path, under
+        a human identity, which is the point.
+
+        **An unbounded item array.** The page is cursor-paged over the item
+        subcollection, so a 100-review batch cannot be turned into one oversized
+        response, and the parent document never grows with the item count.
+
+        The read is audited: materialization is the moment ticket-derived data
+        leaves the console for an automated agent, and that is exactly the event
+        an operator will want to find later.
+        """
+        now = self._now()
+        bounded_page = max(1, min(int(page_size), MAX_PAGE_SIZE, self._max_batch_reviews))
+
+        async def _txn(view: TransactionView) -> tuple[Document, str]:
+            doc = await view.get((BATCHES_COLLECTION, batch_id))
+            if doc is None or _is_tombstone(doc):
+                raise BatchNotFound("no remediation batch exists for that id")
+            self._assert_lease(doc, lease_token=lease_token, context=context, now=now)
+            self._assert_batch_version(doc, expected_version)
+            await self._append_event(
+                view,
+                ledger_path=(BATCHES_COLLECTION, batch_id, BATCH_EVENTS_SUBCOLLECTION),
+                parent_doc=doc,
+                parent_kind="batch",
+                parent_id=batch_id,
+                event_type="batch_materialized",
+                context=context,
+                now=now,
+                previous_version=int(doc.get("version") or 0),
+                new_version=int(doc.get("version") or 0),
+                changed_fields=[],
+            )
+            # The chain head moved, so the parent has to be written back. The
+            # business version does NOT move: nothing about the batch changed.
+            view.set((BATCHES_COLLECTION, batch_id), doc)
+            return doc, str(doc.get("version"))
+
+        doc, _ = await self.backend.transact(_txn)
+        batch = _from_doc(RemediationBatch, doc)
+        page = await self.list_batch_items(batch_id, page_size=bounded_page, cursor=cursor)
+
+        items: list[RemediationBatchItem] = []
+        drifted: list[str] = []
+        warnings: list[str] = []
+        for item in page.items:
+            assert isinstance(item, RemediationBatchItem)
+            review_doc = await self.backend.get_doc((REVIEWS_COLLECTION, item.review_id))
+            if review_doc is None or _is_tombstone(review_doc):
+                # Not an error: a frozen review that has since been purged is a
+                # fact the agent must be told, not a reason to fail the page.
+                drifted.append(item.review_id)
+                items.append(item)
+                continue
+            review = _from_doc(TicketReview, review_doc)
+            if review.version != item.review_version:
+                drifted.append(item.review_id)
+            resolved = item
+            if include_conversation and review.comments:
+                resolved = item.model_copy(
+                    update={"comments_excerpt": review.comments[:MAX_SUMMARY_LENGTH]}
+                )
+            items.append(resolved)
+
+        if include_conversation:
+            warnings.append(
+                "conversation_excerpts_are_reviewer_comments_only; participant "
+                "message bodies are never durable and are not included"
+            )
+        if drifted:
+            warnings.append(
+                f"{len(drifted)} frozen review(s) drifted from the version this "
+                "batch froze; report the drift rather than acting on it"
+            )
+
+        return BatchMaterialization(
+            batch=batch,
+            items=items,
+            next_cursor=page.next_cursor,
+            drifted_review_ids=drifted,
+            conversation_included=bool(include_conversation),
+            warnings=warnings[:MAX_WARNINGS],
+        )
+
+    # -- human transitions ----------------------------------------------
+
+    async def _human_batch_transition(
+        self,
+        batch_id: str,
+        *,
+        expected_version: int,
+        target: BatchStatus,
+        allowed_roles: frozenset[ReviewerRole],
+        operation: str,
+        event_type: str,
+        context: MutationContext,
+        reason: Optional[str] = None,
+        require_version_agreement: bool = False,
+        extra_updates: Optional[Mapping[str, Any]] = None,
+    ) -> RemediationBatch:
+        """One versioned, reasoned, role-checked human batch transition.
+
+        Shared by ``:ready`` and ``:cancel``. A lease is never accepted here: a
+        human decision about a batch must not be authorized by the agent's
+        credential, which is what accepting one would allow.
+        """
+        if context.actor_role not in allowed_roles:
+            raise NotAuthorized("this role may not make that batch decision")
+        now = self._now()
+
+        async def _txn(view: TransactionView) -> Document:
+            replay, key_hash, digest = await self._claim_idempotency(
+                view,
+                context,
+                operation=operation,
+                request={
+                    "batch_id": batch_id,
+                    "expected_version": expected_version,
+                    "target": target.value,
+                },
+                now=now,
+            )
+            if replay is not None:
+                stored = await view.get((BATCHES_COLLECTION, batch_id))
+                if stored is not None and not _is_tombstone(stored):
+                    return stored
+            doc = await view.get((BATCHES_COLLECTION, batch_id))
+            if doc is None or _is_tombstone(doc):
+                raise BatchNotFound("no remediation batch exists for that id")
+            self._assert_batch_version(doc, expected_version)
+            current = _from_doc(RemediationBatch, doc)
+            _assert_batch_transition(
+                current.status, target, actor_role=context.actor_role, has_lease=False
+            )
+            if require_version_agreement:
+                rows = await self._frozen_item_docs(batch_id, current.item_count)
+                if len(rows) != current.item_count:
+                    raise BatchContractViolation(
+                        "cannot verify every frozen review; this batch cannot be readied"
+                    )
+                for review_id, item_doc in rows:
+                    review_doc = await view.get((REVIEWS_COLLECTION, review_id))
+                    if review_doc is None or _is_tombstone(review_doc):
+                        raise BatchContractViolation(
+                            "a frozen review is no longer available; cancel this batch"
+                        )
+                    if int(review_doc.get("version") or 0) != int(
+                        item_doc["review_version"]
+                    ):
+                        raise BatchContractViolation(
+                            "a frozen review version drifted; this batch cannot be readied"
+                        )
+            updates: dict[str, Any] = {
+                "status": target,
+                "version": current.version + 1,
+                "updated_at": now,
+            }
+            if reason is not None:
+                updates["outcome"] = BatchOutcome(decision=target.value, reason=reason)
+            updates.update(dict(extra_updates or {}))
+            merged = current.model_copy(update=updates)
+            new_doc = self._batch_doc(merged, doc, now)
+            if target is BatchStatus.CANCELLED:
+                # A cancelled batch holds no claim. Leaving a live lease behind
+                # would leave the agent able to keep writing to it.
+                merged = merged.model_copy(update={"lease": None})
+                new_doc = self._batch_doc(merged, doc, now)
+                new_doc["lease"] = None
+            await self._append_event(
+                view,
+                ledger_path=(BATCHES_COLLECTION, batch_id, BATCH_EVENTS_SUBCOLLECTION),
+                parent_doc=new_doc,
+                parent_kind="batch",
+                parent_id=batch_id,
+                event_type=event_type,
+                context=context,
+                now=now,
+                previous_version=current.version,
+                new_version=merged.version,
+                changed_fields=sorted(set(updates) - {"version", "updated_at"}),
+            )
+            view.set((BATCHES_COLLECTION, batch_id), new_doc)
+            self._record_idempotency(
+                view,
+                key_hash=key_hash,
+                digest=digest,
+                operation=operation,
+                result={"batch_id": batch_id, "version": merged.version},
+                now=now,
+            )
+            return new_doc
+
+        return _from_doc(RemediationBatch, await self.backend.transact(_txn))
+
+    async def ready_batch(
+        self,
+        batch_id: str,
+        *,
+        expected_version: int,
+        context: MutationContext,
+        reason: Optional[str] = None,
+    ) -> RemediationBatch:
+        """Publish a batch for the agent, proving no frozen review has drifted."""
+        return await self._human_batch_transition(
+            batch_id,
+            expected_version=expected_version,
+            target=BatchStatus.READY,
+            allowed_roles=BATCH_CURATOR_ROLES,
+            operation="ready_batch",
+            event_type="batch_readied",
+            context=context,
+            reason=reason,
+            require_version_agreement=True,
+        )
+
+    async def cancel_batch(
+        self,
+        batch_id: str,
+        *,
+        expected_version: int,
+        reason: str,
+        context: MutationContext,
+    ) -> RemediationBatch:
+        """Retire a batch with a recorded reason. Terminal, and never implicit."""
+        if not (reason or "").strip():
+            raise BatchContractViolation("a cancellation needs a reason")
+        return await self._human_batch_transition(
+            batch_id,
+            expected_version=expected_version,
+            target=BatchStatus.CANCELLED,
+            allowed_roles=BATCH_CURATOR_ROLES,
+            operation="cancel_batch",
+            event_type="batch_cancelled",
+            context=context,
+            reason=reason,
+        )
+
+    # -- independent verification ---------------------------------------
+
+    async def start_batch_verification(
+        self,
+        batch_id: str,
+        *,
+        expected_version: int,
+        attestation: str,
+        context: MutationContext,
+        reason: Optional[str] = None,
+    ) -> RemediationBatch:
+        """Take a submitted batch on for review, as somebody who did not write it."""
+        if not (attestation or "").strip():
+            raise BatchContractViolation("verification needs an explicit attestation")
+        now = self._now()
+
+        async def _txn(view: TransactionView) -> Document:
+            replay, key_hash, digest = await self._claim_idempotency(
+                view,
+                context,
+                operation="start_batch_verification",
+                request={"batch_id": batch_id, "expected_version": expected_version},
+                now=now,
+            )
+            if replay is not None:
+                stored = await view.get((BATCHES_COLLECTION, batch_id))
+                if stored is not None and not _is_tombstone(stored):
+                    return stored
+            doc = await view.get((BATCHES_COLLECTION, batch_id))
+            if doc is None or _is_tombstone(doc):
+                raise BatchNotFound("no remediation batch exists for that id")
+            self._assert_batch_version(doc, expected_version)
+            current = _from_doc(RemediationBatch, doc)
+            _assert_independent_verifier(
+                actor=context.actor,
+                actor_role=context.actor_role,
+                claimed_by=current.claimed_by,
+                created_by=current.created_by,
+            )
+            _assert_batch_transition(
+                current.status,
+                BatchStatus.VERIFYING,
+                actor_role=context.actor_role,
+                has_lease=False,
+            )
+            merged = current.model_copy(
+                update={
+                    "status": BatchStatus.VERIFYING,
+                    "verification_attestation": attestation,
+                    # A batch under review holds no claim, so an agent cannot
+                    # keep editing what is being judged.
+                    "lease": None,
+                    "version": current.version + 1,
+                    "updated_at": now,
+                }
+            )
+            new_doc = self._batch_doc(merged, doc, now)
+            new_doc["lease"] = None
+            await self._append_event(
+                view,
+                ledger_path=(BATCHES_COLLECTION, batch_id, BATCH_EVENTS_SUBCOLLECTION),
+                parent_doc=new_doc,
+                parent_kind="batch",
+                parent_id=batch_id,
+                event_type="batch_verification_started",
+                context=(
+                    context
+                    if reason is None
+                    else context.model_copy(update={"reason_code": "verification_started"})
+                ),
+                now=now,
+                previous_version=current.version,
+                new_version=merged.version,
+                changed_fields=["status", "verification_attestation"],
+            )
+            view.set((BATCHES_COLLECTION, batch_id), new_doc)
+            self._record_idempotency(
+                view,
+                key_hash=key_hash,
+                digest=digest,
+                operation="start_batch_verification",
+                result={"batch_id": batch_id, "version": merged.version},
+                now=now,
+            )
+            return new_doc
+
+        return _from_doc(RemediationBatch, await self.backend.transact(_txn))
+
+    async def complete_batch(
+        self,
+        batch_id: str,
+        *,
+        expected_version: int,
+        decision: str,
+        context: MutationContext,
+        verification_evidence: Optional[Sequence[VerificationEvidence]] = None,
+        per_review_decisions: Optional[Sequence[ReviewDecision]] = None,
+        reason: Optional[str] = None,
+    ) -> BatchCompletion:
+        """Close a verified batch and, atomically, resolve the reviews it fixed.
+
+        The review resolutions travel the *review's* own closed transition table
+        and land in the *review's* own audit chain, in this one transaction. A
+        two-call version of this would be able to complete the batch and then
+        fail to close the reviews, leaving a record that says the work was
+        verified next to reviews that say it was never finished.
+
+        A review whose current status cannot legally reach the decided status is
+        reported back as unchanged rather than forced: the batch's verdict does
+        not outrank the review's own lifecycle.
+        """
+        if not (decision or "").strip():
+            raise BatchContractViolation("a completion needs a decision")
+        evidence = list(verification_evidence or ())
+        decisions = list(per_review_decisions or ())
+        now = self._now()
+
+        async def _txn(view: TransactionView) -> tuple[Document, list[str], list[str]]:
+            replay, key_hash, digest = await self._claim_idempotency(
+                view,
+                context,
+                operation="complete_batch",
+                request={"batch_id": batch_id, "expected_version": expected_version},
+                now=now,
+            )
+            if replay is not None:
+                stored = await view.get((BATCHES_COLLECTION, batch_id))
+                if stored is not None and not _is_tombstone(stored):
+                    result = replay.get("result") or {}
+                    return (
+                        stored,
+                        list(result.get("resolved") or ()),
+                        list(result.get("unchanged") or ()),
+                    )
+            doc = await view.get((BATCHES_COLLECTION, batch_id))
+            if doc is None or _is_tombstone(doc):
+                raise BatchNotFound("no remediation batch exists for that id")
+            self._assert_batch_version(doc, expected_version)
+            current = _from_doc(RemediationBatch, doc)
+            _assert_independent_verifier(
+                actor=context.actor,
+                actor_role=context.actor_role,
+                claimed_by=current.claimed_by,
+                created_by=current.created_by,
+            )
+            _assert_batch_transition(
+                current.status,
+                BatchStatus.COMPLETED,
+                actor_role=context.actor_role,
+                has_lease=False,
+            )
+
+            rows = await self._frozen_item_docs(batch_id, current.item_count)
+            if len(rows) != current.item_count:
+                raise BatchContractViolation(
+                    "cannot read every frozen review; completion refused"
+                )
+            frozen_ids = {review_id for review_id, _ in rows}
+            by_id = {entry.review_id: entry for entry in decisions}
+            foreign = sorted(set(by_id) - frozen_ids)
+            if foreign:
+                raise BatchContractViolation(
+                    "a per-review decision names a review this batch did not freeze"
+                )
+
+            resolved: list[str] = []
+            unchanged: list[str] = []
+            for review_id, item_doc in rows:
+                verdict = by_id.get(review_id)
+                item = _from_doc(RemediationBatchItem, item_doc)
+                if verdict is not None:
+                    view.set(
+                        (
+                            BATCHES_COLLECTION,
+                            batch_id,
+                            BATCH_ITEMS_SUBCOLLECTION,
+                            review_id,
+                        ),
+                        _to_doc(
+                            item.model_copy(update={"verified_outcome": verdict.decision}),
+                            **self._product_envelope(now),
+                        ),
+                    )
+                if verdict is None or verdict.resolution is None:
+                    unchanged.append(review_id)
+                    continue
+                review_doc = await view.get((REVIEWS_COLLECTION, review_id))
+                if review_doc is None or _is_tombstone(review_doc):
+                    unchanged.append(review_id)
+                    continue
+                review = _from_doc(TicketReview, review_doc)
+                target = (
+                    ReviewStatus.RESOLVED
+                    if verdict.resolution.outcome is ResolutionOutcome.FIXED
+                    else ReviewStatus.WONT_FIX
+                )
+                # The resolution the console records, not the one the caller
+                # typed: the verifier's identity and the moment of verification
+                # are server facts, and the batch reference is not the client's
+                # to choose.
+                resolution = verdict.resolution.model_copy(
+                    update={
+                        "batch_id": batch_id,
+                        "verified_by": context.actor,
+                        "verified_at": now,
+                        "test_evidence": evidence or list(verdict.resolution.test_evidence),
+                    }
+                )
+                try:
+                    _assert_review_transition(
+                        review.status,
+                        target,
+                        actor_role=context.actor_role,
+                        resolution=resolution,
+                    )
+                except InvalidReviewTransition:
+                    unchanged.append(review_id)
+                    continue
+                merged_review = review.model_copy(
+                    update={
+                        "status": target,
+                        "resolution": resolution,
+                        "resolved_at": now,
+                        "version": review.version + 1,
+                        "updated_at": now,
+                    }
+                )
+                review_new = _to_doc(merged_review)
+                review_new.update(
+                    {
+                        DOC_KIND_FIELD: "review",
+                        LEGAL_HOLD_FIELD: bool(
+                            review_doc.get(LEGAL_HOLD_FIELD, merged_review.legal_hold)
+                        ),
+                        CHAIN_HEAD_FIELD: review_doc.get(CHAIN_HEAD_FIELD)
+                        or GENESIS_EVENT_HASH,
+                        CHAIN_COUNT_FIELD: review_doc.get(CHAIN_COUNT_FIELD) or 0,
+                    }
+                )
+                review_new["review_id"] = review_doc["review_id"]
+                review_new["devrev_work_id"] = review_doc["devrev_work_id"]
+                review_new["devrev_display_id"] = review_doc["devrev_display_id"]
+                review_new["created_at"] = review_doc["created_at"]
+                self._stamp_product(review_new, now)
+                await self._append_event(
+                    view,
+                    ledger_path=(
+                        REVIEWS_COLLECTION,
+                        review_id,
+                        AUDIT_EVENTS_SUBCOLLECTION,
+                    ),
+                    parent_doc=review_new,
+                    parent_kind="review",
+                    parent_id=review_id,
+                    # Each review gets its own idempotency identity, so one
+                    # review's receipt cannot make the next look like a replay.
+                    context=self._derive_context(context, f"review:{review_id}"),
+                    event_type="review_updated",
+                    now=now,
+                    previous_version=review.version,
+                    new_version=merged_review.version,
+                    changed_fields=["resolution", "status"],
+                )
+                view.set((REVIEWS_COLLECTION, review_id), review_new)
+                resolved.append(review_id)
+
+            merged = current.model_copy(
+                update={
+                    "status": BatchStatus.COMPLETED,
+                    "outcome": BatchOutcome(
+                        decision=decision, summary=None, reason=reason
+                    ),
+                    "verification_evidence": evidence,
+                    "verified_by": context.actor,
+                    "verified_at": now,
+                    "lease": None,
+                    "version": current.version + 1,
+                    "updated_at": now,
+                }
+            )
+            new_doc = self._batch_doc(merged, doc, now)
+            new_doc["lease"] = None
+            await self._append_event(
+                view,
+                ledger_path=(BATCHES_COLLECTION, batch_id, BATCH_EVENTS_SUBCOLLECTION),
+                parent_doc=new_doc,
+                parent_kind="batch",
+                parent_id=batch_id,
+                event_type="batch_completed",
+                context=context,
+                now=now,
+                previous_version=current.version,
+                new_version=merged.version,
+                changed_fields=["outcome", "status", "verification_evidence", "verified_by"],
+            )
+            view.set((BATCHES_COLLECTION, batch_id), new_doc)
+            self._record_idempotency(
+                view,
+                key_hash=key_hash,
+                digest=digest,
+                operation="complete_batch",
+                result={
+                    "batch_id": batch_id,
+                    "version": merged.version,
+                    "resolved": resolved,
+                    "unchanged": unchanged,
+                },
+                now=now,
+            )
+            return new_doc, resolved, unchanged
+
+        doc, resolved, unchanged = await self.backend.transact(_txn)
+        return BatchCompletion(
+            batch=_from_doc(RemediationBatch, doc),
+            resolved_review_ids=resolved,
+            unchanged_review_ids=unchanged,
+        )
 
     # ------------------------------------------------------------------
     # Imports and exports
@@ -4072,11 +4828,15 @@ __all__ = [
     "TOMBSTONE_FIELDS",
     "TTL_COLLECTIONS",
     "TTL_FIELD",
+    "BATCH_CURATOR_ROLES",
+    "BATCH_VERIFIER_ROLES",
     "AuditChainReport",
     "BatchAlreadyClaimed",
     "BatchClaim",
+    "BatchCompletion",
     "BatchContractViolation",
     "BatchLeaseLost",
+    "BatchMaterialization",
     "BatchNotFound",
     "BatchReleaseRefused",
     "BatchVersionConflict",

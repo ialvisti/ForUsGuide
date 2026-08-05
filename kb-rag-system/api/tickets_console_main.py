@@ -45,6 +45,7 @@ import re
 import time
 import uuid
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 from typing import Any, Awaitable, Callable, Optional
 
@@ -67,7 +68,9 @@ from api.ticket_review_models import (
     utc_now,
 )
 from api.ticket_review_routes import (
+    AGENT_ROUTE_TEMPLATES,
     API_PREFIX,
+    BATCHES_PATH,
     CODE_NOT_FOUND,
     CODE_VALIDATION_FAILED,
     ConsoleHTTPError,
@@ -216,6 +219,26 @@ def safe_route_template(path: str) -> str:
             f"{API_PREFIX}/reviews/{{review_id}}/evidence-links",
         ),
         (rf"^{re.escape(API_PREFIX)}/reviews/[^/]+$", f"{API_PREFIX}/reviews/{{review_id}}"),
+        # Batch routes. The id is customer-linked through the reviews it froze, so
+        # it is reduced to its shape here exactly like a review id. The
+        # colon-suffixed actions are matched before the bare `{batch_id}` so an
+        # action never collapses into the plain read in the access log.
+        (
+            rf"^{re.escape(API_PREFIX + BATCHES_PATH)}$",
+            f"{API_PREFIX}{BATCHES_PATH}",
+        ),
+        (
+            rf"^{re.escape(API_PREFIX + BATCHES_PATH)}/[^/:]+/(items|prompt|claim|heartbeat)$",
+            f"{API_PREFIX}{BATCHES_PATH}/{{batch_id}}/{{action}}",
+        ),
+        (
+            rf"^{re.escape(API_PREFIX + BATCHES_PATH)}/[^/:]+:[a-z-]+$",
+            f"{API_PREFIX}{BATCHES_PATH}/{{batch_id}}:{{action}}",
+        ),
+        (
+            rf"^{re.escape(API_PREFIX + BATCHES_PATH)}/[^/]+$",
+            f"{API_PREFIX}{BATCHES_PATH}/{{batch_id}}",
+        ),
         (r"^/tickets/assets/.+$", "/tickets/assets/{asset}"),
         (r"^/tickets/[^/]+$", "/tickets/{display_id}"),
     ):
@@ -615,7 +638,13 @@ def wire_console_state(
     app.state.settings = settings
     app.state.clock = clock or utc_now
     app.state.cursor_key = decode_cursor_aead_key(settings.CURSOR_AEAD_KEY)
-    app.state.unsafe_policy = policy_from_settings(settings)
+    # The agent's CSRF exemption is granted here, at wiring time, from the route
+    # module's own closed allowlist. ``policy_from_settings`` deliberately does
+    # not know about it: the set of exempt routes is a property of the router that
+    # is mounted, not of configuration, so a deployment cannot widen it.
+    app.state.unsafe_policy = replace(
+        policy_from_settings(settings), agent_route_templates=AGENT_ROUTE_TEMPLATES
+    )
     app.state.authenticator = authenticator or ReviewerAuthenticator.from_settings(
         settings, claims_verifier=claims_verifier, clock=app.state.clock
     )

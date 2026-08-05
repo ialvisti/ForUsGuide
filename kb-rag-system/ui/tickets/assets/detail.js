@@ -29,8 +29,12 @@ import * as render from "./render.js";
 import * as evaluation from "./evaluation.js";
 import { el } from "./render.js";
 import {
+  BATCH_ACTIONS,
+  BATCH_STATE_LABELS,
   CONVERSATION_FILTERS,
   WORKSPACE_PANELS,
+  allowedBatchActions,
+  canCurateBatches,
   feedHasMore,
   feedIsComplete,
   filterConversation,
@@ -41,7 +45,11 @@ import {
   renderEvidence,
   renderEvidenceLinks,
 } from "./evidence.js";
-import { renderRemediation } from "./remediation.js";
+import {
+  copyPromptToClipboard,
+  renderBatchCard,
+  renderRemediation,
+} from "./remediation.js";
 
 /** 64 zeroes: the first link of a hash chain has no parent. */
 const GENESIS_EVENT_HASH = "0".repeat(64);
@@ -119,6 +127,10 @@ function collectDom() {
     historyMoreHelp: byId("history-more-help"),
     remediationStatus: byId("remediation-status"),
     remediationBody: byId("remediation-body"),
+    batchCard: byId("batch-card"),
+    batchStatus: byId("batch-status"),
+    batchReason: byId("batch-reason"),
+    batchPromptFallback: byId("batch-prompt-fallback"),
     actorLine: byId("evaluation-actor"),
     form: byId("evaluation-form"),
     ratingGroup: byId("eval-rating-group"),
@@ -162,6 +174,7 @@ export function initDetail(host) {
   wireConversation();
   wireEvidence();
   wireForm();
+  wireBatchControls();
   wireUnloadGuard();
   return { open, close, render: renderDetail };
 }
@@ -1059,7 +1072,221 @@ function renderEvaluation(current) {
   dom.dirty.hidden = !current.dirty;
   dom.importButton.hidden = current.review !== null || !evaluation.canEdit(activeRole);
   const flags = identity?.featureFlags ?? {};
-  dom.addBatch.disabled = flags.remediation_enabled !== true;
+  // Two independent reasons, and the help paragraph in the markup names both:
+  // the deployment may have no agent configured, or this role may not curate.
+  dom.addBatch.disabled =
+    flags.remediation_enabled !== true || !canCurateBatches(activeRole);
+}
+
+// ---------------------------------------------------------------------------
+// The remediation batch a resolved review belongs to
+//
+// A review learns its batch from `resolution.batch_id` and from nowhere else.
+// That is deliberate at the API level: the master route table publishes no batch
+// *list* endpoint and Stage 3 declared no index to support one, so batch access
+// is always by id. The consequence here is that the card appears once a batch has
+// closed the review — which is exactly when a verifier wants to read it.
+//
+// The batch is held in a module-level variable, never in browser storage. It is
+// bounded, server-authoritative, and re-fetched on demand; persisting it would
+// mean a stale version number surviving a reload and a 412 the reviewer cannot
+// explain.
+// ---------------------------------------------------------------------------
+
+let loadedBatch = null;
+let loadedBatchId = "";
+
+function batchActionLabels() {
+  const labels = { ...BATCH_STATE_LABELS };
+  for (const [name, rule] of Object.entries(BATCH_ACTIONS)) {
+    labels[`action:${name}`] = rule.label;
+  }
+  return labels;
+}
+
+async function loadBatchFor(review) {
+  const batchId = review?.resolution?.batch_id ?? "";
+  if (batchId === "" || (session()?.featureFlags ?? {}).remediation_enabled !== true) {
+    loadedBatch = null;
+    loadedBatchId = "";
+    return;
+  }
+  if (batchId === loadedBatchId && loadedBatch !== null) {
+    return;
+  }
+  loadedBatchId = batchId;
+  try {
+    loadedBatch = await api.getRemediationBatch(batchId);
+  } catch (error) {
+    if (error instanceof api.AbortedError) {
+      return;
+    }
+    loadedBatch = null;
+    render.setPanelStatus(dom.batchStatus, {
+      tone: "warning",
+      text: `The remediation batch for this review could not be read: ${
+        error.title ?? "unavailable"
+      }.`,
+    });
+  }
+}
+
+function renderBatchPanel() {
+  if (dom.batchCard === null) {
+    return;
+  }
+  const activeRole = role();
+  const actions =
+    loadedBatch === null
+      ? []
+      : allowedBatchActions(String(loadedBatch.status ?? ""), { role: activeRole });
+  renderBatchCard(dom.batchCard, loadedBatch, {
+    actions,
+    labels: batchActionLabels(),
+  });
+  render.mountIcons(dom.batchCard, context.icons());
+}
+
+/**
+ * Run one human batch action, then re-read the batch.
+ *
+ * The version travels from the rendered control's own dataset, so the request
+ * carries the version the reviewer was actually looking at. A stale one comes
+ * back as a conflict naming the current version, which is reported rather than
+ * retried: silently re-sending against a version the reviewer never saw is how a
+ * console applies a decision to a state nobody reviewed.
+ */
+async function runBatchAction(name, batchId, expectedVersion) {
+  const reason = (dom.batchReason?.value ?? "").trim();
+  const rule = BATCH_ACTIONS[name];
+  if (rule === undefined) {
+    return;
+  }
+  if (name !== "ready" && reason === "") {
+    render.setPanelStatus(dom.batchStatus, {
+      tone: "warning",
+      text: `“${rule.label}” needs a reason. It is recorded in the audit ledger.`,
+    });
+    dom.batchReason?.focus();
+    return;
+  }
+  const version = Number.parseInt(expectedVersion, 10);
+  if (!Number.isFinite(version)) {
+    return;
+  }
+  try {
+    let updated;
+    if (name === "ready") {
+      updated = await api.readyRemediationBatch(batchId, {
+        expectedVersion: version,
+        reason: reason === "" ? null : reason,
+      });
+    } else if (name === "cancel") {
+      updated = await api.cancelRemediationBatch(batchId, {
+        expectedVersion: version,
+        reason,
+      });
+    } else if (name === "start-verification") {
+      updated = await api.startBatchVerification(batchId, {
+        expectedVersion: version,
+        attestation: reason,
+      });
+    } else if (name === "complete") {
+      // No per-review resolution is sent from here. Closing a review needs
+      // machine-checked evidence a browser cannot honestly produce, so this
+      // records the batch decision and leaves the reviews to the review form.
+      const result = await api.completeRemediationBatch(batchId, {
+        expectedVersion: version,
+        decision: "accepted",
+        reason,
+      });
+      updated = result?.batch ?? null;
+    } else {
+      updated = await api.extendBatchLease(batchId, {
+        expectedVersion: version,
+        additionalMinutes: 30,
+        reason,
+      });
+    }
+    loadedBatch = updated;
+    if (dom.batchReason !== null) {
+      dom.batchReason.value = "";
+    }
+    render.setPanelStatus(dom.batchStatus, {
+      tone: "info",
+      text: `${rule.label} applied to batch ${batchId}.`,
+    });
+    renderBatchPanel();
+  } catch (error) {
+    if (error instanceof api.AbortedError) {
+      return;
+    }
+    const current = error.currentVersion;
+    render.setPanelStatus(dom.batchStatus, {
+      tone: "error",
+      text:
+        current === null || current === undefined
+          ? `${rule.label} was refused: ${error.title ?? "conflict"}.`
+          : `The batch changed while you were reading it; it is now at version ` +
+            `${current}. Reload the batch before deciding.`,
+    });
+  }
+}
+
+/** Fetch the prompt and hand it to the clipboard, or to a field the user can copy. */
+async function copyBatchPrompt(batchId) {
+  try {
+    const text = await api.getRemediationBatchPrompt(batchId);
+    const result = await copyPromptToClipboard(text, {
+      fallbackField: dom.batchPromptFallback,
+    });
+    render.setPanelStatus(dom.batchStatus, {
+      tone: "info",
+      text:
+        result.method === "clipboard"
+          ? `The Codex prompt for batch ${batchId} is on the clipboard.`
+          : result.method === "manual"
+            ? "The clipboard is unavailable, so the prompt is selected in the field " +
+              "below; copy it from there."
+            : "The clipboard is unavailable and no fallback field is present.",
+    });
+  } catch (error) {
+    if (error instanceof api.AbortedError) {
+      return;
+    }
+    render.setPanelStatus(dom.batchStatus, {
+      tone: "error",
+      text: `The prompt could not be read: ${error.title ?? "unavailable"}.`,
+    });
+  }
+}
+
+function wireBatchControls() {
+  if (dom.batchCard === null) {
+    return;
+  }
+  dom.batchCard.addEventListener("click", (event) => {
+    const control = event.target.closest("[data-action]");
+    if (control === null) {
+      return;
+    }
+    const action = control.dataset.action ?? "";
+    const batchId = control.dataset.batchId ?? "";
+    if (batchId === "") {
+      return;
+    }
+    if (action === "copy-batch-prompt") {
+      copyBatchPrompt(batchId);
+      return;
+    }
+    if (action.startsWith("batch-")) {
+      runBatchAction(
+        action.slice("batch-".length),
+        batchId,
+        control.dataset.expectedVersion ?? ""
+      );
+    }
+  });
 }
 
 /** One pass over the whole detail view. Cheap enough to run on every change. */
@@ -1084,6 +1311,10 @@ export function renderDetail(next) {
     flags: session()?.featureFlags ?? {},
     draft: current.draft,
   });
+  // Fire-and-forget: the card renders as soon as the batch arrives, and a review
+  // with no batch clears it synchronously. Awaiting here would make every detail
+  // render wait on a request that most reviews do not need.
+  loadBatchFor(current.review).then(renderBatchPanel);
   render.setPanelStatus(dom.remediationStatus, {
     tone: "info",
     text:

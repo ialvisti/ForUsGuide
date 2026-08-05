@@ -195,9 +195,16 @@ class TestInjectedIdentity:
         assert body["role"] == "reviewer"
         assert body["csrf_token"]
 
-    def test_the_feature_flags_report_the_absent_stages(self, client):
+    def test_the_feature_flags_report_the_published_and_absent_stages(self, client):
+        """Stage 8 is configured in this fixture; Stage 9 is still absent.
+
+        The remediation flag turned true when the fixture gained the repository
+        contract the prompt endpoint renders from. It is a real branch, not a
+        constant: ``TestConfigurationGate`` in
+        ``tests/test_ticket_review_batch_routes.py`` pins both directions.
+        """
         flags = client.get(f"{API_PREFIX}/session").json()["feature_flags"]
-        assert flags["remediation_enabled"] is False
+        assert flags["remediation_enabled"] is True
         assert flags["import_export_enabled"] is False
 
     def test_the_role_is_configurable_for_a_permission_check(self, monkeypatch):

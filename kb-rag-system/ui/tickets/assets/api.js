@@ -761,3 +761,169 @@ export async function deleteEvidenceLink(reviewId, linkId, { reason }, version) 
     channel: null,
   });
 }
+
+// ---------------------------------------------------------------------------
+// Remediation batches
+//
+// The whole human half of the Stage 8 handoff. The agent half — claim,
+// heartbeat, materialize, patch, release — is deliberately absent: those routes
+// belong to one verified service account, and a browser that could call them
+// would be a browser that could impersonate the agent.
+//
+// Every write here sends the version in the JSON body rather than in `If-Match`.
+// That is the batch envelope's own contract, and it is why these functions do
+// not take a `version` argument in the position the review functions use.
+// ---------------------------------------------------------------------------
+
+const BATCHES_ROOT = `${API_ROOT}/remediation-batches`;
+
+/**
+ * Freeze the selected reviews at the versions the reviewer just saw.
+ *
+ * `refs` is `[{reviewId, reviewVersion}]`. Each version is a precondition: a
+ * review that moved since the row was rendered fails the whole creation rather
+ * than being frozen at a state nobody chose.
+ */
+export async function createRemediationBatch(refs, { transitionToPlanned = false } = {}) {
+  return requestJson(BATCHES_ROOT, {
+    method: "POST",
+    body: {
+      review_refs: refs.map((ref) => ({
+        review_id: ref.reviewId,
+        review_version: ref.reviewVersion,
+      })),
+      transition_to_planned: transitionToPlanned === true,
+    },
+    channel: null,
+  });
+}
+
+/** One batch, without its lease credential. */
+export async function getRemediationBatch(batchId) {
+  return requestJson(`${BATCHES_ROOT}/${encodeURIComponent(batchId)}`, {
+    channel: "batch",
+  });
+}
+
+/** One bounded page of frozen items. Never carries conversation. */
+export async function getRemediationBatchItems(batchId, { cursor = null, pageSize = 25 } = {}) {
+  return requestJson(`${BATCHES_ROOT}/${encodeURIComponent(batchId)}/items`, {
+    query: { page_size: pageSize },
+    cursor,
+    channel: "batch",
+  });
+}
+
+function batchAction(batchId, action, body) {
+  return requestJson(`${BATCHES_ROOT}/${encodeURIComponent(batchId)}:${action}`, {
+    method: "POST",
+    body,
+    channel: null,
+  });
+}
+
+/** `draft`/`blocked` -> `ready`, after the server re-checks for drift. */
+export async function readyRemediationBatch(batchId, { expectedVersion, reason = null }) {
+  return batchAction(batchId, "ready", {
+    expected_version: expectedVersion,
+    reason: reason === null || reason === "" ? null : reason,
+  });
+}
+
+/** Terminal, reasoned cancellation. */
+export async function cancelRemediationBatch(batchId, { expectedVersion, reason }) {
+  return batchAction(batchId, "cancel", {
+    expected_version: expectedVersion,
+    reason,
+  });
+}
+
+/** `changes_proposed` -> `verifying`, by somebody who did not author it. */
+export async function startBatchVerification(batchId, { expectedVersion, attestation, reason = null }) {
+  return batchAction(batchId, "start-verification", {
+    expected_version: expectedVersion,
+    independent_verifier_attestation: attestation,
+    reason: reason === null || reason === "" ? null : reason,
+  });
+}
+
+/**
+ * `verifying` -> `completed`, with the verifier's own evidence.
+ *
+ * `decisions` is `[{reviewId, decision, resolution}]`. A `fixed` resolution
+ * without evidence is refused by the server, which is the rule that stops a
+ * review closing on the agent's own say-so.
+ */
+export async function completeRemediationBatch(
+  batchId,
+  { expectedVersion, decision, evidence = [], decisions = [], reason = null }
+) {
+  return batchAction(batchId, "complete", {
+    expected_version: expectedVersion,
+    decision,
+    verification_evidence: evidence,
+    per_review_decisions: decisions.map((entry) => ({
+      review_id: entry.reviewId,
+      decision: entry.decision,
+      resolution: entry.resolution ?? null,
+    })),
+    reason: reason === null || reason === "" ? null : reason,
+  });
+}
+
+/** The one bounded, admin-only extension past the continuous cap. */
+export async function extendBatchLease(batchId, { expectedVersion, additionalMinutes, reason }) {
+  return batchAction(batchId, "extend-lease", {
+    expected_version: expectedVersion,
+    additional_minutes: additionalMinutes,
+    reason,
+  });
+}
+
+/**
+ * The reusable prompt, as text.
+ *
+ * A separate path from `requestJson` because the response is
+ * `text/plain; charset=utf-8`, and because the result must never be persisted:
+ * it is returned to the caller, handed to the clipboard, and dropped. It is not
+ * cached in this module and it never enters browser storage.
+ */
+export async function getRemediationBatchPrompt(batchId) {
+  const url = buildUrl(`${BATCHES_ROOT}/${encodeURIComponent(batchId)}/prompt`, null);
+  let response;
+  try {
+    response = await fetch(url, {
+      method: "GET",
+      headers: { Accept: "text/plain" },
+      credentials: "same-origin",
+      cache: "no-store",
+      redirect: "error",
+      referrerPolicy: "no-referrer",
+    });
+  } catch (error) {
+    if (error && error.name === "AbortError") {
+      throw new AbortedError();
+    }
+    throw new ApiError({
+      status: 0,
+      code: "NETWORK_UNAVAILABLE",
+      title: "The console could not reach the server",
+      detail: "Check the connection and try again.",
+      tone: "warning",
+      recoverable: true,
+    });
+  }
+  if (!response.ok) {
+    const words = describe(response.status, "");
+    throw new ApiError({
+      status: response.status,
+      code: `HTTP_${response.status}`,
+      title: words.title,
+      detail: words.detail,
+      tone: words.tone ?? "error",
+      recoverable: words.recoverable,
+      requestId: response.headers.get(REQUEST_ID_HEADER),
+    });
+  }
+  return response.text();
+}

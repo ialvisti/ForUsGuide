@@ -31,6 +31,11 @@ EXPECTED_PROMPTS = {
     "gr_body_build.md",
     "kb_question_synthesis.md",
     "ticket_field_extract.md",
+    # Stage 8. Loaded from disk by data_pipeline.ticket_review_remediation_prompt
+    # when a remediator copies the Codex prompt, so it is a runtime asset with the
+    # same packaging risk as the four above: `*.md` in .dockerignore excludes it
+    # unless the narrow re-inclusion covers it.
+    "ticket_review_remediation.md",
 }
 
 
@@ -147,6 +152,32 @@ class TestImageShipsRuntimePrompts:
                 f"RED: {rel} queda EXCLUIDO del contexto de build por "
                 ".dockerignore (falta '!data_pipeline/agent_prompts/*.md')"
             )
+
+    def test_the_remediation_prompt_loads_from_the_path_the_app_expects(self):
+        """Stage 8: the runtime resolves this template itself, at request time.
+
+        Asserting through the module rather than against a literal path is the
+        point — if the module's own idea of where the asset lives ever diverges
+        from where it actually ships, this fails, whereas a path literal here
+        would happily agree with itself.
+        """
+        from data_pipeline.ticket_review_remediation_prompt import (
+            PROMPT_TEMPLATE_PATH,
+            template_sha256,
+            template_text,
+        )
+
+        assert PROMPT_TEMPLATE_PATH.parent == PROMPTS_DIR
+        assert PROMPT_TEMPLATE_PATH.is_file()
+        assert "{{batch_id}}" in template_text()
+        assert len(template_sha256()) == 64
+
+    def test_the_remediation_prompt_is_reachable_from_the_built_context(self):
+        rules = _dockerignore_rules()
+        rel = "data_pipeline/agent_prompts/ticket_review_remediation.md"
+        assert not _docker_ignores(rel, rules), (
+            f"RED: {rel} queda EXCLUIDO del contexto de build por .dockerignore"
+        )
 
     def test_five_prompt_builders_load(self):
         from data_pipeline import prompts

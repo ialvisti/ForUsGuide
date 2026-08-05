@@ -1156,10 +1156,16 @@ class TestUnsafeRequestMatrixOverHttp:
 
 class TestSurfaceAndSecrecy:
 
-    def test_stage_eight_and_nine_routes_are_absent(self, monkeypatch):
+    def test_stage_nine_routes_are_still_absent(self, monkeypatch):
+        """Stage 9's CSV import/export surface is asserted absent, not stubbed.
+
+        Stage 8's batch routes used to be asserted here too. They are published
+        now, so the assertion moved to
+        ``tests/test_ticket_review_batch_routes.py``, which pins the exact
+        fourteen paths rather than merely their absence.
+        """
         harness = _harness(monkeypatch)
         paths = set(harness.client.app.openapi()["paths"])
-        assert not any("remediation-batches" in path for path in paths)
         assert not any("/imports/" in path or "/exports/" in path for path in paths)
         assert not any("/exports" == path.rsplit("/", 1)[-1] for path in paths)
 
@@ -1168,10 +1174,10 @@ class TestSurfaceAndSecrecy:
         for path in harness.client.app.openapi()["paths"]:
             assert path.startswith((API_PREFIX, "/livez", "/readyz", "/tickets"))
 
-    def test_a_remediation_route_is_404_not_403(self, monkeypatch):
+    def test_an_unpublished_stage_nine_route_is_404_not_403(self, monkeypatch):
         harness = _harness(monkeypatch)
         response = harness.client.get(
-            f"{API_PREFIX}/remediation-batches", headers=_auth_headers()
+            f"{API_PREFIX}/exports/ticket-reviews.csv", headers=_auth_headers()
         )
         assert response.status_code == 404
 

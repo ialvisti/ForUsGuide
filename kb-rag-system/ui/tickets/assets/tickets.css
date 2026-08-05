@@ -1904,3 +1904,43 @@ h5 {
     gap: 0;
   }
 }
+
+/* ---------------------------------------------------------------- batches --
+   The batch card reuses the panel vocabulary above — `.field-grid`,
+   `.evidence-record`, `.pill[data-status]` — so a batch state is signalled the
+   same way a review state is, glyph and hatching included, and no new colour
+   scheme has to be justified for contrast a second time.
+   ------------------------------------------------------------------------- */
+
+.batch-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.batch-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.changed-files {
+  margin: 0;
+  padding-inline-start: 1.25rem;
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  overflow-wrap: anywhere;
+}
+
+#batch-prompt-fallback {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  width: 100%;
+}
+
+@media (max-width: 768px) {
+  .batch-actions > .button {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+}

@@ -1043,10 +1043,18 @@ class TestImportAndRoles:
         assert "canUnassign" in source
         assert "verified sign-in identity, which no route publishes" in _prose(source)
 
-    def test_a_batch_control_that_cannot_work_says_so(self, dom):
+    def test_a_batch_control_that_cannot_work_says_why(self, dom):
+        """The help names the two reasons the control can be unusable.
+
+        It used to say "no route", because Stage 8 had not published one. The
+        route exists now, so the honest reasons are configuration and role — and
+        a disabled control that does not say which is indistinguishable from a
+        broken one.
+        """
         help_text = _flat(_by_id(_detail(dom), "detail-batch-help").all_text()).lower()
         assert "disabled" in help_text
-        assert "no route" in help_text
+        assert "unavailable" in help_text
+        assert "role" in help_text
 
 
 # =====================================================================

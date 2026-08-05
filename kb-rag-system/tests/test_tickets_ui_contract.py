@@ -1121,10 +1121,49 @@ class TestFeatureFlagBranching:
         assert "import_export_enabled" in app
 
     def test_no_absent_route_is_ever_called(self, scripts):
-        """Stage 8 and Stage 9 routes are absent from OpenAPI, not stubbed."""
+        """Stage 9's CSV import/export routes are absent from OpenAPI, not stubbed.
+
+        Stage 8's ``/remediation-batches`` used to be listed here too. It is
+        published now, so banning the substring would ban the real call; what
+        replaces that guard is ``test_only_the_human_batch_routes_are_called``
+        below, which is the assertion that actually mattered — the UI must not
+        call the *agent's* routes.
+        """
         for name, source in scripts.items():
             # A local module specifier is a file on disk, not a route. Everything
             # else in the file is still scanned; see the pattern's own comment.
             without_imports = _RELATIVE_MODULE_SPECIFIER.sub('""', source)
-            for absent in ("/remediation", "/batches", "/imports", "/exports"):
+            for absent in ("/imports", "/exports"):
                 assert absent not in without_imports, f"{name}: {absent}"
+
+    def test_only_the_human_batch_routes_are_called(self, scripts):
+        """The browser never reaches an agent-only endpoint.
+
+        Claim, heartbeat, materialize, and release belong to one verified service
+        account. A UI that called any of them would be a UI that could impersonate
+        the agent, so their absence is checked here rather than trusted to review.
+        """
+        blob = "\n".join(scripts.values())
+        for absent in (
+            "/claim",
+            "/heartbeat",
+            ":materialize",
+            ":release",
+            "lease_token",
+            "leaseToken",
+        ):
+            assert absent not in blob, absent
+
+    def test_the_batch_routes_the_ui_does_call_are_the_documented_ones(self, scripts):
+        """The five human actions, plus the two bounded reads and the prompt.
+
+        The colon-suffixed actions are built by one helper, so the action *name*
+        is what appears in the source; asserting on the assembled path would only
+        assert that string interpolation works.
+        """
+        api_source = scripts["api.js"]
+        assert "remediation-batches" in api_source
+        for action in ('"ready"', '"cancel"', '"start-verification"', '"complete"', '"extend-lease"'):
+            assert f"batchAction(batchId, {action}" in api_source, action
+        assert "/prompt" in api_source
+        assert "/items" in api_source

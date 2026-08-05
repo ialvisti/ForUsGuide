@@ -227,6 +227,15 @@ FIXTURE_CSRF_SECRET = "fixture-csrf-value"  # noqa: S105 - synthetic, fixture on
 FIXTURE_DOMAIN = "example.invalid"
 FIXTURE_EMAIL = f"fixture-reviewer@{FIXTURE_DOMAIN}"
 FIXTURE_SUBJECT = "accounts.google.com:fixture-reviewer"
+#: The synthetic remediation-agent identity. Shaped like the real one (a service
+#: account) so the fixture exercises the same `_is_agent` path, but on a domain
+#: that cannot resolve.
+FIXTURE_AGENT_EMAIL = f"fixture-remediation-agent@{FIXTURE_DOMAIN}"
+FIXTURE_AGENT_SUBJECT = "accounts.google.com:fixture-remediation-agent"
+#: The repository contract the prompt endpoint renders from. Synthetic, and the
+#: only two settings the batch surface needs before it reports itself enabled.
+FIXTURE_REPO_ID = "synthetic-repo"
+FIXTURE_BASE_REF = "main"
 SYNTHETIC_PART = "don:core:dvrv-us-1:devo/fixture:product/1"
 PARTICIPANT_ACTOR = "don:identity:dvrv-us-1:devo/fixture:revu/participant-1"
 #: Configured author identities. The service classifies on these and on actor
@@ -723,13 +732,29 @@ class FixtureAuthenticator:
     requires a request header a browser cannot send on a navigation, and its
     preconditions are what keep header-supplied identity out of a deployed
     revision.
+
+    Stage 8's **local-agent hook** is the ``agent`` value of
+    ``TICKETS_FIXTURE_ROLE``. Selecting it also sets ``is_agent``, which is what
+    the batch routes actually require — the role alone is not enough, by design,
+    so that a human who somehow carried ``role: agent`` still gets nothing. That
+    coupling is safe only because this class exists solely inside fixture mode:
+    ``build_fixture_app`` refuses to construct anything unless fixture mode is
+    active, ambient cloud credentials are poisoned, and the loopback-only egress
+    guard is installed.
     """
 
-    def __init__(self, *, email: str = FIXTURE_EMAIL, role: Optional[str] = None) -> None:
+    def __init__(self, *, email: Optional[str] = None, role: Optional[str] = None) -> None:
         resolved = role or os.environ.get(FIXTURE_ROLE_ENV, ReviewerRole.REVIEWER.value)
         self.role = ReviewerRole(resolved)
+        self.is_agent = self.role is ReviewerRole.AGENT
+        # The agent is a service account everywhere else in the system, so the
+        # fixture identity mirrors that rather than reusing the human address.
+        default_email = FIXTURE_AGENT_EMAIL if self.is_agent else FIXTURE_EMAIL
+        subject = FIXTURE_AGENT_SUBJECT if self.is_agent else FIXTURE_SUBJECT
         self.identity = ReviewerIdentity(
-            subject=FIXTURE_SUBJECT, email=email, display_name="Fixture Reviewer"
+            subject=subject,
+            email=email or default_email,
+            display_name="Fixture Agent" if self.is_agent else "Fixture Reviewer",
         )
 
     def authenticate(
@@ -743,6 +768,7 @@ class FixtureAuthenticator:
         return AuthenticatedReviewer(
             identity=self.identity,
             role=self.role,
+            is_agent=self.is_agent,
             local=True,
             _subject_hash=subject_hash(self.identity.subject),
         )
@@ -824,6 +850,16 @@ def fixture_settings(**overrides: Any) -> TicketConsoleSettings:
         "DEVREV_HUMAN_AUTHOR_IDS": [HUMAN_ACTOR],
         "EVIDENCE_BROKER_URL": "",
         "EVIDENCE_BROKER_AUDIENCE": "",
+        # Stage 8: the batch surface is configuration-gated, so the fixture has to
+        # configure it or the console reports remediation as disabled and the UI
+        # renders its "unavailable" branch instead of the real controls.
+        #
+        # AGENT_SERVICE_ACCOUNT is deliberately NOT set: it would drag in
+        # AGENT_IAP_TARGET_AUDIENCE, which must be the console origin plus '/*'
+        # over https, and this fixture is http on loopback. Under AUTH_MODE=local
+        # the agent identity comes from FixtureAuthenticator instead.
+        "REPO_ID": FIXTURE_REPO_ID,
+        "EXPECTED_BASE_REF": FIXTURE_BASE_REF,
     }
     values.update(overrides)
     return TicketConsoleSettings(_env_file=None, **values)

@@ -1040,3 +1040,114 @@ export function pageTallies(rows) {
   }
   return { unreviewed, lowRating, highSeverity, remediating };
 }
+
+// ---------------------------------------------------------------------------
+// Remediation batches
+//
+// A separate mirror from the review lifecycle on purpose. The two share four
+// names — `planned`-ish, `changes_proposed`, `verifying`, `blocked` — and differ
+// everywhere else, and `REVIEW_TRANSITIONS` above is asserted to mirror the
+// server's review table exactly. Folding the batch machine into it would make
+// that assertion pass while describing something no server rule enforces.
+// ---------------------------------------------------------------------------
+
+export const BATCH_STATES = Object.freeze([
+  "draft",
+  "ready",
+  "claimed",
+  "planning",
+  "in_progress",
+  "changes_proposed",
+  "verifying",
+  "completed",
+  "blocked",
+  "cancelled",
+  "expired",
+]);
+
+export const BATCH_STATE_LABELS = Object.freeze({
+  draft: "Draft",
+  ready: "Ready to claim",
+  claimed: "Claimed by the agent",
+  planning: "Planning",
+  in_progress: "In progress",
+  changes_proposed: "Changes proposed",
+  verifying: "Being verified",
+  completed: "Completed",
+  blocked: "Blocked",
+  cancelled: "Cancelled",
+  expired: "Lease expired",
+});
+
+/**
+ * Which human action each batch state offers, and to whom.
+ *
+ * Only the five human transitions appear. The agent's own edges — `planning`,
+ * `in_progress`, `changes_proposed` — are absent by construction, so a control
+ * for one cannot be rendered for a person even by accident.
+ */
+export const BATCH_ACTIONS = Object.freeze({
+  ready: Object.freeze({
+    states: Object.freeze(["draft", "blocked"]),
+    roles: Object.freeze(["remediator", "admin"]),
+    label: "Mark ready",
+  }),
+  cancel: Object.freeze({
+    states: Object.freeze(["draft", "ready", "blocked", "expired"]),
+    roles: Object.freeze(["remediator", "admin"]),
+    label: "Cancel",
+  }),
+  "start-verification": Object.freeze({
+    states: Object.freeze(["changes_proposed"]),
+    roles: Object.freeze(["reviewer", "admin"]),
+    label: "Start verification",
+  }),
+  complete: Object.freeze({
+    states: Object.freeze(["verifying"]),
+    roles: Object.freeze(["reviewer", "admin"]),
+    label: "Complete",
+  }),
+  "extend-lease": Object.freeze({
+    states: Object.freeze(["claimed", "planning", "in_progress"]),
+    roles: Object.freeze(["admin"]),
+    label: "Extend lease",
+  }),
+});
+
+/** Which actions this role may take on a batch in this state, in order. */
+export function allowedBatchActions(status, { role = "viewer" } = {}) {
+  return Object.entries(BATCH_ACTIONS)
+    .filter(([, rule]) => rule.states.includes(status) && rule.roles.includes(role))
+    .map(([name]) => name);
+}
+
+/** Whether this role may freeze a new batch at all. */
+export function canCurateBatches(role) {
+  return role === "remediator" || role === "admin";
+}
+
+/**
+ * The selected rows that can actually be frozen, as `{reviewId, reviewVersion}`.
+ *
+ * A row with no durable review is skipped rather than rejected: a reviewer who
+ * selected a mix of imported and unimported tickets meant the imported ones, and
+ * refusing the whole selection would just make them do it twice.
+ */
+export function batchableSelection(rows, selectedIds) {
+  const chosen = new Set(selectedIds);
+  const refs = [];
+  const skipped = [];
+  for (const row of rows) {
+    if (!chosen.has(row.displayId)) {
+      continue;
+    }
+    const reviewId = row.review?.review_id ?? null;
+    const version = row.review?.version ?? null;
+    if (typeof reviewId === "string" && reviewId !== "" && typeof version === "number") {
+      refs.push({ reviewId, reviewVersion: version, displayId: row.displayId });
+    } else {
+      skipped.push(row.displayId);
+    }
+  }
+  return { refs, skipped };
+}

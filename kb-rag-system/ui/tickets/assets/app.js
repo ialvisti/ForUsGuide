@@ -22,6 +22,7 @@
 
 import * as api from "./api.js";
 import * as render from "./render.js";
+import { initDetail } from "./detail.js";
 import {
   REVIEW_FACETS,
   REVIEW_STATUSES,
@@ -81,8 +82,6 @@ const dom = {
   position: document.getElementById("page-position"),
   toasts: document.getElementById("toast-region"),
   detail: document.getElementById("ticket-detail"),
-  detailTarget: document.getElementById("detail-target"),
-  detailClose: document.getElementById("detail-close"),
   sprite: document.getElementById("icon-sprite"),
   refresh: {
     devrev: document.getElementById("devrev-refresh"),
@@ -94,6 +93,16 @@ let icons = new Map();
 let requestSerial = 0;
 let cooldownTimer = null;
 let restoreFocusTo = null;
+
+/**
+ * The detail view, installed once at boot.
+ *
+ * It is a separate controller rather than more of this file because the review
+ * workspace has its own five subresource states and its own write path, and
+ * because the two views share exactly three things: the store, the toast
+ * surface, and the icon map. Those are handed over explicitly below.
+ */
+let detail = null;
 
 /**
  * What the table body currently shows.
@@ -502,12 +511,7 @@ function renderAll(state) {
   dom.bulkRemediation.disabled = flags.remediation_enabled !== true;
   dom.bulkRemediationHelp.textContent = describeDisabledCapabilities(flags);
 
-  if (state.selected === "") {
-    dom.detail.hidden = true;
-  } else {
-    dom.detail.hidden = false;
-    dom.detailTarget.textContent = state.selected;
-  }
+  detail.render(state);
 
   const rowsOnPage = state.rows.map((row) => row.displayId);
   dom.selectAll.checked = rowsOnPage.length > 0 && rowsOnPage.every((id) => state.selectedIds.includes(id));
@@ -580,6 +584,17 @@ let lastSearch = null;
 let lastSelected = null;
 
 /**
+ * True while the store is being rewritten *from* the address bar.
+ *
+ * Without it, going Back closes the ticket, the closed state is written to the
+ * address bar as a *new* history entry, and that entry destroys the forward
+ * stack — so Back works once and Forward never does. Applying a location and
+ * publishing one are opposite directions of the same mapping, and only the second
+ * may touch history.
+ */
+let applyingLocation = false;
+
+/**
  * Keep the address bar current.
  *
  * Choosing a ticket is a navigation a reviewer expects Back to undo, so it
@@ -594,6 +609,10 @@ function syncLocation(state) {
   const selectionChanged = lastSelected !== null && lastSelected !== state.selected;
   lastSearch = search;
   lastSelected = state.selected;
+  if (applyingLocation) {
+    // The browser already moved; the store is catching up to it.
+    return;
+  }
   const target = `${globalThis.location.pathname}${search}`;
   if (selectionChanged) {
     globalThis.history.pushState(null, "", target);
@@ -607,17 +626,11 @@ function syncLocation(state) {
 // ---------------------------------------------------------------------------
 
 function openDetail(displayId, source) {
-  restoreFocusTo = source ?? null;
-  store.dispatch({ type: "detail/open", id: displayId });
-  dom.detail.focus();
+  detail.open(displayId, { source });
 }
 
 function closeDetail() {
-  store.dispatch({ type: "detail/close" });
-  if (restoreFocusTo !== null && restoreFocusTo.isConnected) {
-    restoreFocusTo.focus();
-  }
-  restoreFocusTo = null;
+  detail.close();
 }
 
 async function importSelected(displayIds) {
@@ -869,8 +882,6 @@ function wireTable() {
     load();
   });
 
-  dom.detailClose.addEventListener("click", closeDetail);
-
   dom.toasts.addEventListener("click", (event) => {
     const control = event.target.closest('[data-action="dismiss-toast"]');
     if (control !== null) {
@@ -886,7 +897,9 @@ function wireTable() {
 function applyLocation() {
   const parsed = readLocation(globalThis.location.search);
   // A `/tickets/<id>` deep link is the same document; treat its path segment as
-  // the selection so an older shared link still lands on the right ticket.
+  // the selection so an older shared link still lands on the right ticket. The
+  // segment is a selection and never a URL to fetch: it is upper-cased, bounded
+  // by the store's own reader, and only ever interpolated into a fixed path.
   const segments = globalThis.location.pathname.split("/").filter((part) => part !== "");
   const fromPath = segments.length > 1 ? decodeURIComponent(segments[1]).toUpperCase() : "";
   store.dispatch({ type: "mode/set", mode: parsed.mode });
@@ -894,11 +907,33 @@ function applyLocation() {
   store.dispatch({ type: "filters/patch", mode: "reviews", patch: parsed.reviews, reset: true });
   const selected = parsed.selected !== "" ? parsed.selected : fromPath;
   if (selected !== "") {
-    store.dispatch({ type: "detail/open", id: selected });
+    detail.open(selected);
+  } else if (store.getState().selected !== "") {
+    // Back navigation out of a ticket. Closing goes through the controller so an
+    // unsaved draft still gets its warning.
+    detail.close();
   }
 }
 
 async function boot() {
+  // Installed before the first render, because `renderAll` draws the detail
+  // region through it.
+  detail = initDetail({
+    store,
+    toast,
+    reportError,
+    icons: () => icons,
+    rememberFocus(source) {
+      restoreFocusTo = source ?? null;
+    },
+    restoreFocus() {
+      if (restoreFocusTo !== null && restoreFocusTo.isConnected) {
+        restoreFocusTo.focus();
+      }
+      restoreFocusTo = null;
+    },
+  });
+
   store.subscribe(renderAll);
   wireTabs();
   wireFilters();
@@ -933,7 +968,12 @@ async function boot() {
 
   globalThis.addEventListener("popstate", () => {
     lastSearch = null;
-    applyLocation();
+    applyingLocation = true;
+    try {
+      applyLocation();
+    } finally {
+      applyingLocation = false;
+    }
     load();
   });
   globalThis.addEventListener("pagehide", () => api.abortAll());

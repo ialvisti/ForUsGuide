@@ -348,21 +348,449 @@
   </section>
 
   <!--
-    Stage 7 fills this region. It exists now so row activation has a real
-    destination, the URL round-trips a selection, and the focus target is not
-    invented later.
+    The review workspace. Everything below is static markup with stable ids:
+    the controller only writes text and toggles state, so the structure a
+    contract test reads is the structure a reviewer gets.
   -->
   <section class="detail" id="ticket-detail" aria-labelledby="detail-heading" tabindex="-1" hidden>
-    <h2 id="detail-heading">Ticket detail</h2>
-    <p class="detail-target" id="detail-target"></p>
-    <p class="detail-pending" id="detail-pending">
-      The full evaluation view arrives in the next stage. This panel currently
-      confirms the selection and keeps it in the address bar so the link can be
-      shared and reloaded.
-    </p>
+
+    <nav class="detail-crumbs" id="detail-breadcrumb" aria-label="Breadcrumb">
+      <ol>
+        <li>
+          <button type="button" class="link-button" id="detail-back">
+            Back to the ticket list
+          </button>
+        </li>
+        <li class="crumb-current" id="detail-crumb" aria-current="page"></li>
+      </ol>
+    </nav>
+
     <button type="button" class="icon-button" id="detail-close" aria-label="Close ticket detail">
       <span class="icon" data-icon="close" aria-hidden="true"></span>
     </button>
+
+    <h2 id="detail-heading">Ticket detail</h2>
+    <p class="detail-target" id="detail-target"></p>
+    <p class="detail-status" id="detail-status" role="status" aria-live="polite"></p>
+
+    <h3 id="detail-meta-heading">Ticket</h3>
+    <dl class="meta-grid" id="detail-meta" aria-labelledby="detail-meta-heading">
+      <div class="meta-row">
+        <dt>Ticket ID</dt>
+        <dd id="meta-display-id" class="mono"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Summary</dt>
+        <dd id="meta-title"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Stage</dt>
+        <dd id="meta-stage"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>State</dt>
+        <dd id="meta-state"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Reported severity</dt>
+        <dd id="meta-severity"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Source channel</dt>
+        <dd id="meta-channel"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Subtype</dt>
+        <dd id="meta-subtype"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Owner</dt>
+        <dd id="meta-owner"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Reporter</dt>
+        <dd id="meta-reporter"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Created</dt>
+        <dd id="meta-created"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Updated</dt>
+        <dd id="meta-updated"></dd>
+      </div>
+      <div class="meta-row">
+        <dt>Review record</dt>
+        <dd id="meta-review-state"></dd>
+      </div>
+    </dl>
+
+    <div class="detail-actions" id="detail-actions">
+      <button type="button" class="button button-quiet" id="detail-copy-id">
+        <span class="icon" data-icon="copy" aria-hidden="true"></span>
+        <span>Copy ticket ID</span>
+      </button>
+      <!--
+        The upstream link is deliberately absent unless the server sends a
+        validated absolute one. Building a permalink here from an organization
+        slug would guess at a host, and a guessed link on an internal console is
+        an open redirect with a friendly label.
+      -->
+      <a class="button button-quiet" id="detail-devrev-link" hidden>Open in the ticket system</a>
+      <p class="field-help" id="detail-devrev-help">
+        No verified upstream link is configured, so the identifier is offered for
+        copying instead of a guessed address.
+      </p>
+      <button type="button" class="button button-quiet" id="detail-add-batch" disabled
+              aria-describedby="detail-batch-help">
+        Add to remediation batch
+      </button>
+      <p class="field-help" id="detail-batch-help">
+        Unavailable in this build: the server reports remediation batches as
+        disabled and publishes no route for them.
+      </p>
+      <button type="button" class="button" id="detail-import" hidden>
+        Add to review queue
+      </button>
+      <button type="button" class="button button-quiet" id="detail-reload">
+        <span class="icon" data-icon="refresh" aria-hidden="true"></span>
+        <span>Reload ticket</span>
+      </button>
+    </div>
+
+    <h3 id="detail-tabs-heading">Ticket workspace</h3>
+    <div class="tablist" role="tablist" aria-labelledby="detail-tabs-heading" id="detail-tablist">
+      <button type="button" role="tab" id="tab-conversation" data-panel="conversation"
+              aria-controls="panel-conversation" aria-selected="true">Conversation</button>
+      <button type="button" role="tab" id="tab-evidence" data-panel="evidence"
+              aria-controls="panel-evidence" aria-selected="false" tabindex="-1">RAG evidence</button>
+      <button type="button" role="tab" id="tab-history" data-panel="history"
+              aria-controls="panel-history" aria-selected="false" tabindex="-1">Review history</button>
+      <button type="button" role="tab" id="tab-remediation" data-panel="remediation"
+              aria-controls="panel-remediation" aria-selected="false" tabindex="-1">Remediation</button>
+    </div>
+
+    <!-- ------------------------------------------------------ conversation -->
+    <section class="workspace-panel" id="panel-conversation" role="tabpanel"
+             aria-labelledby="tab-conversation" tabindex="0">
+      <h4 id="conversation-heading">Conversation</h4>
+
+      <fieldset class="conversation-filters">
+        <legend>Show</legend>
+        <div class="checks" id="conversation-filter-group">
+          <span class="check">
+            <input type="radio" name="conversation-filter" id="conversation-filter-all"
+                   value="all" checked>
+            <label for="conversation-filter-all">All</label>
+          </span>
+          <span class="check">
+            <input type="radio" name="conversation-filter" id="conversation-filter-participant"
+                   value="participant">
+            <label for="conversation-filter-participant">Participant-facing</label>
+          </span>
+          <span class="check">
+            <input type="radio" name="conversation-filter" id="conversation-filter-internal"
+                   value="internal">
+            <label for="conversation-filter-internal">Internal</label>
+          </span>
+          <span class="check">
+            <input type="radio" name="conversation-filter" id="conversation-filter-ai"
+                   value="ai_or_system">
+            <label for="conversation-filter-ai">AI or system</label>
+          </span>
+          <span class="check">
+            <input type="radio" name="conversation-filter" id="conversation-filter-human"
+                   value="human_agent">
+            <label for="conversation-filter-human">Human agent</label>
+          </span>
+          <span class="check">
+            <input type="radio" name="conversation-filter" id="conversation-filter-events"
+                   value="event">
+            <label for="conversation-filter-events">Events</label>
+          </span>
+        </div>
+      </fieldset>
+
+      <p class="panel-status" id="conversation-status" role="status" aria-live="polite"></p>
+      <ol class="conversation" id="conversation-list" aria-labelledby="conversation-heading"></ol>
+      <div class="panel-more">
+        <button type="button" class="button button-quiet" id="conversation-more">
+          Load more conversation
+        </button>
+        <p class="field-help" id="conversation-more-help"></p>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------- evidence -->
+    <section class="workspace-panel" id="panel-evidence" role="tabpanel"
+             aria-labelledby="tab-evidence" tabindex="0" hidden>
+      <h4 id="evidence-heading">Retrieval and prompt evidence</h4>
+      <p class="panel-status" id="evidence-status" role="status" aria-live="polite"></p>
+      <p class="panel-note" id="evidence-explanation"></p>
+      <div class="evidence-body" id="evidence-body" aria-labelledby="evidence-heading"></div>
+
+      <h4 id="evidence-links-heading">Confirmed evidence links</h4>
+      <p class="panel-status" id="evidence-links-status" role="status" aria-live="polite"></p>
+      <ul class="evidence-links" id="evidence-links" aria-labelledby="evidence-links-heading"></ul>
+      <div class="panel-more">
+        <button type="button" class="button button-quiet" id="evidence-links-more">
+          Load more evidence links
+        </button>
+        <p class="field-help" id="evidence-links-more-help"></p>
+      </div>
+    </section>
+
+    <!-- ----------------------------------------------------------- history -->
+    <section class="workspace-panel" id="panel-history" role="tabpanel"
+             aria-labelledby="tab-history" tabindex="0" hidden>
+      <h4 id="history-heading">Review history</h4>
+      <p class="panel-status" id="history-status" role="status" aria-live="polite"></p>
+      <p class="panel-note" id="history-integrity"></p>
+      <ol class="audit-timeline" id="history-list" aria-labelledby="history-heading"></ol>
+      <div class="panel-more">
+        <button type="button" class="button button-quiet" id="history-more">
+          Load more review history
+        </button>
+        <p class="field-help" id="history-more-help"></p>
+      </div>
+    </section>
+
+    <!-- ------------------------------------------------------- remediation -->
+    <section class="workspace-panel" id="panel-remediation" role="tabpanel"
+             aria-labelledby="tab-remediation" tabindex="0" hidden>
+      <h4 id="remediation-heading">Remediation and resolution</h4>
+      <p class="panel-status" id="remediation-status" role="status" aria-live="polite"></p>
+      <div class="remediation-body" id="remediation-body"
+           aria-labelledby="remediation-heading"></div>
+    </section>
+
+    <!-- ------------------------------------------------------- evaluation -->
+    <h3 id="evaluation-heading">Evaluation</h3>
+    <p class="panel-status" id="evaluation-actor" role="status" aria-live="polite"></p>
+
+    <form class="evaluation" id="evaluation-form" novalidate aria-labelledby="evaluation-heading">
+
+      <div class="field">
+        <label for="eval-topic">Topic</label>
+        <input type="text" id="eval-topic" name="topic" autocomplete="off" maxlength="80"
+               aria-describedby="eval-topic-count">
+        <p class="char-count" id="eval-topic-count"></p>
+      </div>
+
+      <div class="field">
+        <label for="eval-legacy-type">Legacy Type</label>
+        <input type="text" id="eval-legacy-type" name="legacy_type" autocomplete="off"
+               maxlength="80" aria-describedby="eval-legacy-type-help eval-legacy-type-count">
+        <p class="field-help" id="eval-legacy-type-help">
+          The spreadsheet column, preserved verbatim. It is not the observation
+          type below, and one is never derived from the other.
+        </p>
+        <p class="char-count" id="eval-legacy-type-count"></p>
+      </div>
+
+      <div class="field">
+        <label for="eval-observation-type">Observation type</label>
+        <select id="eval-observation-type" name="observation_type"
+                aria-describedby="eval-observation-help">
+          <option value="">Not set</option>
+        </select>
+        <p class="field-help" id="eval-observation-help">
+          The root-cause taxonomy this console adds. Distinct from Legacy Type.
+        </p>
+      </div>
+
+      <fieldset class="field field-rating">
+        <legend>Rating</legend>
+        <div class="rating-choices" id="eval-rating-group">
+          <span class="rating-choice">
+            <input type="radio" name="rating" id="eval-rating-1" value="1"
+                   aria-describedby="eval-rating-1-note">
+            <label for="eval-rating-1">1</label>
+            <span class="rating-note" id="eval-rating-1-note">Unsafe or incorrect</span>
+          </span>
+          <span class="rating-choice">
+            <input type="radio" name="rating" id="eval-rating-2" value="2"
+                   aria-describedby="eval-rating-2-note">
+            <label for="eval-rating-2">2</label>
+            <span class="rating-note" id="eval-rating-2-note">Major correction required</span>
+          </span>
+          <span class="rating-choice">
+            <input type="radio" name="rating" id="eval-rating-3" value="3"
+                   aria-describedby="eval-rating-3-note">
+            <label for="eval-rating-3">3</label>
+            <span class="rating-note" id="eval-rating-3-note">Partially useful</span>
+          </span>
+          <span class="rating-choice">
+            <input type="radio" name="rating" id="eval-rating-4" value="4"
+                   aria-describedby="eval-rating-4-note">
+            <label for="eval-rating-4">4</label>
+            <span class="rating-note" id="eval-rating-4-note">Correct with minor improvement</span>
+          </span>
+          <span class="rating-choice">
+            <input type="radio" name="rating" id="eval-rating-5" value="5"
+                   aria-describedby="eval-rating-5-note">
+            <label for="eval-rating-5">5</label>
+            <span class="rating-note" id="eval-rating-5-note">
+              Correct, complete, and appropriately scoped
+            </span>
+          </span>
+        </div>
+        <button type="button" class="link-button" id="eval-rating-clear">Clear rating</button>
+      </fieldset>
+
+      <div class="field">
+        <label for="eval-assignment">Assigned reviewer</label>
+        <select id="eval-assignment" name="assigned_reviewer"
+                aria-describedby="eval-assignment-help">
+          <option value="keep">Leave unchanged</option>
+          <option value="self">Assign to the signed-in reviewer</option>
+          <option value="none">Unassigned</option>
+        </select>
+        <p class="field-help" id="eval-assignment-help"></p>
+      </div>
+
+      <div class="field">
+        <label for="eval-legacy-reviewer">Legacy sheet reviewer</label>
+        <input type="text" id="eval-legacy-reviewer" name="legacy_reviewer_display_name"
+               autocomplete="off" maxlength="200"
+               aria-describedby="eval-legacy-reviewer-help eval-legacy-reviewer-count">
+        <p class="field-help" id="eval-legacy-reviewer-help">
+          A name carried over from the spreadsheet with no account behind it. It
+          is a record of who reviewed the row before the migration, never the
+          person signed in now.
+        </p>
+        <p class="char-count" id="eval-legacy-reviewer-count"></p>
+      </div>
+
+      <div class="field field-wide">
+        <label for="eval-comments">Comments</label>
+        <textarea id="eval-comments" name="comments" rows="5" maxlength="10000"
+                  aria-describedby="eval-comments-count"></textarea>
+        <p class="char-count" id="eval-comments-count"></p>
+      </div>
+
+      <div class="field field-wide">
+        <label for="eval-expected-behavior">Expected behavior</label>
+        <textarea id="eval-expected-behavior" name="expected_behavior" rows="5" maxlength="10000"
+                  aria-describedby="eval-expected-behavior-help eval-expected-behavior-count"
+        ></textarea>
+        <p class="field-help" id="eval-expected-behavior-help">
+          What the assistant should have answered, and why.
+        </p>
+        <p class="char-count" id="eval-expected-behavior-count"></p>
+      </div>
+
+      <div class="field">
+        <label for="eval-severity">Severity</label>
+        <select id="eval-severity" name="severity">
+          <option value="">Not set</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="eval-remediation-target">Remediation target</label>
+        <select id="eval-remediation-target" name="remediation_target">
+          <option value="">Not set</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label for="eval-status">Status</label>
+        <select id="eval-status" name="status" aria-describedby="eval-status-help">
+          <option value="">Leave unchanged</option>
+        </select>
+        <p class="field-help" id="eval-status-help"></p>
+      </div>
+
+      <fieldset class="field field-wide field-resolution" id="eval-resolution" hidden>
+        <legend>Closing this review</legend>
+        <p class="field-help" id="eval-resolution-help">
+          A closing status is refused without a defensible record of how the
+          outcome was verified.
+        </p>
+
+        <div class="field">
+          <label for="eval-outcome">Outcome</label>
+          <select id="eval-outcome" name="outcome">
+            <option value="">Not set</option>
+          </select>
+        </div>
+
+        <div class="field field-wide">
+          <label for="eval-verification-summary">Verification summary</label>
+          <textarea id="eval-verification-summary" name="verification_summary" rows="3"
+                    maxlength="5000"
+                    aria-describedby="eval-verification-summary-count"></textarea>
+          <p class="char-count" id="eval-verification-summary-count"></p>
+        </div>
+
+        <div class="field field-wide">
+          <label for="eval-no-change-reason">Verification rationale</label>
+          <textarea id="eval-no-change-reason" name="no_change_reason" rows="3" maxlength="1000"
+                    aria-describedby="eval-no-change-help eval-no-change-reason-count"></textarea>
+          <p class="field-help" id="eval-no-change-help">
+            Machine-checked test evidence is attached by the remediation agent,
+            not typed here, so a review closed from this screen has to say in
+            words why the outcome is defensible.
+          </p>
+          <p class="char-count" id="eval-no-change-reason-count"></p>
+        </div>
+
+        <div class="field">
+          <label for="eval-branch">Branch</label>
+          <input type="text" id="eval-branch" name="branch" autocomplete="off" maxlength="256">
+        </div>
+
+        <div class="field">
+          <label for="eval-commit">Commit</label>
+          <input type="text" id="eval-commit" name="commit_sha" autocomplete="off" maxlength="256">
+        </div>
+      </fieldset>
+
+      <p class="form-errors" id="eval-errors" role="alert"></p>
+
+      <div class="field field-wide field-actions evaluation-actions">
+        <button type="button" class="button" id="eval-save">Save review</button>
+        <button type="button" class="button button-quiet" id="eval-reset">
+          Discard my changes
+        </button>
+        <p class="dirty-flag" id="eval-dirty" hidden>Unsaved changes</p>
+        <p class="field-help" id="eval-role-help"></p>
+      </div>
+    </form>
+
+    <!-- ---------------------------------------------------- edit conflict -->
+    <section class="conflict" id="conflict-panel" aria-labelledby="conflict-heading" hidden>
+      <h4 id="conflict-heading">Someone else saved this review first</h4>
+      <p class="conflict-summary" id="conflict-summary"></p>
+      <div class="conflict-columns">
+        <div class="conflict-column">
+          <h5 id="conflict-mine-heading">Your unsaved values</h5>
+          <dl class="conflict-values" id="conflict-mine"
+              aria-labelledby="conflict-mine-heading"></dl>
+        </div>
+        <div class="conflict-column">
+          <h5 id="conflict-theirs-heading">Currently saved on the server</h5>
+          <dl class="conflict-values" id="conflict-theirs"
+              aria-labelledby="conflict-theirs-heading"></dl>
+        </div>
+      </div>
+      <div class="conflict-actions">
+        <button type="button" class="button button-quiet" id="conflict-reload">
+          Discard mine and reload the server version
+        </button>
+        <button type="button" class="button" id="conflict-keep">Keep editing mine</button>
+        <button type="button" class="button button-danger" id="conflict-overwrite" hidden
+                aria-describedby="conflict-overwrite-help">
+          Reapply my values over the server version
+        </button>
+        <p class="field-help" id="conflict-overwrite-help">
+          Administrators only. This re-sends your values against the version you
+          are being shown, so the other reviewer's change is replaced rather than
+          merged. It is never sent automatically.
+        </p>
+      </div>
+    </section>
   </section>
 </main>
 

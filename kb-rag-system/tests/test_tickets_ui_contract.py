@@ -102,6 +102,16 @@ FORBIDDEN_LITERALS = ("X-API-Key", "Bearer ", "Authorization", "forusall", "TKT-
 _EMAIL_LITERAL = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 _INLINE_EVENT_ATTRIBUTE = re.compile(r"\son[a-z]+\s*=", re.IGNORECASE)
 
+#: A quoted relative module specifier, e.g. ``"./remediation.js"``.
+#:
+#: Stripped before the absent-route scan below, and *only* there. Stage 7 ships a
+#: module named after the feature it renders, and ``from "./remediation.js"``
+#: contains the substring ``/remediation`` while naming a local file rather than a
+#: route. Removing exactly this shape keeps the scan's reach over everything else,
+#: so a real ``fetch("/api/admin/v1/remediation/…")`` — or a template built one —
+#: still fails the test.
+_RELATIVE_MODULE_SPECIFIER = re.compile(r"""["']\./[A-Za-z0-9_-]+\.js["']""")
+
 
 # =====================================================================
 # A minimal DOM
@@ -452,7 +462,17 @@ class TestDocumentStructure:
             assert required in ids, f"missing region: {required}"
 
     def test_both_tabs_are_declared_as_tabs_of_one_panel(self, dom):
-        tabs = [node for node in dom.walk() if node.get("role") == "tab"]
+        # Scoped to the *source* tablist. Stage 7 adds a second, independent
+        # tablist for the detail workspace's panels, so a document-wide query
+        # would now count six tabs and say nothing about either group. The
+        # workspace tablist has its own contract test in the Stage 7 file.
+        tablists = [
+            node
+            for node in dom.walk()
+            if node.get("role") == "tablist" and node.get("aria-labelledby") == "tabs-heading"
+        ]
+        assert len(tablists) == 1, "the ticket-source tablist is not identifiable"
+        tabs = [node for node in tablists[0].walk() if node.get("role") == "tab"]
         assert len(tabs) == 2
         labels = {tab.all_text() for tab in tabs}
         assert labels == {"All DevRev tickets", "Review queue"}
@@ -1103,5 +1123,8 @@ class TestFeatureFlagBranching:
     def test_no_absent_route_is_ever_called(self, scripts):
         """Stage 8 and Stage 9 routes are absent from OpenAPI, not stubbed."""
         for name, source in scripts.items():
+            # A local module specifier is a file on disk, not a route. Everything
+            # else in the file is still scanned; see the pattern's own comment.
+            without_imports = _RELATIVE_MODULE_SPECIFIER.sub('""', source)
             for absent in ("/remediation", "/batches", "/imports", "/exports"):
-                assert absent not in source, f"{name}: {absent}"
+                assert absent not in without_imports, f"{name}: {absent}"

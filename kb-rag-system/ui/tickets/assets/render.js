@@ -724,4 +724,317 @@ export function renderFacetValues(select, facet) {
   return false;
 }
 
-export { STATUS_LABELS, OBSERVATION_LABELS, SEVERITY_LABELS };
+// ---------------------------------------------------------------------------
+// The detail workspace's shared primitives
+//
+// Everything below is still text-and-created-nodes only, and still knows nothing
+// about who is signed in: it is handed values and labels, and the modules that
+// know about roles decide what to hand it.
+// ---------------------------------------------------------------------------
+
+/** Longest conversation body shown before it is collapsed, in characters. */
+export const BODY_COLLAPSE_LIMIT = 900;
+
+/** Longest opaque digest rendered before it is shortened, in characters. */
+const DIGEST_PREVIEW = 16;
+
+const VISIBILITY_LABELS = new Map([
+  ["public", "Public"],
+  ["external", "Participant-visible"],
+  ["internal", "Internal"],
+  ["private", "Private"],
+]);
+
+const ACTOR_CLASS_LABELS = new Map([
+  ["participant", "Participant"],
+  ["human_agent", "Human agent"],
+  ["ai_or_system", "AI or system"],
+  ["event", "Ticket event"],
+  ["unknown", "Unclassified author"],
+]);
+
+const BASIS_LABELS = new Map([
+  ["configured_ai_author_id", "matched a configured AI author"],
+  ["configured_system_author_id", "matched a configured system author"],
+  ["configured_human_author_id", "matched a configured human author"],
+  ["external_actor_type", "external actor type"],
+  ["system_actor_type", "system actor type"],
+  ["internal_actor_type", "internal actor type"],
+  ["change_event", "a ticket change event"],
+  ["ambiguous", "could not be decided from an actor type"],
+  ["no_author", "carried no author"],
+]);
+
+const CORRELATION_STATUS_LABELS = new Map([
+  ["linked", "Linked"],
+  ["manual", "Manually linked"],
+  ["unavailable", "Unavailable"],
+]);
+
+const CORRELATION_TRUST_LABELS = new Map([
+  ["none", "No correlation"],
+  ["candidate", "Suggested, unconfirmed"],
+  ["verified_workload", "Verified by the producing workload"],
+  ["manual_reviewer", "Confirmed by a reviewer"],
+]);
+
+const OUTCOME_LABELS = new Map([
+  ["fixed", "Fixed"],
+  ["no_change", "No change"],
+  ["duplicate", "Duplicate"],
+  ["accepted_risk", "Accepted risk"],
+]);
+
+const MISSING_LABELS = new Map([
+  ["index_version", "index version"],
+  ["deployed_revision", "deployed revision"],
+  ["prompt_template", "prompt template"],
+  ["model", "model"],
+  ["observed_chunks", "observed vectors"],
+  ["response_hash", "response hash"],
+  ["source_articles", "source articles"],
+  ["legacy_schema", "a pre-Stage-4 record shape"],
+]);
+
+/** Reasons the server gives for having no defensible evidence. */
+const EVIDENCE_REASON_LABELS = new Map([
+  [
+    "no_defensible_identifiers_exist",
+    "This ticket predates reliable ticket-to-RAG correlation, or its legacy " +
+      "execution did not include a ticket-system identifier. The conversation " +
+      "is available; retrieval and prompt provenance cannot be reconstructed " +
+      "reliably.",
+  ],
+  [
+    "evidence_broker_not_configured",
+    "The evidence service is not configured for this deployment, so no " +
+      "retrieval or prompt provenance can be read. Reviews and conversation " +
+      "are unaffected.",
+  ],
+  [
+    "evidence_broker_unavailable",
+    "The evidence service did not answer. This is a gap in the lookup, not " +
+      "proof that the ticket has no retrieval history.",
+  ],
+]);
+
+/** Audit event types, in words. Unknown types are shown, never swallowed. */
+const AUDIT_EVENT_LABELS = new Map([
+  ["review_created", "Review created"],
+  ["review_updated", "Review updated"],
+  ["review_imported", "Imported from the ticket system"],
+  ["evidence_linked", "Evidence linked"],
+  ["evidence_unlinked", "Evidence unlinked"],
+  ["import_reversed", "Import reversed"],
+  ["legal_hold_set", "Legal hold set"],
+  ["legal_hold_cleared", "Legal hold cleared"],
+]);
+
+/**
+ * Stored field names, in the words the form uses.
+ *
+ * The audit ledger records which fields changed and not what they contained, so
+ * these labels are the whole of what a history entry can say about a change —
+ * which makes getting them right the difference between a readable ledger and a
+ * list of column names.
+ */
+const FIELD_LABELS = new Map([
+  ["topic", "Topic"],
+  ["legacy_type", "Legacy Type"],
+  ["observation_type", "Observation type"],
+  ["rating", "Rating"],
+  ["comments", "Comments"],
+  ["expected_behavior", "Expected behavior"],
+  ["severity", "Severity"],
+  ["status", "Status"],
+  ["remediation_target", "Remediation target"],
+  ["assigned_reviewer", "Assigned reviewer"],
+  ["legacy_reviewer_display_name", "Legacy sheet reviewer"],
+  ["resolution", "Resolution"],
+  ["outcome", "Outcome"],
+  ["verification_summary", "Verification summary"],
+  ["no_change_reason", "Verification rationale"],
+  ["branch", "Branch"],
+  ["commit_sha", "Commit"],
+  ["import_state", "Import state"],
+  ["legal_hold", "Legal hold"],
+  ["correlation_status", "Correlation status"],
+]);
+
+/** A label from a map, falling back to the raw value rather than hiding it. */
+export function labelOf(map, value) {
+  if (value === null || value === undefined || value === "") {
+    return "";
+  }
+  return map.get(value) ?? String(value);
+}
+
+export function fieldLabel(name) {
+  return labelOf(FIELD_LABELS, name);
+}
+
+export function visibilityLabel(value) {
+  return labelOf(VISIBILITY_LABELS, value);
+}
+
+export function actorClassLabel(value) {
+  return labelOf(ACTOR_CLASS_LABELS, value);
+}
+
+export function outcomeLabel(value) {
+  return labelOf(OUTCOME_LABELS, value);
+}
+
+export function auditEventLabel(value) {
+  return labelOf(AUDIT_EVENT_LABELS, value);
+}
+
+export function correlationStatusLabel(value) {
+  return labelOf(CORRELATION_STATUS_LABELS, value);
+}
+
+export function correlationTrustLabel(value) {
+  return labelOf(CORRELATION_TRUST_LABELS, value);
+}
+
+/** The reviewer-facing explanation of an evidence gap, keyed by server reason. */
+export function evidenceGapText(reason) {
+  if (reason === null || reason === undefined || reason === "") {
+    return "No retrieval or prompt provenance is available for this ticket.";
+  }
+  return (
+    EVIDENCE_REASON_LABELS.get(reason) ??
+    `No retrieval or prompt provenance is available. Reported reason: ${reason}.`
+  );
+}
+
+/** Absent provenance, named rather than left as a blank row. */
+export function missingProvenanceText(missing) {
+  const names = (missing ?? []).map((code) => labelOf(MISSING_LABELS, code));
+  return names.length === 0 ? "" : `Not recorded for this execution: ${names.join(", ")}.`;
+}
+
+/**
+ * A long opaque digest, shortened for reading but kept selectable in full.
+ *
+ * The visible half is enough to compare two records by eye; the full value stays
+ * in the element's text so a copy still yields the whole hash.
+ */
+export function digest(value) {
+  const text = String(value ?? "");
+  if (text === "") {
+    return "";
+  }
+  return text.length > DIGEST_PREVIEW * 2 ? `${text.slice(0, DIGEST_PREVIEW)}…` : text;
+}
+
+/**
+ * One `<dt>`/`<dd>` pair inside a `<dl>`.
+ *
+ * An absent value is stated as absent and marked, because a blank row beside a
+ * populated one reads as zero rather than as unknown — and on this panel the
+ * difference between "no vectors were retrieved" and "we did not record which
+ * vectors were retrieved" is the whole point.
+ */
+export function definitionRow(term, value, { absentNote = "Not recorded", full = "" } = {}) {
+  const wrap = el("div");
+  wrap.appendChild(el("dt", { text: term }));
+  const text = value === null || value === undefined ? "" : String(value);
+  if (text === "") {
+    wrap.appendChild(el("dd", { text: absentNote, attrs: { "data-absent": "true" } }));
+    return wrap;
+  }
+  const node = el("dd", { text });
+  if (full !== "" && full !== text) {
+    // The shortened form is what is read; the whole value is what is announced
+    // and copied, so nothing is actually lost by shortening.
+    node.textContent = "";
+    node.appendChild(el("span", { text, attrs: { "aria-hidden": "true" } }));
+    node.appendChild(hiddenText(full));
+  }
+  wrap.appendChild(node);
+  return wrap;
+}
+
+/** Replace an element's children without ever assigning markup. */
+export function replaceChildren(node, children) {
+  while (node.firstChild !== null) {
+    node.removeChild(node.firstChild);
+  }
+  for (const child of children) {
+    if (child !== null && child !== undefined) {
+      node.appendChild(child);
+    }
+  }
+}
+
+/**
+ * Remote body text as paragraphs.
+ *
+ * Blank lines become paragraph breaks and nothing else is interpreted: a body
+ * that arrives containing angle brackets renders as the characters a participant
+ * typed, which is both correct and the only safe reading of untrusted text.
+ */
+export function paragraphs(text) {
+  const blocks = String(text ?? "")
+    .split(/\n\s*\n/)
+    .map((block) => block.trim())
+    .filter((block) => block !== "");
+  if (blocks.length === 0) {
+    return [];
+  }
+  return blocks.map((block) => el("p", { className: "entry-paragraph", text: block }));
+}
+
+/** The one scheme an outbound link may use. Spelled without a host on purpose. */
+const REQUIRED_LINK_SCHEME = "https:";
+
+/**
+ * An outbound link, or plain text when the value cannot be trusted as one.
+ *
+ * The scheme is checked against a parsed URL rather than a string prefix,
+ * because `javascript:` and `data:` are the two that matter and a prefix test is
+ * how they get through. A value that fails is still shown — as text — because
+ * hiding a stored value would leave a reviewer unable to see what is recorded.
+ */
+export function httpsLink(value, { text = "" } = {}) {
+  const raw = String(value ?? "");
+  if (raw === "") {
+    return null;
+  }
+  let parsed = null;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    parsed = null;
+  }
+  if (parsed === null || parsed.protocol !== REQUIRED_LINK_SCHEME) {
+    const node = el("span", { className: "mono", text: raw });
+    node.appendChild(hiddenText("not a usable secure link; shown as text"));
+    return node;
+  }
+  const anchor = el("a", {
+    text: text === "" ? parsed.host + parsed.pathname : text,
+    attrs: {
+      href: parsed.href,
+      rel: "noreferrer noopener",
+      target: "_blank",
+    },
+  });
+  anchor.appendChild(hiddenText("opens in a new tab"));
+  return anchor;
+}
+
+/** A short status line with a tone, used by every panel. */
+export function setPanelStatus(node, { text = "", tone = "info" } = {}) {
+  node.dataset.tone = tone;
+  node.textContent = text;
+}
+
+export {
+  STATUS_LABELS,
+  OBSERVATION_LABELS,
+  SEVERITY_LABELS,
+  REMEDIATION_LABELS,
+  FIELD_LABELS,
+};

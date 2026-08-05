@@ -1256,6 +1256,16 @@ class TicketEvidenceSummary(_Base):
 
     Defaults assert nothing: an absent correlation is ``unavailable`` with an
     explicit reason, never an inferred link.
+
+    ``provenance`` and ``executions`` are two projections of the same broker
+    answer, and both are kept because they answer different questions.
+    ``provenance`` is the retrieval/index side — what was searched and which
+    vectors came back. ``executions`` is the whole sanitized record, which also
+    carries *which model on which route answered, when, how long it took, and
+    whether it failed*. A reviewer judging an answer needs the second; Stage 4's
+    producer path and its tests are written against the first. Projecting only
+    ``provenance`` — as this model did before Stage 7 — discarded roughly two
+    thirds of an already-allowlisted record before it reached the reviewer.
     """
 
     correlation_status: CorrelationStatus = Field(default=CorrelationStatus.UNAVAILABLE)
@@ -1263,6 +1273,9 @@ class TicketEvidenceSummary(_Base):
     correlation_source: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
     unavailable_reason: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
     provenance: list[RagProvenance] = Field(
+        default_factory=list, max_length=MAX_BROKER_RESULTS
+    )
+    executions: list[RagEvidenceRecord] = Field(
         default_factory=list, max_length=MAX_BROKER_RESULTS
     )
     linked_count: StrictInt = Field(default=0, ge=0)

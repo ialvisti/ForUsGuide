@@ -804,6 +804,13 @@ class TicketReviewService:
                 else (envelope.unavailable_reason or REASON_NO_DEFENSIBLE_IDENTIFIERS)
             ),
             provenance=[record.provenance for record in envelope.records],
+            # The whole sanitized record, not just its retrieval half. Every
+            # field on it is already allowlisted by the broker — prompts,
+            # responses, chunk text, participant data and raw external
+            # identifiers are absent by construction — and a reviewer cannot
+            # judge an answer without knowing which model on which route
+            # produced it, when, and whether it failed.
+            executions=list(envelope.records),
             linked_count=len(verified),
             candidate_links=candidates,
             broker_available=True,

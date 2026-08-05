@@ -59,6 +59,131 @@ export const ACTIVE_REMEDIATION_STATUSES = Object.freeze([
 ]);
 
 /**
+ * The closed review transition table, mirrored from the server's own.
+ *
+ * Mirrored rather than derived, because the API returns a review's current
+ * status and not the set of statuses reachable from it. Offering a move the
+ * table forbids would turn a documented refusal into a failed save after the
+ * reviewer has finished typing, so the options are narrowed here and the server
+ * still has the last word.
+ */
+export const REVIEW_TRANSITIONS = Object.freeze({
+  unreviewed: Object.freeze(["reviewed", "blocked"]),
+  reviewed: Object.freeze(["triaged", "blocked", "wont_fix"]),
+  triaged: Object.freeze(["planned", "blocked", "wont_fix"]),
+  planned: Object.freeze(["in_progress", "blocked", "wont_fix"]),
+  in_progress: Object.freeze(["changes_proposed", "blocked"]),
+  changes_proposed: Object.freeze(["verifying", "in_progress", "blocked"]),
+  verifying: Object.freeze(["resolved", "in_progress", "blocked"]),
+  blocked: Object.freeze(["triaged", "planned", "in_progress", "wont_fix"]),
+  resolved: Object.freeze([]),
+  wont_fix: Object.freeze([]),
+});
+
+/** Statuses no ordinary patch can leave. Only an admin reopen does, to `triaged`. */
+export const TERMINAL_REVIEW_STATUSES = Object.freeze(["resolved", "wont_fix"]);
+
+/** The single status an admin reopen may target. */
+export const REOPEN_TARGET = "triaged";
+
+/** Root-cause taxonomy, the server's closed set. */
+export const OBSERVATION_TYPES = Object.freeze([
+  "correct",
+  "knowledge_gap",
+  "knowledge_conflict",
+  "retrieval_miss",
+  "chunking_or_metadata",
+  "prompt_instruction",
+  "orchestration_logic",
+  "source_data",
+  "privacy_or_compliance",
+  "other",
+]);
+
+export const SEVERITIES = Object.freeze(["low", "medium", "high", "critical"]);
+
+export const REMEDIATION_TARGETS = Object.freeze([
+  "kb",
+  "prompt",
+  "code",
+  "workflow",
+  "source_data",
+  "none",
+  "unknown",
+]);
+
+export const RESOLUTION_OUTCOMES = Object.freeze([
+  "fixed",
+  "no_change",
+  "duplicate",
+  "accepted_risk",
+]);
+
+/**
+ * Field lengths, mirrored from the canonical model bounds.
+ *
+ * Declared once here so the character counters, the `maxlength` attributes and
+ * the contract test all read the same numbers. A counter that disagrees with the
+ * server is worse than none: it tells a reviewer their 10,050-character comment
+ * is fine and then loses it to a 422.
+ */
+export const FIELD_LIMITS = Object.freeze({
+  topic: 80,
+  legacy_type: 80,
+  comments: 10000,
+  expected_behavior: 10000,
+  legacy_reviewer_display_name: 200,
+  verification_summary: 5000,
+  no_change_reason: 1000,
+  branch: 256,
+  commit_sha: 256,
+  reason: 1000,
+});
+
+/** Author classes the server assigns to a conversation entry. */
+export const ACTOR_CLASSES = Object.freeze([
+  "participant",
+  "human_agent",
+  "ai_or_system",
+  "event",
+  "unknown",
+]);
+
+/** The conversation filters, in the order they are offered. */
+export const CONVERSATION_FILTERS = Object.freeze([
+  "all",
+  "participant",
+  "internal",
+  "ai_or_system",
+  "human_agent",
+  "event",
+]);
+
+/** The four workspace panels of the detail view. */
+export const WORKSPACE_PANELS = Object.freeze([
+  "conversation",
+  "evidence",
+  "history",
+  "remediation",
+]);
+
+/** Every evaluation field the reviewer may edit, i.e. the patch surface. */
+export const EVALUATION_FIELDS = Object.freeze([
+  "topic",
+  "legacy_type",
+  "observation_type",
+  "rating",
+  "comments",
+  "expected_behavior",
+  "severity",
+  "status",
+  "remediation_target",
+  "assigned_reviewer",
+  "legacy_reviewer_display_name",
+  "resolution",
+]);
+
+/**
  * Every key the address bar may carry. This list is the security boundary for
  * the URL, so it is declared once and read by both directions of the mapping.
  */
@@ -118,6 +243,62 @@ export const DEFAULT_PAGE_SIZE = 25;
  * durable review, and rendering that as an empty queue would be a lie. `stale`
  * means a refresh failed while rows from an earlier answer are still displayed.
  */
+/**
+ * One paged subresource of the detail view.
+ *
+ * Conversation, audit history and evidence links each get one of these, and
+ * that separation is the point: a broker outage must not blank the conversation,
+ * and a conversation page failing must not claim the audit ledger is empty.
+ *
+ * `nextCursor === null` after at least one successful page means "that is all of
+ * it". Before the first page it means nothing at all, which is why `pages` is
+ * tracked separately rather than inferred from `items.length`: a genuinely empty
+ * page that still carries a cursor is a real server answer, and treating it as
+ * the end would silently hide every entry after it.
+ */
+function emptyFeed() {
+  return {
+    phase: "idle",
+    items: [],
+    nextCursor: null,
+    pages: 0,
+    partial: false,
+    warnings: [],
+    diagnostics: [],
+    error: null,
+  };
+}
+
+function initialDetail() {
+  return {
+    ref: "",
+    phase: "idle",
+    error: null,
+    ticket: null,
+    review: null,
+    evidence: null,
+    version: null,
+    partial: false,
+    warnings: [],
+    diagnostics: [],
+    panel: "conversation",
+    conversationFilter: "all",
+    conversation: emptyFeed(),
+    audit: emptyFeed(),
+    evidenceLinks: emptyFeed(),
+    // The reviewer's edits, field name to value. Empty means "nothing typed",
+    // which is not the same as "every field equals the server", because a field
+    // can be deliberately set back to its saved value.
+    draft: {},
+    dirty: false,
+    saving: false,
+    // Set on 412 only. Holds the values the reviewer had, the values the server
+    // now has, and which fields differ — never a merge, which is a decision only
+    // the reviewer can make.
+    conflict: null,
+  };
+}
+
 export function initialState() {
   return {
     mode: "devrev",
@@ -143,6 +324,7 @@ export function initialState() {
     session: null,
     readiness: null,
     cooldownS: 0,
+    detail: initialDetail(),
     // Incremented whenever the *state* becomes the authority on what the filter
     // controls should show: a reset, a tab change, or a new address. Between
     // those, a control the reviewer is typing into is the authority on its own
@@ -322,11 +504,167 @@ export function reduce(state, action) {
     case "selection/clear":
       return withoutSelection(state);
 
-    case "detail/open":
-      return { ...state, selected: action.id };
+    case "detail/open": {
+      if (action.id === state.selected && state.detail.ref === action.id) {
+        return state;
+      }
+      // Opening a different ticket discards the previous one entirely, including
+      // any draft. There is no honest way to carry an unsaved comment from one
+      // ticket to another, and asking would be a modal in the middle of a click.
+      return {
+        ...state,
+        selected: action.id,
+        detail: { ...initialDetail(), ref: action.id, phase: "loading" },
+      };
+    }
 
     case "detail/close":
-      return { ...state, selected: "" };
+      return { ...state, selected: "", detail: initialDetail() };
+
+    case "detail/loaded": {
+      const review = action.review ?? null;
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          phase: "ready",
+          error: null,
+          ticket: action.ticket ?? null,
+          review,
+          evidence: action.evidence ?? null,
+          version: typeof review?.version === "number" ? review.version : null,
+          partial: Boolean(action.partial),
+          warnings: action.warnings ?? [],
+          diagnostics: action.diagnostics ?? [],
+        },
+      };
+    }
+
+    case "detail/failed":
+      return {
+        ...state,
+        detail: { ...state.detail, phase: "error", error: action.error },
+      };
+
+    case "detail/panel": {
+      if (!WORKSPACE_PANELS.includes(action.panel)) {
+        return state;
+      }
+      return { ...state, detail: { ...state.detail, panel: action.panel } };
+    }
+
+    case "detail/conversation-filter": {
+      if (!CONVERSATION_FILTERS.includes(action.value)) {
+        return state;
+      }
+      return { ...state, detail: { ...state.detail, conversationFilter: action.value } };
+    }
+
+    case "feed/started": {
+      const feed = state.detail[action.feed];
+      if (feed === undefined) {
+        return state;
+      }
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          [action.feed]: { ...feed, phase: "loading", error: null },
+        },
+      };
+    }
+
+    case "feed/loaded": {
+      const feed = state.detail[action.feed];
+      if (feed === undefined) {
+        return state;
+      }
+      const items = action.append ? [...feed.items, ...action.items] : [...action.items];
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          [action.feed]: {
+            phase: "ready",
+            items,
+            nextCursor: action.nextCursor ?? null,
+            pages: feed.pages + 1,
+            partial: Boolean(action.partial),
+            warnings: action.warnings ?? [],
+            diagnostics: action.diagnostics ?? [],
+            error: null,
+          },
+        },
+      };
+    }
+
+    case "feed/failed": {
+      const feed = state.detail[action.feed];
+      if (feed === undefined) {
+        return state;
+      }
+      // Pages already fetched stay on screen. Replacing a read conversation with
+      // an error because page four failed loses the reviewer's context for no
+      // gain; the status line says the newest request failed.
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          [action.feed]: {
+            ...feed,
+            phase: feed.pages > 0 ? "stale" : "error",
+            error: action.error,
+          },
+        },
+      };
+    }
+
+    case "draft/patch": {
+      const draft = { ...state.detail.draft, ...action.patch };
+      return {
+        ...state,
+        detail: { ...state.detail, draft, dirty: draftDiffers(draft, state.detail.review) },
+      };
+    }
+
+    case "draft/reset":
+      return {
+        ...state,
+        detail: { ...state.detail, draft: {}, dirty: false, conflict: null },
+      };
+
+    case "save/started":
+      return { ...state, detail: { ...state.detail, saving: true } };
+
+    case "save/succeeded": {
+      const review = action.review ?? state.detail.review;
+      return {
+        ...state,
+        detail: {
+          ...state.detail,
+          saving: false,
+          review,
+          version: typeof review?.version === "number" ? review.version : null,
+          draft: {},
+          dirty: false,
+          conflict: null,
+        },
+      };
+    }
+
+    case "save/failed":
+      // The draft survives on purpose. A refused save is exactly the moment a
+      // reviewer's twenty minutes of typing is most easily thrown away.
+      return { ...state, detail: { ...state.detail, saving: false } };
+
+    case "conflict/opened":
+      return {
+        ...state,
+        detail: { ...state.detail, saving: false, conflict: action.conflict },
+      };
+
+    case "conflict/cleared":
+      return { ...state, detail: { ...state.detail, conflict: null } };
 
     case "cooldown/set":
       return { ...state, cooldownS: Math.max(0, action.seconds) };
@@ -524,6 +862,149 @@ export function activeFilters(state) {
     chips.push({ label: "Reversed imports", field: "includeReversed", value: "included" });
   }
   return chips;
+}
+
+// ---------------------------------------------------------------------------
+// The detail view's selectors
+// ---------------------------------------------------------------------------
+
+/**
+ * Where each editable control's saved value lives on the durable review.
+ *
+ * The resolution fields are flat in the form and nested on the record, so the
+ * mapping is declared rather than guessed at two call sites.
+ */
+const SAVED_VALUE_PATHS = Object.freeze({
+  topic: ["topic"],
+  legacy_type: ["legacy_type"],
+  observation_type: ["observation_type"],
+  rating: ["rating"],
+  comments: ["comments"],
+  expected_behavior: ["expected_behavior"],
+  severity: ["severity"],
+  status: ["status"],
+  remediation_target: ["remediation_target"],
+  legacy_reviewer_display_name: ["legacy_reviewer_display_name"],
+  outcome: ["resolution", "outcome"],
+  verification_summary: ["resolution", "verification_summary"],
+  no_change_reason: ["resolution", "no_change_reason"],
+  branch: ["resolution", "branch"],
+  commit_sha: ["resolution", "commit_sha"],
+});
+
+/** The saved value of one form control, as the string a control would hold. */
+export function savedValue(review, field) {
+  const path = SAVED_VALUE_PATHS[field];
+  if (path === undefined || review === null || review === undefined) {
+    return "";
+  }
+  let current = review;
+  for (const step of path) {
+    if (current === null || current === undefined) {
+      return "";
+    }
+    current = current[step];
+  }
+  return current === null || current === undefined ? "" : String(current);
+}
+
+/**
+ * Whether anything in the draft actually differs from what is stored.
+ *
+ * Typing a character and deleting it again leaves the form clean, which is what
+ * decides whether the navigation warning fires. `assigned_reviewer` is the one
+ * exception: its control is a command ("assign to me", "unassign") rather than a
+ * value, so `keep` is the only clean setting.
+ */
+export function draftDiffers(draft, review) {
+  for (const [field, value] of Object.entries(draft)) {
+    if (field === "assigned_reviewer") {
+      if (value !== "keep") {
+        return true;
+      }
+      continue;
+    }
+    if (String(value ?? "") !== savedValue(review, field)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** The names of the fields the reviewer has actually changed. */
+export function dirtyFieldNames(draft, review) {
+  const names = [];
+  for (const [field, value] of Object.entries(draft)) {
+    if (field === "assigned_reviewer") {
+      if (value !== "keep") {
+        names.push(field);
+      }
+      continue;
+    }
+    if (String(value ?? "") !== savedValue(review, field)) {
+      names.push(field);
+    }
+  }
+  return names;
+}
+
+/**
+ * The statuses a reviewer may move this review to.
+ *
+ * An admin may additionally reopen a terminal review, and only onto `triaged`.
+ * Everyone else sees an empty list on a closed review rather than a control that
+ * always fails.
+ */
+export function allowedNextStatuses(status, { role = "viewer" } = {}) {
+  if (TERMINAL_REVIEW_STATUSES.includes(status)) {
+    return role === "admin" ? [REOPEN_TARGET] : [];
+  }
+  return [...(REVIEW_TRANSITIONS[status] ?? [])];
+}
+
+/** Whether a chosen status needs a closed resolution object to be accepted. */
+export function statusNeedsResolution(status) {
+  return TERMINAL_REVIEW_STATUSES.includes(status);
+}
+
+/**
+ * Apply one conversation filter to a page of classified messages.
+ *
+ * `participant` reads the server's own `participant_facing` flag rather than
+ * inferring from visibility, and `internal` reads `internal`. Those two are
+ * decided server-side from configured identities and actor types, and a
+ * browser-side guess is exactly how an agent-only note gets shown as something
+ * the customer saw.
+ */
+export function filterConversation(messages, filter) {
+  if (filter === "all") {
+    return [...messages];
+  }
+  if (filter === "participant") {
+    return messages.filter((message) => message.participant_facing === true);
+  }
+  if (filter === "internal") {
+    return messages.filter(
+      (message) => message.internal === true && message.actor_class !== "event"
+    );
+  }
+  return messages.filter((message) => message.actor_class === filter);
+}
+
+/** Whether a feed has proven there is another page to fetch. */
+export function feedHasMore(feed) {
+  return typeof feed?.nextCursor === "string" && feed.nextCursor !== "";
+}
+
+/**
+ * Whether a feed can honestly claim to be complete.
+ *
+ * One successful page and no forward cursor. Before the first page there is
+ * nothing to claim either way, and saying "no conversation" then would be a
+ * statement about the network dressed up as a statement about the ticket.
+ */
+export function feedIsComplete(feed) {
+  return feed?.pages > 0 && !feedHasMore(feed);
 }
 
 /**

@@ -16,8 +16,10 @@ imported, and the removal is verified rather than assumed:
     that actually holds: it does not matter which library tries, or whether it
     reads an environment variable at all;
 *   **there is no real ticket client, repository, or broker.** The durable store
-    is the in-memory backend, the ticket system is a deterministic fake, and the
-    evidence broker is absent.
+    is the in-memory backend, and the ticket system and evidence broker are
+    deterministic in-process fakes. Neither is an HTTP client, so
+    ``app.state.evidence_client`` stays ``None`` and no broker address is ever
+    resolved, let alone dialled.
 
 Authentication is solved by *injection*, not by widening the product's local-auth
 path. That path needs a request header the browser cannot attach to a navigation,
@@ -45,6 +47,9 @@ from typing import Any, Mapping, Optional
 FIXTURE_MODE_ENV = "TICKETS_FIXTURE_MODE"
 FIXTURE_NONCE_ENV = "TICKETS_FIXTURE_NONCE"
 FIXTURE_ROLE_ENV = "TICKETS_FIXTURE_ROLE"
+#: Opt-in: start the fixture clock at the current instant instead of frozen.
+FIXTURE_CLOCK_ENV = "TICKETS_FIXTURE_CLOCK"
+FIXTURE_CLOCK_NOW = "now"
 FIXTURE_MODE_VALUE = "1"
 
 #: Where the fixture reports its identity. Present only in fixture mode.
@@ -177,6 +182,8 @@ install_egress_guard()
 # Imported only after the isolation above is in place and verified.
 from api.reviewer_auth import AuthenticatedReviewer, subject_hash  # noqa: E402
 from api.ticket_review_models import (  # noqa: E402
+    CorrelationStatus,
+    CorrelationTrust,
     CursorPage,
     DevRevActor,
     DevRevActorType,
@@ -222,6 +229,12 @@ FIXTURE_EMAIL = f"fixture-reviewer@{FIXTURE_DOMAIN}"
 FIXTURE_SUBJECT = "accounts.google.com:fixture-reviewer"
 SYNTHETIC_PART = "don:core:dvrv-us-1:devo/fixture:product/1"
 PARTICIPANT_ACTOR = "don:identity:dvrv-us-1:devo/fixture:revu/participant-1"
+#: Configured author identities. The service classifies on these and on actor
+#: *types*, never on a display name — which is why one fixture entry is called
+#: "Support Bot" and is still expected to come back unclassified.
+AI_ACTOR = "don:identity:dvrv-us-1:devo/fixture:devu/assistant-1"
+SYSTEM_ACTOR = "don:identity:dvrv-us-1:devo/fixture:sysu/workflow-1"
+HUMAN_ACTOR = "don:identity:dvrv-us-1:devo/fixture:devu/agent-1"
 T0 = datetime(2026, 8, 4, 12, 0, 0, tzinfo=timezone.utc)
 
 #: The page size the interface asks for. Mirrors ``DEFAULT_PAGE_SIZE`` in
@@ -320,11 +333,161 @@ def fixture_timeline_entry(index: int) -> DevRevTimelineEntry:
     )
 
 
+def _conversation_entry(
+    ordinal: int,
+    *,
+    actor_id: Optional[str],
+    actor_type: DevRevActorType,
+    display_name: Optional[str],
+    visibility: TimelineVisibility,
+    body: Optional[str],
+    kind: TimelineEntryKind = TimelineEntryKind.COMMENT,
+    body_type: Optional[str] = "text/plain",
+    change_summary: Optional[str] = None,
+    unsupported_type: Optional[str] = None,
+    in_reply_to: Optional[str] = None,
+) -> DevRevTimelineEntry:
+    return DevRevTimelineEntry(
+        entry_id=f"fixture-entry-{ordinal}",
+        object_id=_work_id(0),
+        kind=kind,
+        visibility=visibility,
+        body=body,
+        body_type=body_type,
+        author=(
+            None
+            if actor_id is None
+            else DevRevActor(
+                actor_id=actor_id, actor_type=actor_type, display_name=display_name
+            )
+        ),
+        in_reply_to=in_reply_to,
+        change_summary=change_summary,
+        unsupported_type=unsupported_type,
+        created_at=T0 - timedelta(hours=20 - ordinal),
+    )
+
+
+#: A long body, so the workspace's collapse control has something to collapse.
+_LONG_BODY = (
+    "The participant wrote at length about their contribution schedule.\n\n"
+    + ("This paragraph exists to exceed the collapse threshold. " * 24)
+    + "\n\nAnd a closing paragraph, so paragraph breaks are visible too."
+)
+
+
+def fixture_conversation_pages() -> list[TimelinePage]:
+    """Three pages that between them contain every case the UI must distinguish.
+
+    Deliberately a *sequence* rather than one page repeated. Forward-only paging,
+    the "more remain" wording, and the empty-page-that-still-has-a-cursor case are
+    all properties of the sequence, and a single page proves none of them.
+
+    Page three is empty and still offers a cursor. That is a real upstream answer,
+    and a reader that treats it as the end silently hides everything after it.
+    """
+    return [
+        TimelinePage(
+            items=[
+                _conversation_entry(
+                    0,
+                    actor_id=PARTICIPANT_ACTOR,
+                    actor_type=DevRevActorType.REV_USER,
+                    display_name="A Participant",
+                    visibility=TimelineVisibility.EXTERNAL,
+                    body="How much can I contribute this year?",
+                ),
+                _conversation_entry(
+                    1,
+                    actor_id=AI_ACTOR,
+                    actor_type=DevRevActorType.DEV_USER,
+                    display_name="Assistant",
+                    visibility=TimelineVisibility.EXTERNAL,
+                    body=_LONG_BODY,
+                    in_reply_to="fixture-entry-0",
+                ),
+                _conversation_entry(
+                    2,
+                    actor_id=HUMAN_ACTOR,
+                    actor_type=DevRevActorType.DEV_USER,
+                    display_name="A Human Agent",
+                    visibility=TimelineVisibility.INTERNAL,
+                    body="Escalating: the limit quoted above is last year's.",
+                ),
+            ],
+            next_cursor="1",
+            page_size=25,
+        ),
+        TimelinePage(
+            items=[
+                _conversation_entry(
+                    3,
+                    actor_id=HUMAN_ACTOR,
+                    actor_type=DevRevActorType.DEV_USER,
+                    display_name="A Human Agent",
+                    visibility=TimelineVisibility.EXTERNAL,
+                    body="Apologies — the correct limit for this year is different.",
+                ),
+                _conversation_entry(
+                    4,
+                    actor_id=SYSTEM_ACTOR,
+                    actor_type=DevRevActorType.SYS_USER,
+                    display_name="Workflow",
+                    visibility=TimelineVisibility.PRIVATE,
+                    body=None,
+                    kind=TimelineEntryKind.CHANGE_EVENT,
+                    body_type=None,
+                    change_summary="stage moved from work_in_progress to resolved",
+                ),
+                _conversation_entry(
+                    5,
+                    actor_id=None,
+                    actor_type=DevRevActorType.UNKNOWN,
+                    display_name=None,
+                    visibility=TimelineVisibility.PRIVATE,
+                    body=None,
+                    kind=TimelineEntryKind.UNSUPPORTED,
+                    body_type=None,
+                    unsupported_type="timeline_shell",
+                ),
+                _conversation_entry(
+                    6,
+                    actor_id="don:identity:dvrv-us-1:devo/fixture:devu/ambiguous-1",
+                    actor_type=DevRevActorType.UNKNOWN,
+                    display_name="Support Bot",
+                    visibility=TimelineVisibility.INTERNAL,
+                    body="An entry whose author type does not decide who wrote it.",
+                ),
+            ],
+            next_cursor="2",
+            page_size=25,
+        ),
+        TimelinePage(items=[], next_cursor="3", page_size=25),
+    ]
+
+
 class FixtureClock:
     """A monotonic clock. The audit ledger orders by microsecond, so two writes
-    frozen at the same instant would produce an undefined order."""
+    frozen at the same instant would produce an undefined order.
 
-    def __init__(self, start: datetime = T0) -> None:
+    Frozen at :data:`T0` by default, which is what makes every seeded review,
+    audit hash and page identical between runs.
+
+    ``TICKETS_FIXTURE_CLOCK=now`` starts it at the current instant instead. That
+    exists for one reason: a broker suggestion is sealed with a ten-minute
+    expiry, and against a clock frozen in the past *every* suggestion is already
+    expired — so the confirmation flow is unreachable from a browser, which
+    compares it to the real time. Opt-in, so nothing deterministic changes
+    unless a browser session asks for it.
+    """
+
+    def __init__(self, start: Optional[datetime] = None) -> None:
+        if start is None:
+            start = (
+                datetime.now(timezone.utc)
+                if os.environ.get(FIXTURE_CLOCK_ENV) == FIXTURE_CLOCK_NOW
+                else T0
+            )
         self.now = start
 
     def __call__(self) -> datetime:
@@ -345,6 +508,7 @@ class FixtureDevRev:
     def __init__(self, count: int = FIXTURE_TICKET_COUNT) -> None:
         self.count = count
         self.list_calls: list[tuple[Optional[str], str, Optional[int]]] = []
+        self.timeline_calls: list[tuple[str, Optional[str], Optional[int]]] = []
 
     async def get_ticket(self, work_id: str) -> DevRevTicketDetail:
         for index in range(self.count):
@@ -387,8 +551,158 @@ class FixtureDevRev:
     async def list_timeline_page(
         self, work_id: str, *, cursor: Optional[str] = None, limit=None
     ) -> TimelinePage:
-        return TimelinePage(
-            items=[fixture_timeline_entry(0)], page_size=max(1, min(int(limit or 25), 100))
+        """One page of a three-page synthetic conversation.
+
+        Only the first fixture ticket carries the full conversation; every other
+        one gets a single entry. That keeps the list view's sixty rows cheap while
+        still giving the detail view something worth paging through — and it means
+        a browser check has one known ticket to assert exact counts against.
+        """
+        self.timeline_calls.append((work_id, cursor, limit))
+        size = max(1, min(int(limit or 25), 100))
+        if work_id not in {_work_id(0), _display_id(0)}:
+            return TimelinePage(items=[fixture_timeline_entry(0)], page_size=size)
+        pages = fixture_conversation_pages()
+        index = _decoded_offset(cursor)
+        if index >= len(pages):
+            return TimelinePage(items=[], page_size=size)
+        page = pages[index]
+        return page.model_copy(update={"page_size": size})
+
+
+class FixtureEvidenceBroker:
+    """An in-process stand-in for the evidence broker. Opens no socket.
+
+    It is an object with a ``lookup`` method rather than an HTTP client on
+    purpose: ``app.state.evidence_client`` stays ``None``, so the guarantee that
+    no real broker client exists in fixture mode is untouched, while the service
+    still has something to project into the response.
+
+    Three tickets are treated specially so the panel's three interesting states
+    are all reachable from a browser:
+
+    * ``FIX-100`` — one record the producer signed, so the correlation is
+      **linked** and the whole execution is on screen;
+    * ``FIX-102`` — records with no verified correlation, so they arrive as
+      **suggestions** that a reviewer must confirm with a reason;
+    * everything else — no records at all, which is the **gap** state, and the one
+      most tickets are really in.
+    """
+
+    #: 64 hex characters. Recognisable on screen as synthetic, still a valid digest.
+    _DIGESTS = {
+        "prompt": "a1" * 32,
+        "response": "b2" * 32,
+        "content": "c3" * 32,
+        "request": "d4" * 32,
+        "trace": "e5" * 32,
+        "result": "f6" * 32,
+        "reference": "17" * 32,
+    }
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+
+    def _provenance(self, *, complete: bool):
+        from api.ticket_review_models import ObservedChunkRef, RagProvenance
+
+        if not complete:
+            return RagProvenance()
+        return RagProvenance(
+            correlation_status=CorrelationStatus.LINKED,
+            correlation_trust=CorrelationTrust.VERIFIED_WORKLOAD,
+            correlation_source="ticket_execution_hmac",
+            missing_provenance=False,
+            index_name="kb-fixture-main",
+            # Left unset on purpose: an unknown index version has to render as
+            # unknown rather than as a blank beside populated rows.
+            index_version=None,
+            namespace="articles",
+            deployed_revision="kb-rag-fixture-00042",
+            prompt_template_id="ticket_answer.v7",
+            prompt_template_sha256=self._DIGESTS["prompt"],
+            response_sha256=self._DIGESTS["response"],
+            observed_chunks=[
+                ObservedChunkRef(
+                    observed_vector_id=f"fixture-vector-{ordinal}",
+                    article_id=f"fixture-article-{200 + ordinal}",
+                    content_sha256=self._DIGESTS["content"],
+                    chunk_ordinal=ordinal,
+                    namespace="articles",
+                    score=0.9 - (ordinal / 20),
+                )
+                for ordinal in range(3)
+            ],
+        )
+
+    def _record(self, *, verified: bool):
+        from api.ticket_review_models import (
+            EvidenceSourceCollection,
+            MissingProvenance,
+            RagEvidenceRecord,
+        )
+
+        if verified:
+            return RagEvidenceRecord(
+                evidence_reference=f"fixture-evidence-{self._DIGESTS['reference'][:24]}",
+                evidence_digest=self._DIGESTS["prompt"],
+                source_collection=EvidenceSourceCollection.TICKET_EXECUTIONS,
+                schema_version=1,
+                occurred_at=T0 - timedelta(minutes=42),
+                endpoint="/answer",
+                route="ticket_answer",
+                correlation_source="ticket_execution_hmac",
+                correlation_trust=CorrelationTrust.VERIFIED_WORKLOAD,
+                lookup_key_version=1,
+                ingress_key_version=1,
+                internal_job_id="fixture-job-7",
+                request_id_hash=self._DIGESTS["request"],
+                model="claude-opus-5",
+                provider="anthropic",
+                config_version="fixture-cfg-12",
+                rendered_prompt_trace_sha256=self._DIGESTS["trace"],
+                deployed_commit_sha="0" * 40,
+                provenance=self._provenance(complete=True),
+                source_article_ids=["fixture-article-200", "fixture-article-201"],
+                duration_ms=1842.5,
+                failed=False,
+                missing=[MissingProvenance.INDEX_VERSION],
+            )
+        return RagEvidenceRecord(
+            evidence_reference=f"fixture-legacy-{self._DIGESTS['response'][:24]}",
+            evidence_digest=self._DIGESTS["response"],
+            source_collection=EvidenceSourceCollection.EXECUTION_LOGS,
+            schema_version=0,
+            occurred_at=T0 - timedelta(days=200),
+            endpoint="/answer",
+            correlation_trust=CorrelationTrust.NONE,
+            provenance=self._provenance(complete=False),
+            duration_ms=990.0,
+            failed=True,
+            missing=[MissingProvenance.LEGACY_SCHEMA, MissingProvenance.OBSERVED_CHUNKS],
+        )
+
+    async def lookup(self, devrev_work_id: str, *, max_results: int):
+        from api.ticket_review_models import RagEvidenceEnvelope
+
+        self.calls.append(devrev_work_id)
+        if devrev_work_id == _work_id(0):
+            records = [self._record(verified=True)]
+            status = CorrelationStatus.LINKED
+        elif devrev_work_id == _work_id(2):
+            records = [self._record(verified=False)]
+            status = CorrelationStatus.UNAVAILABLE
+        else:
+            records = []
+            status = CorrelationStatus.UNAVAILABLE
+        return RagEvidenceEnvelope(
+            correlation_status=status,
+            records=records[:max_results],
+            result_digest=self._DIGESTS["result"],
+            key_versions_queried=[1],
+            unavailable_reason=(
+                None if records else "no_defensible_identifiers_exist"
+            ),
         )
 
 
@@ -501,6 +815,13 @@ def fixture_settings(**overrides: Any) -> TicketConsoleSettings:
         "DEVREV_ALLOWED_PART_DONS": [SYNTHETIC_PART],
         "DEVREV_ALLOWED_TICKET_VISIBILITY_IDS": [2],
         "DEVREV_ALLOWED_TIMELINE_VISIBILITIES": ["internal", "external"],
+        # Configured so the classifier can tell the assistant, the workflow and a
+        # human agent apart. Without these it reports itself unconfigured and
+        # every authored entry collapses into one class, which is exactly the
+        # conflation the conversation panel exists to prevent.
+        "DEVREV_AI_AUTHOR_IDS": [AI_ACTOR],
+        "DEVREV_SYSTEM_AUTHOR_IDS": [SYSTEM_ACTOR],
+        "DEVREV_HUMAN_AUTHOR_IDS": [HUMAN_ACTOR],
         "EVIDENCE_BROKER_URL": "",
         "EVIDENCE_BROKER_AUDIENCE": "",
     }
@@ -634,15 +955,18 @@ def build_fixture_app(**overrides: Any):
     backend = InMemoryTicketReviewBackend()
     repository = TicketReviewRepository(backend, cursor_key=CURSOR_KEY, clock=clock)
     devrev = FixtureDevRev()
+    broker = FixtureEvidenceBroker()
     service = ScenarioService(
         TicketReviewService(
             devrev=devrev,
             repository=repository,
             classifier=MessageClassifier.from_settings(settings),
             candidate_key=CURSOR_KEY,
-            # No broker at all: evidence is a reported gap rather than a fake
-            # answer, which is the state the interface has to render anyway.
-            broker=None,
+            # An in-process stand-in, not an HTTP client: `app.state.evidence_client`
+            # stays None, so the guarantee that fixture mode reaches no real broker
+            # is intact, while the evidence panel still has all three of its states
+            # to render — linked, suggested, and an explicit gap.
+            broker=broker,
             clock=clock,
         )
     )
@@ -657,6 +981,7 @@ def build_fixture_app(**overrides: Any):
     )
     app.state.fixture_repository = repository
     app.state.fixture_devrev = devrev
+    app.state.fixture_broker = broker
     _install_fixture_status(app)
 
     @asynccontextmanager

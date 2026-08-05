@@ -157,6 +157,14 @@ function describe(status, code) {
         detail: "Reload the review to see where it is now.",
         recoverable: true,
       };
+    case "EVIDENCE_LINK_REJECTED":
+      return {
+        title: "That evidence suggestion is no longer linkable",
+        detail:
+          "A suggestion is short-lived and is bound to the ticket, the review, " +
+          "and you. Reload the ticket to get a current one.",
+        recoverable: true,
+      };
     case "IDEMPOTENCY_CONFLICT":
       return {
         title: "That request was already used for something else",
@@ -659,6 +667,96 @@ export async function patchReview(reviewId, patch, version) {
   return requestJson(`${API_ROOT}/reviews/${encodeURIComponent(reviewId)}`, {
     method: "PATCH",
     body: patch,
+    ifMatch: version,
+    channel: null,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Detail subresources
+//
+// Four independent channels, deliberately. A reviewer who opens a ticket, moves
+// to the evidence tab, and then opens a different ticket must not have the
+// second ticket's conversation cancelled by the first ticket's evidence request
+// — and the *newest* request on each channel must always win.
+// ---------------------------------------------------------------------------
+
+/**
+ * One ticket's live data, durable review, first conversation page, and evidence.
+ *
+ * `timelineCursor` pages the embedded first conversation page only; every later
+ * page comes from `getTimelinePage`, which is the route that exists for it.
+ */
+export async function getTicketDetail(ticketRef, { timelineCursor = null } = {}) {
+  return requestJson(`${API_ROOT}/tickets/${encodeURIComponent(ticketRef)}`, {
+    cursor: timelineCursor,
+    channel: "detail",
+  });
+}
+
+/**
+ * One bounded conversation page.
+ *
+ * Forward only: the upstream's timeline pagination has no backward mode in the
+ * allowlisted surface, so the server mints no `before` token and none is asked
+ * for. Going back means the pages already on screen.
+ */
+export async function getTimelinePage(ticketRef, { cursor = null, pageSize = 25 } = {}) {
+  return requestJson(`${API_ROOT}/tickets/${encodeURIComponent(ticketRef)}/timeline`, {
+    query: { page_size: pageSize },
+    cursor,
+    channel: "timeline",
+  });
+}
+
+/**
+ * One page of the append-only audit ledger.
+ *
+ * The server returns a null `next_cursor` here by design — the repository's
+ * audit read is ordered and bounded but mints no token — so the caller must
+ * render that as "this is the whole page", never as "there is more".
+ */
+export async function listAuditEvents(reviewId, { pageSize = 50 } = {}) {
+  return requestJson(`${API_ROOT}/reviews/${encodeURIComponent(reviewId)}/audit-events`, {
+    query: { page_size: pageSize },
+    channel: "audit",
+  });
+}
+
+/** One page of confirmed evidence links. This one does page. */
+export async function listEvidenceLinks(reviewId, { cursor = null, pageSize = 25 } = {}) {
+  return requestJson(`${API_ROOT}/reviews/${encodeURIComponent(reviewId)}/evidence-links`, {
+    query: { page_size: pageSize },
+    cursor,
+    channel: "evidence",
+  });
+}
+
+/**
+ * Confirm a server-minted suggestion as a durable, reasoned link.
+ *
+ * The token is echoed back exactly as received. It is sealed by the server and
+ * bound to the ticket, the review, the reviewer, and an expiry, so there is
+ * nothing in it for this module to inspect, shorten, or rebuild — and no
+ * execution identifier is ever chosen here.
+ */
+export async function createEvidenceLink(reviewId, { candidateToken, reason }, version) {
+  return requestJson(`${API_ROOT}/reviews/${encodeURIComponent(reviewId)}/evidence-links`, {
+    method: "POST",
+    body: { broker_candidate_token: candidateToken, reason },
+    ifMatch: version,
+    channel: null,
+  });
+}
+
+/** Retire a link. The reason is mandatory and lands in the audit ledger. */
+export async function deleteEvidenceLink(reviewId, linkId, { reason }, version) {
+  const path =
+    `${API_ROOT}/reviews/${encodeURIComponent(reviewId)}` +
+    `/evidence-links/${encodeURIComponent(linkId)}`;
+  return requestJson(path, {
+    method: "DELETE",
+    body: { reason },
     ifMatch: version,
     channel: null,
   });

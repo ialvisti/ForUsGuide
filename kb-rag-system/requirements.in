@@ -18,6 +18,8 @@ pydantic-settings>=2.0.0,<3
 
 # HTTP cliente (ForusBots / probes)
 httpx>=0.27.0,<1
+# 4.4.1 corrige CVE-2026-71554 detectada por el gate pip-audit.
+h2>=4.4.1,<5
 
 # Data processing
 tqdm>=4.66.0,<5

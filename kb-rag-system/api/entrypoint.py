@@ -7,6 +7,15 @@ import sys
 from collections.abc import Mapping
 
 
+_APPLICATION_BY_ROLE = {
+    "producer": "api.main:app",
+    "worker": "api.main:app",
+    "tickets-console": "api.tickets_console_main:app",
+    "tickets-evidence-broker": "api.tickets_evidence_broker_main:app",
+    "ticket-evaluation-ingest": "api.ticket_evaluation_ingest_app:app",
+}
+
+
 def _bounded_integer(
     environment: Mapping[str, str],
     name: str,
@@ -27,6 +36,12 @@ def _bounded_integer(
 def main(environment: Mapping[str, str] | None = None) -> None:
     """Validate env configuration and replace this process with uvicorn."""
     source = os.environ if environment is None else environment
+    role = source.get("APP_ROLE", "producer")
+    if not isinstance(role, str) or role not in _APPLICATION_BY_ROLE:
+        raise ValueError(
+            f"APP_ROLE must be one of {sorted(_APPLICATION_BY_ROLE)}"
+        )
+    application = _APPLICATION_BY_ROLE[role]
     port = _bounded_integer(
         source, "PORT", default=8000, minimum=1, maximum=65_535,
     )
@@ -37,7 +52,7 @@ def main(environment: Mapping[str, str] | None = None) -> None:
         sys.executable,
         "-m",
         "uvicorn",
-        "api.main:app",
+        application,
         "--host", "0.0.0.0",  # noqa: S104 - required by Cloud Run
         "--port", str(port),
         "--workers", str(workers),

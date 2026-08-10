@@ -2,12 +2,16 @@
 
 > **For Claude Opus 5:** Execute this stage on the Stage 6 UI. Preserve its security and accessibility rules. Implement the full review workspace, not a visual mock.
 
-**Goal:** Let a reviewer understand the ticket, see participant/human/AI responses and available RAG evidence, score the outcome, document expected behavior/root cause, and resolve edit conflicts.
+**Goal:** Let a reviewer understand one captured RAG execution, inspect its
+answer, explicit rationale, diagnostics, retrieval evidence, and available
+DevRev context, score the outcome, document expected behavior/root cause, and
+resolve edit conflicts.
 
-**Architecture:** `/tickets/{display_id}` and in-app navigation load bounded
-metadata first, then independently cursor-page conversation, audit history, and
-evidence links. A focused workspace uses explicit save with quoted ETags; user
-edits survive a precondition failure until the reviewer reconciles them.
+**Architecture:** `/tickets/{execution_id}` and in-app navigation first prove
+the immutable execution exists, then load its linked review and independently
+cursor-page available DevRev conversation, audit history, and evidence links.
+A focused workspace uses explicit save with quoted ETags; user edits survive a
+precondition failure until the reviewer reconciles them.
 
 **Tech Stack:** Vanilla ES modules, semantic HTML/CSS, Stage 5 API, pytest UI contract tests.
 
@@ -135,9 +139,12 @@ Provide filters:
 
 ## Step 4 — Render RAG evidence honestly
 
-For each linked execution show only available fields:
+For the selected immutable execution show all available bounded fields:
 
-- correlation status/reason;
+- generated answer or structured response;
+- explicit classification and outcome rationale (never hidden chain-of-thought);
+- diagnostics and coverage gaps;
+- run route/status, inquiry/topic, timestamps, correlation IDs, and safe error;
 - internal ticket job ID and request/trace hashes (copyable, bounded);
 - never display raw external
   identifiers;
@@ -147,16 +154,22 @@ For each linked execution show only available fields:
 - deployed revision/commit;
 - index/namespace and explicit unknown index version;
 - source article IDs;
-- observed vector ID/type/tier/score/article ID/content hash/ordinal, labeled
-  as observed rather than stable across reindexing;
+- bounded chunk previews plus observed vector ID/type/tier/score/article ID/
+  content hash/ordinal, labeled as observed rather than stable across
+  reindexing;
 - response hash;
 - timestamp/latency/error.
 
-Never show full chunk content from the provenance collection. If a reviewer is authorized to inspect a KB source, link to a separate bounded server endpoint or show the checked-in article identifier, not a browser Pinecone query.
+Never show unbounded/full raw chunk bodies from the provenance collection. If
+a reviewer is authorized to inspect a KB source, link to a separate bounded
+server endpoint or show the checked-in article identifier, not a browser
+Pinecone query.
 
-When unavailable, say why:
-
-> This ticket predates reliable ticket-to-RAG correlation, or its legacy execution did not include a DevRev identifier. DevRev conversation is available; retrieval/prompt provenance cannot be reconstructed reliably.
+When a field is unavailable, explain its run-specific reason (for example,
+failure before retrieval, an abandoned invocation, or a bounded evidence gap).
+Pending/failed DevRev authorization is private quarantine and therefore cannot
+appear as a platform row. A platform row never exists without a captured
+ticket-associated RAG execution.
 
 Candidate links must require explicit reviewer confirmation and a reason. Confirmation produces a manual link and audit event.
 
@@ -165,9 +178,10 @@ Candidate links must require explicit reviewer confirmation and a reason. Confir
 Behavior:
 
 - Authenticated actor is shown separately from assignment. Reviewers may
-  self-assign; admins may choose an exact configured identity; imported
+  self-assign; admins may choose an exact configured identity; historical
   reviewer text remains a labeled legacy fallback.
-- A ticket can be viewed before import; first save imports it idempotently and then applies the review.
+- Only an ingestion-created review can be edited; the browser has no manual
+  ticket/review creation path.
 - Do not autosave long comments.
 - Dirty state is visible and triggers an accessible navigation warning.
 - Save sends quoted `If-Match: "vN"`, CSRF token, and a fresh idempotency key.
@@ -221,7 +235,7 @@ scenarios, use browser tooling to verify:
   partial warning;
 - rating keyboard navigation;
 - validation and character counts;
-- successful first import/save;
+- successful first save of an ingestion-created review;
 - stale version conflict without data loss;
 - manual evidence confirmation;
 - versioned evidence unlink with reason;
@@ -261,8 +275,8 @@ Expected: no unsafe matches.
 - A reviewer can reach a complete, understandable review workspace from `/tickets`.
 - Participant, human, AI/system, internal, and event entries are not conflated.
 - RAG evidence and historical evidence gaps are explicit.
-- All six sheet fields are preserved; assignment/legacy reviewer and
-  legacy/observation Type remain distinct under RBAC.
+- Immutable RAG evidence and reviewer judgment remain distinct; assignment/
+  legacy reviewer and legacy/observation Type remain distinct under RBAC.
 - Concurrent reviewers cannot silently overwrite one another.
 - Mobile/keyboard/error/partial/read-only flows work.
 

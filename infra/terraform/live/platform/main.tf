@@ -5,6 +5,7 @@
 locals {
   apis = [
     "run.googleapis.com",
+    "iap.googleapis.com",
     "cloudtasks.googleapis.com",
     "firestore.googleapis.com",
     "artifactregistry.googleapis.com",

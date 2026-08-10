@@ -41,6 +41,17 @@ EXPECTED_PROMPTS = {
 
 class TestRuntimeEntrypoint:
 
+    def test_dead_letter_replay_cli_ships_in_the_minimal_runtime_image(self):
+        """The operational replay command must live in a copied package.
+
+        ``scripts/`` is intentionally absent from the hardened runtime image,
+        so a production runbook cannot depend on ``python -m scripts...``.
+        """
+        dockerfile = (KB_ROOT / "Dockerfile").read_text()
+
+        assert "COPY --chown=65532:65532 api/ ./api/" in dockerfile
+        assert (KB_ROOT / "api" / "replay_ticket_evaluation.py").is_file()
+
     def test_docker_cmd_has_no_shell_expansion(self):
         dockerfile = (KB_ROOT / "Dockerfile").read_text()
 
@@ -94,6 +105,50 @@ class TestRuntimeEntrypoint:
                 "2",
             ],
         )
+
+    @pytest.mark.parametrize(
+        ("role", "application"),
+        [
+            ("producer", "api.main:app"),
+            ("worker", "api.main:app"),
+            ("tickets-console", "api.tickets_console_main:app"),
+            (
+                "ticket-evaluation-ingest",
+                "api.ticket_evaluation_ingest_app:app",
+            ),
+            (
+                "tickets-evidence-broker",
+                "api.tickets_evidence_broker_main:app",
+            ),
+        ],
+    )
+    def test_entrypoint_selects_an_isolated_application_per_role(
+        self, monkeypatch, role, application,
+    ):
+        from api import entrypoint
+
+        exec_call = Mock()
+        monkeypatch.setattr(entrypoint.os, "execvp", exec_call)
+
+        entrypoint.main(
+            {"APP_ROLE": role, "PORT": "8080", "WEB_CONCURRENCY": "1"}
+        )
+
+        argv = exec_call.call_args.args[1]
+        assert argv[3] == application
+
+    def test_entrypoint_rejects_an_unknown_service_role(self, monkeypatch):
+        from api import entrypoint
+
+        exec_call = Mock()
+        monkeypatch.setattr(entrypoint.os, "execvp", exec_call)
+
+        with pytest.raises(ValueError, match="APP_ROLE"):
+            entrypoint.main(
+                {"APP_ROLE": "combined-everything", "PORT": "8080"}
+            )
+
+        exec_call.assert_not_called()
 
 
 # ---------------------------------------------------------------------------

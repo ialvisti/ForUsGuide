@@ -310,20 +310,24 @@ def _worker_app(repo, orch):
     ))
 
 
-async def _seed_repo_job(repo, mode="full"):
+async def _seed_repo_job(repo, mode="full", ticket_id=None):
     from data_pipeline.ticket_job_models import fingerprint_request, new_job_record
+    ticket = {"username": "Ivan", "user_email": "i@f.com",
+              "email_subject": "401k", "email_body": "quiero retirar mi 401k"}
+    if ticket_id is not None:
+        ticket["ticket_id"] = ticket_id
     payload = dict(
         participant_id="158948", plan_id="580", company_name="StarWars Inc.",
         company_status="Ongoing",
-        ticket={"username": "Ivan", "user_email": "i@f.com",
-                "email_subject": "401k", "email_body": "quiero retirar mi 401k"},
+        ticket=ticket,
         record_keeper="LT Trust",
     )
     fp = fingerprint_request(payload)
     rec, _ = await repo.create_or_get(
         principal_id="default", idempotency_key=None, request_fingerprint=fp,
         candidate=new_job_record(principal_id="default", request_fingerprint=fp,
-                                 mode=mode, request_payload=payload),
+                                 mode=mode, request_payload=payload,
+                                 ticket_id=ticket_id),
     )
     return rec
 
@@ -1172,6 +1176,7 @@ class TestForusBotsIdTraceabilityOnDegraded:
             "code": "INQUIRY_TIMEOUT",
             "retryable": False,
         }
+        assert entry["diagnostics"] == {"failure_phase": "handle_inquiry"}
         assert final.public_error_code == "FORUSBOTS_NEEDS_RECONCILIATION"
         assert final.retryable is False
 
@@ -1905,6 +1910,101 @@ class TestUnprocessedResumesOnRetry:
         assert "unprocessed" in src and "done_indexes" in src, (
             "el loop de reanudación debe excluir 'unprocessed' de done_indexes"
         )
+
+
+class _TicketEvaluationEvidenceOrchestrator(_HeartbeatBlockingOrchestrator):
+
+    async def handle_inquiry(
+        self, ext, req, *, total_inquiries, classification=None,
+    ):
+        return InquiryOutcome(
+            inquiry=ext.inquiry,
+            topic=ext.topic,
+            route="knowledge_question",
+            knowledge_result=SimpleNamespace(
+                answer="Safe answer backed by retrieved evidence",
+                key_points=["One bounded point"],
+                source_articles=[{
+                    "article_id": "article-7",
+                    "article_title": "Rollover guide",
+                    "used_info": True,
+                    "max_score": 0.93,
+                }],
+                used_chunks=[{
+                    "chunk_id": "chunk-7",
+                    "score": 0.93,
+                    "chunk_type": "business_rules",
+                    "chunk_tier": "critical",
+                    "article_id": "article-7",
+                    "article_title": "Rollover guide",
+                    "content_preview": "Participants may roll over eligible funds.",
+                    "content": "FULL SOURCE BODY MUST NOT ENTER THE OUTBOX",
+                }],
+                confidence_note="well_covered",
+                metadata={"model": "gpt-test", "latency_ms": 12},
+            ),
+            diagnostics={"retrieval": {"match_count": 1}},
+        )
+
+
+class TestTicketEvaluationCheckpointIntegration:
+
+    async def test_rag_worker_checkpoint_creates_full_bounded_outbox_event(self):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        backend = InMemoryTicketJobBackend()
+        repo = TicketJobRepository(backend)
+        record = await _seed_repo_job(repo, ticket_id="TKT-7007")
+
+        await run_ticket_job(
+            _worker_app(repo, _TicketEvaluationEvidenceOrchestrator(delay_s=0)),
+            record.job_id,
+        )
+
+        outboxes = backend._data.get(TICKET_EVALUATION_OUTBOX_COLLECTION, {})
+        assert len(outboxes) == 1
+        invocation_id, outbox = next(iter(outboxes.items()))
+        assert invocation_id.startswith(f"{record.job_id}-e")
+        assert invocation_id.endswith(":0")
+        event = outbox["event"]
+        assert event["invocation_id"] == invocation_id
+        assert event["ticket_id"] == "TKT-7007"
+        assert event["route"] == "knowledge_question"
+        assert event["classification"]["reasoning"] == "knowledge"
+        assert event["answer"] == "Safe answer backed by retrieved evidence"
+        assert event["structured_response"]["knowledge_answer"]["answer"] == \
+            "Safe answer backed by retrieved evidence"
+        assert event["diagnostics"]["retrieval"] == {"match_count": 1}
+        assert event["diagnostics"]["checkpoint"] == {
+            "degraded": False,
+            "execution_status": "succeeded",
+            "participant_reply_safe": True,
+        }
+        assert event["sources"][0]["article_id"] == "article-7"
+        assert event["chunks"][0]["chunk_id"] == "chunk-7"
+        assert event["chunks"][0]["content_hash"]
+        assert "FULL SOURCE BODY MUST NOT ENTER THE OUTBOX" not in repr(outbox)
+
+    async def test_needs_more_info_worker_checkpoint_has_no_platform_event(self):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        backend = InMemoryTicketJobBackend()
+        repo = TicketJobRepository(backend)
+        record = await _seed_repo_job(repo, ticket_id="TKT-7008")
+
+        await run_ticket_job(_worker_app(repo, FakeOrch()), record.job_id)
+
+        assert not backend._data.get(TICKET_EVALUATION_OUTBOX_COLLECTION)
 
 
 class TestManualReconciliationMetric:

@@ -257,6 +257,76 @@ variable "reconciler_sa_email" {
   type = string
 }
 
+# Delivery of immutable ticket-associated RAG executions to the private
+# evaluation-ingest service. Disabled means the destination must be absent;
+# enabled means both URL and audience are explicit HTTPS origins.
+variable "ticket_evaluation_publish_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "ticket_evaluation_ingest_url" {
+  type    = string
+  default = ""
+  validation {
+    condition = (
+      var.ticket_evaluation_ingest_url == "" ||
+      can(regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", var.ticket_evaluation_ingest_url))
+    )
+    error_message = "ticket_evaluation_ingest_url debe ser un origen HTTPS canónico."
+  }
+}
+
+variable "ticket_evaluation_ingest_audience" {
+  type    = string
+  default = ""
+  validation {
+    condition = (
+      var.ticket_evaluation_ingest_audience == "" ||
+      can(regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", var.ticket_evaluation_ingest_audience))
+    )
+    error_message = "ticket_evaluation_ingest_audience debe ser un origen HTTPS canónico."
+  }
+}
+
+variable "ticket_evaluation_publish_timeout_s" {
+  type    = number
+  default = 10
+  validation {
+    condition = (
+      var.ticket_evaluation_publish_timeout_s >= 0.1 &&
+      var.ticket_evaluation_publish_timeout_s <= 60
+    )
+    error_message = "ticket_evaluation_publish_timeout_s debe estar entre 0.1 y 60."
+  }
+}
+
+variable "ticket_evaluation_publish_batch_size" {
+  type    = number
+  default = 25
+  validation {
+    condition = (
+      floor(var.ticket_evaluation_publish_batch_size) == var.ticket_evaluation_publish_batch_size &&
+      var.ticket_evaluation_publish_batch_size >= 1 &&
+      var.ticket_evaluation_publish_batch_size <= 100
+    )
+    error_message = "ticket_evaluation_publish_batch_size debe ser un entero entre 1 y 100."
+  }
+}
+
+variable "ticket_evaluation_outbox_retention_s" {
+  type    = number
+  default = 86400
+  validation {
+    condition = (
+      floor(var.ticket_evaluation_outbox_retention_s) == var.ticket_evaluation_outbox_retention_s &&
+      var.ticket_evaluation_outbox_retention_s >= 3600 &&
+      var.ticket_evaluation_outbox_retention_s <= 604800
+    )
+    error_message = "ticket_evaluation_outbox_retention_s debe ser un entero entre 3600 y 604800."
+  }
+}
+
 variable "task_signer_sa_email" {
   type = string
 }

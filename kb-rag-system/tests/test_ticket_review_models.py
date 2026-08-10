@@ -39,12 +39,9 @@ from api.ticket_review_models import (
     GENESIS_EVENT_HASH,
     HASH_SCHEMA_VERSION,
     IDEMPOTENCY_TTL_S,
-    IMPORT_STAGING_TTL_S,
     MAX_ATTACHMENTS,
     MAX_BATCH_REVIEWS,
     MAX_COMMENTS_LENGTH,
-    MAX_CSV_REQUEST_BYTES,
-    MAX_CSV_ROWS,
     MAX_CURSOR_LENGTH,
     MAX_DISPLAY_ID_LENGTH,
     MAX_EVIDENCE_REFS_PER_REVIEW,
@@ -98,13 +95,8 @@ from api.ticket_review_models import (
     EvidenceLink,
     ExtendLeaseRequest,
     HeartbeatBatchRequest,
-    ImportApplyOrReverseRequest,
-    ImportChunkResponse,
-    ImportDryRunResponse,
     ImportState,
-    ImportStatus,
     InvalidBatchTransition,
-    InvalidImportTransition,
     InvalidReviewTransition,
     MalformedPreconditionError,
     MaterializeBatchRequest,
@@ -130,18 +122,14 @@ from api.ticket_review_models import (
     Severity,
     StalePreconditionError,
     StartVerificationRequest,
-    TicketImport,
-    TicketImportRow,
     TicketReview,
     TimelineEntryKind,
     TimelinePage,
     TimelineVisibility,
     VerificationEvidence,
     allowed_batch_transitions,
-    allowed_import_transitions,
     allowed_review_transitions,
     assert_batch_transition,
-    assert_import_transition,
     assert_review_transition,
     audit_event_hash_payload,
     can_assign_reviewer,
@@ -411,20 +399,6 @@ class TestClosedEnums:
             "blocked",
             "cancelled",
             "expired",
-        ]
-
-    def test_import_status_values(self):
-        assert [i.value for i in ImportStatus] == [
-            "uploaded",
-            "planned",
-            "approved",
-            "applying",
-            "applied",
-            "partial",
-            "reversing",
-            "reversed",
-            "failed",
-            "cancelled",
         ]
 
     def test_resolution_outcome_values(self):
@@ -822,17 +796,6 @@ def _batch(**overrides) -> RemediationBatch:
     return RemediationBatch(**values)
 
 
-def _ticket_import(**overrides) -> TicketImport:
-    values = {
-        "import_id": "import-0001",
-        "file_sha256": "a" * 64,
-        "created_by": _identity("admin@example.invalid"),
-        "total_rows": 3,
-    }
-    values.update(overrides)
-    return TicketImport(**values)
-
-
 class TestJsonRoundTrips:
 
     @pytest.mark.parametrize(
@@ -845,7 +808,6 @@ class TestJsonRoundTrips:
             _audit_event,
             _batch_item,
             _batch,
-            _ticket_import,
             _review,
         ),
         ids=(
@@ -856,7 +818,6 @@ class TestJsonRoundTrips:
             "AuditEvent",
             "RemediationBatchItem",
             "RemediationBatch",
-            "TicketImport",
             "TicketReview",
         ),
     )
@@ -1136,7 +1097,6 @@ class TestProductionSettingsRejections:
             {"REVIEW_RETENTION_DAYS": 1_000_000},
             {"CSRF_TOKEN_TTL_S": 86_400},
             {"MESSAGE_CACHE_TTL_S": 86_400 * 30},
-            {"MAX_CSV_ROWS": 1_000_000},
             {"MAX_BATCH_REVIEWS": 10_000},
         ),
         ids=lambda o: next(iter(o)),
@@ -1284,7 +1244,6 @@ class TestCanonicalLimits:
         assert CACHE_TTL_S == 15 * 60
         assert MESSAGE_CACHE_TTL_S == 24 * 60 * 60
         assert IDEMPOTENCY_TTL_S == 7 * 24 * 60 * 60
-        assert IMPORT_STAGING_TTL_S == 7 * 24 * 60 * 60
         assert CSRF_TOKEN_TTL_S == 60 * 60
         assert REVIEW_RETENTION_DAYS == 730
         assert AUDIT_RETENTION_DAYS == 2_555
@@ -1306,9 +1265,7 @@ class TestCanonicalLimits:
         assert MAX_ATTACHMENTS == 20
         assert MAX_EVIDENCE_REFS_PER_REVIEW == 200
         assert MAX_BATCH_REVIEWS == 100
-        assert MAX_CSV_ROWS == 10_000
         assert MAX_JSON_REQUEST_BYTES == 1 * 1024 * 1024
-        assert MAX_CSV_REQUEST_BYTES == 10 * 1024 * 1024
         assert MAX_UPSTREAM_ERROR_BODY_BYTES == 4 * 1024
         assert DEVREV_MAX_RESPONSE_BYTES == 4 * 1024 * 1024
         assert EVIDENCE_BROKER_MAX_RESPONSE_BYTES == 512 * 1024
@@ -1330,14 +1287,11 @@ class TestCanonicalLimits:
         assert cfg.CACHE_TTL_S == CACHE_TTL_S
         assert cfg.MESSAGE_CACHE_TTL_S == MESSAGE_CACHE_TTL_S
         assert cfg.IDEMPOTENCY_TTL_S == IDEMPOTENCY_TTL_S
-        assert cfg.IMPORT_STAGING_TTL_S == IMPORT_STAGING_TTL_S
         assert cfg.CSRF_TOKEN_TTL_S == CSRF_TOKEN_TTL_S
         assert cfg.REVIEW_RETENTION_DAYS == REVIEW_RETENTION_DAYS
         assert cfg.AUDIT_RETENTION_DAYS == AUDIT_RETENTION_DAYS
         assert cfg.MAX_TIMELINE_ENTRIES == DEVREV_MAX_ENTRIES
-        assert cfg.MAX_CSV_BYTES == MAX_CSV_REQUEST_BYTES
         assert cfg.MAX_JSON_BYTES == MAX_JSON_REQUEST_BYTES
-        assert cfg.MAX_CSV_ROWS == MAX_CSV_ROWS
         assert cfg.MAX_BATCH_REVIEWS == MAX_BATCH_REVIEWS
         assert cfg.REMEDIATION_LEASE_S == REMEDIATION_LEASE_S
         assert cfg.REMEDIATION_HEARTBEAT_S == REMEDIATION_HEARTBEAT_S
@@ -1469,29 +1423,6 @@ BATCH_TABLE = {
     BatchStatus.COMPLETED: set(),
     BatchStatus.CANCELLED: set(),
 }
-
-IMPORT_TABLE = {
-    ImportStatus.UPLOADED: {ImportStatus.PLANNED, ImportStatus.FAILED, ImportStatus.CANCELLED},
-    ImportStatus.PLANNED: {ImportStatus.APPROVED, ImportStatus.FAILED, ImportStatus.CANCELLED},
-    ImportStatus.APPROVED: {ImportStatus.APPLYING, ImportStatus.CANCELLED},
-    ImportStatus.APPLYING: {ImportStatus.APPLIED, ImportStatus.PARTIAL, ImportStatus.FAILED},
-    ImportStatus.PARTIAL: {
-        ImportStatus.APPLYING,
-        ImportStatus.REVERSING,
-        ImportStatus.CANCELLED,
-    },
-    ImportStatus.APPLIED: {ImportStatus.REVERSING},
-    ImportStatus.REVERSING: {ImportStatus.REVERSED, ImportStatus.PARTIAL, ImportStatus.FAILED},
-    ImportStatus.FAILED: {
-        ImportStatus.PLANNED,
-        ImportStatus.APPLYING,
-        ImportStatus.REVERSING,
-        ImportStatus.CANCELLED,
-    },
-    ImportStatus.REVERSED: set(),
-    ImportStatus.CANCELLED: set(),
-}
-
 
 class TestReviewTransitions:
 
@@ -1726,40 +1657,10 @@ class TestBatchLeaseInvariants:
             )
 
 
-class TestImportTransitions:
-
-    @pytest.mark.parametrize("current", list(ImportStatus), ids=lambda s: s.value)
-    def test_table_matches_the_master_plan_exactly(self, current):
-        assert set(allowed_import_transitions(current)) == IMPORT_TABLE[current]
-
-    def test_reversed_and_cancelled_are_terminal(self):
-        assert allowed_import_transitions(ImportStatus.REVERSED) == frozenset()
-        assert allowed_import_transitions(ImportStatus.CANCELLED) == frozenset()
-
-    def test_disallowed_edges_raise(self):
-        with pytest.raises(InvalidImportTransition):
-            assert_import_transition(ImportStatus.UPLOADED, ImportStatus.APPLIED)
-        with pytest.raises(InvalidImportTransition):
-            assert_import_transition(ImportStatus.REVERSED, ImportStatus.APPLYING)
-
-    def test_recovery_from_failed_requires_an_explicit_admin_reason(self):
-        assert_import_transition(
-            ImportStatus.FAILED, ImportStatus.PLANNED, reason="Corrected the source file."
-        )
-        with pytest.raises(InvalidImportTransition, match="reason"):
-            assert_import_transition(ImportStatus.FAILED, ImportStatus.PLANNED)
-
-    def test_reversal_rows_carry_the_expected_review_version(self):
-        row = TicketImportRow(
-            row_number=1,
-            raw_ticket_id="TKT-1234",
-            expected_review_version=3,
-        )
-        assert row.expected_review_version == 3
-
+class TestHistoricalImportStateCompatibility:
     def test_a_reversal_never_deletes_history(self):
-        # A reversed import flips the review's import_state; it does not remove
-        # the review, so the field must exist and be settable to "reversed".
+        # Historical records may still carry this read-only marker.  The field
+        # remains parseable even though no repository mutation can create it.
         assert _review(import_state=ImportState.REVERSED).import_state is ImportState.REVERSED
 
 
@@ -1921,6 +1822,7 @@ class TestServiceBoundaryIsolation:
         broker = EvidenceBrokerSettings(
             _env_file=None,
             ENVIRONMENT="production",
+            GCP_PROJECT="synthetic-project",
             FIRESTORE_DATABASE="(default)",
             CONSOLE_SERVICE_ACCOUNT="console@example.invalid",
             AUDIENCE="https://broker.example.invalid",
@@ -2760,9 +2662,6 @@ class TestClosedMutationEnvelopes:
         CompleteBatchRequest,
         ExtendLeaseRequest,
         CancelBatchRequest,
-        ImportDryRunResponse,
-        ImportApplyOrReverseRequest,
-        ImportChunkResponse,
         SessionResponse,
         ErrorResponse,
     )
@@ -2850,17 +2749,6 @@ class TestClosedMutationEnvelopes:
                 reason="unbounded",
             )
 
-    def test_an_import_apply_requires_explicit_approval(self):
-        ImportApplyOrReverseRequest(plan_sha256="a" * 64, approval_confirmed=True)
-        with pytest.raises(ValueError, match="approval_confirmed"):
-            ImportApplyOrReverseRequest(plan_sha256="a" * 64, approval_confirmed=False)
-
-    def test_import_apply_never_accepts_a_raw_offset(self):
-        fields = set(ImportApplyOrReverseRequest.model_fields)
-        assert "resume_cursor" in fields
-        assert "offset" not in fields
-        assert "start_row" not in fields
-
     def test_materialization_defaults_to_excluding_conversation(self):
         request = MaterializeBatchRequest(
             expected_version=1, lease_token="synthetic-lease-value"
@@ -2890,8 +2778,6 @@ class TestClosedMutationEnvelopes:
             ReadyBatchRequest(expected_version=1, reason="ready"),
             CancelBatchRequest(expected_version=1, reason="stale"),
             HeartbeatBatchRequest(expected_version=1, lease_token="synthetic-lease-value"),
-            ImportChunkResponse(import_id="i-1", status=ImportStatus.APPLIED),
-            ImportDryRunResponse(import_id="i-1", file_sha256="a" * 64, plan_sha256="b" * 64),
             StartVerificationRequest(
                 expected_version=1, independent_verifier_attestation="I verified independently."
             ),

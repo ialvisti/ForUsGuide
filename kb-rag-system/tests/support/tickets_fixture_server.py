@@ -593,10 +593,16 @@ def serve(host: str, port: int, max_seconds: int) -> int:
         FIXTURE_MODE_ENV,
         FIXTURE_MODE_VALUE,
         build_fixture_app,
+        prepare_fixture_environment,
     )
 
     if os.environ.get(FIXTURE_MODE_ENV) != FIXTURE_MODE_VALUE:  # pragma: no cover
         raise FixtureServerError("the parent did not set fixture mode")
+
+    # The fixture app deliberately has no import-time process mutations: pytest
+    # collection must not poison unrelated tests. This is a dedicated child, so
+    # install its fail-closed credential and socket guards for the process life.
+    prepare_fixture_environment()
 
     import threading
 

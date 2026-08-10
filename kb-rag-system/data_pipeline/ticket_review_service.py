@@ -36,6 +36,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable, Optional, Protocol
 
@@ -44,6 +45,7 @@ from api.ticket_review_models import (
     EVIDENCE_CANDIDATE_TTL_S,
     MAX_EVIDENCE_CANDIDATES,
     MAX_PAGE_SIZE,
+    MAX_REASON_LENGTH,
     PLAIN_TEXT_BODY_TYPES,
     CacheState,
     ClassifiedTimelinePage,
@@ -51,6 +53,7 @@ from api.ticket_review_models import (
     CorrelationTrust,
     CursorError,
     CursorPage,
+    DevRevAuthorizationStatus,
     DevRevActor,
     DevRevActorType,
     DevRevTicketDetail,
@@ -66,8 +69,12 @@ from api.ticket_review_models import (
     RagEvidenceEnvelope,
     RagEvidenceRecord,
     ReviewerIdentity,
+    ReviewerRole,
     ReviewStatus,
     TicketDetailEnvelope,
+    TicketEvaluationDetailEnvelope,
+    TicketEvaluationRun,
+    TicketEvaluationSummary,
     TicketEvidenceSummary,
     TicketReview,
     TicketReviewSummary,
@@ -83,20 +90,26 @@ from api.tickets_console_config import (
     classification_diagnostics,
 )
 from data_pipeline.devrev_client import (
+    DevRevAuthenticationError,
     DevRevClient,
+    DevRevConfigurationError,
     DevRevError,
     DevRevNotFoundError,
     DevRevRequestError,
     DevRevResourceLimitError,
     DevRevScopeError,
+    DevRevRateLimitError,
+    DevRevTransientError,
 )
 from data_pipeline.ticket_review_repository import (
     DevRevMessageCacheEntry,
     EvidenceCandidate,
     EvidenceCandidateRejected,
+    EvaluationHydrationClaim,
     MutationContext,
     ReviewListQuery,
     ReviewNotFound,
+    EvaluationRunNotFound,
     ReviewPatch,
     TicketReviewRepository,
     UnsupportedFilterCombination,
@@ -136,6 +149,15 @@ CANDIDATE_RATIONALE_UNVERIFIED = (
 # page must never fan out one request per row without a bound: 50 rows would be
 # 50 simultaneous DevRev calls and an immediate rate-limit.
 DEFAULT_HYDRATION_CONCURRENCY = 5
+EVALUATION_HYDRATION_RETRY_BASE_S = 30
+EVALUATION_HYDRATION_RETRY_CAP_S = 60 * 60
+EVALUATION_HYDRATION_SLOW_RETRY_S = 15 * 60
+
+SYSTEM_INGEST_ACTOR = ReviewerIdentity(
+    subject="service:ticket-evaluation-ingest",
+    email="ticket-evaluation-ingest@system.invalid",
+    display_name="RAG ticket evaluation ingest",
+)
 
 
 class ServiceError(Exception):
@@ -173,6 +195,224 @@ class EvidenceBrokerClient(Protocol):
 
     async def lookup(self, devrev_work_id: str, *, max_results: int) -> RagEvidenceEnvelope:
         ...
+
+
+@dataclass(frozen=True, slots=True)
+class TicketEvaluationIngestResult:
+    run: TicketEvaluationRun
+    created: bool
+
+
+class TicketEvaluationService:
+    """Durable RAG-run ingestion and retrieval, with bounded DevRev hydration."""
+
+    def __init__(
+        self,
+        *,
+        devrev: DevRevClient,
+        repository: TicketReviewRepository,
+        clock: Callable[[], datetime] = utc_now,
+    ) -> None:
+        self._devrev = devrev
+        self._repo = repository
+        self._clock = clock
+
+    @staticmethod
+    def _system_context(execution_id: str) -> MutationContext:
+        return MutationContext(
+            actor=SYSTEM_INGEST_ACTOR,
+            actor_role=ReviewerRole.ADMIN,
+            request_id=None,
+            idempotency_key=f"rag-evaluation:{execution_id}",
+            reason_code="rag_execution_ingest",
+        )
+
+    async def ingest(self, event: Any) -> TicketEvaluationIngestResult:
+        run, created = await self._repo.persist_ticket_evaluation(event)
+        claim = await self._repo.claim_ticket_evaluation_hydration(run.execution_id)
+        if claim is not None:
+            run = await self._hydrate(claim)
+        else:
+            run = await self._repo.get_ticket_evaluation(run.execution_id)
+        return TicketEvaluationIngestResult(run=run, created=created)
+
+    async def _hydrate(self, claim: EvaluationHydrationClaim) -> TicketEvaluationRun:
+        run = claim.run
+        try:
+            ticket = await self._devrev.get_ticket(run.event.ticket_id)
+        except DevRevError as exc:
+            authorization_denied = isinstance(
+                exc, (DevRevNotFoundError, DevRevScopeError)
+            )
+            # A token/configuration/contract incident says nothing about this
+            # ticket's scope. Keep the durable run quarantined and retry it at
+            # a deliberately slow cadence so a repaired deployment recovers.
+            retryable = not authorization_denied
+            code = _hydration_error_code(exc)
+            next_attempt = None
+            if retryable:
+                if isinstance(exc, (DevRevTransientError, DevRevRateLimitError)):
+                    delay = min(
+                        EVALUATION_HYDRATION_RETRY_CAP_S,
+                        EVALUATION_HYDRATION_RETRY_BASE_S
+                        * (2 ** min(max(run.hydration_attempts - 1, 0), 7)),
+                    )
+                else:
+                    delay = EVALUATION_HYDRATION_SLOW_RETRY_S
+                next_attempt = self._clock() + timedelta(seconds=delay)
+            return await self._repo.record_ticket_evaluation_hydration_failure(
+                run.execution_id,
+                error_code=code,
+                retryable=retryable,
+                next_attempt_at=next_attempt,
+                authorization_denied=authorization_denied,
+                lease_token=claim.lease_token,
+            )
+        return await self._repo.link_ticket_evaluation(
+            run.execution_id,
+            ticket,
+            context=self._system_context(run.execution_id),
+            lease_token=claim.lease_token,
+        )
+
+    async def retry_due_hydrations(self, *, limit: int = 20) -> tuple[int, int]:
+        due = await self._repo.list_due_ticket_evaluation_hydrations(limit=limit)
+        attempted = 0
+        succeeded = 0
+        for run in due:
+            claim = await self._repo.claim_ticket_evaluation_hydration(run.execution_id)
+            if claim is None:
+                continue
+            attempted += 1
+            hydrated = await self._hydrate(claim)
+            if hydrated.hydration_status.value == "succeeded":
+                succeeded += 1
+        return attempted, succeeded
+
+    async def list_runs(
+        self,
+        *,
+        cursor: Optional[str] = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+        filters: Optional[Mapping[str, str]] = None,
+    ) -> CursorPage[TicketEvaluationSummary]:
+        page = await self._repo.list_ticket_evaluations(
+            limit=limit,
+            cursor=cursor,
+            filters=filters,
+        )
+        rows: list[TicketEvaluationSummary] = []
+        for run in page.items:
+            review = None
+            if run.review_id:
+                try:
+                    review = await self._repo.get_review(run.review_id)
+                except ReviewNotFound:
+                    review = None
+            rows.append(TicketEvaluationSummary.of(run, review))
+        return CursorPage[TicketEvaluationSummary](
+            items=rows,
+            next_cursor=page.next_cursor,
+            page_size=page.page_size,
+        )
+
+    async def get_detail(self, execution_id: str) -> TicketEvaluationDetailEnvelope:
+        # This read is deliberately first: a DevRev-only ticket can never be
+        # discovered by guessing its id against the admin route.
+        run = await self._repo.get_ticket_evaluation(execution_id)
+        if run.authorization_status is not DevRevAuthorizationStatus.AUTHORIZED:
+            # Quarantined and denied records share the same external absence.
+            # The durable ingest remains available only to the private retry
+            # plane, and a caller cannot probe whether an out-of-scope id exists.
+            raise EvaluationRunNotFound("no RAG execution exists for that id")
+
+        review = None
+        if run.review_id:
+            try:
+                review = await self._repo.get_review(run.review_id)
+            except ReviewNotFound:
+                review = None
+
+        # Reviewer GETs are pure reads. DevRev scope was validated by the
+        # private hydration plane, whose bounded snapshot is sufficient for a
+        # deterministic detail response and cannot trigger retries here.
+        ticket = run.ticket_detail_snapshot
+        if ticket is None and run.ticket_snapshot is not None:
+            ticket = DevRevTicketDetail.model_validate(
+                run.ticket_snapshot.model_dump(mode="python")
+            )
+        event = run.event
+        structured = event.structured_response
+        routed = structured.get(event.route.value)
+        routed_map = routed if isinstance(routed, Mapping) else structured
+        response = routed_map.get("response")
+        response_map = response if isinstance(response, Mapping) else {}
+        outcome_reason = (
+            response_map.get("outcome_reason")
+            or routed_map.get("outcome_reason")
+            or structured.get("outcome_reason")
+        )
+        gaps: list[str] = []
+        for container, key in (
+            (routed_map, "gaps"),
+            (routed_map, "coverage_gaps"),
+            (response_map, "gaps"),
+            (response_map, "data_gaps"),
+        ):
+            values = container.get(key)
+            if not isinstance(values, list):
+                continue
+            for gap in values:
+                if not isinstance(gap, str):
+                    continue
+                normalized_gap = gap.strip()[:MAX_REASON_LENGTH]
+                if normalized_gap and normalized_gap not in gaps:
+                    gaps.append(normalized_gap)
+                if len(gaps) >= 20:
+                    break
+            if len(gaps) >= 20:
+                break
+        model_metadata = {
+            key: value
+            for key, value in event.retrieval_metadata.items()
+            if key in {"model", "model_name", "model_version", "prompt_version"}
+        }
+        timing_metadata = {
+            key: value
+            for key, value in event.retrieval_metadata.items()
+            if key in {"duration_ms", "latency_ms", "started_at", "completed_at"}
+        }
+        return TicketEvaluationDetailEnvelope(
+            execution=run,
+            review=review,
+            ticket=ticket,
+            generated_answer=event.answer,
+            classification_reasoning=event.classification.reasoning,
+            outcome_reason=(str(outcome_reason)[:20_000] if outcome_reason else None),
+            diagnostics=event.diagnostics,
+            gaps=gaps,
+            source_articles=event.sources,
+            chunk_evidence=event.chunks,
+            model_metadata=model_metadata,
+            timing_metadata=timing_metadata,
+            hydration_status=run.hydration_status,
+            partial=ticket is None,
+            warnings=[],
+        )
+
+
+def _hydration_error_code(exc: DevRevError) -> str:
+    if isinstance(exc, DevRevTransientError):
+        return "devrev_transient"
+    if isinstance(exc, DevRevRateLimitError):
+        return "devrev_rate_limited"
+    if isinstance(exc, (DevRevNotFoundError, DevRevScopeError)):
+        return "devrev_not_found_or_out_of_scope"
+    if isinstance(exc, DevRevAuthenticationError):
+        return "devrev_authentication"
+    if isinstance(exc, DevRevConfigurationError):
+        return "devrev_configuration"
+    return "devrev_unavailable"
 
 
 # =====================================================================
@@ -382,6 +622,29 @@ class TicketReviewService:
         self._page_size = max(1, min(int(page_size), MAX_PAGE_SIZE))
         self._hydration = asyncio.Semaphore(max(1, int(hydration_concurrency)))
         self._candidate_ttl_s = max(1, int(candidate_ttl_s))
+        self._evaluation_service = TicketEvaluationService(
+            devrev=devrev,
+            repository=repository,
+            clock=clock,
+        )
+
+    async def list_evaluation_runs(
+        self,
+        *,
+        cursor: Optional[str] = None,
+        limit: int = DEFAULT_PAGE_SIZE,
+        filters: Optional[Mapping[str, str]] = None,
+    ) -> CursorPage[TicketEvaluationSummary]:
+        return await self._evaluation_service.list_runs(
+            cursor=cursor,
+            limit=limit,
+            filters=filters,
+        )
+
+    async def get_evaluation_detail(
+        self, execution_id: str
+    ) -> TicketEvaluationDetailEnvelope:
+        return await self._evaluation_service.get_detail(execution_id)
 
 
     async def _review_or_none(self, review_id: str) -> Optional[TicketReview]:
@@ -603,11 +866,22 @@ class TicketReviewService:
             raise TicketNotFound("that ticket is not available") from exc
 
         warnings: list[str] = []
-        page, _partial, _cache = await self._timeline_page(
+        page, partial, cache = await self._timeline_page(
             detail, cursor=cursor, warnings=warnings, limit=limit
         )
-        if page is None:  # pragma: no cover - defensive
-            raise TicketNotFound("that ticket's conversation is not available")
+        if page is None:
+            # The ticket was already resolved and authorized above. A timeline
+            # outage is therefore a partial result, not a false 404 that would
+            # imply the persisted execution or DevRev ticket disappeared.
+            return ClassifiedTimelinePage(
+                items=[],
+                messages=[],
+                page_size=limit or self._page_size,
+                partial=partial,
+                warnings=_bounded_warnings(warnings),
+                cache_state=cache,
+                diagnostics=_bounded_warnings(list(self._classifier.diagnostics)),
+            )
         return page
 
     async def _timeline_page(

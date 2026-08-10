@@ -37,7 +37,6 @@ from api.ticket_review_models import (
     CorrelationTrust,
     CursorError,
     ImportState,
-    ImportStatus,
     RemediationBatchItem,
     ResolutionOutcome,
     ReviewerIdentity,
@@ -45,7 +44,6 @@ from api.ticket_review_models import (
     ReviewPatch,
     ReviewResolution,
     ReviewStatus,
-    TicketImport,
     TicketReview,
     VerificationEvidence,
     compute_audit_event_hash,
@@ -66,14 +64,10 @@ from data_pipeline.ticket_review_repository import (
     CONSOLE_CACHE_COLLECTION,
     DEVREV_MESSAGE_CACHE_COLLECTION,
     EVIDENCE_LINKS_SUBCOLLECTION,
-    EXPORTS_COLLECTION,
     GLOBAL_AUDIT_EVENTS_COLLECTION,
     GLOBAL_CHAIN_HEAD_DOC_ID,
     HELD_RETENTION_FIELD,
     IDEMPOTENCY_KEYS_COLLECTION,
-    IMPORT_ROWS_SUBCOLLECTION,
-    IMPORT_STAGING_COLLECTION,
-    IMPORTS_COLLECTION,
     PURGED_TOMBSTONE_KIND,
     RETENTION_FIELD,
     REVIEW_LIST_CURSOR_CONTEXT,
@@ -92,7 +86,6 @@ from data_pipeline.ticket_review_repository import (
     EvidenceCandidateRejected,
     FirestoreTicketReviewBackend,
     IdempotencyConflict,
-    ImportRowSpec,
     InMemoryTicketReviewBackend,
     InvalidBatchTransition,
     InvalidReviewTransition,
@@ -104,7 +97,6 @@ from data_pipeline.ticket_review_repository import (
     ReviewPatchSpec,
     ReviewRepositoryError,
     ReviewVersionConflict,
-    TicketExportSummary,
     TicketReviewRepository,
     UnsupportedFilterCombination,
     canonical_ttl_declarations,
@@ -117,7 +109,7 @@ TEST_CURSOR_KEY = base64.b64decode("MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 SYNTHETIC_DON = "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234"
 OTHER_DON = "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/9999"
 # A title carrying an email and a phone number. It must never reach a durable
-# review, audit event, export, or tombstone -- only TTL cache data.
+# review, audit event, or tombstone -- only TTL cache data.
 SYNTHETIC_TITLE = "Participant leak@example.invalid called +1-555-0100 about 401k"
 
 T0 = datetime(2026, 1, 2, 3, 4, 5, tzinfo=timezone.utc)
@@ -292,6 +284,18 @@ async def _advance_to(repo: TicketReviewRepository, review_id: str, target: Revi
 
 
 class TestReviewCreation:
+    async def test_new_reviews_cannot_write_historical_import_metadata(self, repo):
+        created, _ = await repo.create_or_get_review(
+            _review(
+                import_state=ImportState.REVERSED,
+                legacy_reviewer_display_name="Historical Reviewer",
+            ),
+            context=_context(),
+        )
+
+        assert created.import_state is ImportState.ACTIVE
+        assert created.legacy_reviewer_display_name is None
+
     async def test_create_or_get_review_is_idempotent_by_deterministic_id(self, repo):
         first, created_first = await repo.create_or_get_review(_review(), context=_context())
         second, created_second = await repo.create_or_get_review(
@@ -653,19 +657,6 @@ class TestReviewerAssignment:
 
         assert reassigned.assigned_reviewer == OTHER_REVIEWER
 
-    async def test_csv_reviewer_text_only_reaches_the_legacy_display_field(self, repo):
-        review = await _seed(repo)
-
-        patched = await repo.patch_review(
-            review.review_id,
-            ReviewPatch(legacy_reviewer_display_name="Jane From The Sheet"),
-            expected_version=1,
-            context=ADMIN_CONTEXT,
-        )
-
-        assert patched.legacy_reviewer_display_name == "Jane From The Sheet"
-        assert patched.assigned_reviewer is None
-
     async def test_the_audit_actor_is_independent_of_the_assignee(self, repo):
         review = await _seed(repo)
 
@@ -978,16 +969,6 @@ class TestDevRevMessageCache:
             expected_version=1,
             context=_context(),
         )
-        await repo.create_export(
-            TicketExportSummary(
-                export_id="exp-1",
-                created_by=ADMIN,
-                row_count=1,
-                file_sha256="f" * 64,
-                filter_fingerprint="e" * 64,
-            ),
-            context=ADMIN_CONTEXT,
-        )
 
         durable = json.dumps(
             {
@@ -996,7 +977,6 @@ class TestDevRevMessageCache:
                     REVIEWS_COLLECTION, review.review_id, AUDIT_EVENTS_SUBCOLLECTION
                 ),
                 "global": await backend.dump_collection(GLOBAL_AUDIT_EVENTS_COLLECTION),
-                "exports": await backend.dump_collection(EXPORTS_COLLECTION),
             },
             default=str,
         )
@@ -1338,14 +1318,19 @@ class TestQueryGrammar:
             ReviewListQuery(page_size=0)
         assert ReviewListQuery().page_size == DEFAULT_PAGE_SIZE
 
-    async def test_reversed_imports_are_hidden_from_the_default_queue(self, repo):
+    async def test_historical_reversed_records_are_hidden_from_the_default_queue(
+        self, repo, backend
+    ):
         review = await _seed(repo)
-        await repo.mark_import_state(
-            review.review_id,
-            ImportState.REVERSED,
-            expected_version=1,
-            context=ADMIN_CONTEXT,
-        )
+
+        async def _seed_historical_marker(view):
+            path = (REVIEWS_COLLECTION, review.review_id)
+            stored = await view.get(path)
+            assert stored is not None
+            stored["import_state"] = ImportState.REVERSED.value
+            view.set(path, stored)
+
+        await backend.transact(_seed_historical_marker)
 
         default = await repo.list_reviews(ReviewListQuery())
         explicit = await repo.list_reviews(ReviewListQuery(include_reversed=True))
@@ -2078,180 +2063,6 @@ class TestIdempotency:
 
 
 # =====================================================================
-# 22. Import apply/reverse and global events
-# =====================================================================
-
-
-def _import(**overrides) -> TicketImport:
-    values = {
-        "import_id": "imp-1",
-        "file_sha256": "1" * 64,
-        "plan_sha256": "2" * 64,
-        "created_by": ADMIN,
-        "total_rows": 2,
-    }
-    values.update(overrides)
-    return TicketImport(**values)
-
-
-class TestImportAndExport:
-    async def test_apply_follows_expected_versions_and_preserves_conflicts(self, repo):
-        review = await _seed(repo)
-        stale = await _seed(repo, OTHER_DON, devrev_display_id="TKT-9999")
-        await repo.patch_review(
-            stale.review_id, ReviewPatch(rating=2), expected_version=1, context=_context()
-        )
-        record = await repo.create_import(_import(), context=ADMIN_CONTEXT)
-
-        result = await repo.apply_import_rows(
-            record.import_id,
-            [
-                ImportRowSpec(
-                    row_number=1,
-                    review_id=review.review_id,
-                    expected_review_version=1,
-                    patch=ReviewPatch(topic="imported topic", rating=3),
-                ),
-                ImportRowSpec(
-                    row_number=2,
-                    review_id=stale.review_id,
-                    expected_review_version=1,
-                    patch=ReviewPatch(rating=5),
-                ),
-            ],
-            context=ADMIN_CONTEXT,
-        )
-
-        assert result.applied_rows == 1
-        assert result.conflicted_rows == 1
-        assert (await repo.get_review(review.review_id)).topic == "imported topic"
-        assert (await repo.get_review(stale.review_id)).rating == 2
-        summary = await repo.get_import(record.import_id)
-        assert summary.applied_rows == 1
-        assert summary.conflicted_rows == 1
-        rows = await repo.list_import_rows(record.import_id)
-        assert {row.row_number for row in rows.items} == {1, 2}
-        conflicted = next(row for row in rows.items if row.row_number == 2)
-        assert conflicted.error_code == "review_version_conflict"
-
-    async def test_reversal_never_deletes_history(self, repo, backend):
-        review = await _seed(repo)
-        record = await repo.create_import(_import(total_rows=1), context=ADMIN_CONTEXT)
-        await repo.apply_import_rows(
-            record.import_id,
-            [
-                ImportRowSpec(
-                    row_number=1,
-                    review_id=review.review_id,
-                    expected_review_version=1,
-                    patch=ReviewPatch(rating=4),
-                    created_by_import=True,
-                )
-            ],
-            context=ADMIN_CONTEXT,
-        )
-        applied = await repo.get_review(review.review_id)
-
-        reversal = await repo.reverse_import_rows(
-            record.import_id,
-            [
-                ImportRowSpec(
-                    row_number=1,
-                    review_id=review.review_id,
-                    expected_review_version=applied.version,
-                    patch=ReviewPatch(),
-                    created_by_import=True,
-                )
-            ],
-            context=ADMIN_CONTEXT,
-        )
-
-        assert reversal.reversed_rows == 1
-        reversed_review = await repo.get_review(review.review_id)
-        assert reversed_review.import_state is ImportState.REVERSED
-        assert reversed_review.version == applied.version + 1
-        # History is preserved: nothing is deleted and the ledger grows.
-        assert review.review_id in await backend.dump_collection(REVIEWS_COLLECTION)
-        events = (await repo.list_audit_events(review.review_id)).items
-        assert [event.event_type for event in events][-1] == "review_import_reversed"
-        assert (await repo.verify_audit_chain(review.review_id)).intact is True
-
-    async def test_import_and_export_events_enter_the_global_ledger(self, repo, backend):
-        record = await repo.create_import(_import(), context=ADMIN_CONTEXT)
-        await repo.create_export(
-            TicketExportSummary(
-                export_id="exp-1",
-                created_by=ADMIN,
-                row_count=7,
-                file_sha256="a" * 64,
-                filter_fingerprint="b" * 64,
-            ),
-            context=ADMIN_CONTEXT,
-        )
-
-        page = await repo.list_global_audit_events()
-
-        types = [event.event_type for event in page.items]
-        assert "import_created" in types
-        assert "export_created" in types
-        assert {event.parent_kind for event in page.items} == {"import", "export"}
-        previous = GENESIS_EVENT_HASH
-        for event in page.items:
-            assert event.previous_event_hash == previous
-            assert event.event_hash == compute_audit_event_hash(event)
-            previous = event.event_hash
-        # The chain head bookkeeping document is never returned as an event.
-        assert GLOBAL_CHAIN_HEAD_DOC_ID in await backend.dump_collection(
-            GLOBAL_AUDIT_EVENTS_COLLECTION
-        )
-        assert all(event.event_id != GLOBAL_CHAIN_HEAD_DOC_ID for event in page.items)
-        assert (await repo.verify_global_audit_chain()).intact is True
-        assert record.import_id == "imp-1"
-
-    async def test_staged_import_rows_are_disposable_and_durable_rows_are_not(
-        self, repo, backend, clock
-    ):
-        from api.ticket_review_models import IMPORT_STAGING_TTL_S
-
-        record = await repo.create_import(_import(), context=ADMIN_CONTEXT)
-        await repo.stage_import_rows(
-            record.import_id,
-            [{"row_number": 1, "raw_ticket_id": "TKT-1234", "rating": 3}],
-        )
-
-        staged = await backend.dump_collection(IMPORT_STAGING_COLLECTION)
-        assert staged
-        for doc in staged.values():
-            assert doc[TTL_FIELD] == clock.now + timedelta(seconds=IMPORT_STAGING_TTL_S)
-            assert RETENTION_FIELD not in doc
-
-        imports = await backend.dump_collection(IMPORTS_COLLECTION)
-        assert TTL_FIELD not in imports[record.import_id]
-        assert imports[record.import_id][RETENTION_FIELD] == clock.now + timedelta(
-            days=REVIEW_RETENTION_DAYS
-        )
-
-    async def test_an_import_status_change_follows_the_closed_table(self, repo):
-        record = await repo.create_import(_import(), context=ADMIN_CONTEXT)
-
-        planned = await repo.patch_import(
-            record.import_id,
-            expected_version=record.version,
-            transition=ImportStatus.PLANNED,
-            context=ADMIN_CONTEXT,
-        )
-        assert planned.status is ImportStatus.PLANNED
-
-        with pytest.raises(ReviewRepositoryError):
-            await repo.patch_import(
-                record.import_id,
-                expected_version=planned.version,
-                transition=ImportStatus.REVERSED,
-                context=ADMIN_CONTEXT,
-            )
-
-
-# =====================================================================
 # 23-24. TTL vs retention separation, database selection
 # =====================================================================
 
@@ -2262,7 +2073,6 @@ class TestStorageSeparation:
             {
                 CONSOLE_CACHE_COLLECTION,
                 DEVREV_MESSAGE_CACHE_COLLECTION,
-                IMPORT_STAGING_COLLECTION,
                 IDEMPOTENCY_KEYS_COLLECTION,
             }
         )
@@ -2273,14 +2083,11 @@ class TestStorageSeparation:
         for durable in (
             REVIEWS_COLLECTION,
             BATCHES_COLLECTION,
-            IMPORTS_COLLECTION,
-            EXPORTS_COLLECTION,
             GLOBAL_AUDIT_EVENTS_COLLECTION,
             AUDIT_EVENTS_SUBCOLLECTION,
             EVIDENCE_LINKS_SUBCOLLECTION,
             BATCH_ITEMS_SUBCOLLECTION,
             BATCH_EVENTS_SUBCOLLECTION,
-            IMPORT_ROWS_SUBCOLLECTION,
         ):
             assert durable not in TTL_COLLECTIONS
 
@@ -2331,7 +2138,7 @@ class TestStorageSeparation:
         }
         for collection in TTL_COLLECTIONS:
             assert (collection, TTL_FIELD) in ttls
-        for durable in (REVIEWS_COLLECTION, BATCHES_COLLECTION, EXPORTS_COLLECTION):
+        for durable in (REVIEWS_COLLECTION, BATCHES_COLLECTION):
             assert (durable, TTL_FIELD) not in ttls
             assert (durable, RETENTION_FIELD) not in ttls
         # The ticket handler's declarations survive.
@@ -2730,8 +2537,10 @@ class TestReviewedRegressions:
             assert RETENTION_FIELD not in docs[review_id]
             assert isinstance(docs[review_id][HELD_RETENTION_FIELD], datetime)
 
-    async def test_a_fully_filtered_page_still_advances_the_cursor(self, repo, clock):
-        """One reversed import chunk must not empty the queue.
+    async def test_a_fully_filtered_page_still_advances_the_cursor(
+        self, repo, backend, clock
+    ):
+        """Historical reversed records must not empty the queue.
 
         `import_state` is filtered after the backend limit, so a cursor minted
         from the last KEPT item ends pagination whenever a whole page is
@@ -2748,12 +2557,15 @@ class TestReviewedRegressions:
             don = f"don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/{920 + index}"
             clock.advance(minutes=1)
             review = await _seed(repo, don, devrev_display_id=f"TKT-{920 + index}")
-            await repo.mark_import_state(
-                review.review_id,
-                ImportState.REVERSED,
-                expected_version=review.version,
-                context=ADMIN_CONTEXT,
-            )
+
+            async def _seed_historical_marker(view, review_id=review.review_id):
+                path = (REVIEWS_COLLECTION, review_id)
+                stored = await view.get(path)
+                assert stored is not None
+                stored["import_state"] = ImportState.REVERSED.value
+                view.set(path, stored)
+
+            await backend.transact(_seed_historical_marker)
             reversed_ids.append(review.review_id)
 
         seen, cursor = [], None
@@ -2841,38 +2653,6 @@ class TestReviewedRegressions:
                 await repo.list_reviews(ReviewListQuery(devrev_display_id=blank))
             with pytest.raises(ReviewRepositoryError):
                 await repo.find_review_by_display_id(blank)
-
-    async def test_an_import_chunk_applies_every_row_under_one_idempotency_key(self, repo):
-        """A chunk carries ONE Idempotency-Key but fans out per row.
-
-        Reusing the key verbatim made row 1 store a receipt that rows 2..N then
-        collided with, so a 100-row chunk applied exactly one row.
-        """
-        rows = []
-        for index in range(3):
-            don = f"don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/{930 + index}"
-            review = await _seed(repo, don, devrev_display_id=f"TKT-{930 + index}")
-            rows.append(
-                ImportRowSpec(
-                    row_number=index + 1,
-                    review_id=review.review_id,
-                    expected_review_version=review.version,
-                    patch=ReviewPatch(rating=3),
-                )
-            )
-        record = await repo.create_import(_import(total_rows=3), context=ADMIN_CONTEXT)
-        context = _context(ADMIN, ReviewerRole.ADMIN, idempotency_key="apply-chunk-1")
-
-        result = await repo.apply_import_rows(record.import_id, rows, context=context)
-
-        assert result.applied_rows == 3
-        assert result.failed_rows == 0
-        for spec in rows:
-            assert (await repo.get_review(spec.review_id)).rating == 3
-
-        # Retrying the identical chunk must not double-count the counters.
-        replay = await repo.apply_import_rows(record.import_id, rows, context=context)
-        assert replay.applied_rows == 3
 
     async def test_a_bulk_patch_applies_every_spec_under_one_idempotency_key(self, repo):
         specs = []

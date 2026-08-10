@@ -624,6 +624,13 @@ def _strict_int(raw: Any) -> Optional[int]:
     return raw
 
 
+def _visibility_id(raw: Any) -> Optional[int]:
+    """Read a ticket visibility represented as an integer or an ID object."""
+    if isinstance(raw, Mapping):
+        return _strict_int(raw.get("id"))
+    return _strict_int(raw)
+
+
 def _parse_datetime(raw: Any) -> Optional[datetime]:
     """Parse a DevRev ISO-8601 timestamp into an aware UTC datetime.
 
@@ -1571,7 +1578,11 @@ class DevRevClient:
         if part is None or part not in self._allowed_parts:
             return False
         ticket = work.get("ticket")
-        visibility = _strict_int(ticket.get("visibility")) if isinstance(ticket, Mapping) else None
+        nested_ticket: Mapping[str, Any] = ticket if isinstance(ticket, Mapping) else {}
+        raw_visibility = (
+            work.get("visibility") if "visibility" in work else nested_ticket.get("visibility")
+        )
+        visibility = _visibility_id(raw_visibility)
         return visibility is not None and visibility in self._allowed_ticket_visibility
 
     def _assert_in_scope(
@@ -1637,9 +1648,14 @@ class DevRevClient:
 
         raw_ticket = raw.get("ticket")
         ticket: Mapping[str, Any] = raw_ticket if isinstance(raw_ticket, Mapping) else {}
-        source_channel, _ = _clip(_scalar_name(ticket.get("source_channel")), MAX_TOPIC_LENGTH)
+        raw_visibility = raw.get("visibility") if "visibility" in raw else ticket.get("visibility")
+        raw_source_channel = (
+            raw.get("source_channel") if "source_channel" in raw else ticket.get("source_channel")
+        )
+        raw_subtype = raw.get("subtype") if "subtype" in raw else ticket.get("subtype")
+        source_channel, _ = _clip(_scalar_name(raw_source_channel), MAX_TOPIC_LENGTH)
         subtype, _ = _clip(
-            _scalar_name(ticket.get("subtype")) or _scalar_name(raw.get("subtype")),
+            _scalar_name(raw_subtype),
             MAX_TOPIC_LENGTH,
         )
         stage, _ = _clip(_scalar_name(raw.get("stage")), MAX_TOPIC_LENGTH)
@@ -1665,7 +1681,7 @@ class DevRevClient:
             "state": state,
             "severity": severity,
             "applies_to_part": applies_to_part,
-            "ticket_visibility": _strict_int(ticket.get("visibility")),
+            "ticket_visibility": _visibility_id(raw_visibility),
             "source_channel": source_channel,
             "subtype": subtype,
             "object_version": object_version,

@@ -144,6 +144,61 @@ function observedChunks(chunks) {
   return wrap;
 }
 
+function executionSource(source, index) {
+  const value = typeof source === "string" ? { articleId: source } : source ?? {};
+  const item = el("li", { className: "evidence-record", attrs: { "data-kind": "source" } });
+  item.appendChild(el("p", { className: "audit-type", text: `Source article ${index + 1}` }));
+  item.appendChild(
+    grid([
+      definitionRow("Article id", value.articleId ?? value.id),
+      definitionRow("Title", value.title),
+      definitionRow("Section", value.section),
+      definitionRow("Relevance", value.relevance ?? value.maxScore),
+    ])
+  );
+  return item;
+}
+
+function executionChunk(chunk, index) {
+  const value = chunk ?? {};
+  const contentHash = value.contentHash;
+  const preview = value.preview;
+  const item = el("li", { className: "evidence-record", attrs: { "data-kind": "chunk" } });
+  item.appendChild(el("p", { className: "audit-type", text: `Retrieved chunk ${index + 1}` }));
+  item.appendChild(
+    grid([
+      definitionRow("Article id", value.articleId),
+      definitionRow("Chunk id", value.chunkId),
+      definitionRow("Score", value.score),
+      definitionRow("Content hash", digest(contentHash), { full: contentHash ?? "" }),
+      definitionRow("Bounded preview", preview),
+    ])
+  );
+  return item;
+}
+
+/** Render the bounded sourceArticles and chunkEvidence captured with a run. */
+export function renderExecutionEvidence(sourceList, chunkList, execution) {
+  const sourceArticles = Array.isArray(execution?.sourceArticles)
+    ? execution.sourceArticles
+    : [];
+  const chunkEvidence = Array.isArray(execution?.chunkEvidence)
+    ? execution.chunkEvidence
+    : [];
+  replaceChildren(
+    sourceList,
+    sourceArticles.length === 0
+      ? [el("li", { text: "No source articles were recorded." })]
+      : sourceArticles.slice(0, CHUNK_LIST_LIMIT).map(executionSource)
+  );
+  replaceChildren(
+    chunkList,
+    chunkEvidence.length === 0
+      ? [el("li", { text: "No bounded chunk evidence was recorded." })]
+      : chunkEvidence.slice(0, CHUNK_LIST_LIMIT).map(executionChunk)
+  );
+}
+
 /**
  * One sanitized execution record, showing only the fields it actually carries.
  *

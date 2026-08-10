@@ -37,6 +37,16 @@ from tests.support import tickets_console_fixture_app as fixture
 CONSOLE_ORIGIN = fixture.CONSOLE_ORIGIN
 
 
+@pytest.fixture(autouse=True)
+def fixture_environment(monkeypatch):
+    """Install the refusing guards for one test, then restore the process."""
+    fixture.prepare_fixture_environment()
+    try:
+        yield
+    finally:
+        fixture.remove_egress_guard()
+
+
 @pytest.fixture
 def client() -> TestClient:
     app = fixture.build_fixture_app()
@@ -68,7 +78,7 @@ def _write_headers(client: TestClient, *, idempotency: str) -> dict[str, str]:
 
 class TestIsolation:
 
-    def test_importing_the_module_activates_fixture_mode(self):
+    def test_the_test_harness_activates_fixture_mode(self):
         assert fixture.fixture_mode_active()
         assert os.environ[fixture.FIXTURE_MODE_ENV] == fixture.FIXTURE_MODE_VALUE
 
@@ -77,7 +87,7 @@ class TestIsolation:
         assert not os.path.exists(os.environ["GOOGLE_APPLICATION_CREDENTIALS"])
         assert os.environ["GCE_METADATA_HOST"] == fixture.DEAD_METADATA_ENDPOINT
 
-    def test_the_egress_guard_is_installed_at_import(self):
+    def test_the_test_harness_installs_the_egress_guard(self):
         assert fixture.egress_guard_installed()
 
     @pytest.mark.parametrize(
@@ -196,7 +206,7 @@ class TestInjectedIdentity:
         assert body["csrf_token"]
 
     def test_the_feature_flags_report_the_published_and_absent_stages(self, client):
-        """Stage 8 is configured in this fixture; Stage 9 is still absent.
+        """Remediation is configured; retired file interchange has no flag.
 
         The remediation flag turned true when the fixture gained the repository
         contract the prompt endpoint renders from. It is a real branch, not a
@@ -205,19 +215,23 @@ class TestInjectedIdentity:
         """
         flags = client.get(f"{API_PREFIX}/session").json()["feature_flags"]
         assert flags["remediation_enabled"] is True
-        assert flags["import_export_enabled"] is False
+        assert "import_export_enabled" not in flags
 
     def test_the_role_is_configurable_for_a_permission_check(self, monkeypatch):
         monkeypatch.setenv(fixture.FIXTURE_ROLE_ENV, "viewer")
         app = fixture.build_fixture_app()
         with TestClient(app, raise_server_exceptions=False) as viewer:
             assert viewer.get(f"{API_PREFIX}/session").json()["role"] == "viewer"
-            created = viewer.post(
-                f"{API_PREFIX}/tickets/FIX-107/review",
-                headers=_write_headers(viewer, idempotency="fixture-viewer-0001"),
-                json={},
+            review = viewer.get(f"{API_PREFIX}/reviews?page_size=1").json()["items"][0]
+            refused = viewer.patch(
+                f"{API_PREFIX}/reviews/{review['review_id']}",
+                headers={
+                    **_write_headers(viewer, idempotency="fixture-viewer-0001"),
+                    "If-Match": f'"v{review["version"]}"',
+                },
+                json={"comments": "A viewer must not edit this RAG-linked review."},
             )
-            assert created.status_code == 403
+            assert refused.status_code == 403
 
     def test_the_fixture_status_route_reports_the_parent_nonce(self, monkeypatch, client):
         monkeypatch.setenv(fixture.FIXTURE_NONCE_ENV, "a" * 64)
@@ -292,28 +306,14 @@ class TestSeededData:
         assert resolved
         assert resolved[0]["resolution"]["no_change_reason"]
 
-    def test_the_live_list_holds_every_synthetic_ticket(self, client):
+    def test_only_tickets_with_a_persisted_rag_execution_are_visible(self, client):
         page = client.get(f"{API_PREFIX}/tickets?page_size=100").json()
-        assert len(page["items"]) == fixture.FIXTURE_TICKET_COUNT
-
-    def test_every_live_page_mixes_imported_and_unimported_rows(self, client):
-        """Interleaving is the point: both row states are reachable everywhere.
-
-        If reviews filled the first block instead, page one would be entirely
-        imported and the import action would be unreachable without paging.
-        """
-        cursor = None
-        pages = 0
-        while pages < 10:
-            headers = {} if cursor is None else {CURSOR_HEADER: cursor}
-            page = client.get(f"{API_PREFIX}/tickets?page_size=10", headers=headers).json()
-            assert any(item["review"] is None for item in page["items"])
-            assert any(item["review"] is not None for item in page["items"])
-            pages += 1
-            cursor = page["next_cursor"]
-            if cursor is None:
-                break
-        assert pages > 1
+        expected = {
+            f"FIX-{100 + index}" for index in fixture.seeded_ticket_indexes()
+        }
+        visible = {item["devrev_display_id"] for item in page["items"]}
+        assert visible == expected
+        assert len(visible) < fixture.FIXTURE_TICKET_COUNT
 
     def test_no_seeded_string_looks_like_a_real_participant(self, client):
         text = client.get(f"{API_PREFIX}/tickets?page_size=100").text
@@ -327,44 +327,6 @@ class TestSeededData:
 
 
 class TestPagination:
-
-    def test_the_live_list_pages_forward_and_back(self, client):
-        first = client.get(f"{API_PREFIX}/tickets?page_size=3").json()
-        assert [item["ticket"]["devrev_display_id"] for item in first["items"]] == [
-            "FIX-100",
-            "FIX-101",
-            "FIX-102",
-        ]
-        assert first["prev_cursor"] is None
-        second = client.get(
-            f"{API_PREFIX}/tickets?page_size=3&mode=after",
-            headers={CURSOR_HEADER: first["next_cursor"]},
-        ).json()
-        assert [item["ticket"]["devrev_display_id"] for item in second["items"]] == [
-            "FIX-103",
-            "FIX-104",
-            "FIX-105",
-        ]
-        back = client.get(
-            f"{API_PREFIX}/tickets?page_size=3&mode=before",
-            headers={CURSOR_HEADER: second["prev_cursor"]},
-        ).json()
-        assert [item["ticket"]["devrev_display_id"] for item in back["items"]] == [
-            "FIX-100",
-            "FIX-101",
-            "FIX-102",
-        ]
-
-    def test_a_forward_token_is_refused_in_the_backward_direction(self, client):
-        """The direction is bound into the sealed token, so this is a 422."""
-        first = client.get(f"{API_PREFIX}/tickets?page_size=3").json()
-        refused = client.get(
-            f"{API_PREFIX}/tickets?page_size=3&mode=before",
-            headers={CURSOR_HEADER: first["next_cursor"]},
-        )
-        assert refused.status_code == 422
-        assert refused.json()["error"]["code"] == "CURSOR_REJECTED"
-
     def test_a_cursor_in_the_url_is_refused(self, client):
         refused = client.get(f"{API_PREFIX}/tickets?cursor=anything")
         assert refused.status_code == 422
@@ -385,21 +347,17 @@ class TestPagination:
 
     def test_the_interface_page_size_leaves_more_than_one_page_of_each_source(self, client):
         """What makes the browser check able to exercise both controls."""
-        live = client.get(f"{API_PREFIX}/tickets?page_size={fixture.UI_PAGE_SIZE}").json()
+        executions = client.get(
+            f"{API_PREFIX}/tickets?page_size={fixture.UI_PAGE_SIZE}"
+        ).json()
         queue = client.get(f"{API_PREFIX}/reviews?page_size={fixture.UI_PAGE_SIZE}").json()
-        assert live["next_cursor"] is not None
+        assert executions["next_cursor"] is not None
         assert queue["next_cursor"] is not None
 
     def test_an_exact_identifier_returns_a_singleton_with_no_cursors(self, client):
-        page = client.get(f"{API_PREFIX}/tickets?ticket_id=FIX-101").json()
-        assert [item["ticket"]["devrev_display_id"] for item in page["items"]] == ["FIX-101"]
+        page = client.get(f"{API_PREFIX}/tickets?devrev_display_id=FIX-100").json()
+        assert [item["devrev_display_id"] for item in page["items"]] == ["FIX-100"]
         assert page["next_cursor"] is None and page["prev_cursor"] is None
-
-    def test_an_exact_identifier_combined_with_a_filter_is_refused(self, client):
-        """Sent as asked, refused by the server; never quietly narrowed."""
-        refused = client.get(f"{API_PREFIX}/tickets?ticket_id=FIX-101&stage=resolved")
-        assert refused.status_code == 422
-        assert refused.json()["error"]["code"] == "UNSUPPORTED_FILTER_COMBINATION"
 
     def test_an_exact_queue_identifier_combined_with_a_facet_is_refused(self, client):
         refused = client.get(
@@ -428,7 +386,7 @@ class TestScenarios:
         ],
     )
     def test_each_failure_arrives_in_the_one_envelope(self, client, scenario, status, code):
-        response = client.get(f"{API_PREFIX}/tickets?stage={scenario}")
+        response = client.get(f"{API_PREFIX}/tickets?execution_id={scenario}")
         assert response.status_code == status
         body = response.json()
         assert set(body) == {"error"}
@@ -436,23 +394,29 @@ class TestScenarios:
         assert body["error"]["request_id"]
 
     def test_our_own_rate_limit_always_carries_retry_after(self, client):
-        response = client.get(f"{API_PREFIX}/tickets?stage={fixture.SCENARIO_RATE_LIMITED}")
+        response = client.get(
+            f"{API_PREFIX}/tickets?execution_id={fixture.SCENARIO_RATE_LIMITED}"
+        )
         assert response.headers["Retry-After"] == "8"
 
     def test_the_upstream_rate_limit_may_omit_retry_after(self, client):
         """Which is why the interface needs a fallback backoff of its own."""
         response = client.get(
-            f"{API_PREFIX}/tickets?stage={fixture.SCENARIO_UPSTREAM_RATE_LIMITED}"
+            f"{API_PREFIX}/tickets?execution_id={fixture.SCENARIO_UPSTREAM_RATE_LIMITED}"
         )
         assert "retry-after" not in {name.lower() for name in response.headers}
 
     def test_the_empty_scenario_is_an_empty_page_not_an_error(self, client):
-        page = client.get(f"{API_PREFIX}/tickets?stage={fixture.SCENARIO_EMPTY}").json()
+        page = client.get(
+            f"{API_PREFIX}/tickets?execution_id={fixture.SCENARIO_EMPTY}"
+        ).json()
         assert page["items"] == []
         assert page["partial"] is False
 
     def test_the_partial_scenario_says_so(self, client):
-        page = client.get(f"{API_PREFIX}/tickets?stage={fixture.SCENARIO_PARTIAL}").json()
+        page = client.get(
+            f"{API_PREFIX}/tickets?execution_id={fixture.SCENARIO_PARTIAL}"
+        ).json()
         assert page["partial"] is True
         assert page["warnings"] == ["devrev_unavailable"]
         assert page["items"], "a partial page still carries what it could read"
@@ -464,7 +428,9 @@ class TestScenarios:
         assert response.status_code == 503
 
     def test_every_security_header_survives_a_scenario_failure(self, client):
-        response = client.get(f"{API_PREFIX}/tickets?stage={fixture.SCENARIO_PROTOCOL}")
+        response = client.get(
+            f"{API_PREFIX}/tickets?execution_id={fixture.SCENARIO_PROTOCOL}"
+        )
         assert response.headers["Content-Security-Policy"]
         assert response.headers["Cache-Control"] == "no-store"
 
@@ -476,56 +442,93 @@ class TestScenarios:
 
 class TestWrites:
 
-    def test_an_unimported_ticket_can_be_imported(self, client):
-        created = client.post(
+    @staticmethod
+    def _review(client) -> dict:
+        return client.get(f"{API_PREFIX}/reviews?page_size=1").json()["items"][0]
+
+    def test_a_devrev_only_ticket_cannot_be_added_manually(self, client):
+        refused = client.post(
             f"{API_PREFIX}/tickets/FIX-107/review",
-            headers=_write_headers(client, idempotency="fixture-import-0001"),
+            headers=_write_headers(client, idempotency="fixture-review-0001"),
             json={},
         )
-        assert created.status_code == 201, created.text
-        assert created.headers["ETag"] == '"v1"'
-        listed = client.get(f"{API_PREFIX}/reviews?page_size=25").json()["items"]
-        assert "FIX-107" in {item["devrev_display_id"] for item in listed}
+        assert refused.status_code == 404
+        page = client.get(
+            f"{API_PREFIX}/tickets?devrev_display_id=FIX-107"
+        ).json()
+        assert page["items"] == []
 
     def test_a_write_without_the_csrf_token_is_refused(self, client):
-        headers = _write_headers(client, idempotency="fixture-import-0002")
+        review = self._review(client)
+        headers = _write_headers(client, idempotency="fixture-review-0002")
         headers.pop(CSRF_HEADER)
+        headers["If-Match"] = f'"v{review["version"]}"'
         assert (
-            client.post(f"{API_PREFIX}/tickets/FIX-107/review", headers=headers, json={}).status_code
+            client.patch(
+                f"{API_PREFIX}/reviews/{review['review_id']}",
+                headers=headers,
+                json={"comments": "This write must be refused."},
+            ).status_code
             == 403
         )
 
     def test_a_write_from_another_origin_is_refused(self, client):
-        headers = _write_headers(client, idempotency="fixture-import-0003")
+        review = self._review(client)
+        headers = _write_headers(client, idempotency="fixture-review-0003")
         headers[ORIGIN_HEADER] = "https://attacker.example"
+        headers["If-Match"] = f'"v{review["version"]}"'
         assert (
-            client.post(f"{API_PREFIX}/tickets/FIX-107/review", headers=headers, json={}).status_code
+            client.patch(
+                f"{API_PREFIX}/reviews/{review['review_id']}",
+                headers=headers,
+                json={"comments": "This write must be refused."},
+            ).status_code
             == 403
         )
 
     def test_a_write_with_no_origin_at_all_is_refused(self, client):
-        headers = _write_headers(client, idempotency="fixture-import-0004")
+        review = self._review(client)
+        headers = _write_headers(client, idempotency="fixture-review-0004")
         headers.pop(ORIGIN_HEADER)
+        headers["If-Match"] = f'"v{review["version"]}"'
         assert (
-            client.post(f"{API_PREFIX}/tickets/FIX-107/review", headers=headers, json={}).status_code
+            client.patch(
+                f"{API_PREFIX}/reviews/{review['review_id']}",
+                headers=headers,
+                json={"comments": "This write must be refused."},
+            ).status_code
             == 403
         )
 
     def test_a_write_without_an_idempotency_key_is_refused(self, client):
-        headers = _write_headers(client, idempotency="fixture-import-0005")
+        review = self._review(client)
+        headers = _write_headers(client, idempotency="fixture-review-0005")
         headers.pop(IDEMPOTENCY_HEADER)
-        response = client.post(f"{API_PREFIX}/tickets/FIX-107/review", headers=headers, json={})
+        headers["If-Match"] = f'"v{review["version"]}"'
+        response = client.patch(
+            f"{API_PREFIX}/reviews/{review['review_id']}",
+            headers=headers,
+            json={"comments": "This write must be refused."},
+        )
         assert response.status_code == 400
         assert response.json()["error"]["code"] == "IDEMPOTENCY_KEY_REQUIRED"
 
-    def test_a_repeated_import_is_idempotent(self, client):
-        headers = _write_headers(client, idempotency="fixture-import-0006")
-        first = client.post(f"{API_PREFIX}/tickets/FIX-109/review", headers=headers, json={})
-        assert first.status_code == 201
-        again = client.post(
-            f"{API_PREFIX}/tickets/FIX-109/review",
-            headers=_write_headers(client, idempotency="fixture-import-0007"),
-            json={},
+    def test_a_review_patch_replay_is_idempotent(self, client):
+        review = self._review(client)
+        headers = {
+            **_write_headers(client, idempotency="fixture-review-0006"),
+            "If-Match": f'"v{review["version"]}"',
+        }
+        first = client.patch(
+            f"{API_PREFIX}/reviews/{review['review_id']}",
+            headers=headers,
+            json={"comments": "Synthetic idempotent review update."},
         )
-        assert again.status_code == 201
-        assert again.json()["review_id"] == first.json()["review_id"]
+        assert first.status_code == 200, first.text
+        again = client.patch(
+            f"{API_PREFIX}/reviews/{review['review_id']}",
+            headers=headers,
+            json={"comments": "Synthetic idempotent review update."},
+        )
+        assert again.status_code == 200
+        assert again.json() == first.json()

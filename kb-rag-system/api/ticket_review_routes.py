@@ -4,7 +4,8 @@ Scope
 -----
 Session, live DevRev ticket list/detail/timeline, durable review
 create/list/detail/patch, audit-event list, and evidence-link list/create/
-delete. Remediation batches arrive in Stage 8 and CSV import/export in Stage 9;
+delete. Remediation batches arrive in Stage 8; file interchange is deliberately
+outside the product contract.
 they are deliberately **absent** rather than stubbed, because a route that exists
 and returns "not implemented" is indistinguishable in OpenAPI from one that
 works, and clients build against OpenAPI.
@@ -67,10 +68,13 @@ from api.ticket_review_models import (
     CursorError,
     CursorPage,
     DeleteEvidenceLinkRequest,
+    DevRevHydrationStatus,
     DevRevTicketFilters,
     DevRevTicketWithReviewSummary,
     ErrorBody,
     ErrorResponse,
+    EvaluationRoute,
+    EvaluationStatus,
     EvidenceLink,
     ExtendLeaseRequest,
     HeartbeatBatchRequest,
@@ -94,6 +98,8 @@ from api.ticket_review_models import (
     StalePreconditionError,
     StartVerificationRequest,
     TicketDetailEnvelope,
+    TicketEvaluationDetailEnvelope,
+    TicketEvaluationSummary,
     TicketReview,
     ClassifiedTimelinePage,
     batch_view,
@@ -149,6 +155,7 @@ from data_pipeline.ticket_review_repository import (
     ReviewIdentityConflict,
     ReviewListQuery,
     ReviewNotFound,
+    EvaluationRunNotFound,
     ReviewRepositoryError,
     ReviewVersionConflict,
     UnsupportedFilterCombination,
@@ -209,6 +216,17 @@ CURSOR_CONTEXT_TIMELINE = "tickets:console:timeline:v1"
 #: a remote cursor cannot be smuggled into a URL, where it would be logged.
 FORBIDDEN_CURSOR_PARAMS = frozenset(
     {"cursor", "next_cursor", "prev_cursor", "page_token", "next", "before", "after"}
+)
+TICKET_EVALUATION_QUERY_PARAMS = frozenset(
+    {
+        "execution_id",
+        "devrev_display_id",
+        "route",
+        "status",
+        "hydration_status",
+        "review_status",
+        "page_size",
+    }
 )
 
 #: Per-subject fixed-window request bounds. A console user cannot legitimately
@@ -356,6 +374,7 @@ def map_exception(exc: BaseException) -> ConsoleHTTPError:
         exc,
         (
             TicketNotFound,
+            EvaluationRunNotFound,
             ReviewNotFound,
             BatchNotFound,
             DevRevNotFoundError,
@@ -733,6 +752,33 @@ def validated_ticket_ref(raw: str) -> str:
     return value.upper()
 
 
+def validated_execution_id(raw: str) -> str:
+    """Accept legacy and invocation-scoped producer identities.
+
+    New IDs use ``job_id-e{lease_epoch}-a{attempt}:inquiry_index``; the
+    existing bounded opaque-path rules already admit that URL-safe shape.
+    """
+    value = (raw or "").strip()
+    job_id, separator, index = value.rpartition(":")
+    if (
+        separator != ":"
+        or not job_id
+        or len(value) > 160
+        or not index.isdecimal()
+        or any(
+            char
+            not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-"
+            for char in job_id
+        )
+    ):
+        raise ConsoleHTTPError(
+            status.HTTP_422_UNPROCESSABLE_ENTITY,
+            CODE_VALIDATION_FAILED,
+            "that execution id is not usable",
+        )
+    return value
+
+
 def filter_fingerprint(payload: Mapping[str, Any]) -> str:
     """A stable digest of the filter set a cursor was minted for."""
     canonical = json.dumps(
@@ -853,7 +899,6 @@ async def get_session(
             # deployment without an agent identity and a configured repository
             # could only freeze work that nothing is able to claim.
             "remediation_enabled": _remediation_enabled(settings),
-            "import_export_enabled": False,
             "synthetic_verification": bool(settings.ENABLE_SYNTHETIC_VERIFICATION),
             "classification_configured": not classification_diagnostics(settings),
         },
@@ -861,15 +906,15 @@ async def get_session(
 
 
 # ---------------------------------------------------------------------------
-# Live DevRev tickets
+# RAG-produced ticket evaluations
 # ---------------------------------------------------------------------------
 
 
 @router.get(
     "/tickets",
-    response_model=CursorPage[DevRevTicketWithReviewSummary],
+    response_model=CursorPage[TicketEvaluationSummary],
     responses={422: {"model": ErrorResponse}, 429: {"model": ErrorResponse}},
-    summary="One live works.list page overlaid with review summaries",
+    summary="One page of persisted ticket-associated RAG executions",
 )
 async def list_tickets(
     request: Request,
@@ -879,83 +924,64 @@ async def list_tickets(
     cursor_key: Annotated[bytes, Depends(get_cursor_key)],
     clock: Annotated[Callable[[], datetime], Depends(get_clock)],
     page_cursor: CursorHeader = None,
-    ticket_id: Annotated[Optional[str], Query(max_length=MAX_DISPLAY_ID_LENGTH)] = None,
-    mode: Annotated[Literal["after", "before"], Query()] = "after",
     page_size: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
-    stage: Annotated[Optional[list[str]], Query()] = None,
-    state: Annotated[Optional[list[str]], Query()] = None,
-    applies_to_part: Annotated[Optional[list[str]], Query()] = None,
-    owned_by: Annotated[Optional[list[str]], Query()] = None,
-    created_by: Annotated[Optional[list[str]], Query()] = None,
-    reported_by: Annotated[Optional[list[str]], Query()] = None,
-    tags: Annotated[Optional[list[str]], Query()] = None,
-    ticket_source_channel: Annotated[Optional[list[str]], Query()] = None,
-    ticket_subtype: Annotated[Optional[list[str]], Query()] = None,
-    ticket_visibility: Annotated[Optional[list[int]], Query()] = None,
-    created_date: Annotated[Optional[str], Query(max_length=80)] = None,
-    modified_date: Annotated[Optional[str], Query(max_length=80)] = None,
-) -> CursorPage[DevRevTicketWithReviewSummary]:
-    """List live tickets, or resolve exactly one by display id.
-
-    An exact ``ticket_id`` is mutually exclusive with every list filter: it takes
-    the scoped ``works.get`` path because ``works.list`` has no display-id filter
-    in the allowlisted surface, so combining them would silently ignore one half
-    of the request.
-    """
+    execution_id_filter: Annotated[
+        Optional[str], Query(alias="execution_id", min_length=3, max_length=160)
+    ] = None,
+    devrev_display_id: Annotated[
+        Optional[str], Query(min_length=3, max_length=MAX_DISPLAY_ID_LENGTH)
+    ] = None,
+    route: Annotated[Optional[EvaluationRoute], Query()] = None,
+    run_status: Annotated[Optional[EvaluationStatus], Query(alias="status")] = None,
+    hydration_status: Annotated[Optional[DevRevHydrationStatus], Query()] = None,
+    review_status: Annotated[Optional[ReviewStatus], Query()] = None,
+) -> CursorPage[TicketEvaluationSummary]:
+    """List the internal execution ledger; DevRev discovery is never used."""
     _no_store(response)
     _assert_no_raw_cursor(request)
     _rate_limited(request, reviewer, write=False)
 
-    filters = DevRevTicketFilters(
-        stage=stage or [],
-        state=state or [],
-        applies_to_part=applies_to_part or [],
-        owned_by=owned_by or [],
-        created_by=created_by or [],
-        reported_by=reported_by or [],
-        tags=tags or [],
-        ticket_source_channel=ticket_source_channel or [],
-        ticket_subtype=ticket_subtype or [],
-        ticket_visibility=ticket_visibility or [],
-        created_date=created_date,
-        modified_date=modified_date,
+    unknown_query = set(request.query_params) - TICKET_EVALUATION_QUERY_PARAMS
+    if unknown_query:
+        raise UnsupportedQuery(
+            "unsupported evaluation query fields: " + ", ".join(sorted(unknown_query))
+        )
+    filters: dict[str, str] = {}
+    if execution_id_filter is not None:
+        filters["execution_id"] = validated_execution_id(execution_id_filter)
+    if devrev_display_id is not None:
+        display_id = validated_ticket_ref(devrev_display_id)
+        if display_id.startswith("don:"):
+            raise UnsupportedQuery("devrev_display_id requires a display id")
+        filters["devrev_display_id"] = display_id
+    if route is not None:
+        filters["route"] = route.value
+    if run_status is not None:
+        filters["status"] = run_status.value
+    if hydration_status is not None:
+        filters["hydration_status"] = hydration_status.value
+    if review_status is not None:
+        filters["review_status"] = review_status.value
+
+    fingerprint = filter_fingerprint(
+        {"collection": "ticket_evaluations", "filters": filters, "version": 1}
     )
-    has_filters = any(filters.model_dump(exclude_none=True).values())
-
-    if ticket_id is not None:
-        if has_filters or page_cursor is not None:
-            raise ConsoleHTTPError(
-                status.HTTP_422_UNPROCESSABLE_ENTITY,
-                CODE_UNSUPPORTED_FILTER,
-                "an exact ticket id cannot be combined with list filters or a cursor",
-            )
-        page = await service.get_live_ticket_by_display_id(
-            validated_ticket_ref(ticket_id), reviewer.identity
-        )
-        return _rewrapped_ticket_page(
-            page,
-            cursor_key=cursor_key,
-            fingerprint="exact",
-            subject_hash=reviewer.subject_hash,
-            now=clock(),
-            singleton=True,
-        )
-
-    fingerprint = filter_fingerprint(filters.model_dump(mode="json", exclude_none=True))
-    remote_cursor: Optional[str] = None
+    repository_cursor: Optional[str] = None
     if page_cursor is not None:
-        remote_cursor = open_console_cursor(
+        repository_cursor = open_console_cursor(
             cursor_key,
             page_cursor,
             context=CURSOR_CONTEXT_TICKETS,
-            direction=mode,
+            direction="after",
             subject_hash=reviewer.subject_hash,
             fingerprint=fingerprint,
             now=clock(),
         )
 
-    page = await service.list_live_tickets(
-        filters, cursor=remote_cursor, mode=mode, limit=page_size
+    page = await service.list_evaluation_runs(
+        cursor=repository_cursor,
+        limit=page_size,
+        filters=filters,
     )
     return _rewrapped_ticket_page(
         page,
@@ -967,94 +993,54 @@ async def list_tickets(
 
 
 def _rewrapped_ticket_page(
-    page: CursorPage[DevRevTicketWithReviewSummary],
+    page: CursorPage[TicketEvaluationSummary],
     *,
     cursor_key: bytes,
     fingerprint: str,
     subject_hash: str,
     now: datetime,
-    singleton: bool = False,
-) -> CursorPage[DevRevTicketWithReviewSummary]:
-    """Replace remote cursors with bound console tokens.
-
-    A singleton exact-id result gets no cursors at all: there is nothing to page
-    through, and offering one would invite a pointless second call.
-    """
-    if singleton:
-        return page.model_copy(update={"next_cursor": None, "prev_cursor": None})
-    updates: dict[str, Any] = {}
-    for field, direction in (("next_cursor", "after"), ("prev_cursor", "before")):
-        remote = getattr(page, field, None)
-        updates[field] = (
+) -> CursorPage[TicketEvaluationSummary]:
+    """Bind the repository's opaque cursor to this reviewer and collection."""
+    repository_cursor = page.next_cursor
+    next_cursor = (
             seal_console_cursor(
                 cursor_key,
                 context=CURSOR_CONTEXT_TICKETS,
-                direction=direction,
+                direction="after",
                 subject_hash=subject_hash,
                 fingerprint=fingerprint,
-                remote_cursor=remote,
+                remote_cursor=repository_cursor,
                 now=now,
             )
-            if isinstance(remote, str) and remote
+            if isinstance(repository_cursor, str) and repository_cursor
             else None
         )
-    return page.model_copy(update=updates)
+    return page.model_copy(update={"next_cursor": next_cursor, "prev_cursor": None})
 
 
 @router.get(
-    "/tickets/{ticket_ref}",
-    response_model=TicketDetailEnvelope,
+    "/tickets/{execution_id}",
+    response_model=TicketEvaluationDetailEnvelope,
     responses={404: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},
-    summary="One ticket, its review, one timeline page, and its evidence",
+    summary="One persisted RAG execution with its review and DevRev context",
 )
 async def get_ticket_detail(
     request: Request,
     response: Response,
-    ticket_ref: Annotated[str, Path(max_length=_MAX_TICKET_REF_LENGTH)],
+    execution_id: Annotated[str, Path(min_length=3, max_length=160)],
     reviewer: Annotated[AuthenticatedReviewer, Depends(require_role(ReviewerRole.VIEWER))],
     service: Annotated[Any, Depends(get_service)],
-    cursor_key: Annotated[bytes, Depends(get_cursor_key)],
-    clock: Annotated[Callable[[], datetime], Depends(get_clock)],
-    page_cursor: CursorHeader = None,
-) -> TicketDetailEnvelope:
-    """Hydrate one ticket. A DevRev outage still returns the durable review."""
+ ) -> TicketEvaluationDetailEnvelope:
+    """Require a persisted execution before making any DevRev request."""
     _no_store(response)
     _assert_no_raw_cursor(request)
     _rate_limited(request, reviewer, write=False)
-    reference = validated_ticket_ref(ticket_ref)
-
-    timeline_cursor: Optional[str] = None
-    if page_cursor is not None:
-        timeline_cursor = open_console_cursor(
-            cursor_key,
-            page_cursor,
-            context=CURSOR_CONTEXT_TIMELINE,
-            direction="after",
-            subject_hash=reviewer.subject_hash,
-            fingerprint=filter_fingerprint({"ref": reference}),
-            now=clock(),
-        )
-
-    envelope = await service.get_ticket_detail(
-        reference, reviewer.identity, timeline_cursor=timeline_cursor
-    )
-    if envelope.timeline is None:
-        return envelope
-    return envelope.model_copy(
-        update={
-            "timeline": _rewrapped_timeline(
-                envelope.timeline,
-                cursor_key=cursor_key,
-                reference=reference,
-                subject_hash=reviewer.subject_hash,
-                now=clock(),
-            )
-        }
-    )
+    value = validated_execution_id(execution_id)
+    return await service.get_evaluation_detail(value)
 
 
 @router.get(
-    "/tickets/{ticket_ref}/timeline",
+    "/tickets/{execution_id}/timeline",
     response_model=ClassifiedTimelinePage,
     responses={404: {"model": ErrorResponse}, 502: {"model": ErrorResponse}},
     summary="One bounded, forward-only timeline page",
@@ -1062,7 +1048,7 @@ async def get_ticket_detail(
 async def get_ticket_timeline(
     request: Request,
     response: Response,
-    ticket_ref: Annotated[str, Path(max_length=_MAX_TICKET_REF_LENGTH)],
+    execution_id: Annotated[str, Path(min_length=3, max_length=160)],
     reviewer: Annotated[AuthenticatedReviewer, Depends(require_role(ReviewerRole.VIEWER))],
     service: Annotated[Any, Depends(get_service)],
     cursor_key: Annotated[bytes, Depends(get_cursor_key)],
@@ -1070,7 +1056,7 @@ async def get_ticket_timeline(
     page_cursor: CursorHeader = None,
     page_size: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
 ) -> ClassifiedTimelinePage:
-    """Page a conversation forward only.
+    """Page a conversation only after proving the RAG execution exists.
 
     DevRev's timeline pagination has no backward mode in the allowlisted surface,
     so there is no ``before`` direction to mint and none is accepted.
@@ -1078,8 +1064,10 @@ async def get_ticket_timeline(
     _no_store(response)
     _assert_no_raw_cursor(request)
     _rate_limited(request, reviewer, write=False)
-    reference = validated_ticket_ref(ticket_ref)
-    fingerprint = filter_fingerprint({"ref": reference})
+    execution_id = validated_execution_id(execution_id)
+    detail = await service.get_evaluation_detail(execution_id)
+    reference = detail.execution.devrev_work_id or detail.execution.event.ticket_id
+    fingerprint = filter_fingerprint({"execution_id": execution_id})
 
     remote_cursor: Optional[str] = None
     if page_cursor is not None:
@@ -1097,7 +1085,7 @@ async def get_ticket_timeline(
     return _rewrapped_timeline(
         page,
         cursor_key=cursor_key,
-        reference=reference,
+        execution_id=execution_id,
         subject_hash=reviewer.subject_hash,
         now=clock(),
     )
@@ -1107,7 +1095,7 @@ def _rewrapped_timeline(
     page: ClassifiedTimelinePage,
     *,
     cursor_key: bytes,
-    reference: str,
+    execution_id: str,
     subject_hash: str,
     now: datetime,
 ) -> ClassifiedTimelinePage:
@@ -1118,7 +1106,7 @@ def _rewrapped_timeline(
             context=CURSOR_CONTEXT_TIMELINE,
             direction="after",
             subject_hash=subject_hash,
-            fingerprint=filter_fingerprint({"ref": reference}),
+            fingerprint=filter_fingerprint({"execution_id": execution_id}),
             remote_cursor=remote,
             now=now,
         )
@@ -1132,53 +1120,6 @@ def _rewrapped_timeline(
 # ---------------------------------------------------------------------------
 # Durable reviews
 # ---------------------------------------------------------------------------
-
-
-@router.post(
-    "/tickets/{ticket_ref}/review",
-    response_model=TicketReview,
-    status_code=status.HTTP_201_CREATED,
-    responses={
-        403: {"model": ErrorResponse},
-        404: {"model": ErrorResponse},
-        409: {"model": ErrorResponse},
-    },
-    summary="Create the durable review for a live ticket, idempotently",
-)
-async def create_review(
-    request: Request,
-    response: Response,
-    ticket_ref: Annotated[str, Path(max_length=_MAX_TICKET_REF_LENGTH)],
-    payload: CreateReviewRequest,
-    reviewer: Annotated[AuthenticatedReviewer, Depends(require_role(ReviewerRole.REVIEWER))],
-    service: Annotated[Any, Depends(get_service)],
-) -> TicketReview:
-    """Seed a review from identifiers, then apply any supplied initial fields.
-
-    The service seeds identifiers only — no DevRev title or body is copied into
-    durable storage. Optional initial fields therefore travel as a second,
-    separately-keyed audited patch rather than being silently dropped, mirroring
-    how the service chains its own correlation update.
-    """
-    _no_store(response)
-    _rate_limited(request, reviewer, write=True)
-    reference = validated_ticket_ref(ticket_ref)
-
-    review = await service.import_review(
-        reference, reviewer.identity, _mutation_context(request, reviewer)
-    )
-
-    seeded = payload.model_dump(exclude_none=True)
-    if seeded:
-        review = await service.patch_review(
-            review.review_id,
-            ReviewPatch(**seeded),
-            review.version,
-            reviewer.identity,
-            _mutation_context(request, reviewer, suffix="seed"),
-        )
-    response.headers["ETag"] = format_etag(review.version)
-    return review
 
 
 @router.get(

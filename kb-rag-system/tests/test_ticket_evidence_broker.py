@@ -635,8 +635,18 @@ class TestBoundaryResponsibilities:
             validate_evidence_broker_settings(settings, env={})
 
         message = str(excinfo.value)
+        assert "GCP_PROJECT" in message
         assert CORRELATION_LOOKUP_KEYRING_ENV in message
         assert "CORRELATION_ALLOWED_KEY_VERSIONS" in message
+
+    def test_the_broker_declares_the_project_consumed_by_its_lifespan(self):
+        settings = EvidenceBrokerSettings(
+            _env_file=None,
+            ENVIRONMENT="local",
+            GCP_PROJECT="synthetic-project",
+        )
+
+        assert settings.GCP_PROJECT == "synthetic-project"
 
     def test_from_settings_builds_only_the_allowed_versions(self):
         settings = EvidenceBrokerSettings(
@@ -707,6 +717,100 @@ class TestBoundaryResponsibilities:
 
 
 class TestBrokerAppBoundary:
+    def test_the_app_does_not_reuse_the_console_database_resolver(self):
+        import ast
+        import pathlib
+
+        source = pathlib.Path("api/tickets_evidence_broker_main.py").read_text()
+        tree = ast.parse(source)
+        imported_names = {
+            alias.name
+            for node in ast.walk(tree)
+            if isinstance(node, ast.ImportFrom)
+            and node.module == "api.tickets_console_config"
+            for alias in node.names
+        }
+
+        assert "resolve_tickets_firestore_database" not in imported_names
+
+    async def test_the_broker_starts_only_against_the_explicit_default_database(self):
+        from unittest.mock import Mock, patch
+
+        from fastapi import FastAPI
+
+        import api.tickets_evidence_broker_main as broker_main
+
+        settings = EvidenceBrokerSettings(
+            _env_file=None,
+            ENVIRONMENT="production",
+            GCP_PROJECT="synthetic-project",
+            FIRESTORE_DATABASE="(default)",
+            CONSOLE_SERVICE_ACCOUNT="console@example.invalid",
+            AUDIENCE="https://broker.example.invalid",
+            CORRELATION_LOOKUP_KEYRING_JSON='{"7": "synthetic-key"}',
+            CORRELATION_ALLOWED_KEY_VERSIONS=[7],
+        )
+        client = Mock()
+        broker = Mock(active_versions=(7,))
+        application = FastAPI()
+
+        with (
+            patch.object(broker_main, "EvidenceBrokerSettings", return_value=settings),
+            patch.object(
+                broker_main,
+                "validate_evidence_broker_settings",
+                return_value=True,
+            ),
+            patch("google.cloud.firestore.AsyncClient", return_value=client) as client_ctor,
+            patch.object(
+                broker_main.TicketEvidenceBroker,
+                "from_settings",
+                return_value=broker,
+            ),
+        ):
+            async with broker_main.lifespan(application):
+                client_ctor.assert_called_once_with(
+                    project="synthetic-project",
+                    database="(default)",
+                )
+
+        client.close.assert_called_once_with()
+
+    async def test_the_broker_rejects_a_named_console_database_before_connecting(self):
+        from unittest.mock import Mock, patch
+
+        from fastapi import FastAPI
+
+        import api.tickets_evidence_broker_main as broker_main
+
+        settings = EvidenceBrokerSettings(
+            _env_file=None,
+            ENVIRONMENT="production",
+            GCP_PROJECT="synthetic-project",
+            FIRESTORE_DATABASE="tickets-console-prod",
+            CONSOLE_SERVICE_ACCOUNT="console@example.invalid",
+            AUDIENCE="https://broker.example.invalid",
+            CORRELATION_LOOKUP_KEYRING_JSON='{"7": "synthetic-key"}',
+            CORRELATION_ALLOWED_KEY_VERSIONS=[7],
+        )
+        client = Mock()
+        application = FastAPI()
+
+        with (
+            patch.object(broker_main, "EvidenceBrokerSettings", return_value=settings),
+            patch.object(
+                broker_main,
+                "validate_evidence_broker_settings",
+                return_value=True,
+            ),
+            patch("google.cloud.firestore.AsyncClient", return_value=client) as client_ctor,
+            pytest.raises(ValueError, match=r"exactly \(default\)"),
+        ):
+            async with broker_main.lifespan(application):
+                pass
+
+        client_ctor.assert_not_called()
+
     def test_the_app_module_imports_no_rag_producer_or_console_machinery(self):
         import ast
         import pathlib

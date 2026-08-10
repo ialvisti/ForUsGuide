@@ -57,4 +57,10 @@ module "production" {
   secret_version_refs   = var.secret_version_refs
   secret_containers     = var.secret_containers
   notification_channels = var.notification_channels
+
+  # The isolated ticket-platform root publishes these values as a signed,
+  # payload-free handoff.  Production never reads that root's state directly.
+  ticket_evaluation_publish_enabled = var.ticket_evaluation_publish_enabled
+  ticket_evaluation_ingest_url      = var.ticket_evaluation_ingest_url
+  ticket_evaluation_ingest_audience = var.ticket_evaluation_ingest_audience
 }

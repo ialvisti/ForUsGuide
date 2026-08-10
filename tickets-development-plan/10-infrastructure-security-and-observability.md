@@ -6,13 +6,20 @@
 > least-privilege Cloud Build workflows after explicit approval; never install
 > global tooling or fall back to a default/legacy service account.
 
-**Goal:** Package the console and evidence broker, declare isolated named
-Firestore databases and direct IAP, prove least privilege and retention, and
-produce reviewed immutable staging artifacts without modifying the existing
-private RAG service or its Terraform provider/state.
+**Goal:** Package the console, private evaluation-ingestion service, and
+evidence broker; wire the RAG worker/reconciler outbox publisher; declare
+isolated named Firestore databases and direct IAP; prove least privilege and
+retention; and produce reviewed immutable staging artifacts without weakening
+the existing private RAG service boundary.
 
-**Architecture:** Two new Cloud Run services are built from separate minimal
-images: `rag-tickets-console` and `tickets-evidence-broker`. Two new Terraform
+**Architecture:** Three Cloud Run roles are built from minimal images:
+`rag-tickets-console`, private `ticket-evaluation-ingest`, and
+`tickets-evidence-broker`. The existing worker persists a
+`ticket_rag_invocations` intent before each RAG effect; completion and outbox
+write are atomic. The reconciler recovers abandoned intents and publishes
+pending/indexed-due bounded events to ingestion with an exact Google OIDC
+audience/principal, independently of ticket-job scanning. Ingestion keeps runs
+quarantined until DevRev validates existence and scope. Two new Terraform
 roots—one per environment—use their own state prefixes and Google provider
 `7.41.0`; existing `platform`, `staging`, and `production` roots remain pinned
 to their reviewed provider. The console owns only its named database. The
@@ -88,8 +95,9 @@ an unreviewed `gcloud builds submit` on this host.
    `-lockfile=readonly` after the lock-generation gate.
 4. Environment roots uniquely own:
    - named Firestore database;
-   - console, broker, and remediation-agent service accounts;
-   - console/broker Cloud Run services and service IAM;
+   - console, ingestion, broker, evaluation-publisher, and remediation-agent
+     service accounts;
+   - console/ingestion/broker Cloud Run services and service IAM;
    - environment Secret Manager containers/accessors;
    - direct-IAP accessors;
    - indexes/TTL/retention job;
@@ -109,21 +117,26 @@ an unreviewed `gcloud builds submit` on this host.
    are compensating controls.
 8. Only console SA receives `roles/run.invoker` on the broker service. No human,
    IAP group, remediation agent, n8n identity, or `allUsers` may invoke it.
-9. Console uses `iap_enabled = true`, never a public invoker. Enable
+   Only the exact evaluation-publisher SA may invoke the ingestion service;
+   ingestion rejects the wrong OIDC audience or caller email.
+9. Only `authorization_status=authorized` evaluation runs are readable through
+   the IAP console. Quarantined, denied, and absent IDs are externally
+   indistinguishable; private ingestion/retry remains service-to-service.
+10. Console uses `iap_enabled = true`, never a public invoker. Enable
    `iap.googleapis.com`; grant the IAP service agent only the documented
    invoker role. Human access uses exact approved identities/groups.
-10. The remediation-agent SA gets IAP access only. Approved remediators receive
+11. The remediation-agent SA gets IAP access only. Approved remediators receive
     `roles/iam.serviceAccountTokenCreator` on that exact SA, never project-wide.
     The agent gets no Firestore, Secret Manager, deploy, Git, Pinecone, or
     DevRev role.
     The Terraform plan SA gets metadata-only access on the exact new secret
     containers to validate versions, never payload-access permission.
-11. All secret references use numeric versions. No Terraform variable, state,
+12. All secret references use numeric versions. No Terraform variable, state,
     plan, output, YAML substitution, or commit contains a secret payload.
-12. No `local-exec`, `remote-exec`, raw `gcloud run deploy/update`, mutable
+13. No `local-exec`, `remote-exec`, raw `gcloud run deploy/update`, mutable
     image tag, `allUsers`, `latest` secret version, or Terraform secret-version
     payload resource is allowed.
-13. Each environment root has an exact
+14. Each environment root has an exact
     `deployment_phase = "foundation" | "workload"`:
     - `foundation` creates only the named database, service accounts, secret
       containers, state/artifact prerequisites, and non-workload controls. It
@@ -144,9 +157,13 @@ an unreviewed `gcloud builds submit` on this host.
 Create:
 
 - `kb-rag-system/api/tickets_console_entrypoint.py`
+- `kb-rag-system/api/ticket_evaluation_ingest_app.py`
+- `kb-rag-system/api/replay_ticket_evaluation.py`
 - `kb-rag-system/api/tickets_evidence_broker_entrypoint.py`
 - `kb-rag-system/Dockerfile.tickets-console`
 - `kb-rag-system/Dockerfile.tickets-console.dockerignore`
+- `kb-rag-system/Dockerfile.ticket-evaluation-ingest`
+- `kb-rag-system/Dockerfile.ticket-evaluation-ingest.dockerignore`
 - `kb-rag-system/Dockerfile.tickets-evidence-broker`
 - `kb-rag-system/Dockerfile.tickets-evidence-broker.dockerignore`
 - `kb-rag-system/cloudbuild.tickets-console.yaml`
@@ -159,6 +176,8 @@ Create:
 - `kb-rag-system/scripts/tickets_release_state.py`
 - `kb-rag-system/scripts/tickets_retention.py`
 - `kb-rag-system/tests/test_tickets_console_container_contract.py`
+- `kb-rag-system/tests/test_ticket_evaluation_ingest.py`
+- `kb-rag-system/tests/test_ticket_evaluation_publisher.py`
 - `kb-rag-system/tests/test_tickets_evidence_broker_container_contract.py`
 - `kb-rag-system/tests/test_tickets_console_deployment_contract.py`
 - `kb-rag-system/tests/test_tickets_console_monitoring_contract.py`
@@ -194,9 +213,21 @@ file here, but do not restage or modify it.
 
 Before creating infrastructure/runtime files, write tests that require:
 
-- both entrypoints are shell-free and import only their intended app;
+- all entrypoints are shell-free and import only their intended app;
 - console image contains UI and remediation prompt but no tests, `.env`, Git,
-  real CSV, keys, or general RAG secrets;
+  ticket file-transfer payloads, keys, or general RAG secrets;
+- ingestion image contains no UI and accepts only bounded canonical execution
+  events from the exact publisher identity;
+- existing worker/reconciler infrastructure declares
+  `ticket_rag_invocations` TTL plus the exact recovery index
+  `state ASC, next_recovery_at ASC, __name__ ASC`;
+- outbox declares the exact due-retry index
+  `state ASC, next_attempt_at ASC, __name__ ASC`; publisher execution is not
+  conditional on active/terminal ticket-job scan results;
+- runtime includes `api.replay_ticket_evaluation` in the reconciler role and
+  excludes development-only `scripts/` wrappers;
+- no executable CSV/import/export models, settings, collections, content
+  types, repository methods, routes, feature flags, or TTL remain;
 - broker image excludes UI, prompt, DevRev client/token, Pinecone/OpenAI, and
   write-capable credentials;
 - both run non-root on read-only filesystems and expose `/livez`/`readyz`;
@@ -255,6 +286,18 @@ Broker image:
 - initializes no console DB, DevRev, Pinecone/OpenAI/ForusBots;
 - has no secret except the correlation HMAC numeric version;
 - response and request limits equal the master table.
+
+The existing producer/reconciler runtime, not the console image, packages the
+canonical `dead_letter` operator entrypoint:
+
+```bash
+APP_ROLE=reconciler python -m api.replay_ticket_evaluation \
+  --execution-id "$EXECUTION_ID" --event-digest "$EVENT_DIGEST"
+```
+
+It authenticates ADC as the exact configured publisher/reconciler service
+account, verifies the immutable digest, and only returns one `dead_letter` to
+`pending`; the normal OIDC publisher performs delivery.
 
 Do not attempt a local build when Docker is absent. Contract tests plus the
 approved remote build are both required.
@@ -341,8 +384,12 @@ owned twice.
 
 Declare:
 
-- TTL: message/cache 24 h, import staging/idempotency 7 d;
-- review/evidence/batch-item/import/export product state:
+- TTL: message/cache 24 h and idempotency 7 d; only delivered outbox documents
+  receive bounded expiry, while `pending`/`retry`/`dead_letter` documents never
+  expire before delivery or an audited manual replay;
+- `ticket_rag_invocations`: `started` has no `expires_at`; only terminal
+  `completed`/`recovered` journals receive bounded expiry;
+- execution/review/evidence/batch-item product state:
   `retention_expires_at` 730 d;
 - per-review/per-batch/global hash-chained audit/event ledgers:
   `retention_expires_at` 2,555 d;
@@ -379,9 +426,14 @@ Use low-cardinality metrics:
 
 - DevRev request count/latency/status class/429;
 - cache hit/miss/degraded;
+- RAG invocation `rag_invocations_scanned`, `rag_invocations_recovered`,
+  `rag_invocations_rescheduled`, and `rag_invocation_errors`, without invocation
+  ID labels;
+- execution publish delivered/retry/`dead_letter`/manual-replay and age of oldest
+  pending/due event;
+- DevRev authorization quarantined/authorized/denied plus hydration retry;
 - review update/precondition/business conflict;
 - CSRF/origin/auth/RBAC denial;
-- import/export/reversal row counts;
 - remediation claim/heartbeat/lease loss;
 - broker lookup found/unavailable/error;
 - audit-chain validation failure;
@@ -1346,15 +1398,24 @@ After apply, verify:
 - IAP denies unapproved and allows approved identities;
 - app JWT/RBAC/CSRF matrix;
 - console SA can access only `tickets-console-staging`;
+- exact publisher SA alone can invoke ingestion, and ingestion persists an
+  immutable quarantined execution before attempting DevRev hydration;
+- a ticket-associated RAG call with validated DevRev `ticket_id` cannot occur
+  without a prior `started` journal; a simulated post-effect crash yields
+  answer-less `RAG_INVOCATION_ABANDONED`, and retry receives a distinct
+  invocation ID;
 - broker SA can read but not write `(default)`;
 - agent has API access but no Firestore/Secret/deploy permissions;
 - console-only broker invocation;
-- read-only scoped DevRev list/get/timeline;
-- synthetic review/conflict/batch/import/export/reversal;
+- read-only scoped DevRev get/timeline with no discovery-driven collection;
+- synthetic execution delivery/replay, indexed due retry, non-expiring
+  `dead_letter` plus authenticated CLI replay, authorized promotion, quarantine/
+  denial non-disclosure, review/conflict/batch, and no executable
+  file-transfer/manual-add surface;
 - logs/metrics contain no ticket/user/message/token content.
 
-Do not create production resources, import a real CSV, deploy producer
-instrumentation, change n8n, write DevRev, or reindex Pinecone.
+Do not create production resources, deploy producer instrumentation, change
+n8n, write DevRev, or reindex Pinecone.
 
 ## Definition of Done
 
@@ -1364,6 +1425,9 @@ instrumentation, change n8n, write DevRev, or reindex Pinecone.
   contract-tested.
 - Direct IAP, keyless agent access, RBAC, CSRF, secrets, retention, audit, and
   monitoring are declared fail closed.
+- Invocation/outbox recovery indexes and TTL semantics match runtime: no
+  `started`, `pending`, `retry`, or `dead_letter` record can expire before
+  terminal recovery.
 - Foundation and workload plans are separately reviewed/applied, with external
   secret provisioning and no payload in Terraform, logs, chat, or Git.
 - If approved remote gates ran, Python 3.12/emulator/images/Terraform evidence

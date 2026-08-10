@@ -6,7 +6,7 @@ import math
 
 import pytest
 
-from api.config import settings, validate_settings
+from api.config import Settings, settings, validate_settings
 
 
 def _development_baseline(monkeypatch, **overrides) -> None:
@@ -134,4 +134,96 @@ def test_deployed_task_signer_is_exact_for_environment_and_project(monkeypatch):
 
 def test_reviewed_staging_task_target_contract_is_valid(monkeypatch):
     _staging_reconciler(monkeypatch)
+    assert validate_settings() is True
+
+
+def _evaluation_publisher_config(monkeypatch, **overrides):
+    values = {
+        "TICKET_EVALUATION_PUBLISH_ENABLED": True,
+        "TICKET_EVALUATION_INGEST_URL": (
+            "https://kb-ticket-evaluation-ingest.example.run.app"
+        ),
+        "TICKET_EVALUATION_INGEST_AUDIENCE": (
+            "https://kb-ticket-evaluation-ingest.rag-kb-system.ticket.internal"
+        ),
+        "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT": (
+            "ticket-evaluation-publisher@rag-kb-system.iam.gserviceaccount.com"
+        ),
+        "TICKET_EVALUATION_PUBLISH_TIMEOUT_S": 10.0,
+        "TICKET_EVALUATION_PUBLISH_BATCH_SIZE": 25,
+        "TICKET_EVALUATION_OUTBOX_RETENTION_S": 86_400,
+    }
+    values.update(overrides)
+    _development_baseline(monkeypatch)
+    for name, value in values.items():
+        monkeypatch.setattr(settings, name, value, raising=False)
+
+
+def test_evaluation_publisher_has_an_explicit_enable_flag():
+    assert "TICKET_EVALUATION_PUBLISH_ENABLED" in Settings.model_fields
+
+
+def test_enabled_evaluation_publisher_requires_destination_and_identity(
+    monkeypatch,
+):
+    _development_baseline(monkeypatch)
+    monkeypatch.setattr(settings, "TICKET_EVALUATION_PUBLISH_ENABLED", True)
+    monkeypatch.setattr(settings, "TICKET_EVALUATION_INGEST_URL", "")
+    monkeypatch.setattr(settings, "TICKET_EVALUATION_INGEST_AUDIENCE", "")
+    monkeypatch.setattr(
+        settings, "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT", ""
+    )
+
+    with pytest.raises(ValueError, match="TICKET_EVALUATION_INGEST_URL"):
+        validate_settings()
+
+
+def test_evaluation_identity_cannot_be_configured_while_publisher_is_disabled(
+    monkeypatch,
+):
+    _evaluation_publisher_config(
+        monkeypatch,
+        TICKET_EVALUATION_PUBLISH_ENABLED=False,
+    )
+
+    with pytest.raises(ValueError, match="TICKET_EVALUATION_PUBLISH_ENABLED"):
+        validate_settings()
+
+
+@pytest.mark.parametrize(
+    "missing",
+    (
+        "TICKET_EVALUATION_INGEST_URL",
+        "TICKET_EVALUATION_INGEST_AUDIENCE",
+        "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT",
+    ),
+)
+def test_evaluation_publisher_configuration_is_all_or_nothing(
+    monkeypatch, missing,
+):
+    _evaluation_publisher_config(monkeypatch, **{missing: ""})
+
+    with pytest.raises(ValueError, match=missing):
+        validate_settings()
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    (
+        ({"TICKET_EVALUATION_INGEST_URL": "http://unsafe.test"}, "HTTPS"),
+        ({"TICKET_EVALUATION_INGEST_AUDIENCE": "audience with spaces"}, "AUDIENCE"),
+        ({"TICKET_EVALUATION_PUBLISH_TIMEOUT_S": 0}, "TIMEOUT"),
+        ({"TICKET_EVALUATION_PUBLISH_BATCH_SIZE": 101}, "BATCH"),
+        ({"TICKET_EVALUATION_OUTBOX_RETENTION_S": 60}, "RETENTION"),
+    ),
+)
+def test_evaluation_publisher_bounds_fail_closed(monkeypatch, overrides, message):
+    _evaluation_publisher_config(monkeypatch, **overrides)
+
+    with pytest.raises(ValueError, match=message):
+        validate_settings()
+
+
+def test_reviewed_evaluation_publisher_configuration_is_valid(monkeypatch):
+    _evaluation_publisher_config(monkeypatch)
     assert validate_settings() is True

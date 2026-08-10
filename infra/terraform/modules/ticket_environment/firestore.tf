@@ -57,7 +57,69 @@ resource "google_firestore_field" "core_execution_ttl" {
   ttl_config {}
 }
 
+# The outbox has no expiry while pending/retry/dead_letter. Runtime adds
+# expires_at only after the evaluation service has acknowledged the immutable
+# event; operator-replayable delivery evidence therefore cannot be lost early.
+resource "google_firestore_field" "ticket_evaluation_outbox_ttl" {
+  project    = var.project_id
+  database   = local.db_name
+  collection = "ticket_evaluation_outbox"
+  field      = "expires_at"
+  ttl_config {}
+}
+
+# Invocation intents never expire while ``started``. Runtime sets expires_at
+# only after the journal is ``completed`` or ``recovered``, preserving crash
+# evidence until the reconciler has emitted its immutable evaluation event.
+resource "google_firestore_field" "ticket_rag_invocation_ttl" {
+  project    = var.project_id
+  database   = local.db_name
+  collection = "ticket_rag_invocations"
+  field      = "expires_at"
+  ttl_config {}
+}
+
 # Índices compuestos requeridos por las consultas reales.
+resource "google_firestore_index" "ticket_evaluation_due_retries" {
+  project    = var.project_id
+  database   = local.db_name
+  collection = "ticket_evaluation_outbox"
+
+  fields {
+    field_path = "state"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "next_attempt_at"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "ASCENDING"
+  }
+}
+
+# Bounded recovery scan for started invocations whose observation deadline is
+# due. The document name provides deterministic pagination across batches.
+resource "google_firestore_index" "ticket_rag_invocation_recovery" {
+  project    = var.project_id
+  database   = local.db_name
+  collection = "ticket_rag_invocations"
+
+  fields {
+    field_path = "state"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "next_recovery_at"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "ASCENDING"
+  }
+}
+
 resource "google_firestore_index" "jobs_principal_state" {
   project    = var.project_id
   database   = local.db_name

@@ -523,10 +523,10 @@ class TestLifecycle:
             assert verified["nonce_verified"] is True
             assert verified["pid"] == summary["pid"]
 
-            # The console really is serving the Stage 6 interface.
+            # The console really is serving the RAG-only interface.
             status, body = runner.probe(f"http://127.0.0.1:{port}/tickets")
             assert status == 200
-            assert "Ticket review" in body
+            assert "RAG ticket evaluations" in body
 
             status, body = runner.probe(
                 f"http://127.0.0.1:{port}/api/admin/v1/reviews?page_size=2"

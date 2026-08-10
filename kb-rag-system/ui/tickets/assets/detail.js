@@ -42,6 +42,7 @@ import {
 import { conversationStatusText, renderConversation } from "./conversation.js";
 import {
   evidenceStatusText,
+  renderExecutionEvidence,
   renderEvidence,
   renderEvidenceLinks,
 } from "./evidence.js";
@@ -80,6 +81,15 @@ function collectDom() {
     back: byId("detail-back"),
     close: byId("detail-close"),
     status: byId("detail-status"),
+    runSummary: byId("run-summary"),
+    runAnswer: byId("run-answer"),
+    runRationale: byId("run-rationale"),
+    runDiagnostics: byId("run-diagnostics"),
+    runGaps: byId("run-gaps"),
+    runSources: byId("run-sources"),
+    runChunks: byId("run-chunks"),
+    runMetadata: byId("run-metadata"),
+    hydrationStatus: byId("hydration-status"),
     meta: {
       displayId: byId("meta-display-id"),
       title: byId("meta-title"),
@@ -98,7 +108,6 @@ function collectDom() {
     devrevLink: byId("detail-devrev-link"),
     devrevHelp: byId("detail-devrev-help"),
     addBatch: byId("detail-add-batch"),
-    importButton: byId("detail-import"),
     reload: byId("detail-reload"),
     tablist: byId("detail-tablist"),
     tabs: Array.from(document.querySelectorAll("#detail-tablist [role='tab']")),
@@ -256,44 +265,24 @@ async function load() {
   const mine = (serial += 1);
   dispatch({ type: "feed/started", feed: "conversation" });
   try {
-    const envelope = await api.getTicketDetail(ref);
+    const envelope = await api.getExecutionDetail(ref);
     if (mine !== serial) {
       return;
     }
     dispatch({
       type: "detail/loaded",
+      execution: envelope?.execution ?? null,
       ticket: envelope?.ticket ?? null,
       review: envelope?.review ?? null,
       evidence: envelope?.evidence ?? null,
       partial: Boolean(envelope?.partial),
       warnings: Array.isArray(envelope?.warnings) ? envelope.warnings : [],
-      diagnostics: Array.isArray(envelope?.diagnostics) ? envelope.diagnostics : [],
+      diagnostics: envelope?.execution?.diagnostics ?? {},
     });
 
-    const timeline = envelope?.timeline ?? null;
-    if (timeline === null) {
-      // The durable review is still worth showing. Saying the conversation is
-      // unavailable is the honest alternative to an empty list, which reads as
-      // "nobody ever wrote anything".
-      dispatch({
-        type: "feed/failed",
-        feed: "conversation",
-        error: {
-          title: "The conversation is unavailable",
-          detail: "Live ticket data did not load, so no entries can be shown.",
-        },
-      });
-    } else {
-      dispatch({
-        type: "feed/loaded",
-        feed: "conversation",
-        items: Array.isArray(timeline.messages) ? timeline.messages : [],
-        nextCursor: timeline.next_cursor ?? null,
-        partial: Boolean(timeline.partial) || Boolean(timeline.truncated),
-        warnings: Array.isArray(timeline.warnings) ? timeline.warnings : [],
-        diagnostics: Array.isArray(timeline.diagnostics) ? timeline.diagnostics : [],
-        append: false,
-      });
+    await loadInitialConversation(ref);
+    if (mine !== serial) {
+      return;
     }
 
     if (envelope?.review) {
@@ -306,6 +295,40 @@ async function load() {
     dispatch({ type: "detail/failed", error });
     dispatch({ type: "feed/failed", feed: "conversation", error });
     context.reportError(error);
+  }
+}
+
+async function loadInitialConversation(ref) {
+  try {
+    const timeline = await api.getTimelinePage(ref, {
+      cursor: null,
+      pageSize: FEED_PAGE_SIZE,
+    });
+    if (detailState().ref !== ref) {
+      return;
+    }
+    dispatch({
+      type: "feed/loaded",
+      feed: "conversation",
+      items: Array.isArray(timeline?.messages) ? timeline.messages : [],
+      nextCursor: timeline?.next_cursor ?? null,
+      partial: Boolean(timeline?.partial) || Boolean(timeline?.truncated),
+      warnings: Array.isArray(timeline?.warnings) ? timeline.warnings : [],
+      diagnostics: Array.isArray(timeline?.diagnostics) ? timeline.diagnostics : [],
+      append: false,
+    });
+  } catch (error) {
+    if (error instanceof api.AbortedError || detailState().ref !== ref) {
+      return;
+    }
+    dispatch({
+      type: "feed/failed",
+      feed: "conversation",
+      error: {
+        title: "The conversation is unavailable",
+        detail: "The RAG execution remains available while DevRev conversation context is unavailable.",
+      },
+    });
   }
 }
 
@@ -397,6 +420,14 @@ async function loadEvidenceLinks({ append }) {
 
 async function save() {
   const current = detailState();
+  if (current.review === null) {
+    context.toast({
+      title: "The linked review is unavailable",
+      body: "This execution stays readable, but reviewer fields cannot be changed until its review record is available.",
+      tone: "warning",
+    });
+    return;
+  }
   const problems = evaluation.validate({
     review: current.review,
     draft: current.draft,
@@ -415,7 +446,7 @@ async function save() {
     draft: current.draft,
     session: session(),
   });
-  if (!plan.needsImport && Object.keys(plan.patch).length === 0) {
+  if (Object.keys(plan.patch).length === 0) {
     context.toast({ title: "Nothing to save", body: "No field differs from the stored review." });
     return;
   }
@@ -423,17 +454,12 @@ async function save() {
   dispatch({ type: "save/started" });
   try {
     let review = current.review;
-    if (plan.needsImport) {
-      // Idempotent by key: a double click imports once, and a retry after a
-      // timeout does not create a second review.
-      review = await api.createReview(current.ref, plan.seed);
-    }
     if (Object.keys(plan.patch).length > 0) {
       review = await api.patchReview(review.review_id, plan.patch, review.version);
     }
     dispatch({ type: "save/succeeded", review });
     context.toast({
-      title: plan.needsImport ? "Review created and saved" : "Review saved",
+      title: "Review saved",
       body: `Now at version ${review.version}.`,
     });
     await Promise.allSettled([loadAudit(), loadEvidenceLinks({ append: false })]);
@@ -568,7 +594,7 @@ function wireNavigation() {
     const id = detailState().ref;
     try {
       await globalThis.navigator.clipboard.writeText(id);
-      context.toast({ title: "Ticket ID copied", body: id });
+      context.toast({ title: "Execution ID copied", body: id });
     } catch {
       // Clipboard access can be refused, and the identifier is already on
       // screen and selectable, so this is a convenience rather than the path.
@@ -577,18 +603,6 @@ function wireNavigation() {
         body: `Select and copy it from the page: ${id}`,
         tone: "warning",
       });
-    }
-  });
-  dom.importButton.addEventListener("click", async () => {
-    try {
-      const review = await api.createReview(detailState().ref, {});
-      dispatch({ type: "save/succeeded", review });
-      context.toast({ title: "Added to the review queue" });
-      await load();
-    } catch (error) {
-      if (!(error instanceof api.AbortedError)) {
-        context.reportError(error);
-      }
     }
   });
 }
@@ -755,6 +769,93 @@ export function resolveUpstreamLink(envelope) {
   return parsed.href;
 }
 
+function readable(value, absent = "Not recorded") {
+  if (value === null || value === undefined || value === "") {
+    return absent;
+  }
+  if (typeof value === "string") {
+    return value;
+  }
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function renderRunList(container, values, emptyText) {
+  const items = Array.isArray(values)
+    ? values
+    : values !== null && typeof values === "object"
+      ? Object.entries(values).map(([key, value]) => `${key}: ${readable(value)}`)
+      : [];
+  render.replaceChildren(
+    container,
+    items.length === 0
+      ? [el("li", { text: emptyText })]
+      : items.map((value) => el("li", { text: readable(value) }))
+  );
+}
+
+function hydrationText(status) {
+  if (status === "succeeded") {
+    return "DevRev context loaded for this execution.";
+  }
+  return "This execution did not pass the authorized DevRev hydration boundary.";
+}
+
+/** Render immutable, bounded fields captured when this RAG route ran. */
+function renderRun(current) {
+  const execution = current.execution ?? {};
+  const summary = [
+    render.definitionRow("Execution ID", execution.executionId ?? current.ref),
+    render.definitionRow("Invocation ID", execution.invocationId ?? execution.executionId ?? current.ref),
+    render.definitionRow("Job ID", execution.jobId),
+    render.definitionRow("Inquiry", execution.inquiryIndex),
+    render.definitionRow("Attempt", execution.attempt),
+    render.definitionRow("Lease epoch", execution.leaseEpoch),
+    render.definitionRow("Route", execution.route),
+    render.definitionRow("Run status", execution.runStatus),
+    render.definitionRow("Started", execution.occurredAt),
+  ];
+  render.replaceChildren(dom.runSummary, summary);
+
+  const generatedAnswer =
+    execution.generatedAnswer ??
+    execution.structuredResponse?.answer ??
+    execution.structuredResponse?.response;
+  dom.runAnswer.textContent = readable(generatedAnswer, "No generated answer was recorded.");
+
+  const classificationReasoning = execution.classificationReasoning;
+  const outcomeReason = execution.outcomeReason ?? execution.structuredResponse?.outcome_reason;
+  render.replaceChildren(dom.runRationale, [
+    render.definitionRow("Classification rationale", classificationReasoning),
+    render.definitionRow("Outcome rationale", outcomeReason),
+  ]);
+
+  const diagnostics = execution.diagnostics;
+  const gaps = execution.gaps;
+  renderRunList(dom.runDiagnostics, diagnostics, "No diagnostics were recorded.");
+  renderRunList(dom.runGaps, gaps, "No coverage gaps were recorded.");
+
+  const sourceArticles = execution.sourceArticles ?? [];
+  const chunkEvidence = execution.chunkEvidence ?? [];
+  renderExecutionEvidence(dom.runSources, dom.runChunks, {
+    sourceArticles,
+    chunkEvidence,
+  });
+
+  render.replaceChildren(dom.runMetadata, [
+    render.definitionRow("Model", readable(execution.modelMetadata)),
+    render.definitionRow("Timing", readable(execution.timingMetadata)),
+    render.definitionRow("Retrieval", readable(execution.retrievalMetadata)),
+  ]);
+
+  const hydrationStatus = execution.hydrationStatus ?? "unavailable";
+  dom.hydrationStatus.textContent = hydrationText(hydrationStatus);
+  dom.hydrationStatus.dataset.tone = hydrationStatus === "succeeded" ? "info" : "warning";
+}
+
 function renderMeta(current) {
   const ticket = current.ticket ?? {};
   const review = current.review ?? null;
@@ -773,8 +874,8 @@ function renderMeta(current) {
   text(
     dom.meta.reviewState,
     review === null
-      ? "Not yet in the review queue"
-      : `Version ${review.version}, ${review.import_state === "reversed" ? "import reversed" : "active"}`
+      ? "Linked review unavailable"
+      : `Version ${review.version}, ${review.status ?? "unreviewed"}`
   );
 
   const link = resolveUpstreamLink(current.ticket);
@@ -792,28 +893,28 @@ function renderMeta(current) {
 
 function detailStatusText(current) {
   if (current.phase === "loading") {
-    return { text: "Loading this ticket…", tone: "info" };
+    return { text: "Loading this RAG execution…", tone: "info" };
   }
   if (current.phase === "error") {
     const error = current.error ?? {};
     if (error.status === 404) {
       return {
-        text: "That ticket is not available. It may have been removed, or it may be outside your scope.",
+        text: "That RAG execution is not available or is outside your scope.",
         tone: "error",
       };
     }
     if (error.status === 403) {
-      return { text: "Your role does not allow reading this ticket.", tone: "error" };
+      return { text: "Your role does not allow reading this execution.", tone: "error" };
     }
-    return { text: error.title ?? "This ticket could not be loaded.", tone: "error" };
+    return { text: error.title ?? "This RAG execution could not be loaded.", tone: "error" };
   }
   const parts = [];
   let tone = "info";
   if (current.partial) {
     tone = "warning";
     parts.push(
-      "Some of this ticket did not load. The durable review is shown. " +
-        "Use Reload ticket to try the live data again."
+      "Some secondary ticket subresources did not load. " +
+        "Use Reload to retry those bounded reads."
     );
   }
   if (current.warnings.length > 0) {
@@ -821,7 +922,7 @@ function detailStatusText(current) {
     parts.push(render.describeWarnings(current.warnings));
   }
   if (current.review === null && !current.partial) {
-    parts.push("This ticket has no durable review yet.");
+    parts.push("The linked review is temporarily unavailable; the execution is still auditable.");
   }
   return { text: parts.join(" "), tone };
 }
@@ -947,21 +1048,82 @@ function renderConversationPanel(current) {
   }
 }
 
+function executionEvidenceSummary(current) {
+  const execution = current.execution ?? {};
+  const sourceCount = Array.isArray(execution.sourceArticles)
+    ? execution.sourceArticles.length
+    : 0;
+  const chunkCount = Array.isArray(execution.chunkEvidence)
+    ? execution.chunkEvidence.length
+    : 0;
+  return {
+    sourceCount,
+    chunkCount,
+    available: sourceCount > 0 || chunkCount > 0,
+  };
+}
+
+function renderPersistedExecutionEvidence(current) {
+  const sourceHeading = el("h5", {
+    text: "Source articles captured by this execution",
+    attrs: { id: "rag-run-evidence-sources-heading" },
+  });
+  const sourceList = el("ul", {
+    className: "evidence-links",
+    attrs: { "aria-labelledby": "rag-run-evidence-sources-heading" },
+  });
+  const chunkHeading = el("h5", {
+    text: "Bounded chunks captured by this execution",
+    attrs: { id: "rag-run-evidence-chunks-heading" },
+  });
+  const chunkList = el("ul", {
+    className: "evidence-links",
+    attrs: { "aria-labelledby": "rag-run-evidence-chunks-heading" },
+  });
+  renderExecutionEvidence(sourceList, chunkList, current.execution);
+  render.replaceChildren(dom.evidenceBody, [
+    sourceHeading,
+    sourceList,
+    chunkHeading,
+    chunkList,
+  ]);
+}
+
 function renderEvidencePanel(current) {
-  render.setPanelStatus(dom.evidenceStatus, evidenceStatusText(current));
+  const executionEvidence = executionEvidenceSummary(current);
+  render.setPanelStatus(
+    dom.evidenceStatus,
+    executionEvidence.available
+      ? {
+          text:
+            `This persisted RAG execution recorded ${executionEvidence.sourceCount} source ` +
+            `article${executionEvidence.sourceCount === 1 ? "" : "s"} and ` +
+            `${executionEvidence.chunkCount} bounded chunk` +
+            `${executionEvidence.chunkCount === 1 ? "" : "s"}.`,
+          tone: "info",
+        }
+      : evidenceStatusText(current)
+  );
   const evidence = current.evidence;
   const unavailable =
     evidence === null ||
     evidence === undefined ||
     (evidence.correlation_status ?? "unavailable") === "unavailable";
-  dom.evidenceExplanation.textContent = unavailable
-    ? render.evidenceGapText(evidence?.unavailable_reason ?? "")
-    : "";
-  dom.evidenceExplanation.dataset.tone = unavailable ? "warning" : "info";
-  renderEvidence(dom.evidenceBody, evidence, {
-    canConfirm: evaluation.canEdit(role()) && current.review !== null,
-    now: Date.now(),
-  });
+  dom.evidenceExplanation.textContent = executionEvidence.available
+    ? "This bounded evidence was stored with the RAG run; reviewer-confirmed links are listed separately below."
+    : unavailable
+      ? render.evidenceGapText(evidence?.unavailable_reason ?? "")
+      : "";
+  dom.evidenceExplanation.dataset.tone =
+    executionEvidence.available || !unavailable ? "info" : "warning";
+  if (executionEvidence.available) {
+    renderPersistedExecutionEvidence(current);
+  } else {
+    renderEvidence(dom.evidenceBody, evidence, {
+      canConfirm: evaluation.canEdit(role()) && current.review !== null,
+      now: Date.now(),
+    });
+  }
 
   const feed = current.evidenceLinks;
   renderEvidenceLinks(dom.evidenceLinks, feed.items, {
@@ -1070,7 +1232,6 @@ function renderEvaluation(current) {
   evaluation.renderConflict(dom, current.conflict, { role: activeRole });
 
   dom.dirty.hidden = !current.dirty;
-  dom.importButton.hidden = current.review !== null || !evaluation.canEdit(activeRole);
   const flags = identity?.featureFlags ?? {};
   // Two independent reasons, and the help paragraph in the markup names both:
   // the deployment may have no agent configured, or this role may not curate.
@@ -1301,6 +1462,7 @@ export function renderDetail(next) {
   dom.target.textContent = current.ref;
   dom.crumb.textContent = current.ref;
 
+  renderRun(current);
   renderMeta(current);
   render.setPanelStatus(dom.status, detailStatusText(current));
   renderPanels(current);

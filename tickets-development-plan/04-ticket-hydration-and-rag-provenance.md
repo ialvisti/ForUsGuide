@@ -2,17 +2,23 @@
 
 > **For Claude Opus 5:** Execute this stage after Stages 2 and 3. Read the master plan and the current finalization-base implementations before editing. Do not invent historical evidence.
 
-**Goal:** Combine bounded DevRev pages with durable review state and defensible
-RAG provenance, add privacy-preserving correlation for future verified
-workloads, and expose existing logs only through a bounded read-only broker.
+**Goal:** Persist every ticket-associated RAG execution as the sole platform
+collection, hydrate its known ticket through bounded DevRev reads, retain
+defensible RAG evidence, and expose legacy logs only through a bounded
+read-only broker.
 
-**Architecture:** A service layer hydrates a ticket plus one requested timeline
-page, classifies entries using configured identities, caches bounded normalized
-messages, and joins review/evidence summaries. Producer instrumentation stores
-an HMAC ticket reference only when the caller is cryptographically verified.
-A separate broker with read-only access to `(default)` returns an allowlisted
-sanitized envelope to the console; the console never queries production logs
-directly.
+**Architecture:** Before each provider/orchestrator effect, the worker writes a
+`started` intent to `ticket_rag_invocations` using
+`{job_id}-e{lease_epoch}-a{attempt}:{inquiry_index}`. Completion records the
+bounded execution event and transactional outbox entry; lease recovery turns a
+stranded intent into an answer-less `RAG_INVOCATION_ABANDONED` event, while a
+real retry receives a new identity. An independent authenticated publisher
+delivers due outbox records idempotently to private ingestion. Ingestion first
+persists the run as `quarantined`, then promotes it to `authorized` only after
+scoped DevRev `works.get`; not-found/scope failure becomes `denied`, while
+auth/config/rate/transport/outage failure remains quarantined and retryable. A
+separate broker may augment historical evidence from `(default)`; it can never
+create a platform row.
 
 **Tech Stack:** Python 3.12, asyncio, Firestore repository, DevRev client, existing RAG/logging pipeline, pytest.
 
@@ -54,10 +60,15 @@ Do not rely on line numbers from an older branch.
 Create:
 
 - `kb-rag-system/data_pipeline/ticket_review_service.py`
+- `kb-rag-system/data_pipeline/ticket_evaluation_publisher.py`
 - `kb-rag-system/data_pipeline/ticket_review_provenance.py`
 - `kb-rag-system/data_pipeline/ticket_evidence_broker.py`
 - `kb-rag-system/api/tickets_evidence_broker_main.py`
+- `kb-rag-system/api/ticket_evaluation_ingest_app.py`
 - `kb-rag-system/tests/test_ticket_review_service.py`
+- `kb-rag-system/tests/test_ticket_evaluation_ingest.py`
+- `kb-rag-system/tests/test_ticket_evaluation_publisher.py`
+- `kb-rag-system/tests/test_ticket_rag_invocation_journal.py`
 - `kb-rag-system/tests/test_ticket_review_provenance.py`
 - `kb-rag-system/tests/test_ticket_evidence_broker.py`
 
@@ -67,6 +78,8 @@ Modify, as required by tested provenance:
 - `kb-rag-system/data_pipeline/rag_engine.py`
 - `kb-rag-system/api/ticket_worker.py`
 - `kb-rag-system/api/main.py`
+- `kb-rag-system/data_pipeline/ticket_job_repository.py`
+- `kb-rag-system/data_pipeline/ticket_reconciler.py`
 - `kb-rag-system/api/tickets_console_config.py`
 - `kb-rag-system/api/ticket_review_models.py`
 - `kb-rag-system/firestore.indexes.json`
@@ -81,48 +94,80 @@ compatible and narrow.
 
 Cover:
 
-1. One ticket detail call fetches `works.get` plus exactly one requested
-   timeline page; following `next_cursor` is an explicit second call.
-2. Each page preserves normalized source order and carries
-   `next_cursor`, `truncated`, `partial`, and warnings. An explicitly loaded
-   multi-page set may be chronologically sorted with stable ties.
-3. Classification never depends on display-name string guesses alone.
-4. Actor classes:
-   - `participant`: explicit Rev user/external actor types;
-   - `human_agent`: configured Dev user IDs not in AI/system sets;
-   - `ai_or_system`: explicitly configured author IDs or documented system actor types;
-   - `event`: change events;
-   - `unknown`: everything else.
-5. Configured author ID sets take precedence over ambiguous names.
-6. Internal/private comments are labeled and never merged into the participant-facing reply.
-7. Unknown body types render a safe placeholder plus metadata; no raw HTML is passed to the UI.
-8. Bounded root-level `devrev_message_cache` upsert does not alter the durable
-   human review.
-9. DevRev `object_version` and modified timestamp prevent older cache data overwriting newer data.
-10. Missing DevRev detail/timeline or a guard limit returns a typed partial
+1. `begin_rag_invocation` persists `state=started` before the RAG effect, with
+   `invocation_id`, `attempt`, `lease_epoch`, and execution ID
+   `{job_id}-e{lease_epoch}-a{attempt}:{inquiry_index}`.
+   It runs only for a ticket-associated route with a validated DevRev
+   `ticket_id`; legacy calls without one continue outside the console pipeline
+   and never receive a fabricated identity.
+2. Completion atomically records the immutable event plus due outbox entry and
+   moves the journal to `completed`; a transport replay is idempotent.
+3. A real lease/job retry receives a distinct invocation/execution ID and never
+   collapses into a prior attempt. Legacy `{job_id}:{inquiry_index}` records
+   remain readable but are not emitted for new invocations.
+4. Recovery of an abandoned `started` intent emits `status=failed`,
+   `answer=null`, error `RAG_INVOCATION_ABANDONED`,
+   `failure_phase=rag_invocation_recovery`, and
+   `invocation_outcome=abandoned_after_lease`, then marks it `recovered`.
+5. First ingestion persists the canonical execution as
+   `authorization_status=quarantined` before `works.get`; an identical delivery
+   is idempotent and a conflicting digest is rejected.
+6. Successful scoped `works.get` promotes the run to `authorized`; two
+   authorized executions for one ticket remain two rows linked to one review.
+7. DevRev not-found or scope failure becomes terminal `denied`. Auth,
+   configuration, rate, transport, and outage failures stay `quarantined` with
+   bounded retry metadata. Neither state is visible through the public API.
+8. One authorized execution detail call exposes stored RAG evidence and exactly
+   one requested timeline page; following `next_cursor` is an explicit second
+   call.
+9. Each page preserves normalized source order and carries `next_cursor`,
+   `truncated`, `partial`, and warnings. An explicitly loaded multi-page set may
+   be chronologically sorted with stable ties.
+10. Classification never depends on display-name string guesses alone.
+11. Actor classes:
+    - `participant`: explicit Rev user/external actor types;
+    - `human_agent`: configured Dev user IDs not in AI/system sets;
+    - `ai_or_system`: configured author IDs or documented system actor types;
+    - `event`: change events;
+    - `unknown`: everything else.
+12. Configured author ID sets take precedence over ambiguous names.
+13. Internal/private comments are labeled and never merged into the
+    participant-facing reply.
+14. Unknown body types render a safe placeholder plus metadata; no raw HTML is
+    passed to the UI.
+15. Bounded root-level `devrev_message_cache` upsert does not alter the durable
+    human review.
+16. DevRev `object_version` and modified timestamp prevent older cache data
+    overwriting newer data.
+17. Missing DevRev detail/timeline or a guard limit returns a typed partial
     result; it does not erase existing review fields or claim completeness.
-11. Existing Firestore review fields overlay the live ticket without letting remote data overwrite rating/comments/status.
-12. A live ticket with no review returns an explicit `review=None`, not a fake unreviewed document.
-13. A historical ticket with no defensible identifiers returns `correlation_status="unavailable"`.
-14. Timestamp/text similarity may return `candidate_links`, but never sets `linked` automatically.
-15. Candidate output contains a short-lived signed token bound to ticket,
+18. Existing Firestore review fields overlay the hydrated ticket without
+    letting remote data overwrite rating/comments/status.
+19. A platform detail request without an authorized persisted execution returns
+    not found before any DevRev call.
+20. A historical evidence lookup with no defensible identifiers returns
+    `correlation_status="unavailable"` and cannot create a row.
+21. Timestamp/text similarity may return `candidate_links`, but never sets
+    `linked` automatically.
+22. Candidate output contains a short-lived signed token bound to ticket,
     review, actor, sanitized broker reference/digest, and expiry—not a
     caller-editable internal reference.
-16. Evidence link creation revalidates that token plus the current broker
+23. Evidence link creation revalidates that token plus the current broker
     result; nonexistent, cross-ticket/review, expired, tampered, and replayed
     tokens fail without IDOR leakage.
-17. An explicit valid evidence link changes status to `manual` and records
+24. An explicit valid evidence link changes status to `manual` and records
     actor/reason/audit event.
-18. Exact display-ID mode is mutually exclusive with list filters, calls
-    scoped `works.get`, overlays at most one review summary, and returns a
-    singleton page without a cursor; it never sends a nonexistent display-ID
-    filter to `works.list`.
+25. Exact execution/ticket filters query only authorized persisted runs. Neither
+    list nor detail issues `works.list`, and the browser cannot create a review.
 
 Run:
 
 ```bash
 cd "$KBRAG_ROOT"
-"$PYTHON_BIN" -m pytest tests/test_ticket_review_service.py -q
+"$PYTHON_BIN" -m pytest tests/test_ticket_review_service.py \
+  tests/test_ticket_evaluation_ingest.py \
+  tests/test_ticket_evaluation_publisher.py \
+  tests/test_ticket_rag_invocation_journal.py -q
 ```
 
 Expected before implementation: missing service import.
@@ -133,25 +178,18 @@ Required high-level interface:
 
 ```python
 class TicketReviewService:
-    async def list_live_tickets(
-        self, query: DevRevTicketFilters
-    ) -> CursorPage[DevRevTicketWithReviewSummary]: ...
-    async def get_live_ticket_by_display_id(
-        self, display_id: str, actor: ReviewerIdentity
-    ) -> CursorPage[DevRevTicketWithReviewSummary]: ...
+    async def ingest_evaluation(
+        self, event: TicketEvaluationEvent
+    ) -> TicketEvaluationRun: ...
+    async def list_evaluation_runs(
+        self, query: EvaluationListQuery
+    ) -> CursorPage[TicketEvaluationSummary]: ...
     async def get_ticket_detail(
-        self, ticket_ref: str, actor: ReviewerIdentity
-    ) -> TicketDetailEnvelope: ...
+        self, execution_id: str, actor: ReviewerIdentity
+    ) -> TicketEvaluationDetailEnvelope: ...
     async def get_timeline_page(
-        self, ticket_ref: str, cursor: str | None
+        self, execution_id: str, cursor: str | None
     ) -> TimelinePage: ...
-    async def import_review(
-        self, ticket_ref: str, actor: ReviewerIdentity,
-        request_context: MutationContext,
-    ) -> TicketReview: ...
-    async def list_reviews(
-        self, query: ReviewListQuery
-    ) -> CursorPage[TicketReview]: ...
     async def patch_review(
         self, review_id: str, patch: ReviewPatch, expected_version: int,
         actor: ReviewerIdentity, request_context: MutationContext,
@@ -160,13 +198,17 @@ class TicketReviewService:
 
 Rules:
 
-- Live DevRev and Firestore calls that are independent may run concurrently with `asyncio.gather`, but partial failure must be explicit.
+- The list endpoint reads only authorized persisted executions; it never performs a
+  DevRev list/discovery request or per-row hydration fan-out.
+- Persist the invocation intent before the RAG effect. Persist the immutable
+  event as quarantined before DevRev access. Authorization/hydration may be
+  retried independently without rewriting captured RAG evidence.
+- Public list/detail/timeline reads never call DevRev. They use the bounded
+  snapshot captured by the private hydration plane and treat quarantined,
+  denied, and absent IDs as the same safe not-found result.
 - Never let a failed cache write fail an otherwise valid read; log a sanitized warning and mark cache state degraded.
 - Never let a failed DevRev fetch overwrite durable human review data.
-- Bound concurrent `works.get` hydration; do not fan out unbounded requests from a list page.
 - Cache keys and logs use hashes, not ticket text or raw cursors.
-- The list endpoint overlays only bounded review summaries. It does not fetch
-  timelines per row.
 - Detail never silently loops through an unbounded timeline. The browser
   explicitly follows returned cursors.
 
@@ -215,15 +257,15 @@ Cover new executions and backward compatibility:
    - source article IDs;
    - observed current vector ID + score + article ID + content SHA-256 +
      ordinal + chunk type/tier;
-   - normalized response hash;
+   - bounded generated answer/structured response and normalized response hash;
    - timings/errors;
    - explicit missing-provenance flags.
 7. Execution records exclude:
    - API keys/tokens;
    - full ticket body;
    - participant email/name;
-   - full generated response;
-   - full chunk text;
+   - provider hidden chain-of-thought;
+   - unbounded raw chunk bodies (store bounded previews plus hashes instead);
    - scraped participant data.
 8. Chunk references are bounded but do not claim IDs are stable across
    reindexing; no chunk-ID generation code changes.
@@ -343,11 +385,18 @@ Manually review every match and prove no new log/persistence path stores prohibi
 ## Definition of Done
 
 - DevRev detail/timeline hydration is bounded and explicit about partial failures.
+- Every ticket-associated RAG attempt records durable intent before the effect
+  and produces one invocation-scoped outbox/event; transport replay is
+  idempotent and real retries stay distinct.
+- The execution is durable and quarantined before DevRev hydration. It becomes
+  visible only after scoped authorization succeeds; denial and retryable
+  quarantine remain private.
 - Message classification uses identities/types, not display-name guesses.
 - New executions support verified-workload HMAC correlation; automatic linking
   remains disabled until the external n8n contract gate is proven.
-- No raw external identifier, participant content, or redefined vector ID was
-  introduced.
+- Raw external identifiers are confined to the named evaluation database and
+  scoped DevRev request; they do not enter logs, browser storage, or broker
+  output. No participant content or redefined vector ID was introduced.
 - Evidence reads use the separate bounded broker; the console has no
   `(default)` database access.
 - Historical gaps are rendered as gaps, never inferred as fact.
@@ -359,16 +408,20 @@ Manually review every match and prove no new log/persistence path stores prohibi
 ```bash
 git -C "$IMPL_ROOT" add \
   kb-rag-system/data_pipeline/ticket_review_service.py \
+  kb-rag-system/data_pipeline/ticket_evaluation_publisher.py \
   kb-rag-system/data_pipeline/ticket_review_provenance.py \
   kb-rag-system/data_pipeline/ticket_evidence_broker.py \
   kb-rag-system/data_pipeline/execution_logger.py \
   kb-rag-system/data_pipeline/rag_engine.py \
   kb-rag-system/api/tickets_evidence_broker_main.py \
+  kb-rag-system/api/ticket_evaluation_ingest_app.py \
   kb-rag-system/api/ticket_worker.py \
   kb-rag-system/api/main.py \
   kb-rag-system/api/tickets_console_config.py \
   kb-rag-system/api/ticket_review_models.py \
   kb-rag-system/tests/test_ticket_review_service.py \
+  kb-rag-system/tests/test_ticket_evaluation_ingest.py \
+  kb-rag-system/tests/test_ticket_evaluation_publisher.py \
   kb-rag-system/tests/test_ticket_review_provenance.py \
   kb-rag-system/tests/test_ticket_evidence_broker.py \
   kb-rag-system/tests/test_api.py \
@@ -380,16 +433,20 @@ git -C "$IMPL_ROOT" add \
   "kb-rag-system/Development Docs/TICKETS_N8N_CORRELATION_CONTRACT.md"
 "$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_staged_scope.py" \
   --allow kb-rag-system/data_pipeline/ticket_review_service.py \
+  --allow kb-rag-system/data_pipeline/ticket_evaluation_publisher.py \
   --allow kb-rag-system/data_pipeline/ticket_review_provenance.py \
   --allow kb-rag-system/data_pipeline/ticket_evidence_broker.py \
   --allow kb-rag-system/data_pipeline/execution_logger.py \
   --allow kb-rag-system/data_pipeline/rag_engine.py \
   --allow kb-rag-system/api/tickets_evidence_broker_main.py \
+  --allow kb-rag-system/api/ticket_evaluation_ingest_app.py \
   --allow kb-rag-system/api/ticket_worker.py \
   --allow kb-rag-system/api/main.py \
   --allow kb-rag-system/api/tickets_console_config.py \
   --allow kb-rag-system/api/ticket_review_models.py \
   --allow kb-rag-system/tests/test_ticket_review_service.py \
+  --allow kb-rag-system/tests/test_ticket_evaluation_ingest.py \
+  --allow kb-rag-system/tests/test_ticket_evaluation_publisher.py \
   --allow kb-rag-system/tests/test_ticket_review_provenance.py \
   --allow kb-rag-system/tests/test_ticket_evidence_broker.py \
   --allow kb-rag-system/tests/test_api.py \

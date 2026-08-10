@@ -1,321 +1,130 @@
-# Stage 9 — Safe Sheet CSV Migration and Review Export
+# Stage 9 — Superseded: Internal RAG Execution Ledger and No File Egress
 
-> **For Claude Opus 5:** This is an executable implementation prompt. Build a reversible, dry-run-first migration for a Google Sheets CSV export. No real sheet data has been provided; use synthetic fixtures only until the user supplies an export.
+**Status:** Superseded by product decision on 2026-08-05.
 
-**Goal:** Import the existing columns (`Ticket ID`, `Topic`, `Type`, `Rating`, `Reviewer`, `Comments`) into durable reviews without clobbering newer work, and export the review queue back to CSV for audit/escrow.
+This filename remains only so links from the original stage sequence resolve.
+It is not an instruction to build CSV, spreadsheet, upload, download, import,
+export, escrow, or migration functionality.
 
-**Architecture:** A shared migration service powers bounded, resumable admin
-API operations. Both browser and CLI call that API; neither receives Firestore
-access. Dry-run parses/validates without business writes; apply resolves each
-display ID through DevRev, then performs version-aware fill-empty merges.
-Reversal is a version-checked compensating patch, never history deletion.
+## Decision
 
-**Tech Stack:** Python `csv`, DevRev reader, Firestore repository, FastAPI upload, pytest.
+The ticket evaluation platform is the system of record for this workflow.
+Ticket evaluations are created only by ticket-associated RAG executions and
+are reviewed in `/tickets`. No file interchange path is part of the product.
 
----
+Consequences:
 
-## Prerequisites
+- DevRev-only tickets never appear in the platform.
+- Each `knowledge_question` or `generate_response` attempt creates one durable
+  intent before the RAG effect. New invocation/execution IDs use
+  `{job_id}-e{lease_epoch}-a{attempt}:{inquiry_index}`.
+- Classification-only, `needs_more_info`, rollout `knowledge_only`, and
+  `unprocessed` paths are not real eligible effects and never enter the ledger.
+- This requires a validated upstream DevRev `ticket_id`. A legacy RAG call with
+  no ticket identity may still run outside the console path, but it cannot
+  create a ticket-evaluation invocation, hydrate, or appear in `/tickets`; no
+  component fabricates the missing ID.
+- A transport replay of one immutable event is idempotent. A real RAG retry
+  has a new attempt/lease and a distinct invocation ID; retries never collapse.
+- Legacy `{job_id}:{inquiry_index}` events remain readable, but new worker
+  invocations do not use that identity.
+- A crash after intent creation produces a durable answer-less failed event
+  with `RAG_INVOCATION_ABANDONED`; it does not erase the attempt or borrow the
+  later retry's answer.
+- Ingestion persists the run as `quarantined` before DevRev enrichment. It is
+  durable to the private retry plane but is not visible in `/tickets` until
+  `works.get` validates existence and configured scope.
+- DevRev not-found/scope rejection becomes terminal `denied`. Auth,
+  configuration, rate-limit, transport, and outage failures remain
+  quarantined and retryable.
+- The linked review is created by trusted ingestion, never by a browser action.
+- The UI and API expose no file-oriented route, control, or fallback format.
 
-```bash
-set -euo pipefail
-export PLAN_ROOT="${PLAN_ROOT:-/Users/ivanalvis/Desktop/ForUsGuide/tickets-development-plan}"
-export TICKETS_BASE_SHA="${TICKETS_BASE_SHA:-eed9b34967c59b8bfec34026c9a8637581f2036a}"
-export IMPL_ROOT="${IMPL_ROOT:-/Users/ivanalvis/Desktop/ForUsGuide-tickets-console}"
-export KBRAG_ROOT="$IMPL_ROOT/kb-rag-system"
-export PYTHON_BIN="${PYTHON_BIN:-/Users/ivanalvis/Desktop/ForUsGuide-handle-ticket-finalization/kb-rag-system/.venv/bin/python}"
-test -r "$PLAN_ROOT/README.md"
-test "$(git -C "$IMPL_ROOT" rev-parse --show-toplevel)" = "$IMPL_ROOT"
-test -x "$PYTHON_BIN"
-test -z "$(git -C "$IMPL_ROOT" status --porcelain=v1 --untracked-files=all)"
-git -C "$IMPL_ROOT" merge-base --is-ancestor "$TICKETS_BASE_SHA" HEAD
-cd "$KBRAG_ROOT"
-"$PYTHON_BIN" -m pytest tests/test_ticket_review_repository.py \
-  tests/test_devrev_client.py \
-  tests/test_ticket_review_routes.py -q
-```
+## Replacement data flow
 
-## Files
+1. Immediately before an eligible ticket-associated RAG call, the worker writes
+   a `started` intent to `ticket_rag_invocations`.
+2. Success/failure checkpoint, journal completion, and the bounded outbox
+   event commit atomically. A reconciler turns an abandoned `started` intent
+   into `recovered` plus an explicit failed outbox event.
+3. An authenticated publisher scans pending and indexed due-retry outbox
+   records independently of job scanning and delivers them to private
+   ingestion service with deterministic idempotency.
+4. Permanent validation/auth delivery failures become durable `dead_letter`
+   records with no TTL. The authenticated, digest-bound
+   `APP_ROLE=reconciler python -m api.replay_ticket_evaluation` CLI returns one
+   to `pending`; it never edits or directly sends the event.
+5. Ingestion persists the immutable execution as `quarantined` and then
+   attempts scoped DevRev hydration with `get_ticket`; it never discovers rows
+   with `works.list`.
+6. `/api/admin/v1/tickets` lists only `authorized` executions. Quarantined,
+   denied, and absent IDs share the same safe external absence.
+7. `/api/admin/v1/tickets/{execution_id}` combines the immutable run, linked
+   review, and available DevRev context.
 
-Create:
+## Required evaluation detail
 
-- `kb-rag-system/data_pipeline/ticket_review_migration.py`
-- `kb-rag-system/scripts/import_ticket_reviews_csv.py`
-- `kb-rag-system/tests/test_ticket_review_migration.py`
-- `kb-rag-system/tests/test_ticket_review_import_export_routes.py`
-- `kb-rag-system/tests/fixtures/ticket_reviews_sheet_synthetic.csv`
+Each durable run retains bounded, redacted fields needed to evaluate the RAG
+behavior:
 
-Modify:
+- generated answer or structured response;
+- explicit classification rationale and outcome rationale;
+- route, run status, inquiry, topic, timestamps, and correlation IDs;
+- diagnostics, coverage gaps, retrieval metadata, model metadata, and timing;
+- source article references and bounded chunk previews with content hashes;
+- DevRev hydration state and safe retry/error metadata.
 
-- `kb-rag-system/api/ticket_review_routes.py`
-- `kb-rag-system/api/ticket_review_models.py`
-- `kb-rag-system/ui/tickets/app.js`
-- `kb-rag-system/ui/tickets/api.js`
-- `kb-rag-system/ui/tickets/render.js`
-- `kb-rag-system/ui/tickets/index.html`
-- relevant tests
+“Rationale” means explicit fields produced for audit and product explanation.
+Provider hidden chain-of-thought is not collected, stored, or displayed.
 
-## Step 1 — Write failing CSV parser tests
+## Permanent no-file-egress invariant
 
-Synthetic fixture rows must cover:
+The following are intentionally absent:
 
-- integer ratings `1`–`5`;
-- star strings such as `★★☆☆☆` and `★★★★☆`;
-- blank optional cells;
-- multiline comments;
-- Unicode;
-- duplicate ticket IDs;
-- unknown/bounded legacy Type and topic;
-- malformed rating;
-- formula-looking values with spaces, tabs, CR/LF, or control characters before
-  `=`, `+`, `-`, or `@`;
-- extra columns;
-- missing required headers;
-- BOM and common UTF-8 CSV line endings.
+- file body parsers or serializers for ticket evaluation data;
+- browser file pickers or file transfer controls;
+- migration/apply/reverse workflows;
+- downloadable review or execution snapshots;
+- file staging, file hashes, file manifests, or file-specific retention;
+- compatibility endpoints that return a different representation of the
+  evaluation ledger.
 
-Required behavior:
+This invariant applies to the UI, public admin API, private ingestion API,
+scripts, runbooks, staging gates, and production verification. If an external
+data transfer is proposed later, it requires a new product and privacy decision;
+it must not be inferred from this historical stage name.
 
-1. Headers are trimmed/case-normalized but mapped only through an explicit alias table.
-2. `Ticket ID` is required and must match a bounded display-ID pattern.
-3. Rating parser accepts only documented integer/star forms.
-4. Comments remain text and never execute/interpret formulas.
-5. `Type` always maps to `legacy_type`; it never silently becomes the new
-   `observation_type`. A separate explicit/versioned alias map may suggest an
-   observation with a warning, but the admin must confirm it.
-6. Duplicate IDs produce a deterministic row-level conflict; do not silently take last-write-wins.
-7. File byte size, rows, columns, cell length, and total comment bytes are bounded.
-8. Dry-run performs no repository or DevRev write.
-9. CSV error reports contain row number, field, safe code, and bounded message—not the whole row.
-10. Export formula detection examines the first effective character after
-    Unicode whitespace/control prefixes and spreadsheet-significant tab/CR/LF;
-    round-trip tests cover Sheets-style parsing.
+## Verification contract
 
-Run:
+The active regression suite must prove:
 
-```bash
-cd "$KBRAG_ROOT"
-"$PYTHON_BIN" -m pytest tests/test_ticket_review_migration.py \
-  tests/test_ticket_review_import_export_routes.py -q
-```
+1. every eligible ticket-associated RAG call has a durable intent before effect;
+2. a post-effect crash yields `RAG_INVOCATION_ABANDONED`, while its retry has a
+   distinct invocation ID;
+3. transport replay stays singular and legacy `{job_id}:{index}` remains readable;
+4. only scoped `authorized` executions appear in list/detail;
+5. not-found/scope becomes `denied`, while auth/config/outage remains
+   quarantined and retryable without metadata leakage;
+6. due outbox retries are indexed and job-scan-independent; permanent/auth
+   failure is a non-expiring `dead_letter` with authenticated manual replay;
+7. list and detail never use DevRev discovery;
+8. the browser cannot create a review manually;
+9. no file interchange code, routes, collections, settings, scripts, or visible
+   controls exist;
+10. full bounded run evidence is rendered without unsafe HTML sinks or browser
+   persistence.
 
-## Step 2 — Implement dry-run parser
-
-Canonical legacy mapping:
-
-| Sheet column | Review field |
-|---|---|
-| Ticket ID | DevRev display ID, later resolved to DON |
-| Topic | `topic` |
-| Type | `legacy_type` |
-| Rating | `rating` |
-| Reviewer | import attribution metadata only; authenticated applying admin remains audit actor |
-| Comments | `comments` |
-
-Never treat the CSV reviewer name as authenticated identity. Store it under something like `legacy_reviewer_display_name`/import metadata while the applying IAP admin is the audit actor.
-
-`observation_type` is a separate new column in exports and an optional new
-column in later imports; it is never inferred silently from legacy `Type`.
-
-Formula injection:
-
-- internal storage preserves the literal bounded text;
-- CSV export prefixes a cell when its first effective character—after any
-  whitespace/control/tab/CR/LF prefix—is `=`, `+`, `-`, or `@`; the exact
-  single-quote encoding and round trip are tested;
-- UI renders text only.
-
-## Step 3 — Implement import plan and apply
-
-Dry-run output:
-
-```json
-{
-  "import_id": "content hash / generated id",
-  "file_sha256": "...",
-  "rows_total": 20,
-  "rows_valid": 18,
-  "rows_invalid": 2,
-  "would_create": 10,
-  "would_fill_empty": 6,
-  "would_skip_unchanged": 2,
-  "conflicts": [],
-  "errors": []
-}
-```
-
-Apply rules:
-
-1. Dry-run accepts strict `text/csv; charset=utf-8`, CSRF, idempotency, and the
-   canonical size/row caps. It stores bounded parsed staging rows for seven
-   days, not the raw CSV body.
-2. Apply requires admin, the same file SHA-256, dry-run import ID, immutable
-   plan hash, explicit approval flag, and a new idempotency key.
-3. Default merge strategy is `fill_empty`.
-4. Resolve each `TKT-*` through `works.get` to obtain the scoped DevRev DON and object version before creating a review.
-5. Bound DevRev concurrency and honor the client’s rate-limit/retry policy.
-6. Unresolvable/out-of-scope tickets remain row errors; do not create a fake review.
-7. Existing non-empty rating/topic/legacy_type/comments are not overwritten by default.
-8. Optional overwrite is CLI-only, requires expected versions and a second
-   explicit confirmation flag, and produces per-field audit events.
-9. Import writes are idempotent by file hash + row hash.
-10. Apply processes at most 100 rows per request and returns a signed resume
-    cursor; UI/CLI repeats `POST /imports/{import_id}:apply`.
-11. A partial import reports completed/failed/conflicted rows; never claim
-    atomic all-or-nothing across a large CSV.
-12. Reversal uses `POST /imports/{import_id}:reverse`, max 100 rows/request,
-    the original row before-image and expected current version. It:
-    - restores only fields still at the imported version;
-    - marks newly created reviews `import_state=reversed` instead of deleting;
-    - leaves later-edited rows conflicted and visible;
-    - appends row/global audit events;
-    - is idempotent and resumable.
-13. In staging synthetic-verification mode only, dry-run/apply/export/reverse
-    consume and advance the server-signed role/phase handoff without placing
-    CSV content in it; production rejects the verification headers.
-
-For the HTTP endpoint, cap synchronous apply to a conservative row count. Larger imports must use the CLI so Cloud Run request timeouts are not a data-consistency mechanism.
-
-Run route tests red before adding the endpoints:
+Focused checks:
 
 ```bash
-cd "$KBRAG_ROOT"
-"$PYTHON_BIN" -m pytest tests/test_ticket_review_import_export_routes.py -q
-```
-
-## Step 4 — Implement CLI
-
-Commands:
-
-```bash
-cd "$KBRAG_ROOT"
-"$PYTHON_BIN" scripts/import_ticket_reviews_csv.py \
-  tests/fixtures/ticket_reviews_sheet_synthetic.csv \
-  --console-url http://127.0.0.1:8010 \
-  --environment local --repo-id synthetic-repo --dry-run
-```
-
-Requirements:
-
-- dry-run default;
-- explicit console URL/environment/repo ID;
-- reuse the keyless IAP API client from `ticket_review_cli.py`; never
-  instantiate Firestore or accept project/database/collection paths;
-- progress reports use ticket display ID/row only, no comment contents;
-- apply/reverse loop over signed resume cursors and stop on conflict;
-- exact stable exit codes from the remediation CLI;
-- output JSON option for automation;
-- no real CSV committed to the repository.
-
-Add explicit `--apply --import-id --plan-sha256
---confirm-approved-plan-sha256` and `--reverse --import-id
---confirm-reverse` modes. Never include a production apply example in this
-stage.
-
-## Step 5 — Add admin UI
-
-Admin-only `Import CSV` dialog:
-
-- file chooser;
-- expected columns/help;
-- dry-run first;
-- table of counts/errors/conflicts;
-- apply disabled until dry-run succeeds and confirmation is checked;
-- no browser parsing as source of truth;
-- no file contents persisted in browser storage;
-- large-file message points to CLI;
-- refreshes review queue after successful apply.
-
-## Step 6 — Implement safe export
-
-`GET /api/admin/v1/exports/ticket-reviews.csv`:
-
-- admin only;
-- bounded filters/date range;
-- server streams rows with fixed headers;
-- includes DevRev ID, six sheet fields, new workflow fields, remediation summary, versions/timestamps;
-- never includes raw timeline messages, participant email, DevRev DON unless explicitly requested for admin audit, tokens, IAP claims, or chunk contents;
-- formula-safe cells;
-- UTF-8 BOM only if a test shows it is needed for Sheets compatibility;
-- `Content-Disposition` has a server-generated safe filename;
-- `ticket_exports/{export_id}` and `ticket_console_audit_events` record
-  actor/filter/count/file SHA-256, not CSV contents.
-
-## Step 7 — Verify
-
-```bash
-cd "$KBRAG_ROOT"
-"$PYTHON_BIN" -m pytest tests/test_ticket_review_migration.py \
-  tests/test_ticket_review_import_export_routes.py \
+"$PYTHON_BIN" -m pytest \
+  tests/test_ticket_rag_invocation_journal.py \
+  tests/test_ticket_evaluation_publisher.py \
+  tests/test_no_ticket_file_interchange_contract.py \
   tests/test_ticket_review_routes.py \
-  tests/test_ticket_review_repository.py \
   tests/test_tickets_ui_contract.py -q
-"$PYTHON_BIN" scripts/import_ticket_reviews_csv.py \
-  tests/fixtures/ticket_reviews_sheet_synthetic.csv \
-  --console-url http://127.0.0.1:8010 \
-  --environment local --repo-id synthetic-repo --offline-parse-only --dry-run
-"$PYTHON_BIN" -m compileall -q data_pipeline scripts api
-git -C "$IMPL_ROOT" diff --check
 ```
 
-Expected CLI dry-run: deterministic synthetic counts and zero external writes.
-
-Scan the synthetic fixture for real data:
-
-```bash
-if rg -n -i '@forusall\\.com|TKT-[89][0-9]{5}' \
-    tests/fixtures/ticket_reviews_sheet_synthetic.csv; then
-  echo "STOP: synthetic CSV contains a real-data fingerprint" >&2
-  exit 1
-fi
-```
-
-Expected: no matches.
-
-## Definition of Done
-
-- The spreadsheet can be exported as CSV and migrated dry-run-first.
-- Real DevRev DONs are resolved server-side before review creation.
-- Existing reviews are not silently overwritten.
-- Partial/resumable imports and compensating reversal are auditable.
-- Export is formula-safe, bounded, and excludes conversations/credentials.
-- No real sheet data was committed or imported during implementation.
-
-## Commit
-
-```bash
-git -C "$IMPL_ROOT" add \
-  kb-rag-system/data_pipeline/ticket_review_migration.py \
-  kb-rag-system/scripts/import_ticket_reviews_csv.py \
-  kb-rag-system/tests/test_ticket_review_migration.py \
-  kb-rag-system/tests/test_ticket_review_import_export_routes.py \
-  kb-rag-system/tests/fixtures/ticket_reviews_sheet_synthetic.csv \
-  kb-rag-system/api/ticket_review_routes.py \
-  kb-rag-system/api/ticket_review_models.py \
-  kb-rag-system/ui/tickets/app.js \
-  kb-rag-system/ui/tickets/api.js \
-  kb-rag-system/ui/tickets/render.js \
-  kb-rag-system/ui/tickets/index.html \
-  kb-rag-system/tests/test_ticket_review_routes.py \
-  kb-rag-system/tests/test_ticket_review_repository.py \
-  kb-rag-system/tests/test_tickets_ui_contract.py
-"$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_staged_scope.py" \
-  --allow kb-rag-system/data_pipeline/ticket_review_migration.py \
-  --allow kb-rag-system/scripts/import_ticket_reviews_csv.py \
-  --allow kb-rag-system/tests/test_ticket_review_migration.py \
-  --allow kb-rag-system/tests/test_ticket_review_import_export_routes.py \
-  --allow kb-rag-system/tests/fixtures/ticket_reviews_sheet_synthetic.csv \
-  --allow kb-rag-system/api/ticket_review_routes.py \
-  --allow kb-rag-system/api/ticket_review_models.py \
-  --allow kb-rag-system/ui/tickets/app.js \
-  --allow kb-rag-system/ui/tickets/api.js \
-  --allow kb-rag-system/ui/tickets/render.js \
-  --allow kb-rag-system/ui/tickets/index.html \
-  --allow kb-rag-system/tests/test_ticket_review_routes.py \
-  --allow kb-rag-system/tests/test_ticket_review_repository.py \
-  --allow kb-rag-system/tests/test_tickets_ui_contract.py
-git -C "$IMPL_ROOT" diff --cached --check
-git -C "$IMPL_ROOT" diff --cached
-git -C "$IMPL_ROOT" commit \
-  -m "feat(tickets): add safe sheet migration and export"
-```
-
-Proceed to Stage 10.
+Stage 10, Stage 11, and Stage 99 consume the execution ledger and this
+no-file-egress decision. They must not reinstate the superseded workflow as an
+infrastructure, rollout, or final-verification gate.

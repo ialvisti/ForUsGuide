@@ -88,12 +88,13 @@ Cover:
 8. Exact role bindings cannot be overridden by query/body/header.
 9. Role hierarchy:
    - viewer: reads only;
-   - reviewer: viewer + create/update reviews/evidence;
+   - reviewer: viewer + update ingestion-created reviews/evidence;
    - remediator: reviewer + remediation batch operations;
-   - admin: all + CSV import/export and explicit reopen.
+   - admin: all reviewer/remediation operations + explicit reopen and bounded
+     retention administration.
    - agent: only lease-scoped show/claim/heartbeat/materialize/update of an
      already-created remediation batch; no general ticket/review list,
-     verification/completion, import/export, role, or direct Firestore
+     verification/completion, execution ingestion, role, or direct Firestore
      mutation.
 10. Local auth works only with `TICKETS_ENVIRONMENT=local`, fixture
     dependencies, loopback bind, `TICKETS_AUTH_MODE=local`, and explicit
@@ -154,7 +155,7 @@ memory only. Unsafe routes require:
 - `Sec-Fetch-Site: same-origin` (or a documented non-browser agent exception
   authenticated as `agent`);
 - `X-CSRF-Token` for browser roles;
-- strict `application/json`, except CSV import which later uses `text/csv`;
+- strict `application/json` for API bodies;
 - valid `Idempotency-Key`.
 
 The agent exception is allowed only after signed-IAP verification, exact
@@ -163,8 +164,8 @@ It bypasses only Origin/Fetch-Metadata/CSRF; content type, idempotency, quoted
 ETag/version, batch lease, and audit remain mandatory. Negative tests cover a
 human/cookie request attempting to claim the exception.
 
-Implement a shared staging-verification handoff helper for the later batch and
-import routes. It is enabled only when
+Implement a shared staging-verification handoff helper for the later batch
+workflow and private execution-ingestion verification. It is enabled only when
 `TICKETS_ENABLE_SYNTHETIC_VERIFICATION=true` and the environment is `staging`
 or the loopback fixture; production must reject that combination at startup.
 When a mutating request carries a validated UUID
@@ -175,7 +176,8 @@ signed with an HKDF domain-separated subkey derived from
 environment, run ID, prior-token digest, next exact role/phase, server-created
 resource IDs/versions, and expiry. The token grants no authority and every
 normal IAP/RBAC/BOLA/ETag/idempotency/state check still runs. Never include
-email, ticket/comment/conversation/CSV content, secrets, or bearer material.
+email, ticket/comment/conversation/generated-answer content, secrets, or
+bearer material.
 Tests reject production enablement, tampering, replay, expiry, reordered
 phases, wrong actor role, and injected IDs.
 
@@ -186,14 +188,14 @@ Override DevRev/service/repository/evidence-client dependencies with fakes.
 First write and run red tests for only the endpoints owned by Stages 1–5:
 
 - session;
-- DevRev ticket list/detail/timeline page;
-- review create/list/detail/patch;
+- persisted RAG execution list/detail and its scoped DevRev timeline page;
+- linked review detail/patch (review creation is trusted-ingestion-only);
 - audit-event list;
 - evidence-link list/create/delete.
 
-Remediation routes are absent until Stage 8; import/export/reverse routes are
-absent until Stage 9. Assert they are not present in OpenAPI now rather than
-creating misleading stubs.
+Remediation routes are absent until Stage 8. File import/export/reverse and
+manual ticket/review-create routes are product non-goals; assert they are not
+present in OpenAPI rather than creating compatibility stubs.
 
 For each Stage 5 endpoint cover:
 
@@ -215,10 +217,11 @@ For each Stage 5 endpoint cover:
 - signed/filter-bound Firestore cursor uses the same header transport;
 - raw cursor query parameters are rejected and URL/request logs never contain
   the remote cursor or wrapper token;
-- exact `ticket_id` query is mutually exclusive with list filters, calls the
-  scoped singleton service path/`works.get`, and returns zero/one item without
-  list cursors; unsupported combinations return
-  `422 unsupported_filter_combination`;
+- exact `execution_id` and `devrev_display_id` filters operate only on
+  authorized persisted evaluation runs and never call DevRev discovery.
+  Detail/timeline use the bounded authorized snapshot and never call DevRev;
+  quarantined, denied, and absent executions share the same safe not-found
+  response. Unsupported combinations return `422 unsupported_filter_combination`;
 - timeline partial-result envelope;
 - paginated audit/evidence envelopes;
 - explicit evidence unlink reason/audit;
@@ -347,6 +350,10 @@ assert all(path.startswith(("/api/admin/v1", "/livez", "/readyz", "/tickets")) f
 paths = set(schema["paths"])
 assert not any("remediation-batches" in path for path in paths)
 assert not any("/imports/" in path or "/exports/" in path for path in paths)
+assert not any(
+    path == "/api/admin/v1/tickets/{reference}/review"
+    for path in paths
+)
 print("admin OpenAPI paths:", len(schema["paths"]))
 PY
 ```

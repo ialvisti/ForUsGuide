@@ -49,9 +49,7 @@ from api.ticket_review_models import (
     TicketEvidenceLookupRequest,
 )
 from api.tickets_console_config import (
-    STRICT_ENVIRONMENTS,
     EvidenceBrokerSettings,
-    resolve_tickets_firestore_database,
     validate_evidence_broker_settings,
 )
 from data_pipeline.ticket_evidence_broker import (
@@ -77,9 +75,26 @@ FORBIDDEN_IMPORTS = (
     "openai",
 )
 
+EVIDENCE_FIRESTORE_DATABASE = "(default)"
+
 
 class BrokerAuthorizationError(Exception):
     """The caller is not the configured console service account."""
+
+
+def resolve_evidence_firestore_database(database: object) -> str:
+    """Pin the broker to the RAG producer's one evidence database.
+
+    Unlike the reviewer console, this narrowly scoped service exists solely
+    to read sanitized provenance from ``(default)``.  Refuse a blank value,
+    a named console database, and even a whitespace-normalized variant before
+    constructing a Firestore client.
+    """
+    if not isinstance(database, str) or database != EVIDENCE_FIRESTORE_DATABASE:
+        raise ValueError(
+            "TICKETS_BROKER_FIRESTORE_DATABASE must be exactly (default)"
+        )
+    return EVIDENCE_FIRESTORE_DATABASE
 
 
 def authorize_console_caller(
@@ -134,12 +149,7 @@ async def lifespan(app: FastAPI):
     validate_evidence_broker_settings(settings)
     app.state.settings = settings
 
-    database = resolve_tickets_firestore_database(
-        settings.FIRESTORE_DATABASE or "(default)",
-        environment=(
-            "local" if settings.ENVIRONMENT not in STRICT_ENVIRONMENTS else settings.ENVIRONMENT
-        ),
-    ) if settings.FIRESTORE_DATABASE else "(default)"
+    database = resolve_evidence_firestore_database(settings.FIRESTORE_DATABASE)
 
     # Imported here, not at module scope, so the app object can be imported
     # (and its route table inspected) without the Firestore SDK or ADC.

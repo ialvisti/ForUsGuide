@@ -351,14 +351,26 @@ def _write_headers(client: TestClient, *, idempotency: str = "idem-0123456789ab"
     return headers
 
 
+def _ingest_execution(harness: _Harness, **event_overrides):
+    """Seed the public console through the same RAG-only service boundary.
+
+    Tests may not resurrect the removed manual-create route. The private ingest
+    HTTP contract is covered separately; this helper calls its service directly
+    so review-route tests can focus on authorization, ETags, and audit behavior.
+    """
+    from tests.test_ticket_evaluation_ingest import _event
+
+    event = _event(**event_overrides)
+    with harness.client as client:
+        return client.portal.call(harness.service._evaluation_service.ingest, event)
+
+
 def _create_review(harness: _Harness, *, idempotency="idem-create-000001") -> dict:
-    response = harness.client.post(
-        f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
-        headers=_write_headers(harness.client, idempotency=idempotency),
-        json={},
-    )
-    assert response.status_code == 201, response.text
-    return response.json()
+    del idempotency  # the immutable execution id is the ingest idempotency key
+    result = _ingest_execution(harness)
+    with harness.client as client:
+        review = client.portal.call(harness.repository.get_review, result.run.review_id)
+    return review.model_dump(mode="json")
 
 
 # =====================================================================
@@ -414,7 +426,7 @@ class TestSession:
         ).json()["feature_flags"]
         assert flags and all(isinstance(value, bool) for value in flags.values())
         assert flags["remediation_enabled"] is False
-        assert flags["import_export_enabled"] is False
+        assert "import_export_enabled" not in flags
 
 
 # =====================================================================
@@ -426,49 +438,67 @@ class TestTicketList:
 
     def test_a_viewer_may_list(self, monkeypatch):
         harness = _harness(monkeypatch, role=ReviewerRole.VIEWER)
+        _ingest_execution(harness)
         response = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers())
         assert response.status_code == 200
         body = response.json()
-        assert body["items"][0]["ticket"]["devrev_display_id"] == SYNTHETIC_DISPLAY_ID
-        assert body["items"][0]["review"] is None
+        assert body["items"][0]["execution_id"] == "job123:0"
+        assert body["items"][0]["devrev_display_id"] == SYNTHETIC_DISPLAY_ID
+        assert body["items"][0]["review"]["status"] == "unreviewed"
+        assert harness.devrev.list_calls == []
 
-    def test_the_remote_cursor_never_reaches_the_client(self, monkeypatch):
+    def test_the_repository_cursor_never_reaches_the_client(self, monkeypatch):
         harness = _harness(monkeypatch)
-        response = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers())
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
+        response = harness.client.get(
+            f"{API_PREFIX}/tickets?page_size=1", headers=_auth_headers()
+        )
         body = response.json()
         assert body["next_cursor"] is not None
-        assert "remote-next" not in response.text
+        assert "job111" not in body["next_cursor"]
+        assert "job222" not in body["next_cursor"]
 
     def test_a_console_cursor_round_trips(self, monkeypatch):
         harness = _harness(monkeypatch)
-        first = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers()).json()
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
+        first = harness.client.get(
+            f"{API_PREFIX}/tickets?page_size=1", headers=_auth_headers()
+        ).json()
         second = harness.client.get(
-            f"{API_PREFIX}/tickets",
+            f"{API_PREFIX}/tickets?page_size=1",
             headers=_auth_headers(**{CURSOR_HEADER: first["next_cursor"]}),
         )
         assert second.status_code == 200
-        # The adapter received the unwrapped remote cursor, not the token.
-        assert harness.devrev.list_calls[-1][0] == "remote-next"
+        assert second.json()["items"][0]["execution_id"] != first["items"][0]["execution_id"]
+        assert harness.devrev.list_calls == []
 
     def test_a_cursor_from_another_session_is_refused(self, monkeypatch):
         first = _harness(monkeypatch, role=ReviewerRole.REVIEWER)
-        token = first.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers()).json()[
-            "next_cursor"
-        ]
+        _ingest_execution(first, job_id="job111")
+        _ingest_execution(first, job_id="job222")
+        token = first.client.get(
+            f"{API_PREFIX}/tickets?page_size=1", headers=_auth_headers()
+        ).json()["next_cursor"]
         other = _harness(monkeypatch, role=ReviewerRole.ADMIN)
         response = other.client.get(
-            f"{API_PREFIX}/tickets", headers=_auth_headers(**{CURSOR_HEADER: token})
+            f"{API_PREFIX}/tickets?page_size=1",
+            headers=_auth_headers(**{CURSOR_HEADER: token}),
         )
         assert response.status_code == 422
         assert response.json()["error"]["code"] == CODE_CURSOR_REJECTED
 
     def test_a_cursor_from_another_filter_is_refused(self, monkeypatch):
         harness = _harness(monkeypatch)
-        token = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers()).json()[
-            "next_cursor"
-        ]
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
+        token = harness.client.get(
+            f"{API_PREFIX}/tickets?status=succeeded&page_size=1",
+            headers=_auth_headers(),
+        ).json()["next_cursor"]
         response = harness.client.get(
-            f"{API_PREFIX}/tickets?stage=triage",
+            f"{API_PREFIX}/tickets?hydration_status=succeeded&page_size=1",
             headers=_auth_headers(**{CURSOR_HEADER: token}),
         )
         assert response.status_code == 422
@@ -476,9 +506,11 @@ class TestTicketList:
 
     def test_a_cursor_from_another_direction_is_refused(self, monkeypatch):
         harness = _harness(monkeypatch)
-        token = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers()).json()[
-            "next_cursor"
-        ]
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
+        token = harness.client.get(
+            f"{API_PREFIX}/tickets?page_size=1", headers=_auth_headers()
+        ).json()["next_cursor"]
         response = harness.client.get(
             f"{API_PREFIX}/tickets?mode=before",
             headers=_auth_headers(**{CURSOR_HEADER: token}),
@@ -487,34 +519,42 @@ class TestTicketList:
 
     def test_a_cursor_from_another_route_is_refused(self, monkeypatch):
         harness = _harness(monkeypatch)
-        token = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers()).json()[
-            "next_cursor"
-        ]
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
+        token = harness.client.get(
+            f"{API_PREFIX}/tickets?page_size=1", headers=_auth_headers()
+        ).json()["next_cursor"]
         response = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline",
+            f"{API_PREFIX}/tickets/job111:0/timeline",
             headers=_auth_headers(**{CURSOR_HEADER: token}),
         )
         assert response.status_code == 422
 
     def test_a_tampered_cursor_is_refused(self, monkeypatch):
         harness = _harness(monkeypatch)
-        token = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers()).json()[
-            "next_cursor"
-        ]
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
+        token = harness.client.get(
+            f"{API_PREFIX}/tickets?page_size=1", headers=_auth_headers()
+        ).json()["next_cursor"]
         forged = token[:-2] + ("AA" if not token.endswith("AA") else "BB")
         response = harness.client.get(
-            f"{API_PREFIX}/tickets", headers=_auth_headers(**{CURSOR_HEADER: forged})
+            f"{API_PREFIX}/tickets?page_size=1",
+            headers=_auth_headers(**{CURSOR_HEADER: forged}),
         )
         assert response.status_code == 422
 
     def test_an_expired_cursor_is_refused(self, monkeypatch):
         harness = _harness(monkeypatch)
-        token = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers()).json()[
-            "next_cursor"
-        ]
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
+        token = harness.client.get(
+            f"{API_PREFIX}/tickets?page_size=1", headers=_auth_headers()
+        ).json()["next_cursor"]
         harness.client.app.state.clock = lambda: T0 + timedelta(days=2)
         response = harness.client.get(
-            f"{API_PREFIX}/tickets", headers=_auth_headers(**{CURSOR_HEADER: token})
+            f"{API_PREFIX}/tickets?page_size=1",
+            headers=_auth_headers(**{CURSOR_HEADER: token}),
         )
         assert response.status_code == 422
 
@@ -529,34 +569,40 @@ class TestTicketList:
         assert response.status_code == 422
         assert response.json()["error"]["code"] == CODE_VALIDATION_FAILED
 
-    def test_an_exact_ticket_id_returns_a_singleton_without_cursors(self, monkeypatch):
+    def test_a_display_id_filter_keeps_every_execution_for_that_ticket(self, monkeypatch):
         harness = _harness(monkeypatch)
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
         response = harness.client.get(
-            f"{API_PREFIX}/tickets?ticket_id={SYNTHETIC_DISPLAY_ID}", headers=_auth_headers()
+            f"{API_PREFIX}/tickets?devrev_display_id={SYNTHETIC_DISPLAY_ID}",
+            headers=_auth_headers(),
         )
         assert response.status_code == 200
         body = response.json()
-        assert len(body["items"]) == 1
+        assert len(body["items"]) == 2
         assert body["next_cursor"] is None and body["prev_cursor"] is None
-        # The scoped singleton path is works.get, never a list filter.
-        assert harness.devrev.get_calls == [SYNTHETIC_DISPLAY_ID]
         assert harness.devrev.list_calls == []
 
-    def test_an_exact_ticket_id_cannot_be_combined_with_filters(self, monkeypatch):
+    def test_execution_filters_can_be_combined_without_devrev_discovery(self, monkeypatch):
         harness = _harness(monkeypatch)
+        _ingest_execution(harness)
         response = harness.client.get(
-            f"{API_PREFIX}/tickets?ticket_id={SYNTHETIC_DISPLAY_ID}&stage=triage",
+            f"{API_PREFIX}/tickets?devrev_display_id={SYNTHETIC_DISPLAY_ID}"
+            "&route=knowledge_question"
+            "&status=succeeded&hydration_status=succeeded&review_status=unreviewed",
             headers=_auth_headers(),
         )
-        assert response.status_code == 422
-        assert response.json()["error"]["code"] == CODE_UNSUPPORTED_FILTER
+        assert response.status_code == 200
+        assert len(response.json()["items"]) == 1
+        assert harness.devrev.list_calls == []
 
-    def test_an_unknown_query_parameter_is_ignored_not_widened(self, monkeypatch):
+    def test_an_unknown_query_parameter_is_refused_not_widened(self, monkeypatch):
         harness = _harness(monkeypatch)
         response = harness.client.get(
             f"{API_PREFIX}/tickets?type=issue", headers=_auth_headers()
         )
-        assert response.status_code == 200
+        assert response.status_code == 422
+        assert response.json()["error"]["code"] == CODE_UNSUPPORTED_FILTER
 
     def test_an_oversized_page_size_is_422(self, monkeypatch):
         harness = _harness(monkeypatch)
@@ -565,23 +611,26 @@ class TestTicketList:
         )
         assert response.status_code == 422
 
-    def test_upstream_rate_limit_maps_to_429_with_retry_after(self, monkeypatch):
+    def test_devrev_list_rate_limits_cannot_hide_the_execution_ledger(self, monkeypatch):
         harness = _harness(
             monkeypatch,
             devrev=_FakeDevRev(list_error=DevRevRateLimitError("limited", retry_after_s=7)),
         )
+        _ingest_execution(harness)
         response = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers())
-        assert response.status_code == 429
-        assert response.json()["error"]["code"] == CODE_UPSTREAM_RATE_LIMITED
-        assert response.headers["Retry-After"] == "7"
+        assert response.status_code == 200
+        assert response.json()["items"]
+        assert harness.devrev.list_calls == []
 
-    def test_upstream_outage_maps_to_503(self, monkeypatch):
+    def test_devrev_list_outages_cannot_hide_the_execution_ledger(self, monkeypatch):
         harness = _harness(
             monkeypatch, devrev=_FakeDevRev(list_error=DevRevTransientError("down"))
         )
+        _ingest_execution(harness)
         response = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers())
-        assert response.status_code == 503
-        assert response.json()["error"]["code"] == CODE_UPSTREAM_UNAVAILABLE
+        assert response.status_code == 200
+        assert response.json()["items"]
+        assert harness.devrev.list_calls == []
 
     def test_our_own_rate_bound_maps_to_429(self, monkeypatch):
         from api.rate_limit import FixedWindowRateLimiter
@@ -599,38 +648,43 @@ class TestTicketList:
 
 class TestTicketDetailAndTimeline:
 
-    def test_detail_returns_one_page_and_wraps_its_cursor(self, monkeypatch):
+    def test_detail_returns_the_persisted_execution_without_loading_timeline(self, monkeypatch):
         harness = _harness(monkeypatch)
+        _ingest_execution(harness)
         response = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}", headers=_auth_headers()
+            f"{API_PREFIX}/tickets/job123:0", headers=_auth_headers()
         )
         assert response.status_code == 200
         body = response.json()
-        assert body["timeline"]["next_cursor"] is not None
-        assert "remote-timeline-next" not in response.text
-        assert len(harness.devrev.timeline_calls) == 1
+        assert body["execution"]["execution_id"] == "job123:0"
+        assert body["generated_answer"] == "The generated RAG answer."
+        assert body["classification_reasoning"]
+        assert harness.devrev.timeline_calls == []
 
     def test_a_timeline_cursor_round_trips_forward_only(self, monkeypatch):
         harness = _harness(monkeypatch)
-        detail = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}", headers=_auth_headers()
+        _ingest_execution(harness)
+        first = harness.client.get(
+            f"{API_PREFIX}/tickets/job123:0/timeline", headers=_auth_headers()
         ).json()
-        token = detail["timeline"]["next_cursor"]
+        token = first["next_cursor"]
         page = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline",
+            f"{API_PREFIX}/tickets/job123:0/timeline",
             headers=_auth_headers(**{CURSOR_HEADER: token}),
         )
         assert page.status_code == 200
         assert page.json()["prev_cursor"] is None
         assert harness.devrev.timeline_calls[-1][1] == "remote-timeline-next"
 
-    def test_a_timeline_cursor_for_another_ticket_is_refused(self, monkeypatch):
+    def test_a_timeline_cursor_for_another_execution_is_refused(self, monkeypatch):
         harness = _harness(monkeypatch)
+        _ingest_execution(harness, job_id="job111")
+        _ingest_execution(harness, job_id="job222")
         token = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}", headers=_auth_headers()
-        ).json()["timeline"]["next_cursor"]
+            f"{API_PREFIX}/tickets/job111:0/timeline", headers=_auth_headers()
+        ).json()["next_cursor"]
         response = harness.client.get(
-            f"{API_PREFIX}/tickets/TKT-999999/timeline",
+            f"{API_PREFIX}/tickets/job222:0/timeline",
             headers=_auth_headers(**{CURSOR_HEADER: token}),
         )
         assert response.status_code == 422
@@ -639,38 +693,48 @@ class TestTicketDetailAndTimeline:
         harness = _harness(
             monkeypatch, devrev=_FakeDevRev(get_error=DevRevNotFoundError("gone"))
         )
+        _ingest_execution(harness)
         response = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline", headers=_auth_headers()
+            f"{API_PREFIX}/tickets/job123:0/timeline", headers=_auth_headers()
         )
         assert response.status_code == 404
         assert response.json()["error"]["code"] == CODE_NOT_FOUND
 
     def test_an_out_of_scope_ticket_is_indistinguishable_from_missing(self, monkeypatch):
-        missing = _harness(
+        missing_harness = _harness(
             monkeypatch, devrev=_FakeDevRev(get_error=DevRevNotFoundError("gone"))
-        ).client.get(f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline", headers=_auth_headers())
-        forbidden = _harness(
+        )
+        forbidden_harness = _harness(
             monkeypatch, devrev=_FakeDevRev(get_error=DevRevScopeError("out of scope"))
-        ).client.get(f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline", headers=_auth_headers())
+        )
+        _ingest_execution(missing_harness)
+        _ingest_execution(forbidden_harness)
+        missing = missing_harness.client.get(
+            f"{API_PREFIX}/tickets/job123:0/timeline", headers=_auth_headers()
+        )
+        forbidden = forbidden_harness.client.get(
+            f"{API_PREFIX}/tickets/job123:0/timeline", headers=_auth_headers()
+        )
         assert missing.status_code == forbidden.status_code == 404
         assert missing.json()["error"]["code"] == forbidden.json()["error"]["code"]
         assert missing.json()["error"]["message"] == forbidden.json()["error"]["message"]
 
-    def test_a_devrev_outage_still_returns_the_durable_review_partially(self, monkeypatch):
+    def test_detail_uses_the_authorized_snapshot_without_rehydrating_on_get(
+        self, monkeypatch
+    ):
         harness = _harness(monkeypatch)
         _create_review(harness)
+        calls_before_get = list(harness.devrev.get_calls)
         harness.devrev._get_error = DevRevTransientError("down")
-        # Requested by display id: with DevRev down there is no DON to derive, so
-        # the durable review can only be found by the reference the reviewer
-        # actually holds.
         response = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}", headers=_auth_headers()
+            f"{API_PREFIX}/tickets/job123:0", headers=_auth_headers()
         )
         assert response.status_code == 200
         body = response.json()
-        assert body["partial"] is True
+        assert body["partial"] is False
         assert body["review"] is not None
-        assert body["ticket"] is None
+        assert body["ticket"]["body"] == "Original ticket body."
+        assert harness.devrev.get_calls == calls_before_get
 
     @pytest.mark.parametrize(
         "reference",
@@ -685,7 +749,7 @@ class TestTicketDetailAndTimeline:
             "don:core:dvrv us-1:x/1",
         ],
     )
-    def test_a_bad_ticket_reference_is_422(self, monkeypatch, reference):
+    def test_a_bad_execution_reference_is_422_or_not_routable(self, monkeypatch, reference):
         harness = _harness(monkeypatch)
         response = harness.client.get(
             f"{API_PREFIX}/tickets/{reference}/timeline", headers=_auth_headers()
@@ -708,8 +772,9 @@ class TestTicketDetailAndTimeline:
             monkeypatch,
             devrev=_FakeDevRev(timeline_error=DevRevResourceLimitError("too big")),
         )
+        _ingest_execution(harness)
         response = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}", headers=_auth_headers()
+            f"{API_PREFIX}/tickets/job123:0/timeline", headers=_auth_headers()
         )
         assert response.status_code == 200
         body = response.json()
@@ -718,27 +783,29 @@ class TestTicketDetailAndTimeline:
 
     def test_no_raw_devrev_object_or_unbounded_text_is_returned(self, monkeypatch):
         harness = _harness(monkeypatch)
+        _ingest_execution(harness)
         body = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}", headers=_auth_headers()
+            f"{API_PREFIX}/tickets/job123:0", headers=_auth_headers()
         ).json()
-        # The envelope is the modelled projection: unmodelled DevRev keys such as
-        # ``applies_to_part`` or ``stage`` never appear at the ticket level.
         assert set(body).issubset(
             {
-                "ticket_ref",
+                "execution",
                 "ticket",
                 "review",
-                "timeline",
-                "evidence",
-                "partial",
-                "cache_state",
-                "warnings",
+                "generated_answer",
+                "classification_reasoning",
+                "outcome_reason",
                 "diagnostics",
+                "gaps",
+                "source_articles",
+                "chunk_evidence",
+                "model_metadata",
+                "timing_metadata",
+                "hydration_status",
+                "partial",
+                "warnings",
             }
         )
-        # The ticket is the Stage 1 projection and nothing else: an unmodelled
-        # DevRev key cannot appear, because ``extra="forbid"`` would have refused
-        # it on the way in and the response model would drop it on the way out.
         assert set(body["ticket"]) == set(DevRevTicketDetail.model_fields)
 
 
@@ -749,59 +816,49 @@ class TestTicketDetailAndTimeline:
 
 class TestReviewLifecycle:
 
-    def test_a_reviewer_may_create_and_gets_an_etag(self, monkeypatch):
+    def test_rag_ingest_creates_the_review_and_detail_returns_an_etag(self, monkeypatch):
         harness = _harness(monkeypatch)
-        response = harness.client.post(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
-            headers=_write_headers(harness.client),
-            json={},
+        created = _create_review(harness)
+        response = harness.client.get(
+            f"{API_PREFIX}/reviews/{created['review_id']}", headers=_auth_headers()
         )
-        assert response.status_code == 201
-        assert response.headers["ETag"] == '"v1"'
+        assert response.status_code == 200
+        assert response.headers["ETag"] == f'"v{created["version"]}"'
         assert response.headers["Cache-Control"] == "no-store"
         assert response.json()["review_id"] == review_id_for_devrev_work(SYNTHETIC_DON)
 
-    def test_a_viewer_may_not_create(self, monkeypatch):
+    def test_the_manual_create_route_is_absent_for_a_viewer_too(self, monkeypatch):
         harness = _harness(monkeypatch, role=ReviewerRole.VIEWER)
         response = harness.client.post(
             f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
             headers=_write_headers(harness.client),
             json={},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
-    def test_creation_is_idempotent_for_the_same_key(self, monkeypatch):
+    def test_rag_ingestion_is_idempotent_for_the_same_execution(self, monkeypatch):
         harness = _harness(monkeypatch)
-        first = _create_review(harness)
-        second = harness.client.post(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
-            headers=_write_headers(harness.client, idempotency="idem-create-000001"),
-            json={},
-        )
-        assert second.status_code == 201
-        assert second.json()["version"] == first["version"]
+        first = _ingest_execution(harness)
+        second = _ingest_execution(harness)
+        assert first.created is True
+        assert second.created is False
+        assert second.run.review_id == first.run.review_id
 
-    def test_supplied_initial_fields_are_applied_not_dropped(self, monkeypatch):
+    def test_system_created_review_starts_unreviewed_without_human_fields(self, monkeypatch):
         harness = _harness(monkeypatch)
-        response = harness.client.post(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
-            headers=_write_headers(harness.client),
-            json={"topic": "limits", "comments": "seen before"},
-        )
-        assert response.status_code == 201
-        body = response.json()
-        assert body["topic"] == "limits"
-        assert body["comments"] == "seen before"
-        assert response.headers["ETag"] == f'"v{body["version"]}"'
+        review = _create_review(harness)
+        assert review["status"] == "unreviewed"
+        assert review["topic"] is None
+        assert review["comments"] is None
 
-    def test_an_unknown_body_field_is_refused(self, monkeypatch):
+    def test_no_manual_body_shape_can_resurrect_the_removed_route(self, monkeypatch):
         harness = _harness(monkeypatch)
         response = harness.client.post(
             f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
             headers=_write_headers(harness.client),
             json={"topic": "limits", "version": 99},
         )
-        assert response.status_code == 422
+        assert response.status_code == 404
 
     def test_a_review_is_readable_with_its_etag(self, monkeypatch):
         harness = _harness(monkeypatch)
@@ -967,28 +1024,26 @@ class TestAuditAndEvidence:
         assert body["items"], "creating a review must leave an audit event"
         assert "next_cursor" in body and "page_size" in body
 
-    def test_the_audit_actor_is_the_verified_identity(self, monkeypatch):
-        """The ledger records the IAP subject, not anything the body asked for."""
+    def test_the_creation_audit_actor_is_the_verified_ingest_workload(self, monkeypatch):
+        """Automatic creation is attributed to the RAG ingest workload."""
         harness = _harness(monkeypatch, role=ReviewerRole.ADMIN)
         created = _create_review(harness)
         events = harness.client.get(
             f"{API_PREFIX}/reviews/{created['review_id']}/audit-events",
             headers=_auth_headers(),
         ).json()["items"]
-        expected_subject = f"accounts.google.com:{EMAILS[ReviewerRole.ADMIN]}"
+        expected_subject = "service:ticket-evaluation-ingest"
         assert events[0]["actor_subject"] == expected_subject
         assert events[0]["actor_subject_hash"] != expected_subject
 
-    def test_a_body_supplied_actor_cannot_forge_the_audit_actor(self, monkeypatch):
+    def test_a_body_supplied_actor_cannot_resurrect_manual_creation(self, monkeypatch):
         harness = _harness(monkeypatch, role=ReviewerRole.REVIEWER)
         response = harness.client.post(
             f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
             headers=_write_headers(harness.client),
             json={"actor": {"subject": "x", "email": "admin@example.invalid"}},
         )
-        # ``extra="forbid"`` means the attempt is refused outright rather than
-        # silently ignored.
-        assert response.status_code == 422
+        assert response.status_code == 404
 
     def test_audit_events_for_a_missing_review_are_404(self, monkeypatch):
         harness = _harness(monkeypatch)
@@ -1089,18 +1144,22 @@ class TestAuditAndEvidence:
 class TestUnsafeRequestMatrixOverHttp:
 
     def _post(self, harness, **header_overrides):
+        created = _create_review(harness)
         headers = _write_headers(harness.client)
+        headers["If-Match"] = f'"v{created["version"]}"'
         for key, value in header_overrides.items():
             if value is None:
                 headers.pop(key, None)
             else:
                 headers[key] = value
-        return harness.client.post(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review", headers=headers, json={}
+        return harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=headers,
+            json={"topic": "limits"},
         )
 
     def test_the_happy_path_passes(self, monkeypatch):
-        assert self._post(_harness(monkeypatch)).status_code == 201
+        assert self._post(_harness(monkeypatch)).status_code == 200
 
     def test_a_missing_origin_is_403(self, monkeypatch):
         response = self._post(_harness(monkeypatch), **{ORIGIN_HEADER: None})
@@ -1187,7 +1246,7 @@ class TestSurfaceAndSecrecy:
         for path in (
             f"{API_PREFIX}/session",
             f"{API_PREFIX}/tickets",
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}",
+            f"{API_PREFIX}/tickets/job123:0",
             f"{API_PREFIX}/reviews",
             f"{API_PREFIX}/reviews/{created['review_id']}",
             f"{API_PREFIX}/reviews/{created['review_id']}/audit-events",
@@ -1198,13 +1257,14 @@ class TestSurfaceAndSecrecy:
                 assert secret not in body, path
 
     def test_an_error_envelope_never_echoes_an_upstream_body(self, monkeypatch):
-        harness = _harness(
-            monkeypatch,
-            devrev=_FakeDevRev(
-                list_error=DevRevTransientError("upstream said: participant secret")
-            ),
+        harness = _harness(monkeypatch)
+        _ingest_execution(harness)
+        harness.devrev._get_error = DevRevTransientError(
+            "upstream said: participant secret"
         )
-        response = harness.client.get(f"{API_PREFIX}/tickets", headers=_auth_headers())
+        response = harness.client.get(
+            f"{API_PREFIX}/tickets/job123:0/timeline", headers=_auth_headers()
+        )
         assert response.status_code == 503
         assert "participant secret" not in response.text
 

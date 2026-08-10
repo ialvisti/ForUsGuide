@@ -35,7 +35,6 @@ import pytest
 
 from api.ticket_review_models import (
     MAX_COMMENTS_LENGTH,
-    MAX_DISPLAY_NAME_LENGTH,
     MAX_EXPECTED_BEHAVIOR_LENGTH,
     MAX_ID_LENGTH,
     MAX_LEGACY_TYPE_LENGTH,
@@ -133,7 +132,6 @@ CANONICAL_LIMITS = {
     "eval-legacy-type": MAX_LEGACY_TYPE_LENGTH,
     "eval-comments": MAX_COMMENTS_LENGTH,
     "eval-expected-behavior": MAX_EXPECTED_BEHAVIOR_LENGTH,
-    "eval-legacy-reviewer": MAX_DISPLAY_NAME_LENGTH,
     "eval-verification-summary": MAX_SUMMARY_LENGTH,
     "eval-no-change-reason": MAX_REASON_LENGTH,
     "eval-branch": MAX_ID_LENGTH,
@@ -146,7 +144,6 @@ LIMIT_FIELD_NAMES = {
     "legacy_type": MAX_LEGACY_TYPE_LENGTH,
     "comments": MAX_COMMENTS_LENGTH,
     "expected_behavior": MAX_EXPECTED_BEHAVIOR_LENGTH,
-    "legacy_reviewer_display_name": MAX_DISPLAY_NAME_LENGTH,
     "verification_summary": MAX_SUMMARY_LENGTH,
     "no_change_reason": MAX_REASON_LENGTH,
     "branch": MAX_ID_LENGTH,
@@ -308,7 +305,6 @@ class TestEvaluationForm:
             "eval-legacy-type",
             "eval-observation-type",
             "eval-assignment",
-            "eval-legacy-reviewer",
             "eval-comments",
             "eval-expected-behavior",
             "eval-severity",
@@ -334,23 +330,17 @@ class TestEvaluationForm:
         assert legacy.get("name") == "legacy_type"
         assert observation.get("name") == "observation_type"
 
-    def test_the_assignment_and_the_legacy_reviewer_are_separate_controls(self, dom):
+    def test_the_historical_reviewer_is_read_only_compatibility(self, dom, scripts):
         form = _by_id(dom, "evaluation-form")
         assert _by_id(form, "eval-assignment").get("name") == "assigned_reviewer"
-        legacy = _by_id(form, "eval-legacy-reviewer")
-        assert legacy.get("name") == "legacy_reviewer_display_name"
-        # Labelled as carried over, so nobody reads it as the current owner.
-        help_text = _flat(_by_id(form, "eval-legacy-reviewer-help").all_text()).lower()
-        assert "spreadsheet" in help_text
-        assert "never the person signed in" in help_text
+        assert "eval-legacy-reviewer" not in _ids(form)
+        assert "legacy_reviewer_display_name" not in ReviewPatch.model_fields
+        renderer = scripts["render.js"]
+        assert "legacy_reviewer_display_name" in renderer
+        assert "Historical value" in renderer
 
     def test_the_signed_in_actor_is_shown_apart_from_the_assignment(self, dom):
-        """Three different people, three different places.
-
-        The authenticated actor, the assigned reviewer, and the name migrated from
-        the spreadsheet are distinct facts. The actor line is outside the form
-        precisely so it cannot be mistaken for a field that is being saved.
-        """
+        """The authenticated actor is not an editable assignment field."""
         actor = _by_id(dom, "evaluation-actor")
         form = _by_id(dom, "evaluation-form")
         assert form not in list(actor.ancestors())
@@ -985,33 +975,30 @@ class TestConcurrency:
 
 
 # =====================================================================
-# 11 — importing on first save, and what a role may do
+# 11 — RAG-only creation, and what a role may do
 # =====================================================================
 
 
-class TestImportAndRoles:
+class TestRagOnlyAndRoles:
 
-    def test_a_ticket_can_be_viewed_before_it_is_imported(self, dom, new_scripts):
-        assert "detail-import" in _ids(_detail(dom))
-        source = new_scripts["detail.js"]
-        assert "This ticket has no durable review yet" in _prose(source)
+    def test_the_detail_has_no_manual_add_control(self, dom, new_scripts):
+        assert "detail-import" not in _ids(_detail(dom))
+        source = new_scripts["detail.js"] + new_scripts["evaluation.js"]
+        assert "needsImport" not in source
+        assert "api.createReview" not in source
 
-    def test_the_first_save_imports_then_applies_the_rest(self, new_scripts):
-        """The import route accepts four fields; the rest travel as a patch.
-
-        Dropping them silently would lose an evaluation the reviewer just typed,
-        and inventing a wider import body would fail validation.
-        """
+    def test_save_is_only_a_patch_of_the_rag_created_review(self, new_scripts):
         source = new_scripts["evaluation.js"]
-        assert "needsImport" in source
-        assert re.search(r'for \(const field of \["topic", "legacy_type", "comments"\]\)', source)
+        assert "RAG ingestion" in _prose(source)
+        assert "browser never creates one manually" in _prose(source)
         detail = new_scripts["detail.js"]
-        assert re.search(r"if \(plan\.needsImport\) \{", detail)
-        assert "api.createReview" in detail
         assert "api.patchReview" in detail
+        assert "api.createReview" not in detail
 
-    def test_the_import_is_idempotent_by_key(self, new_scripts):
-        assert "Idempotent by key" in _prose(new_scripts["detail.js"])
+    def test_the_browser_api_exposes_no_manual_create(self, scripts):
+        adapter = scripts["api.js"]
+        assert "function createReview" not in adapter
+        assert "export async function createReview" not in adapter
 
     @pytest.mark.parametrize(
         "control", ["eval-save", "eval-reset", "detail-add-batch", "conflict-overwrite"]
@@ -1155,7 +1142,7 @@ class TestNavigationSafety:
 
     def test_a_partial_load_offers_a_retry(self, dom, new_scripts):
         assert "detail-reload" in _ids(_detail(dom))
-        assert "Use Reload ticket to try the live data again" in _prose(new_scripts["detail.js"])
+        assert "Use Reload to retry those bounded reads" in _prose(new_scripts["detail.js"])
 
     def test_not_found_and_permission_denied_are_distinct_and_safe(self, new_scripts):
         source = new_scripts["detail.js"]

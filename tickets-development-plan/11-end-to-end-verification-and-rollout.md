@@ -2,7 +2,7 @@
 
 > **For Claude Opus 5:** This is the final Opus executor. Evidence precedes
 > claims. Repair in-scope defects; do not waive failed gates. Production,
-> external n8n, real CSV, DevRev writes, and Pinecone changes require separate
+> external n8n, DevRev writes, and Pinecone changes require separate
 > explicit approvals.
 
 **Goal:** Trace every requirement to evidence, run the full local and pinned
@@ -121,7 +121,14 @@ it:
   tests/test_tickets_csrf.py \
   tests/test_ticket_review_routes.py \
   tests/test_ticket_review_batch_routes.py \
-  tests/test_ticket_review_import_export_routes.py \
+  tests/test_ticket_evaluation_models.py \
+  tests/test_ticket_evaluation_publisher.py \
+  tests/test_ticket_evaluation_ingest.py \
+  tests/test_ticket_rag_invocation_journal.py \
+  tests/test_no_ticket_file_interchange_contract.py \
+  tests/test_ticket_job_repository.py \
+  tests/test_ticket_worker.py \
+  tests/test_ticket_reconciler.py \
   tests/test_tickets_console_app.py \
   tests/test_tickets_ui_contract.py \
   tests/test_tickets_fixture_app.py \
@@ -129,7 +136,6 @@ it:
   tests/test_ticket_detail_ui_contract.py \
   tests/test_ticket_review_cli.py \
   tests/test_ticket_review_remediation_prompt.py \
-  tests/test_ticket_review_migration.py \
   tests/test_tickets_console_container_contract.py \
   tests/test_tickets_evidence_broker_container_contract.py \
   tests/test_tickets_console_deployment_contract.py \
@@ -202,25 +208,30 @@ Use browser automation against `http://127.0.0.1:8010/tickets` at:
 Execute and record this deterministic matrix:
 
 1. session/role header and skip link;
-2. live and review queues, supported filters, disabled second facet;
-3. DevRev next/previous and review cursor navigation;
-4. exact Ticket ID mode;
+2. the single RAG execution queue, supported filters, and no source switch or
+   manual-add control;
+3. execution next/previous cursor navigation;
+4. exact Execution ID and Ticket ID modes;
 5. direct detail, back/forward, aborted stale request;
 6. paginated conversation/audit/evidence including empty-page-with-cursor;
 7. participant/human/AI/event/visibility filters;
-8. legacy Type vs Observation and assignment vs audit actor;
+8. immutable RAG answer/rationale/evidence vs reviewer judgment and audit actor;
 9. rating keyboard, long/multiline comments, canonical counters;
-10. first import/save and quoted ETag;
+10. first review save for an ingestion-created record and quoted ETag;
 11. 428 client bug, 412 data-preserving stale panel, 409 business conflict;
 12. manual evidence link/unlink with reason;
 13. linked/manual/candidate/unavailable evidence;
 14. viewer/reviewer/remediator/admin/agent controls;
 15. remediation batch, copied identifier-only prompt;
-16. synthetic CSV dry-run, chunked apply, export, formula safety, reversal;
-17. loading/empty/partial/stale/401/403/404/422/429/502/503;
-18. zoom 200%, visible focus, reduced motion, 44 px touch targets;
-19. no 360 px page overflow, console error, failed CSP request, cross-origin
-    request, browser credential, or persistent ticket/comment storage.
+16. invocation-scoped IDs/attempt labels, idempotent transport replay, two
+    retries for one ticket as distinct rows, and legacy ID readability;
+17. only authorized executions appear; quarantined/denied/absent detail shares
+    safe not-found, and retryable hydration may later promote a run;
+18. loading/empty/partial/stale/401/403/404/422/429/502/503;
+19. zoom 200%, visible focus, reduced motion, 44 px touch targets;
+20. no 360 px page overflow, console error, failed CSP request, cross-origin
+    request, browser credential, persistent ticket/comment storage, file
+    transfer control, or file-oriented API route.
 
 Use only synthetic screenshots if needed. Fix every reproducible defect and
 repeat the complete matrix after the final fix.
@@ -249,11 +260,13 @@ single-role per process. It accepts:
 
 ```text
 --console-url
+--ingest-url (required only for `execution-ingest`)
+--expected-ingest-audience (required only for `execution-ingest`)
 --expected-environment=staging
 --synthetic-fixture-json
 --read-only-devrev-ticket (optional, explicitly approved)
---role-profile=viewer|reviewer|remediator|agent|admin
---phase=read-only|reviewer-write|batch-create|agent-work|human-verify|admin-import|cleanup
+--role-profile=viewer|publisher|reviewer|remediator|agent|admin
+--phase=read-only|execution-ingest|reviewer-write|batch-create|agent-work|human-verify|cleanup
 --run-id
 --handoff-in (required after the first mutating phase)
 --handoff-out (0600, required for each non-terminal mutating phase)
@@ -272,8 +285,17 @@ only:
 One process authenticates as exactly one approved identity and cannot
 impersonate or switch roles. Mutating phases are deliberately split:
 
-- `reviewer-write`: a reviewer creates one tagged synthetic review/evidence
-  link and proves `428`/`412`/`409` and idempotency behavior;
+- `execution-ingest`: the exact publisher service account sends a bounded,
+  invocation-scoped synthetic RAG event to private ingestion, proves its
+  persist-first quarantine, replays it byte-for-byte, sends a distinct retry
+  for the same ticket, and proves the console shows exactly the authorized
+  invocations without a DevRev discovery call. A not-found/out-of-scope event
+  becomes denied and remains externally absent; a synthetic auth/config/outage
+  failure remains quarantined/retryable and appears only after allowed
+  hydration succeeds;
+- `reviewer-write`: a reviewer updates the trusted-ingestion-created review,
+  creates one tagged synthetic evidence link, and proves `428`/`412`/`409`
+  and idempotency behavior;
 - `batch-create`: a remediator creates and readies a batch plus a second
   release-path batch;
 - `agent-work`: the exact agent claims, heartbeats, materializes, submits the
@@ -282,9 +304,8 @@ impersonate or switch roles. Mutating phases are deliberately split:
 - `human-verify`: a different human reviewer/admin starts verification,
   records bounded evidence, completes the batch, and only then resolves the
   applicable review;
-- `admin-import`: an admin runs only synthetic CSV dry-run/apply/export/reverse;
 - `cleanup`: an admin cleans only the exact created product-state IDs while
-  preserving required audit/tombstone evidence.
+  preserving immutable execution, audit, and tombstone evidence.
 
 Each successful mutating response returns a short-lived, server-signed staging
 verification handoff. It is domain-separated from cursor/CSRF tokens and bound
@@ -292,7 +313,7 @@ to environment, run ID, prior digest, next role/phase, exact server-created
 resource IDs/versions, and expiry. It is not authorization: the next request
 still performs signed-IAP, RBAC, BOLA, ETag, idempotency, and state-machine
 checks. Handoff JSON contains no email, ticket title/body, comment,
-conversation, CSV row, token, secret, or IAP credential; it is mode `0600`,
+conversation, generated answer, token, secret, or IAP credential; it is mode `0600`,
 never logged, and deleted after exact cleanup. Production rejects the
 verification header/flow at startup and request time. Tests cover replay,
 tamper, wrong run/environment/role/phase, expiry, reordering, injected IDs,
@@ -304,7 +325,7 @@ It refuses:
 - a ticket not identified as approved synthetic/demo;
 - `(default)` console database;
 - DevRev write method;
-- real CSV path;
+- a browser/manual-review creation path or any file-transfer API path;
 - wildcard cleanup;
 - missing expected IAP audience/role;
 - a role/phase mismatch or multi-role credential;
@@ -430,6 +451,8 @@ Only after the exact final-SHA (or attested docs-only-equivalent) staging
 revision exists, request:
 
 - `TICKETS_STAGING_URL`;
+- private `TICKET_EVALUATION_INGEST_URL` and its exact OIDC audience;
+- the approved evaluation-publisher service account;
 - expected IAP audience;
 - approved identity matrix;
 - explicitly designated synthetic/demo DevRev ticket, if any;
@@ -460,6 +483,19 @@ impersonate, reuse another role's credential, or run one omnipotent process.
 export VERIFY_HANDOFF_DIR="$(mktemp -d -t tickets-staging-handoff.XXXXXX)"
 chmod 0700 "$VERIFY_HANDOFF_DIR"
 
+# Execute as the exact evaluation-publisher service account. This exercises
+# the private ingestion boundary, not a browser-facing/manual-create route.
+"$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_tickets_staging.py" \
+  --console-url "$TICKETS_STAGING_URL" \
+  --ingest-url "$TICKET_EVALUATION_INGEST_URL" \
+  --expected-ingest-audience "$TICKET_EVALUATION_INGEST_AUDIENCE" \
+  --expected-environment staging \
+  --role-profile publisher --phase execution-ingest \
+  --run-id "$VERIFY_RUN_ID" --apply-synthetic-writes \
+  --synthetic-fixture-json \
+  "$KBRAG_ROOT/tests/fixtures/tickets_staging_synthetic.json" \
+  --handoff-out "$VERIFY_HANDOFF_DIR/publisher.json"
+
 # Execute as the approved reviewer writer.
 "$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_tickets_staging.py" \
   --console-url "$TICKETS_STAGING_URL" \
@@ -468,6 +504,7 @@ chmod 0700 "$VERIFY_HANDOFF_DIR"
   --run-id "$VERIFY_RUN_ID" --apply-synthetic-writes \
   --synthetic-fixture-json \
   "$KBRAG_ROOT/tests/fixtures/tickets_staging_synthetic.json" \
+  --handoff-in "$VERIFY_HANDOFF_DIR/publisher.json" \
   --handoff-out "$VERIFY_HANDOFF_DIR/reviewer.json"
 
 # Execute as the approved remediator.
@@ -503,18 +540,7 @@ chmod 0700 "$VERIFY_HANDOFF_DIR"
   --handoff-in "$VERIFY_HANDOFF_DIR/agent.json" \
   --handoff-out "$VERIFY_HANDOFF_DIR/verifier.json"
 
-# Execute as the approved admin.
-"$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_tickets_staging.py" \
-  --console-url "$TICKETS_STAGING_URL" \
-  --expected-environment staging \
-  --role-profile admin --phase admin-import \
-  --run-id "$VERIFY_RUN_ID" --apply-synthetic-writes \
-  --synthetic-fixture-json \
-  "$KBRAG_ROOT/tests/fixtures/tickets_staging_synthetic.json" \
-  --handoff-in "$VERIFY_HANDOFF_DIR/verifier.json" \
-  --handoff-out "$VERIFY_HANDOFF_DIR/admin.json"
-
-# Execute as the same approved admin; preserve ledgers/tombstones.
+# Execute as the approved admin; preserve executions/ledgers/tombstones.
 "$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_tickets_staging.py" \
   --console-url "$TICKETS_STAGING_URL" \
   --expected-environment staging \
@@ -522,14 +548,14 @@ chmod 0700 "$VERIFY_HANDOFF_DIR"
   --run-id "$VERIFY_RUN_ID" --apply-synthetic-writes \
   --synthetic-fixture-json \
   "$KBRAG_ROOT/tests/fixtures/tickets_staging_synthetic.json" \
-  --handoff-in "$VERIFY_HANDOFF_DIR/admin.json"
+  --handoff-in "$VERIFY_HANDOFF_DIR/verifier.json"
 
 rm -f -- \
+  "$VERIFY_HANDOFF_DIR/publisher.json" \
   "$VERIFY_HANDOFF_DIR/reviewer.json" \
   "$VERIFY_HANDOFF_DIR/remediator.json" \
   "$VERIFY_HANDOFF_DIR/agent.json" \
-  "$VERIFY_HANDOFF_DIR/verifier.json" \
-  "$VERIFY_HANDOFF_DIR/admin.json"
+  "$VERIFY_HANDOFF_DIR/verifier.json"
 test -z "$(find "$VERIFY_HANDOFF_DIR" -mindepth 1 -maxdepth 1 -print -quit)"
 rmdir "$VERIFY_HANDOFF_DIR"
 ```
@@ -540,17 +566,19 @@ Test IAP/RBAC with:
 |---|---|---|---|
 | unapproved | deny | none | no app |
 | approved viewer | allow | viewer | read only |
+| evaluation publisher SA | no browser IAP | publisher | private execution ingestion only |
 | approved reviewer | allow | reviewer | review/evidence writes |
 | approved remediator | allow | remediator | create/read batch |
 | remediation SA | allow | agent | claim/heartbeat/update batch only |
-| approved admin | allow | admin | import/export/reverse/reopen |
+| approved admin | allow | admin | reopen/lease extension/exact cleanup |
 
 Also prove console SA cannot read `(default)`, broker cannot write it, and the
 agent/humans cannot access either database directly. Require zero `failed` and
 zero `blocked_external` results for every mandatory remote/staging row before
-production planning. The optional real CSV and producer/n8n gates may remain
-unapproved, but must be labeled out of production-console scope rather than
-counted as a passed console gate.
+production planning. The external producer/n8n end-to-end correlation gate may
+remain unapproved, but must be labeled out of production-console scope rather
+than counted as a passed console gate. The private execution-ingestion gate is
+mandatory.
 
 ## External n8n correlation gate
 
@@ -578,8 +606,28 @@ advance `TICKET_HANDLER_MODE` or edit n8n as part of `/tickets`.
 - health/readiness and low-cardinality alerts;
 - DevRev 401/403/429/5xx and partial pagination;
 - review/ETag/evidence conflict recovery;
+- execution outbox delivery, idempotent replay, failed-run visibility, and
+  DevRev hydration retry;
+- `ticket_rag_invocations` intent-before-effect, terminal/recovery TTL, indexed
+  recovery, distinct retry IDs, legacy-ID read compatibility, and
+  answer-less `RAG_INVOCATION_ABANDONED` recovery. Verify exact counters
+  `rag_invocations_scanned`, `rag_invocations_recovered`,
+  `rag_invocations_rescheduled`, and `rag_invocation_errors`;
+- validated DevRev `ticket_id` eligibility: a legacy RAG call without one may
+  continue outside the console but creates no evaluation row, and no component
+  fabricates an identity;
+- indexed due outbox retry independent of job scans; non-expiring
+  `dead_letter`; authenticated digest-bound replay with:
+
+  ```bash
+  APP_ROLE=reconciler python -m api.replay_ticket_evaluation \
+    --execution-id "$EXECUTION_ID" --event-digest "$EVENT_DIGEST"
+  ```
+
+- quarantine/authorized/denied promotion and non-disclosure rules;
 - lease heartbeat/reclaim;
-- CSV dry-run/apply/resume/reverse/export;
+- proof that executable file-transfer/import/export code—not merely its UI—is
+  absent, with only strictly necessary passive legacy-record parsing allowed;
 - audit-chain/log-sink incident response;
 - staging/build/plan/apply artifact chain;
 - rollback by creating a new protected plan against current state that targets
@@ -694,9 +742,10 @@ generated final deployment-evidence manifest.
 After apply, verify deny/allow, `/livez`, `/readyz`, `/tickets`, one explicitly
 approved bounded read-only DevRev ticket, named-database isolation,
 logs/alerts, and unchanged existing RAG IAM/traffic/revision. Production keeps
-synthetic-verification mode disabled. Real CSV dry-run, real CSV apply,
-producer instrumentation/n8n rollout, and log-bucket lock each require their
-own later approval; none is implied by Gate C1/C2.
+synthetic-verification mode disabled. Producer instrumentation/n8n rollout and
+log-bucket lock each require their own later approval; neither is implied by
+Gate C1/C2. File import/export is outside the product and has no later rollout
+gate.
 
 On auth, isolation, secret, plan, or data uncertainty, stop traffic/access and
 prepare rollback. Never reuse a historical saved plan because its state serial
@@ -732,7 +781,9 @@ gcloud builds triggers run rag-tickets-console-production-apply \
   an external blocker is honest during development but prevents production
   Gate C.
 - Approved staging proves IAP/RBAC/database isolation/read-only DevRev,
-  conflict, remediation, CSV, export, and reversal.
+  invocation-scoped ingestion/replay, quarantine/denial non-disclosure,
+  retry-to-authorized promotion, conflict, remediation, `dead_letter` operator
+  recovery, and the absence of executable file-transfer/manual-add paths.
 - Runbook matches real artifacts and safe rollback.
 - Production remains unchanged unless each explicit Gate C action was approved
   and verified.

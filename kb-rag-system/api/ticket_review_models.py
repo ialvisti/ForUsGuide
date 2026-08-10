@@ -48,6 +48,14 @@ from pydantic import (
     model_validator,
 )
 
+from api.ticket_evaluation_models import (
+    ChunkEvidence,
+    EvaluationRoute,
+    EvaluationStatus,
+    SourceReference,
+    TicketEvaluationEvent,
+)
+
 # =====================================================================
 # Canonical limits and defaults (master plan, "Canonical limits" table)
 # =====================================================================
@@ -72,7 +80,6 @@ DEVREV_RETRY_AFTER_CAP_S = 60
 CACHE_TTL_S = 15 * 60
 MESSAGE_CACHE_TTL_S = 24 * 60 * 60
 IDEMPOTENCY_TTL_S = 7 * 24 * 60 * 60
-IMPORT_STAGING_TTL_S = 7 * 24 * 60 * 60
 CSRF_TOKEN_TTL_S = 60 * 60
 REVIEW_RETENTION_DAYS = 730
 AUDIT_RETENTION_DAYS = 2_555
@@ -94,9 +101,7 @@ MAX_URL_LENGTH = 2_048
 MAX_ATTACHMENTS = 20
 MAX_EVIDENCE_REFS_PER_REVIEW = 200
 MAX_BATCH_REVIEWS = 100
-MAX_CSV_ROWS = 10_000
 MAX_JSON_REQUEST_BYTES = 1 * 1024 * 1024
-MAX_CSV_REQUEST_BYTES = 10 * 1024 * 1024
 MAX_UPSTREAM_ERROR_BODY_BYTES = 4 * 1024
 DEVREV_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 EVIDENCE_BROKER_MAX_RESPONSE_BYTES = 512 * 1024
@@ -187,10 +192,6 @@ class InvalidReviewTransition(TicketReviewContractError):
 
 class InvalidBatchTransition(TicketReviewContractError):
     """A remediation-batch status change is not permitted."""
-
-
-class InvalidImportTransition(TicketReviewContractError):
-    """A ticket-import status change is not permitted."""
 
 
 class PreconditionError(TicketReviewContractError):
@@ -464,19 +465,6 @@ class BatchStatus(str, Enum):
     EXPIRED = "expired"
 
 
-class ImportStatus(str, Enum):
-    UPLOADED = "uploaded"
-    PLANNED = "planned"
-    APPROVED = "approved"
-    APPLYING = "applying"
-    APPLIED = "applied"
-    PARTIAL = "partial"
-    REVERSING = "reversing"
-    REVERSED = "reversed"
-    FAILED = "failed"
-    CANCELLED = "cancelled"
-
-
 class ResolutionOutcome(str, Enum):
     FIXED = "fixed"
     NO_CHANGE = "no_change"
@@ -577,7 +565,7 @@ class ReviewerIdentity(_Base):
     """An application identity resolved from a verified IAP assertion.
 
     This is *not* the audit actor. Audit actors are recorded independently on
-    every :class:`AuditEvent`, and the legacy CSV reviewer name lives in
+    every :class:`AuditEvent`, and the historical reviewer name lives in
     ``TicketReview.legacy_reviewer_display_name``.
     """
 
@@ -941,9 +929,6 @@ class ReviewPatch(_Base):
     status: Optional[ReviewStatus] = Field(default=None)
     remediation_target: Optional[RemediationTarget] = Field(default=None)
     assigned_reviewer: Optional[ReviewerIdentity] = Field(default=None)
-    legacy_reviewer_display_name: Optional[str] = Field(
-        default=None, max_length=MAX_DISPLAY_NAME_LENGTH
-    )
     resolution: Optional[ReviewResolution] = Field(default=None)
 
 
@@ -1272,50 +1257,6 @@ def batch_view(batch: RemediationBatch) -> RemediationBatchView:
 
 
 # =====================================================================
-# Sheet CSV import
-# =====================================================================
-
-
-class TicketImportRow(_Base):
-    """One planned/applied CSV row. Carries the expected review version."""
-
-    row_number: StrictInt = Field(..., ge=1)
-    raw_ticket_id: str = Field(..., min_length=1, max_length=MAX_DISPLAY_ID_LENGTH)
-    review_id: Optional[Sha256Hex] = Field(default=None)
-    topic: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
-    legacy_type: Optional[str] = Field(default=None, max_length=MAX_LEGACY_TYPE_LENGTH)
-    rating: Optional[Rating] = Field(default=None)
-    legacy_reviewer_display_name: Optional[str] = Field(
-        default=None, max_length=MAX_DISPLAY_NAME_LENGTH
-    )
-    comments: Optional[str] = Field(default=None, max_length=MAX_COMMENTS_LENGTH)
-    expected_review_version: Optional[StrictInt] = Field(default=None, ge=1)
-    error_code: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
-    error_message: Optional[str] = Field(default=None, max_length=MAX_REASON_LENGTH)
-
-
-class TicketImport(_Base):
-    """Durable import summary and reversal plan."""
-
-    import_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
-    schema_version: str = Field(default=SCHEMA_VERSION, max_length=MAX_TOPIC_LENGTH)
-    status: ImportStatus = Field(default=ImportStatus.UPLOADED)
-    file_sha256: Sha256Hex = Field(...)
-    plan_sha256: Optional[Sha256Hex] = Field(default=None)
-    created_by: ReviewerIdentity = Field(...)
-    total_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    applied_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    failed_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    conflicted_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    reversed_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    retention_expires_at: Optional[AwareDatetime] = Field(default=None)
-    legal_hold: bool = Field(default=False)
-    version: StrictInt = Field(default=1, ge=1)
-    created_at: AwareDatetime = Field(default_factory=utc_now)
-    updated_at: AwareDatetime = Field(default_factory=utc_now)
-
-
-# =====================================================================
 # Cursor pagination envelopes
 # =====================================================================
 
@@ -1521,6 +1462,171 @@ class TicketDetailEnvelope(_Base):
         if self.ticket is None and not self.partial:
             raise ValueError("an envelope without live ticket data is partial by definition")
         return self
+
+
+# =====================================================================
+# Durable ticket-associated RAG executions
+# =====================================================================
+
+
+class DevRevHydrationStatus(str, Enum):
+    """State of the bounded DevRev enrichment for one persisted execution."""
+
+    PENDING = "pending"
+    SUCCEEDED = "succeeded"
+    FAILED = "failed"
+
+
+class DevRevAuthorizationStatus(str, Enum):
+    """Whether DevRev has validated this execution's ticket scope.
+
+    Persist-first records remain quarantined until ``works.get`` proves both
+    existence and configured scope.  ``denied`` is reserved for an explicit
+    not-found or scope decision; outages and configuration failures never
+    become an authorization verdict.
+    """
+
+    QUARANTINED = "quarantined"
+    AUTHORIZED = "authorized"
+    DENIED = "denied"
+
+
+class TicketEvaluationRun(_Base):
+    """One immutable RAG event plus mutable, retryable DevRev hydration state."""
+
+    execution_id: str = Field(..., min_length=3, max_length=160)
+    event: TicketEvaluationEvent = Field(...)
+    event_digest: Sha256Hex = Field(...)
+    review_id: Optional[Sha256Hex] = Field(default=None)
+    devrev_work_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    devrev_display_id: Optional[str] = Field(default=None, max_length=MAX_DISPLAY_ID_LENGTH)
+    ticket_snapshot: Optional[DevRevTicketSummary] = Field(default=None)
+    ticket_detail_snapshot: Optional[DevRevTicketDetail] = Field(default=None)
+    hydration_status: DevRevHydrationStatus = Field(default=DevRevHydrationStatus.PENDING)
+    authorization_status: DevRevAuthorizationStatus = Field(
+        default=DevRevAuthorizationStatus.QUARANTINED
+    )
+    hydration_attempts: StrictInt = Field(default=0, ge=0)
+    hydration_retryable: bool = Field(default=True)
+    hydration_error_code: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
+    last_hydration_attempt_at: Optional[AwareDatetime] = Field(default=None)
+    next_hydration_attempt_at: Optional[AwareDatetime] = Field(default=None)
+    retention_expires_at: Optional[AwareDatetime] = Field(default=None)
+    legal_hold: bool = Field(default=False)
+    created_at: AwareDatetime = Field(default_factory=utc_now)
+    updated_at: AwareDatetime = Field(default_factory=utc_now)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _infer_authorized_legacy_success(cls, value: Any) -> Any:
+        """Read pre-authorization-state successful records without widening them."""
+        if not isinstance(value, Mapping) or "authorization_status" in value:
+            return value
+        hydration = value.get("hydration_status")
+        if hydration in {
+            DevRevHydrationStatus.SUCCEEDED,
+            DevRevHydrationStatus.SUCCEEDED.value,
+        }:
+            return {**value, "authorization_status": DevRevAuthorizationStatus.AUTHORIZED}
+        return value
+
+    @model_validator(mode="after")
+    def _identity_and_hydration_are_consistent(self) -> TicketEvaluationRun:
+        if self.execution_id != self.event.execution_id:
+            raise ValueError("stored execution_id must match the immutable event")
+        if self.event_digest != self.event.canonical_digest():
+            raise ValueError("event_digest must match the immutable event")
+        if self.hydration_status is DevRevHydrationStatus.SUCCEEDED:
+            if not all((self.review_id, self.devrev_work_id, self.devrev_display_id)):
+                raise ValueError("successful hydration requires linked DevRev identifiers")
+            if self.hydration_error_code or self.next_hydration_attempt_at:
+                raise ValueError("successful hydration cannot retain retry state")
+            if self.authorization_status is not DevRevAuthorizationStatus.AUTHORIZED:
+                raise ValueError("successful hydration must authorize the DevRev scope")
+        if self.authorization_status is DevRevAuthorizationStatus.AUTHORIZED:
+            if self.hydration_status is not DevRevHydrationStatus.SUCCEEDED:
+                raise ValueError("authorized DevRev scope requires successful hydration")
+        if self.authorization_status is DevRevAuthorizationStatus.DENIED:
+            if self.hydration_status is not DevRevHydrationStatus.FAILED:
+                raise ValueError("denied DevRev scope requires a failed hydration")
+            if self.hydration_retryable or self.next_hydration_attempt_at is not None:
+                raise ValueError("denied DevRev scope cannot retain retry state")
+        return self
+
+
+class TicketEvaluationSummary(_Base):
+    """Bounded list projection; one row always means one persisted RAG run."""
+
+    execution_id: str = Field(..., min_length=3, max_length=160)
+    invocation_id: str = Field(..., min_length=3, max_length=160)
+    job_id: str = Field(..., min_length=1, max_length=128)
+    inquiry_index: StrictInt = Field(..., ge=0, le=99)
+    attempt: Optional[StrictInt] = Field(
+        default=None, ge=1, le=2_147_483_647,
+    )
+    lease_epoch: Optional[StrictInt] = Field(
+        default=None, ge=1, le=2_147_483_647,
+    )
+    ticket_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
+    devrev_work_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
+    devrev_display_id: Optional[str] = Field(default=None, max_length=MAX_DISPLAY_ID_LENGTH)
+    title: Optional[str] = Field(default=None, max_length=MAX_TITLE_LENGTH)
+    route: EvaluationRoute = Field(...)
+    status: EvaluationStatus = Field(...)
+    hydration_status: DevRevHydrationStatus = Field(...)
+    classification_reasoning: str = Field(..., min_length=1, max_length=8_000)
+    generated_answer_excerpt: Optional[str] = Field(default=None, max_length=500)
+    occurred_at: AwareDatetime = Field(...)
+    review: Optional[TicketReviewSummary] = Field(default=None)
+
+    @classmethod
+    def of(
+        cls,
+        run: TicketEvaluationRun,
+        review: Optional[TicketReview] = None,
+    ) -> TicketEvaluationSummary:
+        answer = run.event.answer
+        return cls(
+            execution_id=run.execution_id,
+            invocation_id=run.event.invocation_id or run.execution_id,
+            job_id=run.event.job_id,
+            inquiry_index=run.event.inquiry_index,
+            attempt=run.event.attempt,
+            lease_epoch=run.event.lease_epoch,
+            ticket_id=run.event.ticket_id,
+            devrev_work_id=run.devrev_work_id,
+            devrev_display_id=run.devrev_display_id,
+            title=(run.ticket_snapshot.title if run.ticket_snapshot else None),
+            route=run.event.route,
+            status=run.event.status,
+            hydration_status=run.hydration_status,
+            classification_reasoning=run.event.classification.reasoning,
+            generated_answer_excerpt=(answer[:500] if answer else None),
+            occurred_at=run.event.occurred_at,
+            review=TicketReviewSummary.of(review) if review else None,
+        )
+
+
+class TicketEvaluationDetailEnvelope(_Base):
+    """Persisted execution, review, and its scope-validated ticket snapshot."""
+
+    execution: TicketEvaluationRun = Field(...)
+    review: Optional[TicketReview] = Field(default=None)
+    ticket: Optional[DevRevTicketDetail] = Field(default=None)
+    generated_answer: Optional[str] = Field(default=None, max_length=100_000)
+    classification_reasoning: str = Field(..., min_length=1, max_length=8_000)
+    outcome_reason: Optional[str] = Field(default=None, max_length=20_000)
+    diagnostics: dict[str, Any] = Field(default_factory=dict)
+    gaps: list[
+        Annotated[str, Field(min_length=1, max_length=MAX_REASON_LENGTH)]
+    ] = Field(default_factory=list, max_length=MAX_LIST_ITEMS)
+    source_articles: list[SourceReference] = Field(default_factory=list, max_length=50)
+    chunk_evidence: list[ChunkEvidence] = Field(default_factory=list, max_length=20)
+    model_metadata: dict[str, Any] = Field(default_factory=dict)
+    timing_metadata: dict[str, Any] = Field(default_factory=dict)
+    hydration_status: DevRevHydrationStatus = Field(...)
+    partial: bool = Field(default=False)
+    warnings: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)
 
 
 # =====================================================================
@@ -1955,57 +2061,6 @@ class CancelBatchRequest(_Base):
     reason: str = Field(..., min_length=1, max_length=MAX_REASON_LENGTH)
 
 
-class ImportRowIssue(_Base):
-    """One bounded row-level error or conflict. Never the whole row."""
-
-    row_number: StrictInt = Field(..., ge=1)
-    field: Optional[str] = Field(default=None, max_length=MAX_TOPIC_LENGTH)
-    code: str = Field(..., min_length=1, max_length=MAX_TOPIC_LENGTH)
-    message: str = Field(..., min_length=1, max_length=MAX_REASON_LENGTH)
-
-
-class ImportDryRunResponse(_Base):
-    """The result of dry-running a bounded legacy CSV body."""
-
-    import_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
-    file_sha256: Sha256Hex = Field(...)
-    plan_sha256: Sha256Hex = Field(...)
-    total_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    creatable_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    updatable_rows: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    errors: list[ImportRowIssue] = Field(default_factory=list, max_length=MAX_CSV_ROWS)
-    conflicts: list[ImportRowIssue] = Field(default_factory=list, max_length=MAX_CSV_ROWS)
-
-
-class ImportApplyOrReverseRequest(_Base):
-    """Apply/resume or reverse/resume a versioned chunk.
-
-    ``resume_cursor`` is a signed console cursor, never a raw offset.
-    """
-
-    plan_sha256: Sha256Hex = Field(...)
-    approval_confirmed: bool = Field(...)
-    resume_cursor: Optional[str] = Field(default=None, max_length=MAX_CURSOR_LENGTH)
-
-    @field_validator("approval_confirmed")
-    @classmethod
-    def _must_be_confirmed(cls, value: bool) -> bool:
-        if not value:
-            raise ValueError("approval_confirmed must be true")
-        return value
-
-
-class ImportChunkResponse(_Base):
-    """The result of one 100-row apply/reverse chunk."""
-
-    import_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
-    status: ImportStatus = Field(...)
-    completed: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    failed: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    conflicted: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    next_cursor: Optional[str] = Field(default=None, max_length=MAX_CURSOR_LENGTH)
-
-
 # =====================================================================
 # State machines
 # =====================================================================
@@ -2283,62 +2338,6 @@ def assert_independent_verifier(
     if claimed_by is not None and claimed_by.subject == actor.subject:
         raise InvalidBatchTransition(
             "the identity that claimed this batch may not verify it"
-        )
-
-
-_IMPORT_TRANSITIONS: dict[ImportStatus, frozenset[ImportStatus]] = {
-    ImportStatus.UPLOADED: frozenset(
-        {ImportStatus.PLANNED, ImportStatus.FAILED, ImportStatus.CANCELLED}
-    ),
-    ImportStatus.PLANNED: frozenset(
-        {ImportStatus.APPROVED, ImportStatus.FAILED, ImportStatus.CANCELLED}
-    ),
-    ImportStatus.APPROVED: frozenset({ImportStatus.APPLYING, ImportStatus.CANCELLED}),
-    ImportStatus.APPLYING: frozenset(
-        {ImportStatus.APPLIED, ImportStatus.PARTIAL, ImportStatus.FAILED}
-    ),
-    ImportStatus.PARTIAL: frozenset(
-        {ImportStatus.APPLYING, ImportStatus.REVERSING, ImportStatus.CANCELLED}
-    ),
-    ImportStatus.APPLIED: frozenset({ImportStatus.REVERSING}),
-    ImportStatus.REVERSING: frozenset(
-        {ImportStatus.REVERSED, ImportStatus.PARTIAL, ImportStatus.FAILED}
-    ),
-    ImportStatus.FAILED: frozenset(
-        {
-            ImportStatus.PLANNED,
-            ImportStatus.APPLYING,
-            ImportStatus.REVERSING,
-            ImportStatus.CANCELLED,
-        }
-    ),
-    ImportStatus.REVERSED: frozenset(),
-    ImportStatus.CANCELLED: frozenset(),
-}
-
-
-def allowed_import_transitions(status: ImportStatus) -> frozenset[ImportStatus]:
-    """Return the closed set of import statuses reachable from ``status``."""
-    return _IMPORT_TRANSITIONS[status]
-
-
-def assert_import_transition(
-    current: ImportStatus,
-    target: ImportStatus,
-    *,
-    reason: Optional[str] = None,
-) -> None:
-    """Validate one import status change, or raise :class:`InvalidImportTransition`.
-
-    Recovery out of ``failed`` always requires an explicit admin reason.
-    """
-    if target not in _IMPORT_TRANSITIONS[current]:
-        raise InvalidImportTransition(
-            f"'{current.value}' -> '{target.value}' is not an allowed import transition"
-        )
-    if current is ImportStatus.FAILED and not (reason and reason.strip()):
-        raise InvalidImportTransition(
-            "leaving 'failed' requires an explicit admin reason"
         )
 
 

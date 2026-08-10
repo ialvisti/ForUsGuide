@@ -33,6 +33,7 @@ from pydantic import BaseModel, Field
 
 from api import metrics as ticket_metrics
 from api.config import settings
+from api.ticket_evaluation_models import chunk_evidence_from_result
 from api.models import (
     GenerateResponseResult,
     HandleTicketRequest,
@@ -1070,12 +1071,16 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             secret=settings.TICKET_FAULT_SIGNING_SECRET,
         )
     req = HandleTicketRequest.model_validate(record.request_payload)
+    ticket_identity = record.ticket_id or req.ticket.ticket_id
     mode = record.mode or settings.TICKET_HANDLER_MODE
     orchestrator = app.state.ticket_orchestrator_factory()
     started = time.monotonic()
 
     async def _checkpoint(
-        inquiry_index: int, entry: Dict[str, Any]
+        inquiry_index: int,
+        entry: Dict[str, Any],
+        *,
+        invocation_id: Optional[str] = None,
     ) -> TicketJobRecord:
         # Defense in depth: validate the complete control and payload document
         # here, then the repository rebuilds and validates them again inside
@@ -1101,8 +1106,22 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 inquiry_index,
                 entry,
                 lease_epoch=lease_epoch,
+                invocation_id=invocation_id,
             )
         except StaleLeaseEpoch:
+            # The job checkpoint remains fenced, but a result that really
+            # returned still belongs in the invocation ledger.  Recovery may
+            # have won the journal CAS already; in that case its explicit
+            # answer-less outcome remains immutable.
+            if invocation_id is not None:
+                try:
+                    await repo.complete_rag_invocation(
+                        invocation_id, entry,
+                    )
+                except Exception:  # noqa: BLE001 - preserve original fence
+                    logger.info(
+                        "late RAG invocation completion was already resolved"
+                    )
             raise
         except Exception as exc:
             raise _InquiryPhaseFailure("persist_inquiry_result", exc) from None
@@ -1243,6 +1262,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             shadow_remaining = deadline - time.monotonic()
             intent_blocked = False
             real: Optional[InquiryOutcome] = None
+            shadow_invocation_id: Optional[str] = None
             if sampled and shadow_remaining > 0:
                 try:
                     await _ensure_lease(repo, job_id, worker_id, lease_epoch)
@@ -1265,6 +1285,17 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                             inquiry_index=i,
                             record=record,
                         )
+                    shadow_route = getattr(cls, "route", None)
+                    if ticket_identity and shadow_route in {
+                        "knowledge_question", "generate_response",
+                    }:
+                        shadow_invocation_id = await repo.begin_rag_invocation(
+                            job_id,
+                            i,
+                            route=shadow_route,
+                            worker_id=worker_id,
+                            lease_epoch=lease_epoch,
+                        )
                     real_outcome = await asyncio.wait_for(
                         orchestrator.handle_inquiry(
                             ext, req, total_inquiries=total, classification=cls
@@ -1273,6 +1304,11 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                                     shadow_remaining),
                     )
                     real = real_outcome
+                    if shadow_invocation_id is not None:
+                        await repo.complete_rag_invocation(
+                            shadow_invocation_id,
+                            _entry_from_outcome(i, real_outcome),
+                        )
                     # el shadow muestreado hace scrapes REALES de ForusBots:
                     # sus job_ids deben trazarse aunque shadow no publique
                     # (P2 review; reconciliación).
@@ -1295,15 +1331,75 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     raise
                 except _ForusBotsSubmitIntentAlreadyExists:
                     intent_blocked = True
+                    if shadow_invocation_id is not None:
+                        await repo.complete_rag_invocation(
+                            shadow_invocation_id,
+                            {
+                                "route": getattr(cls, "route", None),
+                                "execution_status": "failed",
+                                "participant_reply_safe": False,
+                                "degraded": True,
+                                "diagnostics": {
+                                    "failure_phase": "forusbots_submit_intent",
+                                },
+                                "error": {
+                                    "code": PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value,
+                                    "retryable": False,
+                                },
+                            },
+                        )
                     shadow_summary.append({
                         "index": i,
                         "route": getattr(cls, "route", None),
                         "error": "forusbots_needs_reconciliation",
                     })
+                except asyncio.TimeoutError:
+                    if shadow_invocation_id is not None:
+                        await repo.complete_rag_invocation(
+                            shadow_invocation_id,
+                            {
+                                "route": getattr(cls, "route", None),
+                                "execution_status": "timeout",
+                                "participant_reply_safe": False,
+                                "degraded": True,
+                                "diagnostics": {
+                                    "failure_phase": "handle_inquiry",
+                                },
+                                "error": {
+                                    "code": PublicErrorCode.INQUIRY_TIMEOUT.value,
+                                    "retryable": False,
+                                },
+                            },
+                        )
+                    shadow_summary.append({
+                        "index": i,
+                        "route": getattr(cls, "route", None),
+                        "error": "shadow_pipeline_timeout",
+                    })
                 except (FaultInjectionRejected, InjectedFault):
                     raise
                 except Exception:  # noqa: BLE001
                     logger.error("shadow pipeline failed (inquiry_index=%d)", i)
+                    if shadow_invocation_id is not None:
+                        try:
+                            await repo.complete_rag_invocation(
+                                shadow_invocation_id,
+                                {
+                                    "route": getattr(cls, "route", None),
+                                    "execution_status": "failed",
+                                    "participant_reply_safe": False,
+                                    "degraded": True,
+                                    "diagnostics": {
+                                        "failure_phase": "handle_inquiry",
+                                    },
+                                    "error": {
+                                        "code": PublicErrorCode.INTERNAL_ERROR.value,
+                                        "retryable": False,
+                                    },
+                                },
+                            )
+                        except Exception:  # noqa: BLE001 - first CAS may have won
+                            pass
                     shadow_summary.append({"index": i,
                                            "route": getattr(cls, "route", None),
                                            "error": "shadow_pipeline_failed"})
@@ -1416,6 +1512,7 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         inquiry_started = time.monotonic()
         inquiry_step = _route_metric_step(getattr(cls, "route", None))
         failure_phase = "handle_inquiry"
+        invocation_id: Optional[str] = None
         try:
             if override_reason is not None:
                 # Coerción de rollout (knowledge_only): NO es un outcome de
@@ -1466,6 +1563,17 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     inquiry_index=i,
                     record=record,
                 )
+            rag_route = getattr(cls, "route", None)
+            if ticket_identity and rag_route in {
+                "knowledge_question", "generate_response",
+            }:
+                invocation_id = await repo.begin_rag_invocation(
+                    job_id,
+                    i,
+                    route=rag_route,
+                    worker_id=worker_id,
+                    lease_epoch=lease_epoch,
+                )
             failure_phase = "handle_inquiry"
             _emit_phase("handle_inquiry")
             outcome = await asyncio.wait_for(
@@ -1481,7 +1589,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             # el checkpoint es la verificación DESPUÉS del efecto: escritura
             # condicional al epoch (un intento fenced no puede guardar)
             failure_phase = "validate_durable_document"
-            await _checkpoint(i, checkpoint_entry)
+            await _checkpoint(
+                i, checkpoint_entry, invocation_id=invocation_id,
+            )
             _inject_staging_fault(
                 fault_plan,
                 point="post_checkpoint",
@@ -1505,11 +1615,14 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "degraded": True,
                 "forusbots_submit_intent": True,
                 "manual_reconciliation_required": True,
+                "diagnostics": {
+                    "failure_phase": "forusbots_submit_intent",
+                },
                 "error": {
                     "code": PublicErrorCode.FORUSBOTS_NEEDS_RECONCILIATION.value,
                     "retryable": False,
                 },
-            })
+            }, invocation_id=invocation_id)
             _emit_step_latency(
                 inquiry_started, step=inquiry_step, code="failed"
             )
@@ -1531,11 +1644,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 # (P1 review; plan Tarea 6 Paso 5).
                 "manual_reconciliation_required":
                     manual_reconciliation_required,
+                "diagnostics": {"failure_phase": failure_phase},
                 "error": {
                     "code": code.value,
                     "retryable": not manual_reconciliation_required,
                 },
-            })
+            }, invocation_id=invocation_id)
             _emit_step_latency(
                 inquiry_started, step=inquiry_step, code="timeout"
             )
@@ -1569,9 +1683,16 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 "manual_reconciliation_required":
                     getattr(cls, "route", None) == "generate_response"
                     and not pre_effect_validation_failure,
+                "diagnostics": {
+                    "failure_phase": (
+                        "validate_durable_document"
+                        if pre_effect_validation_failure
+                        else failure_phase
+                    ),
+                },
                 "error": {"code": PublicErrorCode.INTERNAL_ERROR.value,
                           "retryable": False},
-            })
+            }, invocation_id=invocation_id)
             _emit_step_latency(
                 inquiry_started, step=inquiry_step, code="failed"
             )
@@ -1639,6 +1760,19 @@ def _shadow_sampled(job_id: str) -> bool:
 def _entry_from_outcome(index: int, outcome: InquiryOutcome) -> Dict[str, Any]:
     degraded, code = outcome_is_degraded(outcome)
     result = outcome_to_inquiry_result(outcome)
+    response_block = (
+        result.knowledge_answer
+        if result.route == RouteDecision.KNOWLEDGE_QUESTION
+        else result.generate_response
+    )
+    bounded_chunks = []
+    if response_block is not None:
+        for chunk in response_block.used_chunks[:20]:
+            bounded_chunks.append(
+                chunk_evidence_from_result(
+                    chunk.model_dump(mode="python")
+                ).model_dump(mode="python")
+            )
     entry: Dict[str, Any] = {
         "route": outcome.route,
         "execution_status": "succeeded",
@@ -1647,6 +1781,8 @@ def _entry_from_outcome(index: int, outcome: InquiryOutcome) -> Dict[str, Any]:
         "scrape_status": outcome.scrape_status,
         "result": minimize_inquiry_result(result),
     }
+    if bounded_chunks:
+        entry["evaluation_evidence"] = {"chunks": bounded_chunks}
     if degraded and code:
         entry["error"] = {"code": code, "retryable": code in (
             PublicErrorCode.FORUSBOTS_TIMEOUT.value,

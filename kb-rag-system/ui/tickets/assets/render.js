@@ -302,7 +302,7 @@ export function severityPill(severity) {
  * Who is responsible for this review — never the caller reading the page.
  *
  * Three distinct answers, and the difference is stated rather than implied: an
- * assigned reviewer, a name carried over from the spreadsheet with no account
+ * assigned reviewer, a historical display name with no account
  * behind it, or nobody at all.
  */
 export function reviewerCell(review) {
@@ -322,7 +322,7 @@ export function reviewerCell(review) {
   if (legacy) {
     const wrap = el("span", { className: "cell-legacy" });
     wrap.appendChild(el("span", { text: legacy }));
-    wrap.appendChild(el("span", { className: "cell-legacy-tag", text: "Legacy sheet value" }));
+    wrap.appendChild(el("span", { className: "cell-legacy-tag", text: "Historical value" }));
     node.appendChild(wrap);
     return node;
   }
@@ -357,14 +357,14 @@ export function commentCell(review, { available }) {
 /**
  * One row.
  *
- * `row` is the normalized shape the controller produces from either source:
- * `{ displayId, title, review, updatedAt, hasReview }`. Keeping the two wire
- * shapes out of this function is what lets both tabs share one table.
+ * `row` is the normalized execution shape from the adapter. The list endpoint
+ * exposes only scope-authorized runs whose DevRev hydration succeeded.
  */
-export function ticketRow(row, { selected, canCreateReview, commentsAvailable }) {
+export function ticketRow(row, { selected }) {
   const tr = el("tr", {
     attrs: {
       "data-row": "ticket",
+      "data-execution-id": row.executionId,
       "data-display-id": row.displayId,
       tabindex: "0",
       "aria-selected": selected ? "true" : "false",
@@ -375,83 +375,90 @@ export function ticketRow(row, { selected, canCreateReview, commentsAvailable })
   const box = el("input", {
     attrs: {
       type: "checkbox",
-      "data-select": row.displayId,
-      "aria-label": `Select ticket ${row.displayId}`,
+      "data-select": row.executionId,
+      "aria-label": `Select execution ${row.executionId}`,
     },
   });
   box.checked = selected;
   select.appendChild(box);
   tr.appendChild(select);
 
-  const idCell = el("th", {
+  const executionCell = el("th", {
     className: "cell-id",
-    attrs: { scope: "row", "data-label": "Ticket ID" },
+    attrs: { scope: "row", "data-label": "Execution" },
   });
-  idCell.appendChild(el("span", { className: "cell-id-value", text: row.displayId }));
+  executionCell.appendChild(
+    el("span", { className: "cell-id-value", text: clip(row.executionId, TITLE_PREVIEW_LIMIT) })
+  );
+  if (row.attempt !== null && row.attempt !== undefined) {
+    const inquiry = row.inquiryIndex !== null && row.inquiryIndex !== undefined
+      ? ` · inquiry ${row.inquiryIndex}`
+      : "";
+    executionCell.appendChild(
+      el("span", { className: "cell-title", text: `Attempt ${row.attempt}${inquiry}` })
+    );
+  }
+  executionCell.appendChild(hiddenText(row.executionId));
+  tr.appendChild(executionCell);
+
+  const idCell = cell("Ticket ID", "cell-id");
+  idCell.appendChild(el("span", { className: "cell-id-value", text: row.displayId || "Not loaded" }));
   if (row.title) {
     idCell.appendChild(el("span", { className: "cell-title", text: clip(row.title, TITLE_PREVIEW_LIMIT) }));
   }
   tr.appendChild(idCell);
 
+  tr.appendChild(textCell("Route", row.route || "Not recorded"));
+
+  const runStatus = cell("Run status", "cell-status");
+  runStatus.appendChild(
+    pill(
+      row.runStatus === "succeeded"
+        ? "Succeeded"
+        : row.runStatus === "partial"
+          ? "Partial"
+          : row.runStatus === "failed"
+            ? "Failed"
+            : row.runStatus === "timeout"
+              ? "Timed out"
+              : "Unknown",
+      { "data-status": row.runStatus ?? "unknown" }
+    )
+  );
+  tr.appendChild(runStatus);
+
+  const hydration = cell("DevRev context", "cell-status");
+  hydration.appendChild(
+    pill(
+      row.hydrationStatus === "succeeded"
+        ? "Loaded"
+        : "Unavailable",
+      { "data-status": row.hydrationStatus ?? "unavailable" }
+    )
+  );
+  tr.appendChild(hydration);
+
   const review = row.review ?? null;
-  tr.appendChild(
-    review && review.topic ? textCell("Topic", review.topic) : emptyCell("Topic", "No topic recorded")
-  );
-  tr.appendChild(
-    review && review.legacy_type
-      ? textCell("Legacy Type", review.legacy_type)
-      : emptyCell("Legacy Type", "No legacy type recorded")
-  );
-  tr.appendChild(
-    review && review.observation_type
-      ? textCell("Observation", OBSERVATION_LABELS.get(review.observation_type) ?? review.observation_type)
-      : emptyCell("Observation", "No observation recorded")
-  );
+  const reviewStatus = cell("Review status", "cell-status");
+  reviewStatus.appendChild(statusPill(review?.status ?? "unreviewed"));
+  tr.appendChild(reviewStatus);
+
+  const started = cell("Started", "cell-updated");
+  started.appendChild(timeElement(row.createdAt));
+  tr.appendChild(started);
+
   tr.appendChild(ratingCell(review ? review.rating ?? null : null));
   tr.appendChild(reviewerCell(review));
 
-  const statusCell = cell("Status", "cell-status");
-  if (review === null) {
-    statusCell.appendChild(pill("Not reviewed", { "data-status": "unreviewed" }));
-  } else {
-    statusCell.appendChild(statusPill(review.status));
-    const severity = severityPill(review.severity ?? null);
-    if (severity !== null) {
-      statusCell.appendChild(severity);
-    }
-    if (review.import_state === "reversed") {
-      statusCell.appendChild(pill("Reversed import", { "data-status": "wont_fix" }));
-    }
-  }
-  tr.appendChild(statusCell);
-
-  const updated = cell("Updated", "cell-updated");
-  updated.appendChild(timeElement(row.updatedAt));
-  tr.appendChild(updated);
-
-  tr.appendChild(commentCell(review, { available: commentsAvailable }));
-
   const actions = cell("Actions", "col-actions");
-  if (review === null) {
-    actions.appendChild(
-      button({
-        text: "Add to review queue",
-        className: "button button-quiet",
-        dataset: { action: "import", displayId: row.displayId },
-        disabled: !canCreateReview,
-        describedBy: canCreateReview ? "" : "bulk-remediation-help",
-      })
-    );
-  } else {
-    actions.appendChild(
-      button({
-        label: `Open ticket ${row.displayId}`,
-        icon: "next",
-        className: "icon-button",
-        dataset: { action: "open", displayId: row.displayId },
-      })
-    );
-  }
+  actions.appendChild(
+    button({
+      label: `Open RAG execution ${row.executionId}`,
+      icon: "next",
+      className: "icon-button",
+      dataset: { action: "open", executionId: row.executionId },
+    })
+  );
   tr.appendChild(actions);
   return tr;
 }
@@ -478,9 +485,7 @@ export function renderRows(tbody, rows, options) {
     tbody,
     rows.map((row) =>
       ticketRow(row, {
-        selected: options.selectedIds.includes(row.displayId),
-        canCreateReview: options.canCreateReview,
-        commentsAvailable: options.commentsAvailable,
+        selected: options.selectedIds.includes(row.executionId),
       })
     )
   );
@@ -822,10 +827,10 @@ const EVIDENCE_REASON_LABELS = new Map([
 const AUDIT_EVENT_LABELS = new Map([
   ["review_created", "Review created"],
   ["review_updated", "Review updated"],
-  ["review_imported", "Imported from the ticket system"],
+  ["review_imported", "Review linked by the ticket system"],
   ["evidence_linked", "Evidence linked"],
   ["evidence_unlinked", "Evidence unlinked"],
-  ["import_reversed", "Import reversed"],
+  ["import_reversed", "Review linkage reversed"],
   ["legal_hold_set", "Legal hold set"],
   ["legal_hold_cleared", "Legal hold cleared"],
 ]);
@@ -849,14 +854,14 @@ const FIELD_LABELS = new Map([
   ["status", "Status"],
   ["remediation_target", "Remediation target"],
   ["assigned_reviewer", "Assigned reviewer"],
-  ["legacy_reviewer_display_name", "Legacy sheet reviewer"],
+  ["legacy_reviewer_display_name", "Historical reviewer"],
   ["resolution", "Resolution"],
   ["outcome", "Outcome"],
   ["verification_summary", "Verification summary"],
   ["no_change_reason", "Verification rationale"],
   ["branch", "Branch"],
   ["commit_sha", "Commit"],
-  ["import_state", "Import state"],
+  ["import_state", "Review linkage state"],
   ["legal_hold", "Legal hold"],
   ["correlation_status", "Correlation status"],
 ]);

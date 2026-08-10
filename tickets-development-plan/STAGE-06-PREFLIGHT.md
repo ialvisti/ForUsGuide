@@ -160,10 +160,9 @@ the unschematized `/livez`, `/readyz`, `/tickets`, and `/tickets/{display_id}`:
 
 ```
 GET    /session
-GET    /tickets                                     (list + exact ticket_id)
-GET    /tickets/{ticket_ref}                        (detail + one timeline page)
-GET    /tickets/{ticket_ref}/timeline               (forward-only)
-POST   /tickets/{ticket_ref}/review                 (201, reviewer role)
+GET    /tickets                                     (authorized RAG invocations only)
+GET    /tickets/{execution_id}                      (authorized invocation detail)
+GET    /tickets/{execution_id}/timeline             (authorized ticket, forward-only)
 GET    /reviews
 GET    /reviews/{review_id}
 PATCH  /reviews/{review_id}
@@ -173,10 +172,22 @@ POST   /reviews/{review_id}/evidence-links
 DELETE /reviews/{review_id}/evidence-links/{link_id}
 ```
 
-Remediation and import/export routes **do not exist** and are asserted absent
-from OpenAPI. Do not stub them. `GET /session` returns
-`feature_flags.remediation_enabled = false` and `import_export_enabled = false`
-precisely so the UI can branch on it.
+Remediation routes do not exist until Stage 8. File import/export and manual
+ticket/review-create routes are permanent product non-goals and are asserted
+absent from OpenAPI; do not stub or feature-flag them. `GET /session` returns
+`feature_flags.remediation_enabled = false` until Stage 8.
+
+New execution IDs are invocation-scoped:
+`{job_id}-e{lease_epoch}-a{attempt}:{inquiry_index}`. The legacy
+`{job_id}:{inquiry_index}` form remains readable for existing documents only;
+new attempts must never emit or deduplicate on that legacy identity. The API
+lists only `authorization_status=authorized` records. `quarantined`, `denied`,
+and absent execution IDs return the same safe not-found response from detail
+and timeline routes.
+
+The invocation/outbox path requires a validated upstream DevRev `ticket_id`.
+Legacy RAG calls without one may still run, but are outside the ticket console;
+the worker must neither fabricate an ID nor expose them as evaluation rows.
 
 What the adapter must do, in the exact terms the server enforces:
 
@@ -321,9 +332,11 @@ Two caveats about the worked example:
 
 ## 9. Stage 5 facts a UI test might trip over
 
-- `GET /tickets` with `ticket_id` returns a **singleton page with no cursors** via
-  the scoped `works.get` path; combining it with any list filter or a cursor is a
-  422 `UNSUPPORTED_FILTER_COMBINATION`.
+- `GET /tickets` reads only the authorized persisted invocation ledger. It never
+  discovers tickets with `works.list` or hydrates a guessed identifier on the
+  read path. `execution_id` and `devrev_display_id` are ordinary ledger filters;
+  only the private ingestion/retry plane may call scoped DevRev `works.get` and
+  promote a quarantined run to `authorized`.
 - `GET /reviews` accepts a status set plus **at most one** facet (`facet` and
   `facet_value` must both be present); `title_contains` always 422s — even when
   empty — because there is no full-text search. This is the master query grammar,
@@ -337,9 +350,10 @@ Two caveats about the worked example:
   422 — but *surrounding* whitespace is silently trimmed and succeeds, and
   anything containing a slash (a URL, `../`) **404s on routing** before the
   validator runs. Do not assert 422 for those.
-- A DevRev outage still returns the durable review with `partial: true` and
-  `warnings: ["devrev_unavailable"]`. The UI must render that as a partial
-  result, never as an empty queue.
+- A DevRev outage during persist-first ingestion keeps the durable run private
+  as `quarantined` with bounded retry metadata. The UI must not render it as a
+  partial row. Only an already-authorized historical review may retain its
+  bounded snapshot when a later read cannot reach DevRev.
 
 ## 10. Where the rest of the context lives
 

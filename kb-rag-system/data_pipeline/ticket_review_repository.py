@@ -15,12 +15,12 @@ Storage contract (four separate lifetimes, never conflated):
 * ``ticket_reviews/{review_id}/audit_events/{event_id}`` application
   append-only, hash-chained ledger. 2,555-day retention. The repository
   exposes no update or delete path for these.
-* ``devrev_message_cache`` / ``ticket_console_cache`` / ``ticket_import_staging``
-  / ``idempotency_keys`` disposable documents with a native ``expires_at`` TTL.
+* ``devrev_message_cache`` / ``ticket_console_cache`` / ``idempotency_keys``
+  disposable documents with a native ``expires_at`` TTL.
   Firestore TTL deletion is asynchronous and therefore cleanup-only, so an
   elapsed document is already absent at every application boundary here.
-* ``remediation_batches`` / ``ticket_imports`` / ``ticket_exports`` durable
-  operational records with the same 730/2,555-day split as reviews.
+* ``remediation_batches`` durable operational records with the same
+  730/2,555-day split as reviews.
 
 The named database is the isolation boundary. A collection prefix is not, and
 ``(default)`` is never a fallback: see
@@ -45,6 +45,8 @@ from typing import Any, Optional, Protocol, TypeVar, Union, cast
 
 from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator
 
+from api.ticket_evaluation_models import TicketEvaluationEvent
+
 from api.ticket_review_models import (
     AUDIT_RETENTION_DAYS,
     CACHE_TTL_S,
@@ -52,11 +54,10 @@ from api.ticket_review_models import (
     FIRESTORE_MAX_DOCUMENT_BYTES,
     GENESIS_EVENT_HASH,
     IDEMPOTENCY_TTL_S,
-    IMPORT_STAGING_TTL_S,
     MAX_ATTACHMENTS,
     MAX_BATCH_REVIEWS,
-    MAX_CSV_ROWS,
     MAX_DISPLAY_ID_LENGTH,
+    MAX_EVIDENCE_REFS_PER_REVIEW,
     MAX_ID_LENGTH,
     MAX_LEASE_EXTENSION_MINUTES,
     MAX_MESSAGE_BODY_LENGTH,
@@ -78,10 +79,10 @@ from api.ticket_review_models import (
     BatchOutcome,
     BatchStatus,
     CorrelationTrust,
+    CorrelationStatus,
     CursorError,
     EvidenceLink,
     ImportState,
-    ImportStatus,
     RemediationBatch,
     RemediationBatchItem,
     ResolutionOutcome,
@@ -96,13 +97,15 @@ from api.ticket_review_models import (
     Sha256Hex,
     StrictInt,
     TERMINAL_REVIEW_STATUSES,
-    TicketImport,
-    TicketImportRow,
+    TicketEvaluationRun,
+    DevRevAuthorizationStatus,
+    DevRevHydrationStatus,
+    DevRevTicketDetail,
+    DevRevTicketSummary,
     TicketReview,
     VerificationEvidence,
     assert_batch_submission_complete,
     assert_batch_transition,
-    assert_import_transition,
     assert_independent_verifier,
     assert_review_transition,
     can_assign_reviewer,
@@ -114,9 +117,6 @@ from api.ticket_review_models import (
 )
 from api.ticket_review_models import (
     InvalidBatchTransition as ContractInvalidBatchTransition,
-)
-from api.ticket_review_models import (
-    InvalidImportTransition as ContractInvalidImportTransition,
 )
 from api.ticket_review_models import (
     InvalidReviewTransition as ContractInvalidReviewTransition,
@@ -137,13 +137,13 @@ EVIDENCE_LINKS_SUBCOLLECTION = "evidence_links"
 BATCHES_COLLECTION = "remediation_batches"
 BATCH_ITEMS_SUBCOLLECTION = "items"
 BATCH_EVENTS_SUBCOLLECTION = "events"
-IMPORTS_COLLECTION = "ticket_imports"
-IMPORT_ROWS_SUBCOLLECTION = "rows"
-EXPORTS_COLLECTION = "ticket_exports"
+EVALUATION_RUNS_COLLECTION = "ticket_evaluation_runs"
+EVALUATION_HYDRATION_LEASE_HASH_FIELD = "hydration_lease_token_hash"
+EVALUATION_HYDRATION_LEASE_EXPIRY_FIELD = "hydration_lease_expires_at"
+EVALUATION_HYDRATION_LEASE_S = 5 * 60
 GLOBAL_AUDIT_EVENTS_COLLECTION = "ticket_console_audit_events"
 DEVREV_MESSAGE_CACHE_COLLECTION = "devrev_message_cache"
 CONSOLE_CACHE_COLLECTION = "ticket_console_cache"
-IMPORT_STAGING_COLLECTION = "ticket_import_staging"
 IDEMPOTENCY_KEYS_COLLECTION = "idempotency_keys"
 
 # Disposable collections, and only these, declare a native TTL field.
@@ -152,15 +152,13 @@ TTL_COLLECTIONS = frozenset(
     {
         CONSOLE_CACHE_COLLECTION,
         DEVREV_MESSAGE_CACHE_COLLECTION,
-        IMPORT_STAGING_COLLECTION,
         IDEMPOTENCY_KEYS_COLLECTION,
     }
 )
 DURABLE_PRODUCT_COLLECTIONS = (
     REVIEWS_COLLECTION,
+    EVALUATION_RUNS_COLLECTION,
     BATCHES_COLLECTION,
-    IMPORTS_COLLECTION,
-    EXPORTS_COLLECTION,
 )
 RETENTION_FIELD = "retention_expires_at"
 # While a legal hold is in force the product clock is PARKED under this name and
@@ -221,10 +219,21 @@ ALLOWED_REVIEW_FACETS = frozenset(
 # and version, so a token minted for one listing never opens as another.
 REVIEW_CURSOR_SCHEMA_VERSION = 1
 REVIEW_LIST_CURSOR_CONTEXT = "tickets-firestore:reviews:list:v1"
+EVALUATION_LIST_CURSOR_CONTEXT = "tickets-firestore:evaluations:list:v1"
+EVALUATION_FILTER_FIELDS = frozenset(
+    {
+        "execution_id",
+        "ticket_id",
+        "devrev_display_id",
+        "route",
+        "status",
+        "hydration_status",
+        "review_status",
+    }
+)
 BATCH_ITEMS_CURSOR_CONTEXT = "tickets-firestore:batch-items:v1"
 AUDIT_EVENTS_CURSOR_CONTEXT = "tickets-firestore:audit-events:v1"
 EVIDENCE_LINKS_CURSOR_CONTEXT = "tickets-firestore:evidence-links:v1"
-IMPORT_ROWS_CURSOR_CONTEXT = "tickets-firestore:import-rows:v1"
 
 # Firestore platform limits. The document limit is a canonical Stage 1 value;
 # the write-count ceiling is Firestore's documented per-transaction/per-batch
@@ -292,10 +301,6 @@ class InvalidBatchTransition(ReviewRepositoryError, ContractInvalidBatchTransiti
     """A remediation-batch status change is not permitted."""
 
 
-class InvalidImportTransition(ReviewRepositoryError, ContractInvalidImportTransition):
-    """A ticket-import status change is not permitted."""
-
-
 class ReviewIdentityConflict(ReviewRepositoryError):
     """A stored review belongs to a different DevRev work item."""
 
@@ -314,6 +319,18 @@ class UnsupportedFilterCombination(ReviewRepositoryError):
 
 class IdempotencyConflict(ReviewRepositoryError):
     """An idempotency key was reused for a different request."""
+
+
+class EvaluationReplayConflict(ReviewRepositoryError):
+    """An execution id was replayed with different immutable event content."""
+
+
+class EvaluationRunNotFound(ReviewRepositoryError):
+    """No persisted RAG execution exists for the requested execution id."""
+
+
+class EvaluationHydrationLeaseLost(ReviewRepositoryError):
+    """A hydration result did not own the run's current live lease."""
 
 
 class EvidenceCandidateRejected(ReviewRepositoryError):
@@ -410,13 +427,6 @@ def _assert_batch_submission_complete(*args: Any, **kwargs: Any) -> None:
         assert_batch_submission_complete(*args, **kwargs)
     except ContractInvalidBatchTransition as exc:
         raise InvalidBatchTransition(str(exc)) from exc
-
-
-def _assert_import_transition(*args: Any, **kwargs: Any) -> None:
-    try:
-        assert_import_transition(*args, **kwargs)
-    except ContractInvalidImportTransition as exc:
-        raise InvalidImportTransition(str(exc)) from exc
 
 
 def normalize_display_id(value: str) -> str:
@@ -539,6 +549,31 @@ def _is_tombstone(doc: Mapping[str, Any]) -> bool:
     return doc.get(DOC_KIND_FIELD) == PURGED_TOMBSTONE_KIND
 
 
+def _evaluation_matches(
+    run: TicketEvaluationRun, filters: Mapping[str, str]
+) -> bool:
+    # Persist-first is durable but not discoverable.  A run becomes part of
+    # the reviewer queue only after DevRev validates existence and scope.
+    if run.authorization_status is not DevRevAuthorizationStatus.AUTHORIZED:
+        return False
+    values = {
+        "execution_id": run.execution_id,
+        "ticket_id": run.event.ticket_id,
+        # This branch runs only for authorized records, so the DevRev display
+        # id is available. The immutable producer id remains a defensive
+        # fallback for a legacy authorized document that lacks the projection.
+        "devrev_display_id": run.devrev_display_id or run.event.ticket_id,
+        "route": run.event.route.value,
+        "status": run.event.status.value,
+        "hydration_status": run.hydration_status.value,
+    }
+    return all(
+        values.get(key) == expected
+        for key, expected in filters.items()
+        if key != "review_status"
+    )
+
+
 def _live(doc: Optional[Mapping[str, Any]], now: datetime) -> Optional[Mapping[str, Any]]:
     """Apply logical TTL expiry at the boundary.
 
@@ -592,6 +627,14 @@ class MutationContext(BaseModel):
     request_id: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
     idempotency_key: Optional[str] = Field(default=None, max_length=MAX_ID_LENGTH)
     reason_code: Optional[str] = Field(default=None, max_length=MAX_METADATA_VALUE_LENGTH)
+
+
+class EvaluationHydrationClaim(_RepoBase):
+    """One private right to resolve a run's next DevRev hydration attempt."""
+
+    run: TicketEvaluationRun = Field(...)
+    lease_token: str = Field(..., min_length=16, max_length=128)
+    lease_expires_at: AwareDatetime = Field(...)
 
 
 class ReviewListQuery(_RepoBase):
@@ -705,32 +748,6 @@ class ConsoleCacheEntry(_RepoBase):
     cache_key: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
     title: Optional[str] = Field(default=None, max_length=MAX_TITLE_LENGTH)
     payload: dict[str, str] = Field(default_factory=dict)
-
-
-class TicketExportSummary(_RepoBase):
-    """Durable export metadata. Never the CSV body, never a ticket title."""
-
-    export_id: str = Field(..., min_length=1, max_length=MAX_ID_LENGTH)
-    schema_version: str = Field(default=SCHEMA_VERSION, max_length=MAX_TOPIC_LENGTH)
-    created_by: ReviewerIdentity = Field(...)
-    row_count: StrictInt = Field(default=0, ge=0, le=MAX_CSV_ROWS)
-    file_sha256: Sha256Hex = Field(...)
-    filter_fingerprint: Sha256Hex = Field(...)
-    retention_expires_at: Optional[AwareDatetime] = Field(default=None)
-    legal_hold: bool = Field(default=False)
-    version: StrictInt = Field(default=1, ge=1)
-    created_at: Optional[AwareDatetime] = Field(default=None)
-
-
-class ImportRowSpec(_RepoBase):
-    """One versioned import/reversal row."""
-
-    row_number: StrictInt = Field(..., ge=1)
-    review_id: Sha256Hex = Field(...)
-    expected_review_version: StrictInt = Field(..., ge=1)
-    patch: ReviewPatch = Field(...)
-    raw_ticket_id: Optional[str] = Field(default=None, max_length=MAX_DISPLAY_ID_LENGTH)
-    created_by_import: bool = Field(default=False)
 
 
 class BatchMaterialization(_RepoBase):
@@ -1337,8 +1354,8 @@ BATCH_VERIFIER_ROLES = frozenset({ReviewerRole.REVIEWER, ReviewerRole.ADMIN})
 
 
 class TicketReviewRepository:
-    """Every review, audit, evidence, batch, import/export, and retention
-    invariant, expressed once, over an interchangeable backend."""
+    """Every review, audit, evidence, batch, and retention invariant,
+    expressed once over an interchangeable backend."""
 
     def __init__(
         self,
@@ -1352,7 +1369,6 @@ class TicketReviewRepository:
         cache_ttl_s: int = CACHE_TTL_S,
         message_cache_ttl_s: int = MESSAGE_CACHE_TTL_S,
         idempotency_ttl_s: int = IDEMPOTENCY_TTL_S,
-        import_staging_ttl_s: int = IMPORT_STAGING_TTL_S,
         max_batch_reviews: int = MAX_BATCH_REVIEWS,
         lease_s: int = REMEDIATION_LEASE_S,
         max_continuous_lease_s: int = REMEDIATION_MAX_CONTINUOUS_LEASE_S,
@@ -1370,7 +1386,6 @@ class TicketReviewRepository:
         self._cache_ttl = timedelta(seconds=cache_ttl_s)
         self._message_cache_ttl = timedelta(seconds=message_cache_ttl_s)
         self._idempotency_ttl = timedelta(seconds=idempotency_ttl_s)
-        self._import_staging_ttl = timedelta(seconds=import_staging_ttl_s)
         self._max_batch_reviews = min(max_batch_reviews, MAX_BATCH_REVIEWS)
         self._lease = timedelta(seconds=lease_s)
         self._max_continuous_lease = timedelta(seconds=max_continuous_lease_s)
@@ -1405,7 +1420,6 @@ class TicketReviewRepository:
             cache_ttl_s=settings.CACHE_TTL_S,
             message_cache_ttl_s=settings.MESSAGE_CACHE_TTL_S,
             idempotency_ttl_s=settings.IDEMPOTENCY_TTL_S,
-            import_staging_ttl_s=settings.IMPORT_STAGING_TTL_S,
             max_batch_reviews=settings.MAX_BATCH_REVIEWS,
             lease_s=settings.REMEDIATION_LEASE_S,
             max_continuous_lease_s=settings.REMEDIATION_MAX_CONTINUOUS_LEASE_S,
@@ -1636,6 +1650,487 @@ class TicketReviewRepository:
             update={"idempotency_key": f"{context.idempotency_key}:{suffix}"}
         )
 
+    # ------------------------------------------------------------------
+    # Ticket-associated RAG execution ledger
+    # ------------------------------------------------------------------
+
+    async def persist_ticket_evaluation(
+        self, event: TicketEvaluationEvent
+    ) -> tuple[TicketEvaluationRun, bool]:
+        """Persist an immutable event before any fallible DevRev enrichment."""
+        now = self._now()
+        digest = event.canonical_digest()
+        path = (EVALUATION_RUNS_COLLECTION, event.execution_id)
+
+        async def _txn(view: TransactionView) -> tuple[Document, bool]:
+            existing = await view.get(path)
+            if existing is not None:
+                if existing.get("event_digest") != digest:
+                    raise EvaluationReplayConflict(
+                        "that execution id already contains different evidence"
+                    )
+                return existing, False
+            run = TicketEvaluationRun(
+                execution_id=event.execution_id,
+                event=event,
+                event_digest=digest,
+                retention_expires_at=now + self._review_retention,
+                created_at=now,
+                updated_at=now,
+            )
+            doc = _to_doc(run, **{DOC_KIND_FIELD: "ticket_evaluation"})
+            self._stamp_product(doc, now)
+            view.set(path, doc)
+            return doc, True
+
+        doc, created = await self.backend.transact(_txn)
+        return _from_doc(TicketEvaluationRun, doc), created
+
+    async def get_ticket_evaluation(self, execution_id: str) -> TicketEvaluationRun:
+        doc = await self.backend.get_doc((EVALUATION_RUNS_COLLECTION, execution_id))
+        if doc is None:
+            raise EvaluationRunNotFound("no RAG execution exists for that id")
+        return _from_doc(TicketEvaluationRun, doc)
+
+    async def claim_ticket_evaluation_hydration(
+        self, execution_id: str
+    ) -> Optional[EvaluationHydrationClaim]:
+        """Transactionally claim one due attempt, or decline without writing.
+
+        The opaque token is returned only to the private service.  Storage
+        keeps its digest, so neither the console response nor a database read
+        exposes the credential needed to publish a hydration result.
+        """
+        now = self._now()
+        lease_token = uuid.uuid4().hex
+        lease_hash = sha256_hex(lease_token)
+        lease_expires_at = now + timedelta(seconds=EVALUATION_HYDRATION_LEASE_S)
+        path = (EVALUATION_RUNS_COLLECTION, execution_id)
+
+        async def _txn(view: TransactionView) -> Optional[Document]:
+            doc = await view.get(path)
+            if doc is None:
+                raise EvaluationRunNotFound("no RAG execution exists for that id")
+            run = _from_doc(TicketEvaluationRun, doc)
+            if (
+                run.authorization_status
+                in {
+                    DevRevAuthorizationStatus.AUTHORIZED,
+                    DevRevAuthorizationStatus.DENIED,
+                }
+                or run.hydration_status is DevRevHydrationStatus.SUCCEEDED
+                or not run.hydration_retryable
+            ):
+                return None
+            if (
+                run.next_hydration_attempt_at is not None
+                and run.next_hydration_attempt_at > now
+            ):
+                return None
+            current_lease_expiry = doc.get(EVALUATION_HYDRATION_LEASE_EXPIRY_FIELD)
+            if (
+                isinstance(current_lease_expiry, datetime)
+                and current_lease_expiry > now
+            ):
+                return None
+            claimed = run.model_copy(
+                update={
+                    "hydration_attempts": run.hydration_attempts + 1,
+                    "last_hydration_attempt_at": now,
+                    # If the process dies after this claim, the private retry
+                    # scanner rediscovers the run exactly when the lease can
+                    # be reclaimed. Successful/failed results replace this.
+                    "next_hydration_attempt_at": lease_expires_at,
+                    "updated_at": now,
+                    "retention_expires_at": now + self._review_retention,
+                }
+            )
+            next_doc = _to_doc(
+                claimed,
+                **{
+                    DOC_KIND_FIELD: "ticket_evaluation",
+                    EVALUATION_HYDRATION_LEASE_HASH_FIELD: lease_hash,
+                    EVALUATION_HYDRATION_LEASE_EXPIRY_FIELD: lease_expires_at,
+                },
+            )
+            self._stamp_product(next_doc, now)
+            view.set(path, next_doc)
+            return next_doc
+
+        claimed_doc = await self.backend.transact(_txn)
+        if claimed_doc is None:
+            return None
+        return EvaluationHydrationClaim(
+            run=_from_doc(TicketEvaluationRun, claimed_doc),
+            lease_token=lease_token,
+            lease_expires_at=lease_expires_at,
+        )
+
+    @staticmethod
+    def _assert_evaluation_hydration_lease(
+        doc: Mapping[str, Any], lease_token: str, now: datetime
+    ) -> None:
+        expiry = doc.get(EVALUATION_HYDRATION_LEASE_EXPIRY_FIELD)
+        if (
+            doc.get(EVALUATION_HYDRATION_LEASE_HASH_FIELD) != sha256_hex(lease_token)
+            or not isinstance(expiry, datetime)
+            or expiry <= now
+        ):
+            raise EvaluationHydrationLeaseLost(
+                "the ticket hydration lease is absent, expired, or replaced"
+            )
+
+    async def _get_claimed_ticket_evaluation(
+        self, execution_id: str, lease_token: str
+    ) -> TicketEvaluationRun:
+        """Validate a claim immediately before its result changes related state."""
+        now = self._now()
+        path = (EVALUATION_RUNS_COLLECTION, execution_id)
+
+        async def _txn(view: TransactionView) -> Document:
+            doc = await view.get(path)
+            if doc is None:
+                raise EvaluationRunNotFound("no RAG execution exists for that id")
+            run = _from_doc(TicketEvaluationRun, doc)
+            if run.hydration_status is DevRevHydrationStatus.SUCCEEDED:
+                return doc
+            self._assert_evaluation_hydration_lease(doc, lease_token, now)
+            return doc
+
+        return _from_doc(TicketEvaluationRun, await self.backend.transact(_txn))
+
+    async def list_ticket_evaluations(
+        self,
+        *,
+        limit: int = DEFAULT_PAGE_SIZE,
+        cursor: Optional[str] = None,
+        filters: Optional[Mapping[str, str]] = None,
+    ) -> CursorPageOf:
+        """List only persisted RAG runs in deterministic document-id order.
+
+        Filtering uses a bounded scan over the dedicated ledger, never DevRev
+        discovery. The opaque cursor records both the last scanned id and the
+        filter digest, so it cannot be replayed against a different queue.
+        """
+        page_size = max(1, min(int(limit), MAX_PAGE_SIZE))
+        normalized_filters = {
+            key: value for key, value in dict(filters or {}).items() if value
+        }
+        unknown_filters = set(normalized_filters) - EVALUATION_FILTER_FIELDS
+        if unknown_filters:
+            raise UnsupportedFilterCombination(
+                "unsupported evaluation filters: " + ", ".join(sorted(unknown_filters))
+            )
+        filter_digest = hashlib.sha256(
+            json.dumps(normalized_filters, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
+        start_after_id: Optional[str] = None
+        if cursor:
+            payload = open_cursor(
+                self._cursor_key,
+                cursor,
+                context=EVALUATION_LIST_CURSOR_CONTEXT,
+                now=self._now(),
+            )
+            value = payload.get("execution_id")
+            if (
+                not isinstance(value, str)
+                or not value
+                or payload.get("filter_digest") != filter_digest
+            ):
+                raise CursorError("evaluation cursor payload is not readable")
+            start_after_id = value
+
+        matched: list[tuple[str, Document]] = []
+        scan_cursor = start_after_id
+        scanned = 0
+        exhausted = False
+        while len(matched) <= page_size and scanned < 1_000:
+            rows = await self.backend.list_collection(
+                EVALUATION_RUNS_COLLECTION,
+                limit=MAX_PAGE_SIZE,
+                start_after_id=scan_cursor,
+            )
+            if not rows:
+                exhausted = True
+                break
+            for row_id, doc in rows:
+                scanned += 1
+                scan_cursor = row_id
+                run = _from_doc(TicketEvaluationRun, doc)
+                if not _evaluation_matches(run, normalized_filters):
+                    continue
+                expected_review_status = normalized_filters.get("review_status")
+                if expected_review_status is not None:
+                    actual_review_status = ReviewStatus.UNREVIEWED.value
+                    if run.review_id:
+                        review_doc = await self.backend.get_doc(
+                            (REVIEWS_COLLECTION, run.review_id)
+                        )
+                        if review_doc is not None and not _is_tombstone(review_doc):
+                            actual_review_status = str(
+                                review_doc.get("status") or ReviewStatus.UNREVIEWED.value
+                            )
+                    if actual_review_status != expected_review_status:
+                        continue
+                matched.append((row_id, doc))
+                if len(matched) > page_size:
+                    break
+            if len(matched) > page_size:
+                break
+            if len(rows) < MAX_PAGE_SIZE:
+                exhausted = True
+                break
+
+        visible = matched[:page_size]
+        next_cursor = None
+        if scan_cursor is not None and (len(matched) > page_size or not exhausted):
+            cursor_id = visible[-1][0] if len(matched) > page_size else scan_cursor
+            next_cursor = seal_cursor(
+                self._cursor_key,
+                {
+                    "execution_id": cursor_id,
+                    "filter_digest": filter_digest,
+                },
+                context=EVALUATION_LIST_CURSOR_CONTEXT,
+                now=self._now(),
+            )
+        return CursorPageOf(
+            items=[_from_doc(TicketEvaluationRun, doc) for _id, doc in visible],
+            next_cursor=next_cursor,
+            page_size=page_size,
+        )
+
+    async def record_ticket_evaluation_hydration_failure(
+        self,
+        execution_id: str,
+        *,
+        error_code: str,
+        retryable: bool,
+        next_attempt_at: Optional[datetime],
+        authorization_denied: bool = False,
+        lease_token: str,
+    ) -> TicketEvaluationRun:
+        now = self._now()
+        path = (EVALUATION_RUNS_COLLECTION, execution_id)
+
+        async def _txn(view: TransactionView) -> Document:
+            doc = await view.get(path)
+            if doc is None:
+                raise EvaluationRunNotFound("no RAG execution exists for that id")
+            run = _from_doc(TicketEvaluationRun, doc)
+            # A late timeout must never regress a successful result committed
+            # by the current lease holder.
+            if run.hydration_status is DevRevHydrationStatus.SUCCEEDED:
+                return doc
+            self._assert_evaluation_hydration_lease(doc, lease_token, now)
+            updated = run.model_copy(
+                update={
+                    "hydration_status": DevRevHydrationStatus.FAILED,
+                    "authorization_status": (
+                        DevRevAuthorizationStatus.DENIED
+                        if authorization_denied
+                        else DevRevAuthorizationStatus.QUARANTINED
+                    ),
+                    "hydration_retryable": retryable,
+                    "hydration_error_code": error_code[:MAX_TOPIC_LENGTH],
+                    "next_hydration_attempt_at": next_attempt_at if retryable else None,
+                    "updated_at": now,
+                    "retention_expires_at": now + self._review_retention,
+                }
+            )
+            next_doc = _to_doc(updated, **{DOC_KIND_FIELD: "ticket_evaluation"})
+            self._stamp_product(next_doc, now)
+            view.set(path, next_doc)
+            return next_doc
+
+        return _from_doc(TicketEvaluationRun, await self.backend.transact(_txn))
+
+    async def link_ticket_evaluation(
+        self,
+        execution_id: str,
+        ticket: DevRevTicketDetail,
+        *,
+        context: MutationContext,
+        lease_token: str,
+    ) -> TicketEvaluationRun:
+        """Create the ticket-level review through a trusted actor, then link it."""
+        run = await self._get_claimed_ticket_evaluation(execution_id, lease_token)
+        if run.hydration_status is DevRevHydrationStatus.SUCCEEDED:
+            if run.devrev_work_id != ticket.devrev_work_id:
+                raise EvaluationReplayConflict(
+                    "that execution is already linked to a different DevRev ticket"
+                )
+            return run
+        review_id = review_id_for_devrev_work(ticket.devrev_work_id)
+        source_ids = [
+            source.article_id
+            for source in run.event.sources
+            if source.article_id is not None
+        ][:MAX_EVIDENCE_REFS_PER_REVIEW]
+        review, created = await self.create_or_get_review(
+            TicketReview(
+                review_id=review_id,
+                devrev_work_id=ticket.devrev_work_id,
+                devrev_display_id=ticket.devrev_display_id,
+                devrev_object_version=ticket.object_version,
+                correlation_status=CorrelationStatus.LINKED,
+                correlation_source="rag_execution_ingest",
+                correlation_trust=CorrelationTrust.VERIFIED_WORKLOAD,
+                ticket_job_ids=[run.event.job_id],
+                source_article_ids=source_ids,
+                last_devrev_sync_at=self._now(),
+            ),
+            context=context,
+        )
+        # The create payload already contains this run's correlation and source
+        # evidence. Merging it again would advance the version solely because
+        # ``last_devrev_sync_at`` moved by a few microseconds. Only an existing
+        # ticket-level review needs the aggregation transaction.
+        if not created:
+            review = await self._merge_evaluation_review_evidence(
+                review.review_id,
+                run=run,
+                ticket=ticket,
+                source_ids=source_ids,
+                context=context,
+            )
+        now = self._now()
+        path = (EVALUATION_RUNS_COLLECTION, execution_id)
+        summary_fields = set(DevRevTicketSummary.model_fields)
+        snapshot = DevRevTicketSummary.model_validate(
+            {
+                key: value
+                for key, value in ticket.model_dump(mode="python").items()
+                if key in summary_fields
+            }
+        )
+
+        async def _txn(view: TransactionView) -> Document:
+            doc = await view.get(path)
+            if doc is None:
+                raise EvaluationRunNotFound("no RAG execution exists for that id")
+            current = _from_doc(TicketEvaluationRun, doc)
+            if current.hydration_status is DevRevHydrationStatus.SUCCEEDED:
+                if current.devrev_work_id != ticket.devrev_work_id:
+                    raise EvaluationReplayConflict(
+                        "that execution is already linked to a different DevRev ticket"
+                    )
+                return doc
+            self._assert_evaluation_hydration_lease(doc, lease_token, now)
+            updated = current.model_copy(
+                update={
+                    "review_id": review.review_id,
+                    "devrev_work_id": ticket.devrev_work_id,
+                    "devrev_display_id": ticket.devrev_display_id,
+                    "ticket_snapshot": snapshot,
+                    "ticket_detail_snapshot": ticket,
+                    "hydration_status": DevRevHydrationStatus.SUCCEEDED,
+                    "authorization_status": DevRevAuthorizationStatus.AUTHORIZED,
+                    "hydration_retryable": False,
+                    "hydration_error_code": None,
+                    "next_hydration_attempt_at": None,
+                    "updated_at": now,
+                    "retention_expires_at": now + self._review_retention,
+                }
+            )
+            next_doc = _to_doc(updated, **{DOC_KIND_FIELD: "ticket_evaluation"})
+            self._stamp_product(next_doc, now)
+            view.set(path, next_doc)
+            return next_doc
+
+        return _from_doc(TicketEvaluationRun, await self.backend.transact(_txn))
+
+    async def _merge_evaluation_review_evidence(
+        self,
+        review_id: str,
+        *,
+        run: TicketEvaluationRun,
+        ticket: DevRevTicketDetail,
+        source_ids: Sequence[str],
+        context: MutationContext,
+    ) -> TicketReview:
+        """Idempotently aggregate every run while preserving reviewer fields."""
+        now = self._now()
+        path = (REVIEWS_COLLECTION, review_id)
+
+        async def _txn(view: TransactionView) -> Document:
+            doc = await self._load_review_doc(view, review_id)
+            current = _from_doc(TicketReview, doc)
+            job_ids = list(dict.fromkeys([*current.ticket_job_ids, run.event.job_id]))[
+                :MAX_EVIDENCE_REFS_PER_REVIEW
+            ]
+            article_ids = list(
+                dict.fromkeys([*current.source_article_ids, *source_ids])
+            )[:MAX_EVIDENCE_REFS_PER_REVIEW]
+            substantive_changes = {
+                "ticket_job_ids": job_ids,
+                "source_article_ids": article_ids,
+                "devrev_object_version": ticket.object_version,
+                "correlation_status": CorrelationStatus.LINKED,
+                "correlation_source": "rag_execution_ingest",
+                "correlation_trust": CorrelationTrust.VERIFIED_WORKLOAD,
+            }
+            changed_fields = [
+                key
+                for key, value in substantive_changes.items()
+                if getattr(current, key) != value
+            ]
+            if not changed_fields:
+                return doc
+            changes = {**substantive_changes, "last_devrev_sync_at": now}
+            if current.last_devrev_sync_at != now:
+                changed_fields.append("last_devrev_sync_at")
+            updated = current.model_copy(
+                update={
+                    **changes,
+                    "version": current.version + 1,
+                    "updated_at": now,
+                    "retention_expires_at": now + self._review_retention,
+                }
+            )
+            next_doc = _to_doc(updated)
+            next_doc.update(
+                {
+                    DOC_KIND_FIELD: doc.get(DOC_KIND_FIELD, "review"),
+                    CHAIN_HEAD_FIELD: doc.get(CHAIN_HEAD_FIELD, GENESIS_EVENT_HASH),
+                    CHAIN_COUNT_FIELD: int(doc.get(CHAIN_COUNT_FIELD) or 0),
+                }
+            )
+            self._stamp_product(next_doc, now)
+            await self._append_event(
+                view,
+                ledger_path=(*path, AUDIT_EVENTS_SUBCOLLECTION),
+                parent_doc=next_doc,
+                parent_kind="review",
+                parent_id=review_id,
+                event_type="rag_execution_linked",
+                context=context,
+                now=now,
+                previous_version=current.version,
+                new_version=updated.version,
+                changed_fields=changed_fields,
+            )
+            view.set(path, next_doc)
+            return next_doc
+
+        return _from_doc(TicketReview, await self.backend.transact(_txn))
+
+    async def list_due_ticket_evaluation_hydrations(
+        self, *, limit: int = 20
+    ) -> list[TicketEvaluationRun]:
+        rows = await self.backend.scan_by_field(
+            EVALUATION_RUNS_COLLECTION,
+            field="next_hydration_attempt_at",
+            before=self._now(),
+            limit=max(1, min(int(limit), MAX_PAGE_SIZE)),
+        )
+        return [
+            _from_doc(TicketEvaluationRun, doc)
+            for _id, doc in rows
+            if doc.get("hydration_retryable") is True
+        ]
+
     async def _load_review_doc(
         self, view: TransactionView, review_id: str
     ) -> Document:
@@ -1675,6 +2170,10 @@ class TicketReviewRepository:
         candidate = review.model_copy(
             update={
                 "devrev_display_id": normalize_display_id(review.devrev_display_id),
+                # Historical migration metadata remains parseable on records
+                # that already contain it, but no current write can create it.
+                "import_state": ImportState.ACTIVE,
+                "legacy_reviewer_display_name": None,
                 "version": 1,
                 "created_at": now,
                 "updated_at": now,
@@ -1888,25 +2387,6 @@ class TicketReviewRepository:
                     )
                 )
         return MultiPatchResult(applied=applied, conflicts=conflicts, failures=failures)
-
-    async def mark_import_state(
-        self,
-        review_id: str,
-        state: ImportState,
-        *,
-        expected_version: Optional[int],
-        context: MutationContext,
-        event_type: str = "review_import_state_changed",
-    ) -> TicketReview:
-        """Flip ``import_state`` without deleting anything."""
-        return await self._simple_review_field_update(
-            review_id,
-            {"import_state": state.value},
-            event_type=event_type,
-            changed_fields=["import_state"],
-            expected_version=expected_version,
-            context=context,
-        )
 
     async def set_legal_hold(
         self,
@@ -3941,408 +4421,6 @@ class TicketReviewRepository:
         )
 
     # ------------------------------------------------------------------
-    # Imports and exports
-    # ------------------------------------------------------------------
-
-    async def create_import(
-        self, record: TicketImport, *, context: MutationContext
-    ) -> TicketImport:
-        if context.actor_role is not ReviewerRole.ADMIN:
-            raise NotAuthorized("only an admin may create an import")
-        now = self._now()
-
-        async def _txn(view: TransactionView) -> Document:
-            path = (IMPORTS_COLLECTION, record.import_id)
-            replay, key_hash, digest = await self._claim_idempotency(
-                view,
-                context,
-                operation="create_import",
-                request={"import_id": record.import_id, "file_sha256": record.file_sha256},
-                now=now,
-            )
-            existing = await view.get(path)
-            if replay is not None and existing is not None:
-                return existing
-            if existing is not None:
-                raise ReviewRepositoryError("that import already exists")
-            stored = record.model_copy(update={"created_at": now, "updated_at": now, "version": 1})
-            doc = _to_doc(stored)
-            doc.update(
-                {
-                    DOC_KIND_FIELD: "ticket_import",
-                    RETENTION_FIELD: now + self._review_retention,
-                    LEGAL_HOLD_FIELD: False,
-                    CHAIN_HEAD_FIELD: GENESIS_EVENT_HASH,
-                    CHAIN_COUNT_FIELD: 0,
-                }
-            )
-            self._stamp_product(doc, now)
-            view.set(path, doc)
-            await self._append_global_event(
-                view,
-                parent_kind="import",
-                parent_id=sha256_hex(record.import_id),
-                event_type="import_created",
-                context=context,
-                now=now,
-            )
-            self._record_idempotency(
-                view,
-                key_hash=key_hash,
-                digest=digest,
-                operation="create_import",
-                result={"import_id": record.import_id},
-                now=now,
-            )
-            return doc
-
-        return _from_doc(TicketImport, await self.backend.transact(_txn))
-
-    async def get_import(self, import_id: str) -> TicketImport:
-        doc = await self.backend.get_doc((IMPORTS_COLLECTION, import_id))
-        if doc is None or _is_tombstone(doc):
-            raise ReviewRepositoryError("no import exists for that id")
-        return _from_doc(TicketImport, doc)
-
-    async def patch_import(
-        self,
-        import_id: str,
-        *,
-        expected_version: int,
-        context: MutationContext,
-        transition: Optional[ImportStatus] = None,
-        reason: Optional[str] = None,
-    ) -> TicketImport:
-        if context.actor_role is not ReviewerRole.ADMIN:
-            raise NotAuthorized("only an admin may change an import")
-        now = self._now()
-
-        async def _txn(view: TransactionView) -> Document:
-            path = (IMPORTS_COLLECTION, import_id)
-            replay, key_hash, digest = await self._claim_idempotency(
-                view,
-                context,
-                operation="patch_import",
-                request={
-                    "import_id": import_id,
-                    "expected_version": expected_version,
-                    "transition": None if transition is None else transition.value,
-                },
-                now=now,
-            )
-            doc = await view.get(path)
-            if doc is None or _is_tombstone(doc):
-                raise ReviewRepositoryError("no import exists for that id")
-            if replay is not None:
-                return doc
-            current = _from_doc(TicketImport, doc)
-            if int(doc.get("version") or 0) != expected_version:
-                raise ReviewVersionConflict(
-                    "the import changed since it was loaded",
-                    supplied_version=expected_version,
-                    current_version=int(doc.get("version") or 0),
-                    changed_at=doc.get("updated_at"),
-                )
-            updates: dict[str, Any] = {}
-            if transition is not None and transition is not current.status:
-                _assert_import_transition(current.status, transition, reason=reason)
-                updates["status"] = transition
-            merged = current.model_copy(
-                update={**updates, "version": current.version + 1, "updated_at": now}
-            )
-            new_doc = _to_doc(merged)
-            new_doc.update(
-                {
-                    DOC_KIND_FIELD: "ticket_import",
-                    RETENTION_FIELD: now + self._review_retention,
-                    LEGAL_HOLD_FIELD: bool(doc.get(LEGAL_HOLD_FIELD, False)),
-                    CHAIN_HEAD_FIELD: doc.get(CHAIN_HEAD_FIELD) or GENESIS_EVENT_HASH,
-                    CHAIN_COUNT_FIELD: doc.get(CHAIN_COUNT_FIELD) or 0,
-                }
-            )
-            new_doc["created_at"] = doc["created_at"]
-            self._stamp_product(new_doc, now)
-            view.set(path, new_doc)
-            await self._append_global_event(
-                view,
-                parent_kind="import",
-                parent_id=sha256_hex(import_id),
-                event_type="import_updated",
-                context=context,
-                now=now,
-                changed_fields=sorted(updates),
-            )
-            self._record_idempotency(
-                view,
-                key_hash=key_hash,
-                digest=digest,
-                operation="patch_import",
-                result={"import_id": import_id, "version": merged.version},
-                now=now,
-            )
-            return new_doc
-
-        return _from_doc(TicketImport, await self.backend.transact(_txn))
-
-    async def stage_import_rows(
-        self, import_id: str, rows: Sequence[Mapping[str, Any]]
-    ) -> int:
-        """Store bounded parsed staging rows for seven days, never the CSV body."""
-        now = self._now()
-        if len(rows) > MAX_CSV_ROWS:
-            raise ReviewRepositoryError("a staged chunk exceeds the canonical row limit")
-
-        async def _txn(view: TransactionView) -> int:
-            for row in rows:
-                row_number = int(row["row_number"])
-                view.set(
-                    (IMPORT_STAGING_COLLECTION, f"{import_id}:{row_number:06d}"),
-                    {
-                        "import_id": import_id,
-                        "row": {key: _plain(value) for key, value in row.items()},
-                        "created_at": now,
-                        TTL_FIELD: now + self._import_staging_ttl,
-                    },
-                )
-            return len(rows)
-
-        return await self.backend.transact(_txn)
-
-    async def get_staged_import_rows(
-        self, import_id: str, *, page_size: int = 100
-    ) -> list[Document]:
-        rows = await self.backend.scan_by_field(
-            IMPORT_STAGING_COLLECTION,
-            field=TTL_FIELD,
-            before=self._now() + self._import_staging_ttl,
-            limit=page_size,
-        )
-        now = self._now()
-        return [
-            doc
-            for _id, doc in rows
-            if doc.get("import_id") == import_id and _live(doc, now) is not None
-        ]
-
-    async def _write_import_rows(
-        self,
-        import_id: str,
-        specs: Sequence[ImportRowSpec],
-        *,
-        context: MutationContext,
-        reversing: bool,
-    ) -> TicketImport:
-        if context.actor_role is not ReviewerRole.ADMIN:
-            raise NotAuthorized("only an admin may apply or reverse an import")
-        if len(specs) > 100:
-            raise ReviewRepositoryError("an import chunk is at most 100 rows")
-        now = self._now()
-        applied = 0
-        conflicted = 0
-        failed = 0
-        reversed_rows = 0
-        row_docs: list[tuple[TicketImportRow, str]] = []
-
-        for spec in specs:
-            display_id: Optional[str] = spec.raw_ticket_id
-            error_code: Optional[str] = None
-            try:
-                row_context = self._derive_context(context, f"row:{spec.row_number}")
-                if reversing:
-                    review = await self.mark_import_state(
-                        spec.review_id,
-                        ImportState.REVERSED,
-                        expected_version=spec.expected_review_version,
-                        context=row_context,
-                        event_type="review_import_reversed",
-                    )
-                    reversed_rows += 1
-                else:
-                    review = await self.patch_review(
-                        spec.review_id,
-                        spec.patch,
-                        expected_version=spec.expected_review_version,
-                        context=row_context,
-                    )
-                    applied += 1
-                display_id = display_id or review.devrev_display_id
-            except ReviewVersionConflict as conflict:
-                conflicted += 1
-                error_code = "review_version_conflict"
-                display_id = display_id or conflict.review_id
-            except ReviewRepositoryError as error:
-                failed += 1
-                error_code = type(error).__name__
-            row_docs.append(
-                (
-                    TicketImportRow(
-                        row_number=spec.row_number,
-                        raw_ticket_id=(display_id or "unavailable")[:MAX_DISPLAY_ID_LENGTH],
-                        review_id=spec.review_id,
-                        expected_review_version=spec.expected_review_version,
-                        error_code=error_code,
-                    ),
-                    f"{spec.row_number:06d}",
-                )
-            )
-
-        summary_context = self._derive_context(context, "summary")
-
-        async def _txn(view: TransactionView) -> Document:
-            path = (IMPORTS_COLLECTION, import_id)
-            replay, key_hash, digest = await self._claim_idempotency(
-                view,
-                summary_context,
-                operation="import_chunk",
-                request={
-                    "import_id": import_id,
-                    "reversing": reversing,
-                    "rows": sorted(spec.row_number for spec in specs),
-                },
-                now=now,
-            )
-            doc = await view.get(path)
-            if doc is None or _is_tombstone(doc):
-                raise ReviewRepositoryError("no import exists for that id")
-            if replay is not None:
-                # A retried chunk must not add its counters a second time.
-                return doc
-            current = _from_doc(TicketImport, doc)
-            for row, row_id in row_docs:
-                view.set(
-                    (*path, IMPORT_ROWS_SUBCOLLECTION, row_id),
-                    _to_doc(row, **self._product_envelope(now)),
-                )
-            merged = current.model_copy(
-                update={
-                    "applied_rows": current.applied_rows + applied,
-                    "conflicted_rows": current.conflicted_rows + conflicted,
-                    "failed_rows": current.failed_rows + failed,
-                    "reversed_rows": current.reversed_rows + reversed_rows,
-                    "version": current.version + 1,
-                    "updated_at": now,
-                }
-            )
-            new_doc = _to_doc(merged)
-            new_doc.update(
-                {
-                    DOC_KIND_FIELD: "ticket_import",
-                    RETENTION_FIELD: now + self._review_retention,
-                    LEGAL_HOLD_FIELD: bool(doc.get(LEGAL_HOLD_FIELD, False)),
-                    CHAIN_HEAD_FIELD: doc.get(CHAIN_HEAD_FIELD) or GENESIS_EVENT_HASH,
-                    CHAIN_COUNT_FIELD: doc.get(CHAIN_COUNT_FIELD) or 0,
-                }
-            )
-            new_doc["created_at"] = doc["created_at"]
-            self._stamp_product(new_doc, now)
-            view.set(path, new_doc)
-            await self._append_global_event(
-                view,
-                parent_kind="import",
-                parent_id=sha256_hex(import_id),
-                event_type="import_rows_reversed" if reversing else "import_rows_applied",
-                context=summary_context,
-                now=now,
-                changed_fields=["rows"],
-            )
-            self._record_idempotency(
-                view,
-                key_hash=key_hash,
-                digest=digest,
-                operation="import_chunk",
-                result={"import_id": import_id, "version": merged.version},
-                now=now,
-            )
-            return new_doc
-
-        return _from_doc(TicketImport, await self.backend.transact(_txn))
-
-    async def apply_import_rows(
-        self, import_id: str, specs: Sequence[ImportRowSpec], *, context: MutationContext
-    ) -> TicketImport:
-        """Apply a versioned chunk. Conflicts stay visible; nothing is deleted."""
-        return await self._write_import_rows(
-            import_id, specs, context=context, reversing=False
-        )
-
-    async def reverse_import_rows(
-        self, import_id: str, specs: Sequence[ImportRowSpec], *, context: MutationContext
-    ) -> TicketImport:
-        """Reverse a versioned chunk by marking state, never by deleting."""
-        return await self._write_import_rows(
-            import_id, specs, context=context, reversing=True
-        )
-
-    async def list_import_rows(
-        self, import_id: str, *, page_size: int = DEFAULT_PAGE_SIZE
-    ) -> CursorPageOf:
-        rows = await self.backend.list_subcollection(
-            (IMPORTS_COLLECTION, import_id), IMPORT_ROWS_SUBCOLLECTION, limit=page_size
-        )
-        return CursorPageOf(
-            items=[_from_doc(TicketImportRow, doc) for _id, doc in rows], page_size=page_size
-        )
-
-    async def create_export(
-        self, summary: TicketExportSummary, *, context: MutationContext
-    ) -> TicketExportSummary:
-        """Record durable export metadata. Never the CSV body, never a title."""
-        if context.actor_role is not ReviewerRole.ADMIN:
-            raise NotAuthorized("only an admin may export reviews")
-        now = self._now()
-
-        async def _txn(view: TransactionView) -> Document:
-            path = (EXPORTS_COLLECTION, summary.export_id)
-            replay, key_hash, digest = await self._claim_idempotency(
-                view,
-                context,
-                operation="create_export",
-                request={"export_id": summary.export_id, "file_sha256": summary.file_sha256},
-                now=now,
-            )
-            existing = await view.get(path)
-            if replay is not None and existing is not None:
-                return existing
-            if existing is not None:
-                raise ReviewRepositoryError("that export already exists")
-            stored = summary.model_copy(update={"created_at": now, "version": 1})
-            doc = _to_doc(stored)
-            doc.update(
-                {
-                    DOC_KIND_FIELD: "ticket_export",
-                    RETENTION_FIELD: now + self._review_retention,
-                    LEGAL_HOLD_FIELD: False,
-                }
-            )
-            self._stamp_product(doc, now)
-            view.set(path, doc)
-            await self._append_global_event(
-                view,
-                parent_kind="export",
-                parent_id=sha256_hex(summary.export_id),
-                event_type="export_created",
-                context=context,
-                now=now,
-            )
-            self._record_idempotency(
-                view,
-                key_hash=key_hash,
-                digest=digest,
-                operation="create_export",
-                result={"export_id": summary.export_id},
-                now=now,
-            )
-            return doc
-
-        return _from_doc(TicketExportSummary, await self.backend.transact(_txn))
-
-    async def get_export(self, export_id: str) -> TicketExportSummary:
-        doc = await self.backend.get_doc((EXPORTS_COLLECTION, export_id))
-        if doc is None or _is_tombstone(doc):
-            raise ReviewRepositoryError("no export exists for that id")
-        return _from_doc(TicketExportSummary, doc)
-
-    # ------------------------------------------------------------------
     # Retention: bounded, idempotent, non-cascading
     # ------------------------------------------------------------------
 
@@ -4454,8 +4532,6 @@ class TicketReviewRepository:
             return (EVIDENCE_LINKS_SUBCOLLECTION,)
         if collection == BATCHES_COLLECTION:
             return (BATCH_ITEMS_SUBCOLLECTION,)
-        if collection == IMPORTS_COLLECTION:
-            return (IMPORT_ROWS_SUBCOLLECTION,)
         return ()
 
     @staticmethod
@@ -4811,15 +4887,11 @@ __all__ = [
     "CONSOLE_CACHE_COLLECTION",
     "DEVREV_MESSAGE_CACHE_COLLECTION",
     "EVIDENCE_LINKS_SUBCOLLECTION",
-    "EXPORTS_COLLECTION",
     "FIRESTORE_MAX_DOCUMENT_BYTES",
     "FIRESTORE_MAX_WRITES_PER_TRANSACTION",
     "GLOBAL_AUDIT_EVENTS_COLLECTION",
     "GLOBAL_CHAIN_HEAD_DOC_ID",
     "IDEMPOTENCY_KEYS_COLLECTION",
-    "IMPORTS_COLLECTION",
-    "IMPORT_ROWS_SUBCOLLECTION",
-    "IMPORT_STAGING_COLLECTION",
     "LEGAL_HOLD_FIELD",
     "PURGED_TOMBSTONE_KIND",
     "RETENTION_FIELD",
@@ -4846,10 +4918,8 @@ __all__ = [
     "EvidenceCandidateRejected",
     "FirestoreTicketReviewBackend",
     "IdempotencyConflict",
-    "ImportRowSpec",
     "InMemoryTicketReviewBackend",
     "InvalidBatchTransition",
-    "InvalidImportTransition",
     "InvalidReviewTransition",
     "LeaseExtensionRefused",
     "MultiPatchResult",
@@ -4865,7 +4935,6 @@ __all__ = [
     "ReviewPatchSpec",
     "ReviewRepositoryError",
     "ReviewVersionConflict",
-    "TicketExportSummary",
     "TicketReviewBackend",
     "TicketReviewRepository",
     "UnsupportedFilterCombination",

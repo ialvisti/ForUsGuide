@@ -2,10 +2,11 @@
 
 > **For Claude Opus 5:** This is an executable implementation prompt. Read the master plan and Stage 1 artifacts. Build the repository test-first; do not access production Firestore.
 
-**Goal:** Persist shared review state, application-append-only hash-chained
-audit events, manual evidence links, remediation batches, durable import/export
-metadata, and disposable DevRev cache entries with transactional correctness in
-a dedicated named Firestore database.
+**Goal:** Persist immutable quarantined RAG execution records, scoped DevRev
+authorization and retryable hydration,
+shared review state, application-append-only hash-chained audit events, manual
+evidence links, remediation batches, and disposable DevRev cache entries with
+transactional correctness in a dedicated named Firestore database.
 
 **Architecture:** Put all business invariants in a repository facade with interchangeable in-memory and Firestore backends, following the tested pattern in `ticket_job_repository.py`. Firestore documents use server timestamps and transactions; user-facing updates use optimistic concurrency.
 
@@ -75,8 +76,8 @@ Required tests:
 4. Status transitions obey the Stage 1 transition table. Admin reopen is explicit and audited.
 5. Authenticated actor comes from the service layer. Self-assignment may copy
    that identity into `assigned_reviewer`; admin reassignment accepts only a
-   validated configured identity. CSV reviewer text goes only to
-   `legacy_reviewer_display_name`.
+   validated configured identity. Historical reviewer display text, if
+   retained, goes only to `legacy_reviewer_display_name`.
 6. Every successful mutation appends exactly one audit event with
    `previous_event_hash`/`event_hash` and the idempotency-key hash.
 7. Failed/stale mutations append no success event and leave the document unchanged.
@@ -105,25 +106,33 @@ Required tests:
 20. A partial multi-review update never silently marks unaffected reviews resolved.
 21. Every unsafe repository operation deduplicates a repeated idempotency key
     and rejects the same key with a different request digest.
-22. Import apply/reverse follows expected versions, never deletes history, and
-    preserves conflicts; export/import global events enter
-    `ticket_console_audit_events`.
-23. Cache/import-staging/idempotency documents alone receive TTL fields;
-    durable review/audit/batch/import/export documents receive
+22. `persist_evaluation_run` accepts one canonical event per invocation-scoped
+    execution ID, stores it as `authorization_status=quarantined`, treats an
+    identical transport replay as idempotent, and rejects a conflicting digest.
+23. The run is durable before `works.get`. Auth/config/rate/transport/outage
+    failure updates only bounded retry metadata and keeps it quarantined;
+    not-found/scope rejection makes it terminal `denied`. Neither state appears
+    in user-facing list/detail queries.
+24. Successful scoped hydration atomically promotes the run to `authorized`
+    and creates/gets the ticket-level review through a trusted system actor; a
+    second invocation for the same ticket links to that review while remaining
+    a distinct execution row.
+25. Cache/idempotency documents alone receive TTL fields; durable
+    execution/review/audit/batch documents receive
     `retention_expires_at` and `legal_hold`, never a collection-group TTL.
-24. Firestore backend refuses `(default)` when environment is staging or
+26. Firestore backend refuses `(default)` when environment is staging or
     production.
-25. No durable review/audit/export field receives a DevRev title; a synthetic
-    title containing email/phone remains confined to cache TTL data.
-26. A serialized 100-item batch stays within per-document and transaction/
+27. No durable review/audit/execution-event field receives a DevRev title; a
+    synthetic title containing email/phone remains confined to cache TTL data.
+28. A serialized 100-item batch stays within per-document and transaction/
     batch-write limits and materializes through a bounded item cursor.
-27. Retention preview/apply is bounded and idempotent, skips legal holds,
-    purges review/evidence/batch/import/export state only after 730 days, and
+29. Retention preview/apply is bounded and idempotent, skips legal holds,
+    purges execution/review/evidence/batch state only after 730 days, and
     retains per-review/batch/global hash-chained audit ledgers until 2,555
     days. Parent product fields become a content-free tombstone while a
     younger audit ledger exists; tests prove the tombstone leaks no
     DON/display ID/title/comment/email/evidence/result.
-28. Retention deletes only explicit capped document/subcollection IDs, never a
+30. Retention deletes only explicit capped document/subcollection IDs, never a
     database/collection recursively, and appends a content-free global
     retention audit event. After 2,555 days it removes exact ledger event IDs
     before the exact tombstone, including retry/idempotency tests.
@@ -169,13 +178,10 @@ ticket_reviews/{review_id}/evidence_links
 remediation_batches
 remediation_batches/{batch_id}/items
 remediation_batches/{batch_id}/events
-ticket_imports
-ticket_imports/{import_id}/rows
-ticket_exports
+ticket_evaluation_runs
 ticket_console_audit_events
 devrev_message_cache
 ticket_console_cache
-ticket_import_staging
 idempotency_keys
 ```
 
@@ -284,7 +290,6 @@ TTL only:
 
 - `ticket_console_cache.expires_at`
 - `devrev_message_cache.expires_at`
-- `ticket_import_staging.expires_at`
 - `idempotency_keys.expires_at`
 
 Never TTL:
@@ -293,11 +298,11 @@ Never TTL:
 - review audit events
 - evidence links
 - remediation batch summaries/events required for traceability
-- durable import rows/summaries, export summaries, or global audit events
+- immutable evaluation runs or global audit events
 
 Implement repository-facade `preview_expired` and `purge_expired` methods here,
 not in an infrastructure entrypoint. Product records/evidence links/batch
-items/import/export metadata use 730-day `retention_expires_at`; every
+items/execution metadata use 730-day `retention_expires_at`; every
 hash-chained audit/event ledger uses 2,555 days. `legal_hold=true` on either
 the parent or ledger suppresses its purge. Firestore does not cascade
 subcollections when a parent is deleted; preserve and test that property so a
@@ -342,7 +347,7 @@ Do not point any test at a real Firestore database.
 - In-memory contract tests pass; the real emulator test exists and is marked
   as a mandatory remote gate (do not claim Firestore atomicity until it passes).
 - Stale clients cannot overwrite newer reviewers.
-- Review, disposable cache, durable import/export, and audit retention are
+- Immutable execution, review, disposable cache, and audit retention are
   separated.
 - Product state and audit ledgers honor distinct 730/2,555-day policies with
   legal hold and non-cascading bounded purge.

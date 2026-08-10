@@ -5,9 +5,10 @@ Stage 6 interface end to end without ever touching production. Everything that
 would reach outside this process is removed *before* the application factory is
 imported, and the removal is verified rather than assumed:
 
-*   **fixture mode is set and checked at import.** Nothing below runs unless the
-    marker is in place, so importing this module can never be a step on the way
-    to a real revision;
+*   **fixture mode is established explicitly before construction.** The test
+    harness and the child server both prepare the refusing environment before
+    building the app, while merely collecting this module has no process-wide
+    side effects on unrelated tests;
 *   **application default credentials and the metadata server are poisoned.** The
     credential path is made non-existent and the metadata endpoints are pointed
     at a closed loopback port, so a library that quietly reaches for an ambient
@@ -27,11 +28,11 @@ and its five preconditions exist to keep a header-authenticated identity out of 
 deployed environment. The application factory already accepts an authenticator,
 so the fixture supplies one and the shipped code is untouched.
 
-Deterministic scenarios are reached through the ``stage`` filter on the live tab
-and the facet value on the queue tab, both of which a person can type into the
-interface. A magic query value is the only trigger a browser can produce without
-a header, and driving the failure through the real service, router, and error
-envelope is what makes the exercise worth anything.
+Deterministic scenarios are reached through a syntactically valid execution-id
+filter on the RAG queue and the facet value on the review queue. A magic query
+value is the only trigger a browser can produce without a header, and driving
+the failure through the real service, router, and error envelope is what makes
+the exercise worth anything.
 """
 
 from __future__ import annotations
@@ -67,7 +68,7 @@ class FixtureIsolationError(RuntimeError):
 
 
 # ---------------------------------------------------------------------------
-# Isolation, established before the application factory is imported
+# Isolation, established explicitly before the application is constructed
 # ---------------------------------------------------------------------------
 
 
@@ -175,12 +176,28 @@ def egress_guard_installed() -> bool:
     return _guard_installed
 
 
-activate_fixture_mode()
-poison_cloud_credentials()
-install_egress_guard()
+def prepare_fixture_environment() -> None:
+    """Establish every process-wide fixture guard before app construction.
 
-# Imported only after the isolation above is in place and verified.
+    Keeping this explicit is important for the full test suite: pytest imports
+    test modules during collection, so import-time environment and socket
+    mutations would otherwise leak into tests that have nothing to do with the
+    console fixture.  The browser child is a dedicated process; the unit-test
+    harness pairs this function with :func:`remove_egress_guard` and pytest's
+    environment restoration.
+    """
+    activate_fixture_mode()
+    poison_cloud_credentials()
+    install_egress_guard()
+
+# These imports only define the application graph. External effects remain
+# impossible because ``build_fixture_app`` refuses to construct it until the
+# explicit guards above have been established and verified.
 from api.reviewer_auth import AuthenticatedReviewer, subject_hash  # noqa: E402
+from api.ticket_evaluation_models import (  # noqa: E402
+    TicketEvaluationEvent,
+    rag_invocation_id,
+)
 from api.ticket_review_models import (  # noqa: E402
     CorrelationStatus,
     CorrelationTrust,
@@ -210,10 +227,12 @@ from api.tickets_console_main import build_console_app  # noqa: E402
 from data_pipeline.ticket_review_repository import (  # noqa: E402
     InMemoryTicketReviewBackend,
     MutationContext,
+    REVIEWS_COLLECTION,
     TicketReviewRepository,
 )
 from data_pipeline.ticket_review_service import (  # noqa: E402
     MessageClassifier,
+    TicketEvaluationService,
     TicketReviewService,
 )
 
@@ -256,21 +275,19 @@ UI_PAGE_SIZE = 25
 #: actually be exercised in a browser rather than merely unit-tested.
 FIXTURE_TICKET_COUNT = 60
 
-#: Every other ticket gets a durable review. Interleaving rather than filling the
-#: first block matters: it means *every* page of the live tab carries both an
-#: imported row and an unimported one, so the `Add to review queue` action and the
-#: `Not reviewed` state are reachable wherever a reviewer happens to be.
+#: Every other synthetic DevRev ticket gets a durable RAG execution.  The others
+#: prove that DevRev discovery alone never makes a row visible in the console.
 SEEDED_TICKET_STRIDE = 2
 
 #: The magic filter values that select a failure. Typed into the interface.
-SCENARIO_UNAUTHENTICATED = "fixture:unauthenticated"
-SCENARIO_FORBIDDEN = "fixture:forbidden"
-SCENARIO_RATE_LIMITED = "fixture:rate-limited"
-SCENARIO_UPSTREAM_RATE_LIMITED = "fixture:upstream-rate-limited"
-SCENARIO_UNAVAILABLE = "fixture:unavailable"
-SCENARIO_PROTOCOL = "fixture:protocol"
-SCENARIO_EMPTY = "fixture:empty"
-SCENARIO_PARTIAL = "fixture:partial"
+SCENARIO_UNAUTHENTICATED = "fixture_unauthenticated:0"
+SCENARIO_FORBIDDEN = "fixture_forbidden:0"
+SCENARIO_RATE_LIMITED = "fixture_rate_limited:0"
+SCENARIO_UPSTREAM_RATE_LIMITED = "fixture_upstream_rate_limited:0"
+SCENARIO_UNAVAILABLE = "fixture_unavailable:0"
+SCENARIO_PROTOCOL = "fixture_protocol:0"
+SCENARIO_EMPTY = "fixture_empty:0"
+SCENARIO_PARTIAL = "fixture_partial:0"
 
 _FAILURES: dict[str, ConsoleHTTPError] = {
     SCENARIO_UNAUTHENTICATED: ConsoleHTTPError(
@@ -794,11 +811,24 @@ class ScenarioService:
                 return failure
         return None
 
-    async def list_live_tickets(self, query, **kwargs):
-        failure = self._selected(list(getattr(query, "stage", []) or []))
+    async def list_evaluation_runs(self, *, cursor=None, limit=25, filters=None):
+        selected = list((filters or {}).values())
+        failure = self._selected(selected)
         if failure is not None:
             raise failure
-        return await self._inner.list_live_tickets(query, **kwargs)
+        if SCENARIO_EMPTY in selected:
+            return CursorPage(items=[], page_size=limit)
+        effective_filters = {} if SCENARIO_PARTIAL in selected else filters
+        page = await self._inner.list_evaluation_runs(
+            cursor=cursor,
+            limit=limit,
+            filters=effective_filters,
+        )
+        if SCENARIO_PARTIAL in selected:
+            return page.model_copy(
+                update={"partial": True, "warnings": ["devrev_unavailable"]}
+            )
+        return page
 
     async def list_reviews(self, query):
         failure = self._selected(list(getattr(query, "facets", {}).values()))
@@ -893,27 +923,90 @@ def _context(label: str) -> MutationContext:
 
 
 def seeded_ticket_indexes() -> list[int]:
-    """Which synthetic tickets have a durable review."""
+    """Which synthetic tickets have a durable, authorized RAG execution."""
     return list(range(0, FIXTURE_TICKET_COUNT, SEEDED_TICKET_STRIDE))
 
 
-async def seed_reviews(
-    repository: TicketReviewRepository, indexes: Optional[list[int]] = None
-) -> None:
-    """Give the queue tab something durable to show.
+def fixture_evaluation_event(index: int) -> TicketEvaluationEvent:
+    """One complete synthetic RAG execution for a fixture DevRev ticket."""
+    job_id = f"fixture_job_{index:03d}"
+    execution_id = rag_invocation_id(
+        job_id,
+        0,
+        lease_epoch=1,
+        attempt=1,
+    )
+    route = "knowledge_question" if index % 4 else "generate_response"
+    status = "partial" if index % 10 == 0 else "succeeded"
+    return TicketEvaluationEvent.model_validate(
+        {
+            "execution_id": execution_id,
+            "invocation_id": execution_id,
+            "job_id": job_id,
+            "inquiry_index": 0,
+            "attempt": 1,
+            "lease_epoch": 1,
+            "ticket_id": _display_id(index),
+            "tenant_id": "fixture-tenant",
+            "route": route,
+            "status": status,
+            "occurred_at": T0 + timedelta(seconds=index),
+            "inquiry": f"Synthetic knowledge question {index}",
+            "topic": ("contributions", "withdrawals", "enrollment", "loans")[index % 4],
+            "classification": {
+                "route": route,
+                "confidence": 0.91,
+                "reasoning": "The persisted fixture invocation required a grounded answer.",
+            },
+            "answer": f"Synthetic grounded RAG answer {index}.",
+            "structured_response": {
+                "answer": f"Synthetic grounded RAG answer {index}.",
+                "outcome_reason": "The retrieved fixture source directly answered the inquiry.",
+            },
+            "diagnostics": {"retrieval": {"matches": 1, "fixture": True}},
+            "sources": [
+                {
+                    "article_id": f"fixture-article-{200 + index}",
+                    "title": f"Synthetic knowledge article {index}",
+                }
+            ],
+            "chunks": [
+                {
+                    "chunk_id": f"fixture-chunk-{index}",
+                    "article_id": f"fixture-article-{200 + index}",
+                    "content_hash": f"{index + 1:064x}",
+                    "preview": "Bounded synthetic source evidence for the fixture answer.",
+                    "score": 0.91,
+                }
+            ],
+            "retrieval_metadata": {
+                "namespace": "fixture-articles",
+                "model": "fixture-model",
+                "duration_ms": 125,
+            },
+            "correlation": {"trace_id": f"fixture-trace-{index}"},
+        }
+    )
 
-    Deliberately fewer reviews than tickets, so the live tab carries both
-    imported and unimported rows and the ``Add to review queue`` action has a
-    subject to act on.
-    """
+
+async def seed_reviews(
+    repository: TicketReviewRepository,
+    devrev: FixtureDevRev,
+    clock: FixtureClock,
+    indexes: Optional[list[int]] = None,
+) -> None:
+    """Seed the queue through the same durable RAG ingestion path as production."""
     from api.ticket_review_models import (
         ResolutionOutcome,
         ReviewPatch,
         ReviewResolution,
-        TicketReview,
-        review_id_for_devrev_work,
     )
 
+    evaluation_service = TicketEvaluationService(
+        devrev=devrev,
+        repository=repository,
+        clock=clock,
+    )
     ratings = (1, 3, 5, 2)
     topics = ("Contributions", "Withdrawals", "Enrollment", "Loans")
     observations = ("retrieval_miss", "knowledge_gap", "correct", "source_data")
@@ -925,15 +1018,9 @@ async def seed_reviews(
     for ordinal, index in enumerate(
         seeded_ticket_indexes() if indexes is None else indexes
     ):
-        work_id = _work_id(index)
-        review, _ = await repository.create_or_get_review(
-            TicketReview(
-                review_id=review_id_for_devrev_work(work_id),
-                devrev_work_id=work_id,
-                devrev_display_id=_display_id(index),
-            ),
-            context=_context(f"create-{index:02d}"),
-        )
+        ingested = await evaluation_service.ingest(fixture_evaluation_event(index))
+        assert ingested.run.review_id is not None
+        review = await repository.get_review(ingested.run.review_id)
         review = await repository.patch_review(
             review.review_id,
             ReviewPatch(
@@ -948,15 +1035,24 @@ async def seed_reviews(
                 observation_type=observations[ordinal % len(observations)],
                 severity=severities[ordinal % len(severities)],
                 expected_behavior="Answer from the current plan document on the first reply.",
-                # Half the rows carry a name migrated from the spreadsheet and no
-                # account, so the interface's labelled legacy fallback is visible
-                # next to rows that have a real assignment.
-                legacy_reviewer_display_name=None if ordinal % 2 else "Migrated Sheet Reviewer",
                 assigned_reviewer=_fixture_actor() if ordinal % 2 else None,
             ),
             expected_version=review.version,
             context=_context(f"fields-{index:02d}"),
         )
+        if ordinal % 2 == 0:
+            # Simulate a record written by the retired migration flow.  This is
+            # deliberately injected below the repository API: the field stays
+            # readable, while every current mutation surface remains closed.
+            async def _seed_historical_reviewer(view, review_id=review.review_id):
+                path = (REVIEWS_COLLECTION, review_id)
+                stored = await view.get(path)
+                assert stored is not None
+                stored["legacy_reviewer_display_name"] = "Historical Fixture Reviewer"
+                view.set(path, stored)
+
+            await repository.backend.transact(_seed_historical_reviewer)
+            review = await repository.get_review(review.review_id)
         for step, status in enumerate(_SEEDED_STATUSES[ordinal % len(_SEEDED_STATUSES)]):
             if status == "unreviewed":
                 continue
@@ -1022,7 +1118,7 @@ def build_fixture_app(**overrides: Any):
 
     @asynccontextmanager
     async def _fixture_lifespan(_app: Any):
-        await seed_reviews(repository)
+        await seed_reviews(repository, devrev, clock)
         yield
 
     # Set rather than passed: ``build_console_app`` deliberately builds the app
@@ -1086,6 +1182,7 @@ __all__ = [
     "fixture_mode_active",
     "fixture_settings",
     "install_egress_guard",
+    "prepare_fixture_environment",
     "remove_egress_guard",
     "seed_reviews",
     "seeded_ticket_indexes",

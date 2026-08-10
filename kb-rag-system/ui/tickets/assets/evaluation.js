@@ -1,5 +1,5 @@
 /**
- * The evaluation form: the six sheet fields, the structured judgment this
+ * The evaluation form: reviewer fields, the structured judgment this
  * console adds, and the concurrency machinery that keeps two reviewers from
  * quietly overwriting one another.
  *
@@ -22,8 +22,8 @@
  *
  * **The authenticated actor and the assignment are different facts.** Who is
  * signed in is shown in the page header. Who the review is assigned to is a
- * field. Who reviewed the row before the migration is a third, labelled as
- * carried over from the spreadsheet. This module never lets one become another.
+ * field. A historical display name is a third fact. This module never lets one
+ * become another.
  */
 
 import {
@@ -60,7 +60,6 @@ const NEAR_LIMIT_FRACTION = 0.9;
 export const COUNTED_FIELDS = Object.freeze([
   ["eval-topic", "topic"],
   ["eval-legacy-type", "legacy_type"],
-  ["eval-legacy-reviewer", "legacy_reviewer_display_name"],
   ["eval-comments", "comments"],
   ["eval-expected-behavior", "expected_behavior"],
   ["eval-verification-summary", "verification_summary"],
@@ -77,7 +76,6 @@ const CONTROL_IDS = Object.freeze({
   severity: "eval-severity",
   remediation_target: "eval-remediation-target",
   status: "eval-status",
-  legacy_reviewer_display_name: "eval-legacy-reviewer",
   assigned_reviewer: "eval-assignment",
   outcome: "eval-outcome",
   verification_summary: "eval-verification-summary",
@@ -417,13 +415,8 @@ function resolutionBody(review, draft) {
 }
 
 /**
- * Turn the draft into the wire calls this save needs.
- *
- * A ticket can be looked at before it has a durable review, and the first save is
- * what imports it. The import route accepts only the four spreadsheet fields, so
- * the rest travel as a second, separately-keyed patch against the version the
- * import returned — which is also how the server chains its own correlation
- * update, rather than a workaround.
+ * Turn the draft into the versioned patch this save needs. The RAG ingestion
+ * path creates the linked review; the browser never creates one manually.
  */
 export function buildSave({ review, draft, session }) {
   const changed = dirtyFieldNames(draft, review);
@@ -433,7 +426,6 @@ export function buildSave({ review, draft, session }) {
     "legacy_type",
     "comments",
     "expected_behavior",
-    "legacy_reviewer_display_name",
   ]);
   const NULLABLE_ENUM = new Set(["observation_type", "severity"]);
 
@@ -475,23 +467,7 @@ export function buildSave({ review, draft, session }) {
     }
   }
 
-  if (review !== null && review !== undefined) {
-    return { needsImport: false, seed: null, patch };
-  }
-
-  // The import route's whole surface, and nothing else.
-  const seed = {};
-  for (const field of ["topic", "legacy_type", "comments"]) {
-    if (field in patch && patch[field] !== null) {
-      seed[field] = patch[field];
-      delete patch[field];
-    }
-  }
-  if (typeof patch.rating === "number") {
-    seed.rating = patch.rating;
-    delete patch.rating;
-  }
-  return { needsImport: true, seed, patch };
+  return { patch };
 }
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,9 @@
 
 > **For Claude Opus 5:** This is an executable implementation prompt. Read `tickets-development-plan/README.md` and verify Stage 1’s commit/tests first. Implement and verify the client; do not merely describe it.
 
-**Goal:** Add a typed async DevRev adapter that lists tickets, gets one work item, and reads every timeline page safely without leaking credentials or corrupting pagination.
+**Goal:** Add a typed async DevRev adapter that hydrates a known ticket and
+reads its timeline pages safely without leaking credentials or using DevRev
+discovery as a source for the evaluation platform.
 
 **Architecture:** A single shared `httpx.AsyncClient` owns base URL, auth/version headers, timeout, retries, and response parsing. Public methods return normalized strict models plus opaque cursors; raw response handling remains private.
 
@@ -37,7 +39,6 @@ Read the official contracts again:
 - <https://developer.devrev.ai/about/rate-limits>
 - <https://developer.devrev.ai/about/errors>
 - <https://developer.devrev.ai/about/versioning>
-- <https://developer.devrev.ai/api-reference/works/list-post>
 - <https://developer.devrev.ai/api-reference/works/get>
 - <https://developer.devrev.ai/api-reference/timeline-entries/list>
 
@@ -50,9 +51,8 @@ Create:
 
 Modify:
 
-- `kb-rag-system/api/ticket_review_models.py` for
-  `DevRevTicketFilters`/`TimelinePage` only if Stage 1 did not already create
-  them;
+- `kb-rag-system/api/ticket_review_models.py` for `TimelinePage` only if Stage
+  1 did not already create it;
 - `kb-rag-system/tests/test_ticket_review_models.py` for their contract tests.
 
 Use the Stage 1 fixtures. Do not add owner/tag lookup endpoints in this stage.
@@ -68,45 +68,37 @@ Required tests:
    - `Accept: application/json`;
    - `X-Devrev-Version: 2022-10-20`;
    - the exact `https://api.devrev.ai` origin by default.
-2. `list_tickets` uses `POST /works.list` and always forces `type=["ticket"]`, even if a caller tries to pass another type.
-3. Structured filters map only an allowlisted set. The exact JSON wire shape is:
-   - `type: ["ticket"]`;
-   - top-level `stage`, `state`, `applies_to_part`, `owned_by`, `created_by`,
-     `reported_by`, `tags`, `created_date`, `modified_date`, `cursor`, `mode`,
-     and `limit`;
-   - nested `ticket.source_channel`, `ticket.subtype`, and integer
-     `ticket.visibility` IDs.
-   Unknown filters and caller-supplied `type` fail before network I/O.
-4. `mode` is closed to `after | before`; list responses preserve both
-   `next_cursor` and `prev_cursor`, with round-trip forward/back tests.
-5. `get_ticket` accepts a bounded DON or display ID and calls `GET /works.get`,
+2. `get_ticket` accepts a bounded DON or display ID and calls `GET /works.get`,
    then enforces configured `applies_to_part`/ticket-visibility scope on the
    returned object.
-6. `list_timeline_page` always sends `mode=after`; it returns one bounded page,
+3. Evaluation ingestion, execution list, and execution detail never issue
+   `works.list`; unknown tickets cannot be discovered or used to create
+   evaluation rows. A pre-existing read adapter may retain `list_tickets` for
+   unrelated legacy callers, but the ticket-evaluation route/service graph has
+   no caller edge to it.
+4. `list_timeline_page` always sends `mode=after`; it returns one bounded page,
    cursors, `truncated`, `partial`, and bounded warnings.
-7. `iter_timeline_entries` continues after an empty page when `next_cursor` exists.
-8. Iteration stops only when `next_cursor` is absent.
-9. A repeated cursor raises a typed pagination error before an infinite loop.
-10. Configured `max_pages` and `max_entries` return/raise a typed partial
+5. `iter_timeline_entries` continues after an empty page when `next_cursor` exists.
+6. Iteration stops only when `next_cursor` is absent.
+7. A repeated cursor raises a typed pagination error before an infinite loop.
+8. Configured `max_pages` and `max_entries` return/raise a typed partial
     resource result; no public model calls the bounded result “complete.”
-11. `429` honors integer or HTTP-date `Retry-After`, capped at the canonical
+9. `429` honors integer or HTTP-date `Retry-After`, capped at the canonical
     60 seconds; tests patch the async sleeper.
-12. `500` and `503` retry with exponential backoff + bounded jitter.
-13. `400`, `401`, `403`, `404`, and `409` are not retried and map to typed exceptions with safe public messages.
-14. Network timeout/transport errors retry only where the operation is idempotent. All MVP operations are reads.
-15. A non-JSON or oversized error response is truncated at 4 KiB and never includes the bearer token.
-16. Redirects do not automatically forward credentials to a different origin.
-17. Rate-limit response headers are captured in a bounded diagnostic object without logging ticket content.
-18. Cancellation propagates; do not turn `asyncio.CancelledError` into a DevRev error.
-19. Unknown timeline entry types are preserved as a bounded unsupported entry, not a crash.
-20. A direct ID outside configured part/ticket-visibility scope returns a typed
-    scope denial; it cannot bypass list filters.
-21. Every list request intersects/injects configured `applies_to_part` and
-    ticket-visibility scope; timeline calls intersect the separate timeline
-    visibility enum allowlist. Callers cannot clear or broaden either.
-22. `200` bodies are streamed and capped at
+10. `500` and `503` retry with exponential backoff + bounded jitter.
+11. `400`, `401`, `403`, `404`, and `409` are not retried and map to typed exceptions with safe public messages.
+12. Network timeout/transport errors retry only where the operation is idempotent. All MVP operations are reads.
+13. A non-JSON or oversized error response is truncated at 4 KiB and never includes the bearer token.
+14. Redirects do not automatically forward credentials to a different origin.
+15. Rate-limit response headers are captured in a bounded diagnostic object without logging ticket content.
+16. Cancellation propagates; do not turn `asyncio.CancelledError` into a DevRev error.
+17. Unknown timeline entry types are preserved as a bounded unsupported entry, not a crash.
+18. A direct ID outside configured part/ticket-visibility scope returns a typed
+    scope denial. Timeline calls intersect the separate timeline visibility
+    enum allowlist; callers cannot clear or broaden either scope.
+19. `200` bodies are streamed and capped at
     `TICKETS_DEVREV_MAX_RESPONSE_BYTES` before `json()`/model parsing.
-    Oversized declared `Content-Length`, oversized chunked list/get/timeline
+    Oversized declared `Content-Length`, oversized chunked get/timeline
     responses, and decompression expansion fail with a typed resource-limit
     error without retaining/logging the body.
 
@@ -139,14 +131,6 @@ The client:
 ```python
 class DevRevClient:
     async def aclose(self) -> None: ...
-    async def list_tickets(
-        self,
-        filters: DevRevTicketFilters,
-        *,
-        cursor: str | None = None,
-        mode: Literal["after", "before"] = "after",
-        limit: int | None = None,
-    ) -> CursorPage[DevRevTicketSummary]: ...
     async def get_ticket(self, work_id: str) -> DevRevTicketDetail: ...
     async def list_timeline_page(
         self,
@@ -181,8 +165,8 @@ Rules:
 - Reject base URLs with user info, query, fragment, or non-HTTPS in production.
 - Treat DevRev cursors as opaque strings; never parse or synthesize them.
 - A short or empty page is not terminal when `next_cursor` exists.
-- `CursorPage` carries `next_cursor`, `prev_cursor`, `partial`, `truncated`,
-  and bounded warnings. Do not label a guarded iterator result “complete.”
+- `TimelinePage` carries `next_cursor`, `partial`, `truncated`, and bounded
+  warnings. Do not label a guarded iterator result “complete.”
 - Deduplicate timeline entry IDs across iterator pages while preserving source
   order, and record a bounded diagnostic count when duplicates occur.
 - The page adapter preserves DevRev order. A separate bounded hydration helper
@@ -247,8 +231,10 @@ Do not perform a live DevRev request in this stage.
 
 ## Definition of Done
 
-- List/get/timeline-page operations are typed, scoped, and tested.
-- Forward/back list cursors and forward-only timeline cursors are locked.
+- Get/timeline-page operations are typed, scoped, and tested; `works.list` is
+  absent from the evaluation ingestion/list/detail flow and cannot create a
+  platform row.
+- Forward-only timeline cursors are locked.
 - Empty-page-with-cursor, repeated cursor, max pages, max entries, and duplicate entry behavior are locked.
 - `Retry-After` and transient retries are deterministic under tests.
 - Credentials cannot follow cross-origin redirects or enter logs/errors.

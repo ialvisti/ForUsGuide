@@ -75,10 +75,24 @@ EXPECTED_ASSET_TYPES: dict[str, tuple[str, ...]] = {
     "icons.svg": ("image/svg+xml",),
 }
 
-#: Sheet columns the console has to replace before anyone can stop using the
-#: spreadsheet, plus the one column the sheet never had.
-REQUIRED_SHEET_COLUMNS = ("Ticket ID", "Topic", "Legacy Type", "Rating", "Reviewer", "Comments")
-ADDED_COLUMN = "Observation"
+#: The run ledger is the only collection the console may render.  These columns
+#: make the identity and state of each RAG execution visible without consulting
+#: DevRev first.
+REQUIRED_EXECUTION_COLUMNS = (
+    "Execution",
+    "Ticket ID",
+    "Route",
+    "Run status",
+    "DevRev context",
+    "Review status",
+    "Started",
+)
+
+FORBIDDEN_FILE_EGRESS_WORDS = re.compile(
+    r"\b(?:csv|import(?:ed|s|ing)?|export(?:ed|s|ing)?|download(?:ed|s|ing)?|"
+    r"upload(?:ed|s|ing)?|spreadsheet)\b",
+    re.IGNORECASE,
+)
 
 #: Browser sinks that turn a ticket title into script. ``document.write`` and
 #: ``eval`` are here for the same reason, not for tidiness.
@@ -417,7 +431,7 @@ class TestDocumentStructure:
             headers = [
                 node for node in table.find_all("th") if node.get("scope") == "col"
             ]
-            assert len(headers) >= len(REQUIRED_SHEET_COLUMNS)
+            assert len(headers) >= len(REQUIRED_EXECUTION_COLUMNS)
 
     def test_every_form_control_is_labeled(self, dom):
         label_targets = {
@@ -449,10 +463,8 @@ class TestDocumentStructure:
             "session-role",
             "health-state",
             "kpi-strip",
-            "tab-devrev",
-            "tab-reviews",
-            "filters-devrev",
-            "filters-reviews",
+            "execution-queue",
+            "filters-executions",
             "bulk-bar",
             "tickets-table",
             "pagination",
@@ -461,32 +473,26 @@ class TestDocumentStructure:
         ):
             assert required in ids, f"missing region: {required}"
 
-    def test_both_tabs_are_declared_as_tabs_of_one_panel(self, dom):
-        # Scoped to the *source* tablist. Stage 7 adds a second, independent
-        # tablist for the detail workspace's panels, so a document-wide query
-        # would now count six tabs and say nothing about either group. The
-        # workspace tablist has its own contract test in the Stage 7 file.
-        tablists = [
+    def test_there_is_one_rag_execution_collection_and_no_source_switcher(self, dom):
+        source_tablists = [
             node
             for node in dom.walk()
             if node.get("role") == "tablist" and node.get("aria-labelledby") == "tabs-heading"
         ]
-        assert len(tablists) == 1, "the ticket-source tablist is not identifiable"
-        tabs = [node for node in tablists[0].walk() if node.get("role") == "tab"]
-        assert len(tabs) == 2
-        labels = {tab.all_text() for tab in tabs}
-        assert labels == {"All DevRev tickets", "Review queue"}
-        panels = {tab.get("aria-controls") for tab in tabs}
-        assert len(panels) == 1
-        panel_id = panels.pop()
-        matching = [node for node in dom.walk() if node.get("id") == panel_id]
-        assert len(matching) == 1
-        assert matching[0].get("role") == "tabpanel"
-        assert sum(1 for tab in tabs if tab.get("aria-selected") == "true") == 1
+        assert source_tablists == []
+        queues = [node for node in dom.walk() if node.get("id") == "execution-queue"]
+        assert len(queues) == 1
+        assert "RAG execution" in queues[0].all_text()
+
+    def test_no_file_exchange_or_manual_queue_language_is_visible(self, dom):
+        visible = dom.all_text()
+        assert "All DevRev tickets" not in visible
+        assert "Add to review queue" not in visible
+        assert FORBIDDEN_FILE_EGRESS_WORDS.search(visible) is None
 
 
 # =====================================================================
-# 3 and 4 — the sheet's columns, and whose name goes in them
+# 3 and 4 — the execution ledger's columns, and whose name goes in them
 # =====================================================================
 
 
@@ -500,32 +506,13 @@ class TestColumns:
             if node.get("scope") == "col"
         ]
 
-    @pytest.mark.parametrize("column", REQUIRED_SHEET_COLUMNS)
-    def test_every_replaced_sheet_column_is_present(self, dom, column):
+    @pytest.mark.parametrize("column", REQUIRED_EXECUTION_COLUMNS)
+    def test_every_execution_column_is_present(self, dom, column):
         assert column in self._column_headers(dom)
 
-    def test_observation_is_its_own_column(self, dom):
+    def test_run_identity_precedes_ticket_and_status(self, dom):
         headers = self._column_headers(dom)
-        assert ADDED_COLUMN in headers
-        # The sheet's ``Type`` and the new root-cause taxonomy are different
-        # facts: one column holding both would make the migration lossy.
-        assert "Legacy Type" in headers
-        assert headers.index(ADDED_COLUMN) != headers.index("Legacy Type")
-
-    def test_the_column_order_is_the_specified_order(self, dom):
-        headers = self._column_headers(dom)
-        wanted = [
-            "Ticket ID",
-            "Topic",
-            "Legacy Type",
-            "Observation",
-            "Rating",
-            "Reviewer",
-            "Status",
-            "Updated",
-            "Comments",
-        ]
-        positions = [headers.index(name) for name in wanted]
+        positions = [headers.index(name) for name in REQUIRED_EXECUTION_COLUMNS]
         assert positions == sorted(positions), headers
 
 
@@ -552,9 +539,10 @@ class TestReviewerIsNotTheSessionActor:
         for forbidden in ("session", "csrf", "identity."):
             assert forbidden not in renderer.lower(), forbidden
 
-    def test_the_legacy_fallback_is_labeled_as_legacy(self, scripts):
+    def test_the_historical_fallback_is_labeled_without_file_migration_language(self, scripts):
         renderer = scripts["render.js"]
-        assert "Legacy sheet value" in renderer
+        assert "Historical value" in renderer
+        assert "Legacy sheet value" not in renderer
 
     def test_an_unassigned_review_is_not_silently_attributed(self, scripts):
         assert "Unassigned" in scripts["render.js"]
@@ -890,9 +878,10 @@ class TestIconSprite:
 
 class TestStateContract:
 
-    def test_the_store_declares_both_modes(self, scripts):
+    def test_the_store_declares_one_execution_collection(self, scripts):
         state = scripts["state.js"]
-        assert '"devrev"' in state and '"reviews"' in state
+        assert "MODES" not in state
+        assert "executionFilters" in state
 
     def test_the_store_models_every_load_state(self, scripts):
         state = scripts["state.js"]
@@ -989,8 +978,8 @@ class TestAdapterContract:
 
 class TestFilterContract:
 
-    def test_the_review_queue_offers_no_substring_search(self, dom, scripts):
-        """``title_contains`` is always a 422; a search box would be a lie."""
+    def test_the_execution_queue_offers_no_title_substring_search(self, dom, scripts):
+        """``title_contains`` is not part of the run-ledger grammar."""
         for name, source in scripts.items():
             assert "title_contains" not in source, name
         for node in dom.find_all("input"):
@@ -998,19 +987,29 @@ class TestFilterContract:
                 label = (node.get("aria-label") or "") + (node.get("placeholder") or "")
                 assert "title" not in label.lower(), node.attrs
 
-    def test_only_one_queue_facet_can_be_active(self, scripts):
-        app = scripts["app.js"]
-        assert "facet" in app
-        # The server accepts a status set plus at most one facet; a second one is
-        # a 422, so the UI disables it rather than discovering that at runtime.
-        assert "disabled" in app
+    def test_filters_are_run_scoped(self, scripts):
+        source = scripts["app.js"] + scripts["state.js"] + scripts["api.js"]
+        for field in ("executionId", "displayId", "route", "runStatus"):
+            assert field in source, field
+        for legacy in ("works.list", "listReviews", "createReview", "includeReversed"):
+            assert legacy not in source, legacy
 
-    def test_the_facet_names_are_exactly_the_server_grammar(self, scripts):
-        from data_pipeline.ticket_review_repository import ALLOWED_REVIEW_FACETS
+    def test_hydration_is_a_visibility_boundary_not_a_user_filter(self, dom, scripts):
+        ids = {node.get("id") for node in dom.walk() if node.get("id")}
+        assert "execution-hydration" not in ids
+        assert "hydration_status" not in scripts["state.js"]
+        list_adapter = scripts["api.js"].split(
+            "export async function listExecutions", 1,
+        )[1].split("export async function getReview", 1)[0]
+        assert "hydrationStatus" not in list_adapter
+        assert "hydration_status" not in list_adapter
 
-        app = scripts["app.js"] + scripts["state.js"]
-        for facet in ALLOWED_REVIEW_FACETS:
-            assert facet in app, facet
+    def test_timeout_is_a_first_class_run_status_filter(self, dom, scripts):
+        status = [node for node in dom.find_all("select") if node.get("id") == "execution-status"]
+        assert len(status) == 1
+        values = {option.get("value") for option in status[0].find_all("option")}
+        assert "timeout" in values
+        assert '"timeout"' in scripts["state.js"]
 
     def test_an_unsupported_combination_is_not_filtered_client_side(self, scripts):
         app = scripts["app.js"]
@@ -1048,15 +1047,16 @@ class TestRowRendering:
         renderer = scripts["render.js"]
         assert "visually-hidden" in renderer or "sr-only" in renderer
 
-    def test_an_unimported_ticket_offers_an_import_action(self, scripts):
+    def test_each_row_surfaces_the_execution_and_hydration_contract(self, scripts):
         renderer = scripts["render.js"]
-        assert "Not reviewed" in renderer
-        assert "Add to review queue" in renderer
+        for field in ("executionId", "route", "runStatus", "hydrationStatus"):
+            assert field in renderer, field
+        assert "Add to review queue" not in renderer
 
-    def test_creating_a_review_is_gated_on_the_reviewer_role(self, scripts):
-        app = scripts["app.js"]
-        assert "reviewer" in app
-        assert "canCreateReview" in app or "canReview" in app
+    def test_the_browser_never_creates_a_review_manually(self, scripts):
+        assert "createReview" not in scripts["api.js"]
+        assert "canCreateReview" not in scripts["app.js"]
+        assert "MUTATING_ROLES" in scripts["evaluation.js"]
 
     def test_the_selection_checkbox_does_not_navigate(self, scripts):
         app = scripts["app.js"]
@@ -1074,14 +1074,18 @@ class TestRowRendering:
 
 class TestKpiHonesty:
 
-    def test_the_four_indicators_are_the_named_ones(self, dom):
+    def test_the_three_indicators_are_the_named_ones(self, dom):
         strip = [node for node in dom.walk() if node.get("id") == "kpi-strip"][0]
         labels = [
             node.all_text()
             for node in strip.find_all("p", "span", "dt")
             if "kpi-label" in (node.get("class") or "")
         ]
-        assert labels == ["Unreviewed", "Rating 1–2", "High/Critical", "Active remediation"]
+        assert labels == [
+            "Unreviewed executions",
+            "Failed or partial RAG",
+            "Active remediation",
+        ]
 
     def test_no_indicator_claims_a_global_total_it_cannot_have(self, dom, html_source):
         """The admin API exposes no aggregate, so the value is an em dash.
@@ -1096,7 +1100,7 @@ class TestKpiHonesty:
             for node in strip.walk()
             if "kpi-value" in (node.get("class") or "")
         ]
-        assert values == ["—"] * 4
+        assert values == ["—"] * 3
 
     def test_the_missing_total_is_explained_in_visible_text(self, dom):
         notes = [node for node in dom.walk() if node.get("id") == "kpi-note"]
@@ -1109,7 +1113,7 @@ class TestKpiHonesty:
             for node in strip.walk()
             if "kpi-scope" in (node.get("class") or "")
         ]
-        assert len(scopes) == 4
+        assert len(scopes) == 3
         assert all("this page" in text for text in scopes), scopes
 
 
@@ -1118,7 +1122,7 @@ class TestFeatureFlagBranching:
     def test_the_ui_branches_on_the_server_feature_flags(self, scripts):
         app = scripts["app.js"]
         assert "remediation_enabled" in app
-        assert "import_export_enabled" in app
+        assert "import_export_enabled" not in app
 
     def test_no_absent_route_is_ever_called(self, scripts):
         """Stage 9's CSV import/export routes are absent from OpenAPI, not stubbed.
@@ -1135,6 +1139,94 @@ class TestFeatureFlagBranching:
             without_imports = _RELATIVE_MODULE_SPECIFIER.sub('""', source)
             for absent in ("/imports", "/exports"):
                 assert absent not in without_imports, f"{name}: {absent}"
+
+
+class TestRagExecutionDetailContract:
+
+    def test_the_detail_has_a_stable_region_for_every_audit_dimension(self, dom):
+        ids = {node.get("id") for node in dom.walk() if node.get("id")}
+        for required in (
+            "run-summary",
+            "run-answer",
+            "run-rationale",
+            "run-diagnostics",
+            "run-gaps",
+            "run-sources",
+            "run-chunks",
+            "run-metadata",
+            "hydration-status",
+        ):
+            assert required in ids, required
+
+    def test_the_detail_controller_reads_the_execution_envelope(self, scripts):
+        detail = scripts["detail.js"]
+        for field in (
+            "execution",
+            "generatedAnswer",
+            "classificationReasoning",
+            "outcomeReason",
+            "diagnostics",
+            "gaps",
+            "sourceArticles",
+            "chunkEvidence",
+            "modelMetadata",
+            "timingMetadata",
+            "hydrationStatus",
+        ):
+            assert field in detail, field
+        adapter = scripts["api.js"]
+        for wire_field in (
+            "generated_answer",
+            "classification_reasoning",
+            "outcome_reason",
+            "source_articles",
+            "chunk_evidence",
+            "model_metadata",
+            "timing_metadata",
+            "hydration_status",
+        ):
+            assert wire_field in adapter, wire_field
+
+    def test_evidence_renderer_covers_bounded_retrieval_detail(self, scripts):
+        evidence = scripts["evidence.js"]
+        for field in ("sourceArticles", "chunkEvidence", "contentHash", "preview"):
+            assert field in evidence, field
+
+    def test_rag_evidence_panel_uses_the_persisted_execution_evidence(self, scripts):
+        detail = scripts["detail.js"]
+        assert "function executionEvidenceSummary" in detail
+        assert "current.execution" in detail
+        assert "persisted RAG execution recorded" in detail
+        assert "renderExecutionEvidence(sourceList, chunkList, current.execution)" in detail
+
+    def test_hydration_is_rendered_as_an_authorized_trust_signal(self, scripts):
+        detail = scripts["detail.js"]
+        assert "DevRev context loaded for this execution." in detail
+        assert "RAG execution remains available while enrichment continues" not in detail
+        assert "RAG execution and durable review remain visible" not in detail
+
+    def test_invocation_attempt_identity_survives_adapter_and_rendering(
+        self, scripts,
+    ):
+        adapter = scripts["api.js"]
+        for wire_field in ("invocation_id", "attempt", "lease_epoch"):
+            assert wire_field in adapter
+        detail = scripts["detail.js"]
+        assert 'definitionRow("Invocation ID"' in detail
+        assert 'definitionRow("Attempt"' in detail
+        assert 'definitionRow("Lease epoch"' in detail
+        rows = scripts["render.js"]
+        assert "Attempt ${row.attempt}" in rows
+
+    def test_initial_conversation_is_loaded_by_execution_id(self, scripts):
+        detail = scripts["detail.js"]
+        assert "async function loadInitialConversation" in detail
+        assert "await loadInitialConversation(ref)" in detail
+
+    def test_reasoning_is_labeled_as_explicit_rationale_not_hidden_thought(self, dom):
+        visible = dom.all_text()
+        assert "Structured rationale" in visible
+        assert "hidden chain-of-thought" in visible
 
     def test_only_the_human_batch_routes_are_called(self, scripts):
         """The browser never reaches an agent-only endpoint.

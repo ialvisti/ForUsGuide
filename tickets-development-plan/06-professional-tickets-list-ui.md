@@ -1,8 +1,9 @@
-# Stage 6 — Professional `/tickets` List and Review Queue UI
+# Stage 6 — Professional `/tickets` RAG Execution Queue UI
 
 > **For Claude Opus 5:** Execute this UI stage against the real Stage 5 API contract. Do not redesign the backend or add a frontend framework.
 
-**Goal:** Replace the spreadsheet’s day-to-day list workflow with a polished, accessible, responsive ticket table and durable review queue at `/tickets`.
+**Goal:** Provide a polished, accessible, responsive evaluation queue at
+`/tickets` whose only rows are durable ticket-associated RAG executions.
 
 **Architecture:** Use a small no-build ES-module frontend with one state store and one API adapter. Render all remote/user strings through DOM text APIs, keep filters in the URL, and keep credentials/PII out of browser persistence.
 
@@ -66,10 +67,10 @@ Assert:
 
 1. `/tickets` returns HTML; `/tickets/assets/*` has correct MIME types.
 2. HTML has one `main`, real headings in order, a skip link, live-region, table caption, and labeled controls.
-3. Required sheet columns appear: Ticket ID, Topic, Legacy Type, Rating,
-   Reviewer, Comments; Observation remains a distinct added column.
-4. Assigned reviewer and legacy reviewer fallback are not conflated with the
-   authenticated session actor.
+3. Required execution columns appear: Execution, Ticket, Route, Run status,
+   Topic, Started, and Review status.
+4. Immutable RAG status/evidence is not conflated with reviewer judgment or
+   the authenticated session actor.
 5. Scripts use `type="module"` and are same-origin.
 6. No source uses:
    - `localStorage` or `sessionStorage` for tickets/auth;
@@ -93,15 +94,16 @@ cd "$KBRAG_ROOT"
 
 ## Step 2 — Implement visual system and shell
 
-Use a restrained professional palette aligned with the current indigo/slate product, not a replica of Google Sheets.
+Use a restrained professional palette aligned with the current indigo/slate
+product.
 
 Required regions:
 
 - skip link;
 - header with product name, environment badge, authenticated user/role, health/sync state;
 - KPI strip;
-- two tabs: `All DevRev tickets` and `Review queue`;
-- filter/search toolbar;
+- one clearly labeled `RAG executions` queue;
+- execution-filter toolbar;
 - bulk-selection action bar;
 - data region;
 - cursor pagination;
@@ -110,10 +112,10 @@ Required regions:
 
 KPI labels:
 
-- Unreviewed;
-- Rating 1–2;
-- High/Critical;
-- Active remediation.
+- Runs on page;
+- Failed/timed out;
+- Tickets on page;
+- Unreviewed.
 
 If the backend cannot provide an accurate global KPI yet, show `—` with a tooltip; never calculate a page count and label it global.
 
@@ -140,7 +142,7 @@ If the backend cannot provide an accurate global KPI yet, show `—` with a tool
 `state.js`:
 
 - one immutable-ish state object/reducer;
-- modes: `devrev` and `reviews`;
+- one `executions` collection mode; no DevRev-discovery or manual queue mode;
 - loading/refreshing/partial/stale/error states;
 - filters and cursor;
 - selected row IDs;
@@ -154,54 +156,37 @@ returns to the first page for the URL's non-sensitive filters.
 
 ## Step 4 — Implement filters
 
-All DevRev:
+Execution queue:
 
-- exact Ticket ID lookup;
-- stage/state;
-- source channel/subtype where supported;
-- visibility ID from the server-provided allowed set;
-- created/modified date;
-- refresh.
+- exact Execution ID;
+- exact normalized Ticket ID;
+- RAG route (`knowledge_question | generate_response`);
+- run status (`success | partial | failed | timeout`);
+- linked review status;
+- no title substring/full-text input or DevRev owner/tag discovery.
 
-Owner/creator/reporter/tag name lookups are not in MVP and must not appear as
-half-working controls. Exact ID adapter support remains backend-only until the
-lookup feature gate is approved.
-
-Review queue:
-
-- exact normalized Ticket ID lookup as a standalone mode;
-- otherwise status set plus at most one allowed facet and optional updated
-  date, exactly as the master query grammar;
-- topic;
-- observation type;
-- rating;
-- assigned reviewer;
-- severity;
-- remediation target;
-- updated date;
-- no title substring/full-text input.
+The list contains only `authorization_status=authorized` rows, so it must not
+offer quarantine, denial, or hydration-failure filters. Those private states
+are intentionally indistinguishable from absence in the browser.
 
 Show active filter chips and `Clear all`. Debounce only text input; select changes submit immediately. Filter changes reset the cursor.
 
-Disable a second facet in the UI and explain why. If a forged URL asks for an
-unsupported combination, render the stable `422` response; do not fall back to
-client-side page filtering.
+If a forged URL asks for an unsupported combination, render the stable `422`
+response; do not fall back to client-side page filtering.
 
 ## Step 5 — Render the table safely
 
 Columns:
 
 1. selection checkbox;
-2. Ticket ID + bounded live/cache title preview;
-3. Topic;
-4. Legacy Type;
-5. Observation;
-6. Rating;
-7. Assigned reviewer or labeled legacy fallback;
-8. Status;
-9. Updated;
-10. Comments preview;
-11. row action.
+2. Execution ID;
+3. Ticket ID / DevRev display ID from the authorized snapshot;
+4. RAG route;
+5. Run status;
+6. Topic;
+7. Started;
+8. Review status;
+9. row action.
 
 Requirements:
 
@@ -212,13 +197,13 @@ Requirements:
 - errors and empty results replace skeletons;
 - row click and keyboard Enter open detail;
 - selection checkbox does not trigger row navigation;
-- rating stars have textual `N of 5`;
-- comment preview is text-only and clamped;
+- status badges have textual labels and do not rely on color alone;
 - title attributes are not the only way to access truncated content;
 - dates use `<time datetime>` and user locale;
 - remote content uses `textContent`/node creation exclusively.
 
-For the live DevRev tab, an unimported ticket shows `Not reviewed` and an `Add to review queue` action. Creating a review requires reviewer role.
+There is no browser action to add a ticket or create a review. The trusted
+ingestion service creates/links the review after the RAG execution is durable.
 
 ## Step 6 — Responsive behavior
 
@@ -226,7 +211,7 @@ At narrow widths:
 
 - hide the desktop table header;
 - each row becomes a semantic ticket card with labeled values;
-- filters open in an accessible modal/sheet;
+- filters open in an accessible modal/dialog;
 - bulk actions remain reachable;
 - no horizontal body scroll at 360 px;
 - 44 px minimum touch targets.
@@ -337,8 +322,9 @@ Python tests, not shipped UI source.
 
 ## Definition of Done
 
-- `/tickets` replaces the sheet’s list fields and adds workflow state.
-- Both live DevRev and durable review queues paginate correctly.
+- `/tickets` renders only durable RAG executions and their workflow state.
+- The execution queue paginates correctly; separate runs for the same ticket
+  remain separate rows and replay does not duplicate a row.
 - All remote/user content is rendered without HTML injection sinks.
 - No credentials/PII are persisted in browser storage.
 - Desktop, mobile, keyboard, loading, empty, partial, rate-limit, auth, and error states are usable.
@@ -377,7 +363,7 @@ git -C "$IMPL_ROOT" add \
 git -C "$IMPL_ROOT" diff --cached --check
 git -C "$IMPL_ROOT" diff --cached
 git -C "$IMPL_ROOT" commit \
-  -m "feat(tickets): add professional review queue UI"
+  -m "feat(tickets): add RAG execution queue UI"
 ```
 
 Proceed to Stage 7.

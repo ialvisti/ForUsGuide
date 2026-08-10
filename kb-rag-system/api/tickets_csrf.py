@@ -110,7 +110,6 @@ VERIFICATION_HANDOFF_HEADER = "X-Tickets-Verification-Handoff"
 
 SAFE_METHODS = frozenset({"GET", "HEAD", "OPTIONS"})
 JSON_CONTENT_TYPE = "application/json"
-CSV_CONTENT_TYPE = "text/csv"
 SAME_ORIGIN = "same-origin"
 
 CSRF_TOKEN_VERSION = "v1"  # noqa: S105 - a format version, not a credential
@@ -659,7 +658,7 @@ def mint_verification_handoff(
     Binds the environment, the run, the digest of the token that authorized the
     previous phase, the exact next phase and role, and the server-created
     resource versions. It deliberately carries no email, no ticket, comment,
-    conversation or CSV content, no secret, and no bearer material.
+    conversation content, no secret, and no bearer material.
     """
     validated_phase = _validated_phase(phase)
     if not isinstance(next_role, ReviewerRole) or next_role not in ROLE_LADDER:
@@ -765,7 +764,6 @@ __all__ = [
     "COOKIE_HEADER",
     "CSRF_HEADER",
     "CSRF_TOKEN_VERSION",
-    "CSV_CONTENT_TYPE",
     "CURSOR_HEADER",
     "FETCH_MODE_HEADER",
     "FETCH_SITE_HEADER",

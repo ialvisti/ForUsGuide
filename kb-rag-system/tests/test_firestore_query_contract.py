@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import AsyncIterator, cast
 
@@ -18,6 +19,7 @@ class _Aggregation:
 class _QueryProbe:
     def __init__(self) -> None:
         self.where_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
+        self.order_by_calls: list[object] = []
 
     def where(self, *args: object, **kwargs: object) -> _QueryProbe:
         self.where_calls.append((args, kwargs))
@@ -27,6 +29,7 @@ class _QueryProbe:
         return _Aggregation()
 
     def order_by(self, _field: object) -> _QueryProbe:
+        self.order_by_calls.append(_field)
         return self
 
     def start_after(self, _cursor: object) -> _QueryProbe:
@@ -65,9 +68,19 @@ async def test_firestore_queries_use_fieldfilter_keyword_without_positional_wher
         "ticket_jobs", states=["queued", "running"]
     )
     await backend.active_job_stats("ticket_jobs", ["queued", "running"])
+    await backend.scan_due_ticket_evaluation_retries(
+        "ticket_evaluation_outbox",
+        25,
+        due_before=datetime(2026, 8, 9, tzinfo=timezone.utc),
+    )
+    await backend.scan_due_rag_invocations(
+        "ticket_rag_invocations",
+        25,
+        due_before=datetime(2026, 8, 9, tzinfo=timezone.utc),
+    )
 
     calls = [call for query in client.queries for call in query.where_calls]
-    assert len(calls) == 4
+    assert len(calls) == 8
     filters: list[FieldFilter] = []
     for args, kwargs in calls:
         assert args == ()
@@ -80,5 +93,15 @@ async def test_firestore_queries_use_fieldfilter_keyword_without_positional_wher
         "state",
         "state",
         "state",
+        "state",
+        "next_attempt_at",
+        "state",
+        "next_recovery_at",
     ]
-    assert [item.op_string for item in filters] == ["==", "in", "in", "in"]
+    assert [item.op_string for item in filters] == [
+        "==", "in", "in", "in", "==", "<=", "==", "<=",
+    ]
+    assert client.queries[-2].order_by_calls == ["next_attempt_at", "__name__"]
+    assert client.queries[-1].order_by_calls == [
+        "next_recovery_at", "__name__",
+    ]

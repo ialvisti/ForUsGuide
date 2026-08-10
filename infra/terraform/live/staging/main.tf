@@ -43,4 +43,11 @@ module "staging" {
   e2e_job               = var.e2e_job
   e2e_secret_containers = var.e2e_secret_containers
   notification_channels = var.notification_channels
+
+  # Values are transported from the isolated tickets-console root through the
+  # reviewed release manifest.  No Terraform remote-state dependency crosses
+  # the two security boundaries.
+  ticket_evaluation_publish_enabled = var.ticket_evaluation_publish_enabled
+  ticket_evaluation_ingest_url      = var.ticket_evaluation_ingest_url
+  ticket_evaluation_ingest_audience = var.ticket_evaluation_ingest_audience
 }

@@ -581,6 +581,34 @@ resource "google_cloud_run_v2_job" "reconciler" {
           name  = "TICKET_LLM_PRICING_JSON"
           value = lookup(var.producer_core_env, "TICKET_LLM_PRICING_JSON", "")
         }
+        env {
+          name  = "TICKET_EVALUATION_PUBLISH_ENABLED"
+          value = tostring(var.ticket_evaluation_publish_enabled)
+        }
+        env {
+          name  = "TICKET_EVALUATION_INGEST_URL"
+          value = var.ticket_evaluation_ingest_url
+        }
+        env {
+          name  = "TICKET_EVALUATION_INGEST_AUDIENCE"
+          value = var.ticket_evaluation_ingest_audience
+        }
+        env {
+          name  = "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT"
+          value = var.ticket_evaluation_publish_enabled ? var.reconciler_sa_email : ""
+        }
+        env {
+          name  = "TICKET_EVALUATION_PUBLISH_TIMEOUT_S"
+          value = tostring(var.ticket_evaluation_publish_timeout_s)
+        }
+        env {
+          name  = "TICKET_EVALUATION_PUBLISH_BATCH_SIZE"
+          value = tostring(var.ticket_evaluation_publish_batch_size)
+        }
+        env {
+          name  = "TICKET_EVALUATION_OUTBOX_RETENTION_S"
+          value = tostring(var.ticket_evaluation_outbox_retention_s)
+        }
         dynamic "env" {
           for_each = local.common_env
           content {
@@ -596,6 +624,16 @@ resource "google_cloud_run_v2_job" "reconciler" {
     precondition {
       condition     = local.image_is_immutable
       error_message = "un digest @sha256 es obligatorio al crear servicios."
+    }
+    precondition {
+      condition = var.ticket_evaluation_publish_enabled ? (
+        trimspace(var.ticket_evaluation_ingest_url) != "" &&
+        trimspace(var.ticket_evaluation_ingest_audience) != ""
+        ) : (
+        trimspace(var.ticket_evaluation_ingest_url) == "" &&
+        trimspace(var.ticket_evaluation_ingest_audience) == ""
+      )
+      error_message = "evaluation publisher exige enabled + URL + audience, o los tres desactivados."
     }
   }
 }

@@ -2,8 +2,8 @@
 
 The sibling file asserts what the shipped files *say*. This one asserts what the
 server actually *does* when the review workspace talks to it, over the real
-middleware stack, the real router, the real service and the real repository, with
-only DevRev and the evidence broker faked.
+middleware stack, the real router, the real service and the real repository.
+DevRev is faked so the test process never opens a production connection.
 
 It exists because the workspace's hardest behaviours are all round trips, and
 three of them cannot be reached from a local fixture browser at all:
@@ -14,8 +14,8 @@ three of them cannot be reached from a local fixture browser at all:
 *   **412**, **409** and **428** have to stay three different answers. If they ever
     collapse into one, the interface either loses a reviewer's text to a retry or
     reports a client bug as somebody else's edit;
-*   a page cursor has to keep failing when it is spelled as a query parameter,
-    because that is the one place a token reaches an access log.
+*   only the RAG ingest boundary may create a review; the browser can update that
+    record but cannot discover or manually add a DevRev ticket.
 
 The wiring is imported from the Stage 5 route tests rather than rebuilt. A
 second, hand-made harness is how two files end up disagreeing about what the app
@@ -26,244 +26,23 @@ from __future__ import annotations
 
 import pytest
 
-from api.ticket_review_models import (
-    CorrelationStatus,
-    CorrelationTrust,
-    DevRevActor,
-    DevRevActorType,
-    DevRevTimelineEntry,
-    EvidenceSourceCollection,
-    MissingProvenance,
-    ObservedChunkRef,
-    RagEvidenceEnvelope,
-    RagEvidenceRecord,
-    RagProvenance,
-    ReviewerRole,
-    TimelineEntryKind,
-    TimelinePage,
-    TimelineVisibility,
-    review_id_for_devrev_work,
-)
+from api.ticket_review_models import ReviewerRole, review_id_for_devrev_work
 from api.ticket_review_routes import (
     API_PREFIX,
-    CODE_NOT_FOUND,
     CODE_PRECONDITION_MALFORMED,
     CODE_PRECONDITION_REQUIRED,
     CODE_REVIEW_VERSION_CONFLICT,
-    CODE_VALIDATION_FAILED,
 )
-from api.tickets_csrf import CURSOR_HEADER
 
 from tests.test_ticket_review_routes import (
     SYNTHETIC_DISPLAY_ID,
     SYNTHETIC_DON,
-    T0,
     _auth_headers,
     _create_review,
-    _FakeDevRev,
     _harness,
+    _ingest_execution,
     _write_headers,
 )
-
-DIGEST_A = "a" * 64
-DIGEST_B = "b" * 64
-DIGEST_C = "c" * 64
-
-
-# =====================================================================
-# Doubles
-# =====================================================================
-
-
-def _actor(kind: DevRevActorType, name: str, actor_id: str) -> DevRevActor:
-    return DevRevActor(actor_id=actor_id, actor_type=kind, display_name=name)
-
-
-def _timeline_entry(
-    index: int,
-    *,
-    kind: TimelineEntryKind = TimelineEntryKind.COMMENT,
-    visibility: TimelineVisibility = TimelineVisibility.EXTERNAL,
-    author: DevRevActor | None = None,
-    body: str | None = "A synthetic message body.",
-    body_type: str | None = "text/plain",
-    change_summary: str | None = None,
-    unsupported_type: str | None = None,
-) -> DevRevTimelineEntry:
-    return DevRevTimelineEntry(
-        entry_id=f"don:core:dvrv-us-1:devo/synthetic:ticket/424242:entry/{index}",
-        object_id=SYNTHETIC_DON,
-        kind=kind,
-        visibility=visibility,
-        body=body,
-        body_type=body_type,
-        author=author,
-        change_summary=change_summary,
-        unsupported_type=unsupported_type,
-        created_at=T0,
-    )
-
-
-class _PagingDevRev(_FakeDevRev):
-    """A DevRev whose conversation genuinely has more than one page.
-
-    Built as a real sequence of pages rather than one page repeated: the
-    workspace's forward-only paging, its "there is more" wording, and the
-    empty-page-with-a-cursor case are all properties of the *sequence*.
-    """
-
-    def __init__(self, pages: list[TimelinePage]) -> None:
-        super().__init__()
-        self.pages = pages
-
-    async def list_timeline_page(self, work_id: str, *, cursor=None, limit=None):
-        self.timeline_calls.append((work_id, cursor, limit))
-        index = 0 if cursor is None else int(cursor.split("-")[-1])
-        return self.pages[min(index, len(self.pages) - 1)]
-
-
-def _three_conversation_pages() -> list[TimelinePage]:
-    participant = _actor(DevRevActorType.REV_USER, "A Participant", "don:identity:x:revu/1")
-    agent = _actor(
-        DevRevActorType.DEV_USER,
-        "An Agent",
-        "don:identity:dvrv-us-1:devo/synthetic:devu/human-1",
-    )
-    assistant = _actor(
-        DevRevActorType.DEV_USER,
-        "The Assistant",
-        "don:identity:dvrv-us-1:devo/synthetic:devu/ai-1",
-    )
-    return [
-        TimelinePage(
-            items=[
-                _timeline_entry(0, author=participant),
-                _timeline_entry(
-                    1,
-                    author=agent,
-                    visibility=TimelineVisibility.INTERNAL,
-                    body="An internal note nobody outside should see.",
-                ),
-            ],
-            next_cursor="remote-page-1",
-            page_size=25,
-        ),
-        TimelinePage(
-            items=[
-                _timeline_entry(2, author=assistant),
-                _timeline_entry(
-                    3,
-                    kind=TimelineEntryKind.CHANGE_EVENT,
-                    author=None,
-                    body=None,
-                    body_type=None,
-                    visibility=TimelineVisibility.PRIVATE,
-                    change_summary="stage moved to in_progress",
-                ),
-                _timeline_entry(
-                    4,
-                    kind=TimelineEntryKind.UNSUPPORTED,
-                    author=None,
-                    body=None,
-                    body_type=None,
-                    visibility=TimelineVisibility.PRIVATE,
-                    unsupported_type="timeline_shell",
-                ),
-            ],
-            next_cursor="remote-page-2",
-            page_size=25,
-        ),
-        # An empty page that still offers a cursor is a real upstream answer, and
-        # treating it as the end would hide every entry after it.
-        TimelinePage(items=[], next_cursor="remote-page-3", page_size=25),
-    ]
-
-
-class _RichBroker:
-    """A broker with two records, either verified by the producer or not.
-
-    The split matters: the service only mints *suggestions* when no record
-    carries a verified-workload correlation, because a suggestion presented
-    beside a proven link would be read as a second proven link. So
-    ``verified=True`` exercises the execution fields the evidence panel renders,
-    and ``verified=False`` exercises the confirmation flow.
-    """
-
-    def __init__(self, *, verified: bool = True) -> None:
-        self.calls = 0
-        self.verified = verified
-
-    async def lookup(self, devrev_work_id: str, *, max_results: int) -> RagEvidenceEnvelope:
-        self.calls += 1
-        provenance = RagProvenance(
-            correlation_status=CorrelationStatus.LINKED,
-            correlation_trust=CorrelationTrust.VERIFIED_WORKLOAD,
-            missing_provenance=False,
-            index_name="kb-main",
-            index_version=None,
-            namespace="articles",
-            deployed_revision="kb-rag-00042-abc",
-            prompt_template_id="answer.v7",
-            prompt_template_sha256=DIGEST_A,
-            response_sha256=DIGEST_B,
-            observed_chunks=[
-                ObservedChunkRef(
-                    observed_vector_id="vec-1",
-                    article_id="article-100",
-                    content_sha256=DIGEST_C,
-                    chunk_ordinal=3,
-                    namespace="articles",
-                    score=0.8125,
-                )
-            ],
-        )
-        verified = RagEvidenceRecord(
-            evidence_reference="ref-verified",
-            evidence_digest=DIGEST_A,
-            source_collection=EvidenceSourceCollection.TICKET_EXECUTIONS,
-            schema_version=1,
-            occurred_at=T0,
-            endpoint="/answer",
-            route="ticket_answer",
-            correlation_source="ticket_execution_hmac" if self.verified else None,
-            correlation_trust=(
-                CorrelationTrust.VERIFIED_WORKLOAD if self.verified else CorrelationTrust.NONE
-            ),
-            internal_job_id="job-7",
-            request_id_hash=DIGEST_B,
-            model="claude-opus-5",
-            provider="anthropic",
-            config_version="cfg-12",
-            rendered_prompt_trace_sha256=DIGEST_C,
-            deployed_commit_sha="0" * 40,
-            provenance=provenance,
-            source_article_ids=["article-100", "article-101"],
-            duration_ms=1234.5,
-            failed=False,
-            missing=[MissingProvenance.INDEX_VERSION],
-        )
-        suggestion = RagEvidenceRecord(
-            evidence_reference="ref-suggested",
-            evidence_digest=DIGEST_B,
-            source_collection=EvidenceSourceCollection.EXECUTION_LOGS,
-            schema_version=0,
-            occurred_at=T0,
-            correlation_trust=CorrelationTrust.NONE,
-            provenance=RagProvenance(),
-            missing=[MissingProvenance.LEGACY_SCHEMA],
-        )
-        return RagEvidenceEnvelope(
-            correlation_status=(
-                CorrelationStatus.LINKED if self.verified else CorrelationStatus.UNAVAILABLE
-            ),
-            records=[verified, suggestion],
-            result_digest=DIGEST_C,
-            key_versions_queried=[1],
-        )
-
-
-def _detail_of(harness, ref: str = SYNTHETIC_DISPLAY_ID, **kwargs):
-    return harness.client.get(f"{API_PREFIX}/tickets/{ref}", headers=_auth_headers(**kwargs))
 
 
 # =====================================================================
@@ -321,421 +100,6 @@ class TestDeepLink:
     def test_an_asset_still_needs_a_verified_identity(self, monkeypatch):
         harness = _harness(monkeypatch)
         assert harness.client.get("/tickets/assets/detail.js").status_code == 401
-
-
-# =====================================================================
-# 2 — the detail envelope the workspace hydrates from
-# =====================================================================
-
-
-class TestDetailEnvelope:
-
-    def test_the_envelope_carries_every_part_the_workspace_reads(self, monkeypatch):
-        harness = _harness(monkeypatch, broker=_RichBroker())
-        _create_review(harness)
-        body = _detail_of(harness).json()
-        assert set(body) >= {
-            "ticket_ref",
-            "ticket",
-            "review",
-            "timeline",
-            "evidence",
-            "partial",
-            "cache_state",
-            "warnings",
-            "diagnostics",
-        }
-        assert body["timeline"]["messages"], "the classified projection is what the UI renders"
-        assert body["review"]["version"] == 1
-
-    def test_a_ticket_with_no_review_is_null_and_not_a_fabricated_one(self, monkeypatch):
-        """"Not imported yet" and "imported and unreviewed" are different facts."""
-        harness = _harness(monkeypatch)
-        assert _detail_of(harness).json()["review"] is None
-
-    def test_a_live_data_outage_still_returns_the_review_and_says_it_is_partial(
-        self, monkeypatch
-    ):
-        from data_pipeline.devrev_client import DevRevTransientError
-
-        harness = _harness(monkeypatch)
-        _create_review(harness)
-        harness.devrev._get_error = DevRevTransientError("upstream down")
-        body = _detail_of(harness).json()
-        assert body["partial"] is True
-        assert body["review"] is not None
-        assert body["ticket"] is None
-        # No conversation rather than an empty one: the difference is whether the
-        # ticket has no messages or whether we could not read them.
-        assert body["timeline"] is None
-        assert "devrev_unavailable" in body["warnings"]
-
-    def test_an_unknown_ticket_is_a_uniform_not_found(self, monkeypatch):
-        from data_pipeline.devrev_client import DevRevNotFoundError
-
-        harness = _harness(monkeypatch, devrev=_FakeDevRev(get_error=DevRevNotFoundError("no")))
-        response = _detail_of(harness)
-        assert response.status_code == 404
-        assert response.json()["error"]["code"] == CODE_NOT_FOUND
-
-    def test_a_reference_that_is_a_url_never_reaches_the_adapter(self, monkeypatch):
-        """The reference is an identifier, never something to fetch."""
-        harness = _harness(monkeypatch)
-        # A reference containing a slash 404s on *routing*, before the validator
-        # is reached, so the interesting cases are the ones that get that far.
-        for hostile in ("TKT-1 2", "TKT-1..2", "don:core:x:ticket-1 2"):
-            response = harness.client.get(
-                f"{API_PREFIX}/tickets/{hostile}", headers=_auth_headers()
-            )
-            assert response.status_code == 422, hostile
-            assert response.json()["error"]["code"] == CODE_VALIDATION_FAILED
-
-    def test_the_envelope_publishes_no_upstream_link_to_follow(self, monkeypatch):
-        """Nothing to trust, so the workspace falls back to copying the id.
-
-        If a validated absolute link is ever added it has to arrive with the host
-        it is allowed to use; this pins the current state so adding one is a
-        deliberate, tested change rather than a field that quietly appears.
-        """
-        harness = _harness(monkeypatch)
-        body = _detail_of(harness).json()
-        assert "devrev_url" not in body
-        assert "devrev_url" not in (body["ticket"] or {})
-
-
-# =====================================================================
-# 3 — the conversation pages forward, and only forward
-# =====================================================================
-
-
-class TestConversationPaging:
-
-    def _paging_harness(self, monkeypatch):
-        return _harness(monkeypatch, devrev=_PagingDevRev(_three_conversation_pages()))
-
-    def test_the_first_page_arrives_inside_the_detail_envelope(self, monkeypatch):
-        harness = self._paging_harness(monkeypatch)
-        timeline = _detail_of(harness).json()["timeline"]
-        assert len(timeline["messages"]) == 2
-        assert timeline["next_cursor"], "a sealed forward token"
-        assert timeline["prev_cursor"] is None
-
-    def test_a_later_page_is_fetched_with_the_cursor_in_a_header(self, monkeypatch):
-        harness = self._paging_harness(monkeypatch)
-        first = _detail_of(harness).json()["timeline"]
-        second = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline",
-            headers=_auth_headers(**{CURSOR_HEADER: first["next_cursor"]}),
-        )
-        assert second.status_code == 200, second.text
-        body = second.json()
-        assert len(body["messages"]) == 3
-        assert body["next_cursor"] != first["next_cursor"]
-
-    def test_an_empty_page_that_still_has_a_cursor_is_not_the_end(self, monkeypatch):
-        """Three pages, and the third is empty but continues.
-
-        A workspace that stopped here would silently show two thirds of a
-        conversation and label it complete.
-        """
-        harness = self._paging_harness(monkeypatch)
-        cursor = _detail_of(harness).json()["timeline"]["next_cursor"]
-        seen = 0
-        for _ in range(3):
-            page = harness.client.get(
-                f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline",
-                headers=_auth_headers(**{CURSOR_HEADER: cursor}),
-            ).json()
-            seen += len(page["messages"])
-            cursor = page["next_cursor"]
-            if cursor is None:
-                break
-        assert seen == 3
-        assert cursor is not None, "the last page offers a cursor with no items"
-
-    def test_a_cursor_in_the_url_is_refused(self, monkeypatch):
-        harness = self._paging_harness(monkeypatch)
-        cursor = _detail_of(harness).json()["timeline"]["next_cursor"]
-        response = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline?cursor={cursor}",
-            headers=_auth_headers(),
-        )
-        assert response.status_code == 422
-        assert response.json()["error"]["code"] == CODE_VALIDATION_FAILED
-
-    def test_a_conversation_cursor_does_not_work_on_another_ticket(self, monkeypatch):
-        """The token is sealed to its subject and its ticket."""
-        harness = self._paging_harness(monkeypatch)
-        cursor = _detail_of(harness).json()["timeline"]["next_cursor"]
-        response = harness.client.get(
-            f"{API_PREFIX}/tickets/TKT-111111/timeline",
-            headers=_auth_headers(**{CURSOR_HEADER: cursor}),
-        )
-        assert response.status_code == 422
-
-    def test_the_five_author_classes_all_arrive_classified(self, monkeypatch):
-        """The workspace renders `actor_class`; this proves the server sets it.
-
-        A participant, a human agent, the assistant and a change event have to
-        come back as four different classes from one page, because the interface's
-        whole safety story on that panel is that it does not have to guess.
-        """
-        harness = self._paging_harness(monkeypatch)
-        first = _detail_of(harness).json()["timeline"]["messages"]
-        second = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline",
-            headers=_auth_headers(
-                **{CURSOR_HEADER: _detail_of(harness).json()["timeline"]["next_cursor"]}
-            ),
-        ).json()["messages"]
-        classes = {message["actor_class"] for message in first + second}
-        assert {"participant", "human_agent", "ai_or_system", "event"} <= classes
-        for message in first + second:
-            assert message["basis"], "a classification with no stated basis"
-
-    def test_an_internal_entry_is_never_marked_participant_facing(self, monkeypatch):
-        harness = self._paging_harness(monkeypatch)
-        messages = _detail_of(harness).json()["timeline"]["messages"]
-        internal = [message for message in messages if message["internal"]]
-        assert internal, "the fixture carries an internal note"
-        for message in internal:
-            assert message["participant_facing"] is False
-
-    def test_an_unmodelled_entry_carries_no_body_to_render(self, monkeypatch):
-        harness = self._paging_harness(monkeypatch)
-        cursor = _detail_of(harness).json()["timeline"]["next_cursor"]
-        messages = harness.client.get(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline",
-            headers=_auth_headers(**{CURSOR_HEADER: cursor}),
-        ).json()["messages"]
-        placeholders = [m for m in messages if m["rendering"] == "placeholder"]
-        assert placeholders
-        for message in placeholders:
-            assert message["body"] is None
-            assert message["entry_id"], "something a support request can name"
-
-
-# =====================================================================
-# 4 — evidence: the fields Stage 7 renders have to survive the round trip
-# =====================================================================
-
-
-class TestEvidenceEnvelope:
-
-    #: Every field the evidence panel renders off an execution record.
-    RENDERED = (
-        "endpoint",
-        "route",
-        "model",
-        "provider",
-        "config_version",
-        "internal_job_id",
-        "request_id_hash",
-        "rendered_prompt_trace_sha256",
-        "deployed_commit_sha",
-        "occurred_at",
-        "duration_ms",
-        "failed",
-        "source_article_ids",
-        "missing",
-        "evidence_reference",
-        "evidence_digest",
-        "schema_version",
-    )
-
-    def test_the_summary_carries_whole_execution_records(self, monkeypatch):
-        """The retrieval half alone cannot answer "was this answer any good".
-
-        Before Stage 7 the service projected each record down to its
-        ``provenance`` and dropped the rest, so which model on which route
-        answered — and whether it failed — never reached the reviewer.
-        """
-        harness = _harness(monkeypatch, broker=_RichBroker())
-        _create_review(harness)
-        evidence = _detail_of(harness).json()["evidence"]
-        assert evidence["executions"], "no execution records reached the client"
-        assert len(evidence["executions"]) == len(evidence["provenance"])
-
-    @pytest.mark.parametrize("field", RENDERED)
-    def test_each_rendered_field_is_present_on_the_wire(self, monkeypatch, field):
-        harness = _harness(monkeypatch, broker=_RichBroker())
-        _create_review(harness)
-        record = _detail_of(harness).json()["evidence"]["executions"][0]
-        assert field in record, field
-
-    def test_the_retrieval_side_still_arrives_too(self, monkeypatch):
-        harness = _harness(monkeypatch, broker=_RichBroker())
-        _create_review(harness)
-        record = _detail_of(harness).json()["evidence"]["executions"][0]
-        provenance = record["provenance"]
-        for field in (
-            "index_name",
-            "index_version",
-            "namespace",
-            "deployed_revision",
-            "prompt_template_id",
-            "prompt_template_sha256",
-            "response_sha256",
-            "observed_chunks",
-        ):
-            assert field in provenance, field
-        chunk = provenance["observed_chunks"][0]
-        assert set(chunk) == {
-            "observed_vector_id",
-            "article_id",
-            "content_sha256",
-            "chunk_ordinal",
-            "namespace",
-            "score",
-        }
-
-    def test_an_absent_index_version_arrives_as_null_and_is_named_as_missing(
-        self, monkeypatch
-    ):
-        """A gap the server knows about, said twice: as a null and as a name."""
-        harness = _harness(monkeypatch, broker=_RichBroker())
-        _create_review(harness)
-        record = _detail_of(harness).json()["evidence"]["executions"][0]
-        assert record["provenance"]["index_version"] is None
-        assert "index_version" in record["missing"]
-
-    def test_no_prompt_response_or_chunk_text_is_ever_returned(self, monkeypatch):
-        """The record is the sanitized boundary shape, and this proves it stayed one."""
-        harness = _harness(monkeypatch, broker=_RichBroker())
-        _create_review(harness)
-        serialized = _detail_of(harness).text
-        for forbidden in (
-            "chunk_text",
-            "chunk_content",
-            "page_content",
-            "prompt_text",
-            "response_text",
-            "completion",
-        ):
-            assert forbidden not in serialized, forbidden
-
-    def test_a_broker_outage_is_a_named_gap_and_not_a_failure(self, monkeypatch):
-        from tests.test_ticket_review_routes import _FailingBroker
-
-        harness = _harness(monkeypatch, broker=_FailingBroker())
-        _create_review(harness)
-        response = _detail_of(harness)
-        assert response.status_code == 200
-        evidence = response.json()["evidence"]
-        assert evidence["correlation_status"] == "unavailable"
-        assert evidence["unavailable_reason"]
-        assert evidence["executions"] == []
-
-    def test_no_broker_at_all_says_so_differently(self, monkeypatch):
-        """Two gaps with two causes: an old ticket, or an unconfigured service."""
-        harness = _harness(monkeypatch, broker=None)
-        _create_review(harness)
-        evidence = _detail_of(harness).json()["evidence"]
-        assert evidence["unavailable_reason"] == "evidence_broker_not_configured"
-        assert evidence["broker_available"] is False
-
-    def test_a_suggestion_arrives_as_a_sealed_token_and_never_an_execution_id(
-        self, monkeypatch
-    ):
-        harness = _harness(monkeypatch, broker=_RichBroker(verified=False))
-        _create_review(harness)
-        evidence = _detail_of(harness).json()["evidence"]
-        assert evidence["candidate_links"], "nothing verified, so both records are suggestions"
-        candidate = evidence["candidate_links"][0]
-        assert candidate["correlation_trust"] == "candidate"
-        assert candidate["candidate_token"]
-        assert candidate["expires_at"]
-        # Nothing the client could edit into another ticket's evidence.
-        assert "execution_id" not in candidate
-        assert "document_path" not in candidate
-
-    def test_a_forged_suggestion_token_is_refused(self, monkeypatch):
-        harness = _harness(monkeypatch, broker=_RichBroker(verified=False))
-        review = _create_review(harness)
-        response = harness.client.post(
-            f"{API_PREFIX}/reviews/{review['review_id']}/evidence-links",
-            headers=_write_headers(
-                harness.client, idempotency="idem-forged-00001", **{"If-Match": '"v1"'}
-            ),
-            json={"broker_candidate_token": "forged", "reason": "it looks right"},
-        )
-        assert response.status_code == 409
-        assert response.json()["error"]["code"] == "EVIDENCE_LINK_REJECTED"
-
-    def test_a_suggestion_can_be_confirmed_and_becomes_a_reasoned_link(self, monkeypatch):
-        """The whole point of the candidate flow, end to end."""
-        harness = _harness(monkeypatch, broker=_RichBroker(verified=False))
-        review = _create_review(harness)
-        candidate = _detail_of(harness).json()["evidence"]["candidate_links"][0]
-        current = harness.client.get(
-            f"{API_PREFIX}/reviews/{review['review_id']}", headers=_auth_headers()
-        ).json()
-        response = harness.client.post(
-            f"{API_PREFIX}/reviews/{review['review_id']}/evidence-links",
-            headers=_write_headers(
-                harness.client,
-                idempotency="idem-confirm-0001",
-                **{"If-Match": f'"v{current["version"]}"'},
-            ),
-            json={
-                "broker_candidate_token": candidate["candidate_token"],
-                "reason": "The timestamps and the article match the participant's question.",
-            },
-        )
-        assert response.status_code == 201, response.text
-        # The write advances the version by more than one: linking the evidence
-        # and recording the resulting correlation status are two audited writes
-        # chained by the service. What the workspace needs is that the returned
-        # ETag is the version it must send next, not that it advanced by exactly
-        # one — an assertion of +1 would encode a coincidence.
-        assert response.headers["ETag"] == f'"v{response.json()["version"]}"'
-        assert response.json()["version"] > current["version"]
-        assert response.json()["correlation_status"] == "manual"
-        links = harness.client.get(
-            f"{API_PREFIX}/reviews/{review['review_id']}/evidence-links",
-            headers=_auth_headers(),
-        ).json()
-        assert len(links["items"]) == 1
-        link = links["items"][0]
-        assert link["reason"].startswith("The timestamps")
-        assert link["correlation_trust"] == "manual_reviewer"
-        assert link["linked_by"]["email"]
-
-    def test_unlinking_needs_the_current_version_and_a_reason(self, monkeypatch):
-        harness = _harness(monkeypatch, broker=_RichBroker(verified=False))
-        review = _create_review(harness)
-        candidate = _detail_of(harness).json()["evidence"]["candidate_links"][0]
-        linked = harness.client.post(
-            f"{API_PREFIX}/reviews/{review['review_id']}/evidence-links",
-            headers=_write_headers(
-                harness.client, idempotency="idem-link-000001", **{"If-Match": '"v1"'}
-            ),
-            json={"broker_candidate_token": candidate["candidate_token"], "reason": "matches"},
-        )
-        assert linked.status_code == 201, linked.text
-        link_id = harness.client.get(
-            f"{API_PREFIX}/reviews/{review['review_id']}/evidence-links",
-            headers=_auth_headers(),
-        ).json()["items"][0]["link_id"]
-
-        missing_precondition = harness.client.request(
-            "DELETE",
-            f"{API_PREFIX}/reviews/{review['review_id']}/evidence-links/{link_id}",
-            headers=_write_headers(harness.client, idempotency="idem-unlink-0001"),
-            json={"reason": "wrong ticket"},
-        )
-        assert missing_precondition.status_code == 428
-        assert missing_precondition.json()["error"]["code"] == CODE_PRECONDITION_REQUIRED
-
-        no_reason = harness.client.request(
-            "DELETE",
-            f"{API_PREFIX}/reviews/{review['review_id']}/evidence-links/{link_id}",
-            headers=_write_headers(
-                harness.client, idempotency="idem-unlink-0002", **{"If-Match": '"v2"'}
-            ),
-            json={},
-        )
-        assert no_reason.status_code == 422
 
 
 # =====================================================================
@@ -1151,12 +515,18 @@ class TestTransitions:
 
 class TestRoles:
 
-    def test_a_viewer_can_read_the_whole_workspace(self, monkeypatch):
+    def test_a_viewer_can_read_a_rag_created_workspace(self, monkeypatch):
         harness = _harness(monkeypatch, role=ReviewerRole.VIEWER)
-        assert _detail_of(harness).status_code == 200
+        _ingest_execution(harness)
         assert (
             harness.client.get(
-                f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/timeline", headers=_auth_headers()
+                f"{API_PREFIX}/tickets/job123:0", headers=_auth_headers()
+            ).status_code
+            == 200
+        )
+        assert (
+            harness.client.get(
+                f"{API_PREFIX}/tickets/job123:0/timeline", headers=_auth_headers()
             ).status_code
             == 200
         )
@@ -1173,36 +543,26 @@ class TestRoles:
         )
         assert response.status_code == 403
 
-    def test_a_viewer_cannot_import_a_ticket(self, monkeypatch):
-        harness = _harness(monkeypatch, role=ReviewerRole.VIEWER)
+    @pytest.mark.parametrize(
+        "role", [ReviewerRole.VIEWER, ReviewerRole.REVIEWER, ReviewerRole.ADMIN]
+    )
+    def test_no_role_can_manually_add_a_ticket(self, monkeypatch, role):
+        harness = _harness(monkeypatch, role=role)
         response = harness.client.post(
             f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
             headers=_write_headers(harness.client, idempotency="idem-viewer-0002"),
             json={},
         )
-        assert response.status_code == 403
+        assert response.status_code == 404
 
-    def test_the_first_save_imports_and_then_the_patch_applies(self, monkeypatch):
-        """The two-call sequence the form performs on an unimported ticket.
-
-        The import route accepts the four spreadsheet fields; everything else has
-        to travel as a patch against the version the import returned.
-        """
+    def test_rag_ingest_creates_the_review_then_a_patch_applies(self, monkeypatch):
         harness = _harness(monkeypatch)
-        created = harness.client.post(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
-            headers=_write_headers(harness.client, idempotency="idem-import-0001"),
-            json={"topic": "Contributions", "legacy_type": "Answer quality", "rating": 2},
-        )
-        assert created.status_code == 201, created.text
-        body = created.json()
-        assert body["topic"] == "Contributions"
-        assert body["rating"] == 2
+        body = _create_review(harness)
         patched = harness.client.patch(
             f"{API_PREFIX}/reviews/{body['review_id']}",
             headers=_write_headers(
                 harness.client,
-                idempotency="idem-import-0002",
+                idempotency="idem-rag-patch-02",
                 **{"If-Match": f'"v{body["version"]}"'},
             ),
             json={"observation_type": "retrieval_miss", "severity": "high", "status": "reviewed"},
@@ -1213,22 +573,13 @@ class TestRoles:
         assert final["severity"] == "high"
         assert final["status"] == "reviewed"
 
-    def test_importing_twice_with_one_key_creates_one_review(self, monkeypatch):
+    def test_replaying_one_rag_execution_creates_one_review(self, monkeypatch):
         harness = _harness(monkeypatch)
-        first = harness.client.post(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
-            headers=_write_headers(harness.client, idempotency="idem-double-0001"),
-            json={},
-        )
-        second = harness.client.post(
-            f"{API_PREFIX}/tickets/{SYNTHETIC_DISPLAY_ID}/review",
-            headers=_write_headers(harness.client, idempotency="idem-double-0001"),
-            json={},
-        )
-        assert first.status_code == 201
-        assert second.status_code in {200, 201}
-        assert second.json()["review_id"] == first.json()["review_id"]
-        assert second.json()["version"] == first.json()["version"]
+        first = _ingest_execution(harness)
+        second = _ingest_execution(harness)
+        assert first.created is True
+        assert second.created is False
+        assert second.run.review_id == first.run.review_id
 
     def test_a_reviewer_may_take_an_unassigned_review(self, monkeypatch):
         harness = _harness(monkeypatch, role=ReviewerRole.REVIEWER)
@@ -1295,4 +646,4 @@ class TestRoles:
             "feature_flags"
         ]
         assert flags["remediation_enabled"] is False
-        assert flags["import_export_enabled"] is False
+        assert "import_export_enabled" not in flags

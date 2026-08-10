@@ -143,8 +143,8 @@ export function renderRemediation(container, review, { flags = {}, draft = {} } 
       el("p", {
         className: "panel-note",
         text:
-          "This ticket has no durable review yet, so it carries no remediation " +
-          "target and no resolution. Add it to the review queue to start one.",
+          "This execution has no linked review available, so remediation fields " +
+          "cannot be changed yet. The captured RAG result remains readable.",
       }),
     ]);
     return;

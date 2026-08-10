@@ -215,6 +215,88 @@ def test_environment_module_preserves_core_env_and_models_traffic() -> None:
     assert "dark_no_traffic" in cloud_run_tf
 
 
+def test_reconciler_deploy_contract_wires_the_ticket_evaluation_outbox() -> None:
+    module = TF_ROOT / "modules" / "ticket_environment"
+    cloud_run_tf = _read(module / "cloud_run.tf")
+    firestore_tf = _read(module / "firestore.tf")
+    variables_tf = _read(module / "variables.tf")
+
+    required_variables = {
+        "ticket_evaluation_publish_enabled",
+        "ticket_evaluation_ingest_url",
+        "ticket_evaluation_ingest_audience",
+        "ticket_evaluation_publish_timeout_s",
+        "ticket_evaluation_publish_batch_size",
+        "ticket_evaluation_outbox_retention_s",
+    }
+    for name in required_variables:
+        assert f'variable "{name}"' in variables_tf
+
+    required_environment = {
+        "TICKET_EVALUATION_PUBLISH_ENABLED",
+        "TICKET_EVALUATION_INGEST_URL",
+        "TICKET_EVALUATION_INGEST_AUDIENCE",
+        "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT",
+        "TICKET_EVALUATION_PUBLISH_TIMEOUT_S",
+        "TICKET_EVALUATION_PUBLISH_BATCH_SIZE",
+        "TICKET_EVALUATION_OUTBOX_RETENTION_S",
+    }
+    for name in required_environment:
+        assert f'name  = "{name}"' in cloud_run_tf
+    assert (
+        "value = var.ticket_evaluation_publish_enabled ? "
+        'var.reconciler_sa_email : ""'
+    ) in cloud_run_tf
+
+    assert 'collection = "ticket_evaluation_outbox"' in firestore_tf
+    assert 'field      = "expires_at"' in firestore_tf
+    assert "ttl_config {}" in firestore_tf
+    assert (
+        'resource "google_firestore_index" '
+        '"ticket_evaluation_due_retries"'
+    ) in firestore_tf
+    due_retry_index = firestore_tf.split(
+        'resource "google_firestore_index" '
+        '"ticket_evaluation_due_retries"',
+        1,
+    )[1]
+    assert 'collection = "ticket_evaluation_outbox"' in due_retry_index
+    assert 'field_path = "state"' in due_retry_index
+    assert 'field_path = "next_attempt_at"' in due_retry_index
+    assert 'field_path = "__name__"' in due_retry_index
+
+
+def test_rag_invocation_journal_has_terminal_ttl_and_recovery_index() -> None:
+    firestore_tf = _read(
+        TF_ROOT / "modules" / "ticket_environment" / "firestore.tf"
+    )
+
+    assert (
+        'resource "google_firestore_field" "ticket_rag_invocation_ttl"'
+        in firestore_tf
+    )
+    ttl = firestore_tf.split(
+        'resource "google_firestore_field" "ticket_rag_invocation_ttl"',
+        1,
+    )[1]
+    assert 'collection = "ticket_rag_invocations"' in ttl
+    assert 'field      = "expires_at"' in ttl
+    assert "ttl_config {}" in ttl
+
+    assert (
+        'resource "google_firestore_index" "ticket_rag_invocation_recovery"'
+        in firestore_tf
+    )
+    recovery_index = firestore_tf.split(
+        'resource "google_firestore_index" "ticket_rag_invocation_recovery"',
+        1,
+    )[1]
+    assert 'collection = "ticket_rag_invocations"' in recovery_index
+    assert 'field_path = "state"' in recovery_index
+    assert 'field_path = "next_recovery_at"' in recovery_index
+    assert 'field_path = "__name__"' in recovery_index
+
+
 def test_platform_brokers_database_scoped_iam_for_environment_runtimes() -> None:
     iam_tf = _read(TF_ROOT / "live" / "platform" / "runtime_project_iam.tf")
     containers_tf = _read(TF_ROOT / "live" / "platform" / "environment_containers.tf")

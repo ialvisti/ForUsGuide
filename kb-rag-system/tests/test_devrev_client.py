@@ -571,6 +571,31 @@ class TestListModeAndCursorRoundTrip:
         assert page.truncated is False
         assert page.partial is False
 
+    async def test_list_accepts_the_top_level_ticket_fields_returned_by_devrev(self) -> None:
+        payload = json.loads(json.dumps(WORKS_PAGE_1))
+        for work in payload["works"]:
+            ticket = work.pop("ticket")
+            work["visibility"] = {
+                "id": ticket["visibility"],
+                "label": "internal",
+                "ordinal": 1,
+            }
+            work["source_channel"] = ticket["source_channel"]
+            work["subtype"] = ticket["subtype"]
+
+        recorder = _Recorder(_json_response(payload))
+        client = _client(recorder)
+        try:
+            page = await client.list_tickets(DevRevTicketFilters())
+        finally:
+            await client.aclose()
+
+        assert [item.devrev_display_id for item in page.items] == ["TKT-1234", "TKT-1235"]
+        assert page.partial is False
+        assert page.items[0].ticket_visibility == 2
+        assert page.items[0].source_channel == "email"
+        assert page.items[0].subtype == "question"
+
     async def test_forward_then_backward_round_trip(self) -> None:
         recorder = _Recorder(
             _json_response(WORKS_PAGE_1),
@@ -725,6 +750,28 @@ class TestGetTicket:
         assert detail.modified_at == datetime(2026, 5, 6, 9, 31, 44, tzinfo=timezone.utc)
         assert detail.body is not None and detail.body.startswith("Participant asks")
         assert detail.attachments == []
+
+    async def test_get_accepts_the_top_level_ticket_fields_returned_by_devrev(self) -> None:
+        payload = json.loads(json.dumps(WORK_GET))
+        ticket = payload["work"].pop("ticket")
+        payload["work"]["visibility"] = {
+            "id": ticket["visibility"],
+            "label": "internal",
+            "ordinal": 1,
+        }
+        payload["work"]["source_channel"] = ticket["source_channel"]
+        payload["work"]["subtype"] = ticket["subtype"]
+
+        recorder = _Recorder(_json_response(payload))
+        client = _client(recorder)
+        try:
+            detail = await client.get_ticket(SYNTHETIC_TICKET_DON)
+        finally:
+            await client.aclose()
+
+        assert detail.ticket_visibility == 2
+        assert detail.source_channel == "email"
+        assert detail.subtype == "question"
 
     async def test_an_out_of_scope_part_is_a_typed_scope_denial(self) -> None:
         payload = json.loads(json.dumps(WORK_GET))

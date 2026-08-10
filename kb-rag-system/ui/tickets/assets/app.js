@@ -9,9 +9,9 @@
  *     resulting 422 is rendered. Filtering a page in the browser to make the
  *     screen agree with the URL would turn a documented refusal into a
  *     plausible-looking wrong answer.
- *   * **Two tabs, one panel, one table.** The panel's `aria-labelledby` follows
- *     the selected tab and its contents are rebuilt, so an eleven-column table,
- *     a bulk bar, and a pagination control exist once each.
+ *   * **One ledger, one table.** A row can come only from a persisted,
+ *     ticket-associated RAG invocation after DevRev scope validation and
+ *     hydration succeeded. DevRev is never used to discover extra rows.
  *   * **Capability comes from the server.** The role and the feature flags in
  *     `GET /session` decide what is enabled. Nothing is inferred from an email
  *     address, and no route that the schema does not advertise is ever called.
@@ -24,8 +24,6 @@ import * as api from "./api.js";
 import * as render from "./render.js";
 import { initDetail } from "./detail.js";
 import {
-  REVIEW_FACETS,
-  REVIEW_STATUSES,
   activeFilters,
   batchableSelection,
   canCurateBatches,
@@ -39,9 +37,6 @@ import {
 const SPRITE_URL = "/tickets/assets/icons.svg";
 const TEXT_DEBOUNCE_MS = 300;
 
-/** Facets whose values are free text rather than a closed vocabulary. */
-const FREE_TEXT_FACETS = new Set(["topic", "assigned_reviewer.email", "remediation_target"]);
-
 const store = createStore();
 
 const dom = {
@@ -54,23 +49,14 @@ const dom = {
   kpi: {
     unreviewed: document.getElementById("kpi-unreviewed-scope"),
     lowRating: document.getElementById("kpi-low-rating-scope"),
-    highSeverity: document.getElementById("kpi-severity-scope"),
     remediating: document.getElementById("kpi-remediation-scope"),
   },
-  tabs: Array.from(document.querySelectorAll('[role="tab"]')),
-  panel: document.getElementById("tickets-panel"),
   sheetToggle: document.getElementById("filter-sheet-toggle"),
   filterForms: document.getElementById("filter-forms"),
-  devrevForm: document.getElementById("filters-devrev"),
-  reviewsForm: document.getElementById("filters-reviews"),
-  statusChecks: document.getElementById("reviews-statuses"),
-  facet: document.getElementById("reviews-facet"),
-  facetValue: document.getElementById("reviews-facet-value"),
-  facetHelp: document.getElementById("reviews-facet-help"),
+  executionForm: document.getElementById("filters-executions"),
   activeFilters: document.getElementById("active-filters"),
   bulkBar: document.getElementById("bulk-bar"),
   bulkCount: document.getElementById("bulk-count"),
-  bulkImport: document.getElementById("bulk-import"),
   bulkClear: document.getElementById("bulk-clear"),
   bulkSelectAll: document.getElementById("bulk-select-all"),
   bulkRemediation: document.getElementById("bulk-remediation"),
@@ -85,10 +71,7 @@ const dom = {
   toasts: document.getElementById("toast-region"),
   detail: document.getElementById("ticket-detail"),
   sprite: document.getElementById("icon-sprite"),
-  refresh: {
-    devrev: document.getElementById("devrev-refresh"),
-    reviews: document.getElementById("reviews-refresh"),
-  },
+  refresh: document.getElementById("executions-refresh"),
 };
 
 let icons = new Map();
@@ -113,7 +96,7 @@ let detail = null;
  * toggle patches the existing rows instead, because rebuilding would destroy the
  * checkbox the reviewer just operated and take the keyboard focus with it.
  */
-let rendered = { rows: null, phase: null, mode: null, error: null, role: null };
+let rendered = { rows: null, phase: null, error: null, role: null };
 
 // ---------------------------------------------------------------------------
 // Small helpers
@@ -146,41 +129,30 @@ function reportError(error) {
   });
 }
 
-/** Whether the caller may create a durable review. */
-function canCreateReview() {
-  const role = store.getState().session?.role ?? "viewer";
-  return role === "reviewer" || role === "remediator" || role === "admin";
-}
-
 // ---------------------------------------------------------------------------
 // Row normalization
 // ---------------------------------------------------------------------------
 
 /**
- * Flatten either wire shape into the one row the table renders.
- *
- * The live list returns `{ticket, review}` with a bounded review *summary*, and
- * the queue returns the durable review itself. Merging them in the renderer
- * instead would put two wire contracts into the one place that must not know
- * about either.
+ * Flatten the persisted execution item into the one row the table renders.
  */
-function normalizeLiveRow(item) {
-  const ticket = item?.ticket ?? {};
-  const review = item?.review ?? null;
+function normalizeExecutionRow(item) {
+  const execution = item ?? {};
   return {
-    displayId: ticket.devrev_display_id ?? "",
-    title: ticket.title ?? "",
-    review,
-    updatedAt: review?.updated_at ?? ticket.modified_at ?? ticket.created_at ?? "",
-  };
-}
-
-function normalizeReviewRow(review) {
-  return {
-    displayId: review?.devrev_display_id ?? "",
-    title: "",
-    review: review ?? null,
-    updatedAt: review?.updated_at ?? "",
+    executionId: execution.executionId ?? "",
+    invocationId: execution.invocationId ?? execution.executionId ?? "",
+    jobId: execution.jobId ?? "",
+    inquiryIndex: execution.inquiryIndex ?? null,
+    attempt: execution.attempt ?? null,
+    leaseEpoch: execution.leaseEpoch ?? null,
+    displayId: execution.displayId ?? execution.ticketId ?? "",
+    title: execution.title ?? "",
+    route: execution.route ?? "",
+    runStatus: execution.runStatus ?? "",
+    hydrationStatus: execution.hydrationStatus ?? "unavailable",
+    review: execution.review ?? null,
+    createdAt: execution.occurredAt ?? execution.createdAt ?? "",
+    updatedAt: execution.occurredAt ?? execution.createdAt ?? "",
   };
 }
 
@@ -193,25 +165,16 @@ async function load({ refresh = false } = {}) {
   const serial = (requestSerial += 1);
   store.dispatch({ type: "load/started", refresh });
   try {
-    const page =
-      state.mode === "devrev"
-        ? await api.listTickets({
-            ...state.filters.devrev,
-            cursor: state.cursor,
-            mode: state.direction,
-            pageSize: state.pageSize,
-          })
-        : await api.listReviews({
-            ...state.filters.reviews,
-            cursor: state.cursor,
-            pageSize: state.pageSize,
-          });
+    const page = await api.listExecutions({
+      ...state.executionFilters,
+      cursor: state.cursor,
+      pageSize: state.pageSize,
+    });
     if (serial !== requestSerial) {
       return;
     }
     const items = Array.isArray(page?.items) ? page.items : [];
-    const rows =
-      state.mode === "devrev" ? items.map(normalizeLiveRow) : items.map(normalizeReviewRow);
+    const rows = items.map(normalizeExecutionRow);
     store.dispatch({
       type: "load/succeeded",
       rows,
@@ -270,32 +233,13 @@ function startCooldown(seconds) {
 // Filter controls
 // ---------------------------------------------------------------------------
 
-function devrevFilterPatch() {
+function executionFilterPatch() {
   return {
-    ticketId: document.getElementById("devrev-ticket-id").value.trim().toUpperCase(),
-    stage: document.getElementById("devrev-stage").value.trim(),
-    state: document.getElementById("devrev-state").value,
-    sourceChannel: document.getElementById("devrev-source-channel").value.trim(),
-    subtype: document.getElementById("devrev-subtype").value.trim(),
-    createdDate: document.getElementById("devrev-created").value,
-    modifiedDate: document.getElementById("devrev-modified").value,
-  };
-}
-
-function reviewFilterPatch() {
-  const statuses = Array.from(
-    dom.statusChecks.querySelectorAll("[data-status-filter]")
-  )
-    .filter((box) => box.checked)
-    .map((box) => box.value);
-  return {
-    displayId: document.getElementById("reviews-display-id").value.trim().toUpperCase(),
-    statuses,
-    facet: dom.facet.value,
-    facetValue: dom.facetValue.disabled ? "" : dom.facetValue.value,
-    updatedAfter: document.getElementById("reviews-updated-after").value,
-    updatedBefore: document.getElementById("reviews-updated-before").value,
-    includeReversed: document.getElementById("reviews-include-reversed").checked,
+    executionId: document.getElementById("execution-id").value.trim(),
+    displayId: document.getElementById("execution-ticket-id").value.trim().toUpperCase(),
+    route: document.getElementById("execution-route").value,
+    runStatus: document.getElementById("execution-status").value,
+    reviewStatus: document.getElementById("execution-review-status").value,
   };
 }
 
@@ -327,91 +271,18 @@ function setFieldValue(node, value, force = false) {
 let lastFormGeneration = -1;
 
 /**
- * Reflect the state onto the controls, including what the grammar forbids.
- *
- * An exact identifier is a standalone mode, and the queue accepts at most one
- * facet. Both are enforced by the server; disabling the conflicting controls
- * here is what stops a reviewer discovering that through a 422.
+ * Reflect the in-memory ledger filters onto their controls.
  */
 function syncFilterControls(state) {
   const force = state.formGeneration !== lastFormGeneration;
   lastFormGeneration = state.formGeneration;
 
-  const devrev = state.filters.devrev;
-  setFieldValue(document.getElementById("devrev-ticket-id"), devrev.ticketId, force);
-  setFieldValue(document.getElementById("devrev-stage"), devrev.stage, force);
-  setFieldValue(document.getElementById("devrev-state"), devrev.state, force);
-  setFieldValue(document.getElementById("devrev-source-channel"), devrev.sourceChannel, force);
-  setFieldValue(document.getElementById("devrev-subtype"), devrev.subtype, force);
-  setFieldValue(document.getElementById("devrev-created"), devrev.createdDate, force);
-  setFieldValue(document.getElementById("devrev-modified"), devrev.modifiedDate, force);
-
-  const exactLive = devrev.ticketId !== "";
-  for (const id of [
-    "devrev-stage",
-    "devrev-state",
-    "devrev-source-channel",
-    "devrev-subtype",
-    "devrev-created",
-    "devrev-modified",
-  ]) {
-    const node = document.getElementById(id);
-    node.disabled = exactLive;
-    node.setAttribute("aria-describedby", "devrev-ticket-id-help");
-  }
-
-  const reviews = state.filters.reviews;
-  setFieldValue(document.getElementById("reviews-display-id"), reviews.displayId, force);
-  setFieldValue(document.getElementById("reviews-updated-after"), reviews.updatedAfter, force);
-  setFieldValue(document.getElementById("reviews-updated-before"), reviews.updatedBefore, force);
-  document.getElementById("reviews-include-reversed").checked = reviews.includeReversed;
-
-  const exactQueue = reviews.displayId !== "";
-  render.renderStatusChecks(dom.statusChecks, REVIEW_STATUSES, reviews.statuses, {
-    disabled: exactQueue,
-  });
-
-  setFieldValue(dom.facet, REVIEW_FACETS.includes(reviews.facet) ? reviews.facet : "", force);
-  const freeText = render.renderFacetValues(dom.facetValue, dom.facet.value);
-  if (!dom.facetValue.disabled) {
-    setFieldValue(dom.facetValue, reviews.facetValue, force);
-  }
-  // One facet at a time. A second one is a refusal on the server, so the rest of
-  // the list is visibly unavailable rather than discovered through a 422.
-  for (const option of Array.from(dom.facet.options)) {
-    const otherFacetChosen = dom.facet.value !== "" && option.value !== dom.facet.value;
-    option.disabled =
-      option.value !== "" && (otherFacetChosen || FREE_TEXT_FACETS.has(option.value));
-  }
-  dom.facetHelp.textContent = describeFacetHelp(dom.facet.value, freeText);
-
-  for (const id of [
-    "reviews-facet",
-    "reviews-facet-value",
-    "reviews-updated-after",
-    "reviews-updated-before",
-    "reviews-include-reversed",
-  ]) {
-    const node = document.getElementById(id);
-    if (exactQueue) {
-      node.disabled = true;
-    } else if (id !== "reviews-facet-value") {
-      node.disabled = false;
-    }
-  }
-}
-
-function describeFacetHelp(facet, freeText) {
-  if (facet === "") {
-    return (
-      "A status set plus at most one facet. Two facets match a free-text value " +
-      "and need a lookup control that is not approved yet."
-    );
-  }
-  if (freeText) {
-    return "This facet matches a free-text value, so it has no list to choose from.";
-  }
-  return "One facet at a time. Clear this one to choose another.";
+  const filters = state.executionFilters;
+  setFieldValue(document.getElementById("execution-id"), filters.executionId, force);
+  setFieldValue(document.getElementById("execution-ticket-id"), filters.displayId, force);
+  setFieldValue(document.getElementById("execution-route"), filters.route, force);
+  setFieldValue(document.getElementById("execution-status"), filters.runStatus, force);
+  setFieldValue(document.getElementById("execution-review-status"), filters.reviewStatus, force);
 }
 
 /**
@@ -426,9 +297,6 @@ function describeDisabledCapabilities(flags) {
   if (flags.remediation_enabled !== true) {
     unavailable.push("remediation batches");
   }
-  if (flags.import_export_enabled !== true) {
-    unavailable.push("spreadsheet import and export");
-  }
   if (unavailable.length === 0) {
     return "";
   }
@@ -440,19 +308,8 @@ function describeDisabledCapabilities(flags) {
 // ---------------------------------------------------------------------------
 
 function renderAll(state) {
-  const activeTab = state.mode === "devrev" ? "tab-devrev" : "tab-reviews";
-  for (const tab of dom.tabs) {
-    const selected = tab.dataset.mode === state.mode;
-    tab.setAttribute("aria-selected", selected ? "true" : "false");
-    tab.tabIndex = selected ? 0 : -1;
-  }
-  dom.panel.setAttribute("aria-labelledby", activeTab);
-  dom.devrevForm.hidden = state.mode !== "devrev";
-  dom.reviewsForm.hidden = state.mode !== "reviews";
   dom.caption.textContent =
-    state.mode === "devrev"
-      ? "Live tickets from the ticket system, with the durable review overlaid on each row."
-      : "The durable review queue, newest change first.";
+    "Authorized ticket-associated RAG invocations in stable ledger order.";
 
   const identity = state.session;
   dom.sessionEmail.textContent = identity?.email ?? "—";
@@ -476,7 +333,6 @@ function renderAll(state) {
   const tallies = pageTallies(state.rows);
   dom.kpi.unreviewed.textContent = `${tallies.unreviewed} on this page`;
   dom.kpi.lowRating.textContent = `${tallies.lowRating} on this page`;
-  dom.kpi.highSeverity.textContent = `${tallies.highSeverity} on this page`;
   dom.kpi.remediating.textContent = `${tallies.remediating} on this page`;
 
   render.renderChips(dom.activeFilters, activeFilters(state));
@@ -495,18 +351,14 @@ function renderAll(state) {
   dom.prev.disabled = !canGoBack(state) || paused;
   dom.next.disabled = state.nextCursor === null || paused;
   dom.position.textContent = `Page ${state.pageNumber}`;
-  for (const node of Object.values(dom.refresh)) {
-    node.disabled = paused;
-  }
+  dom.refresh.disabled = paused;
 
   const count = state.selectedIds.length;
   dom.bulkBar.dataset.selected = count > 0 ? "true" : "false";
   dom.bulkCount.textContent =
-    count === 0 ? "No tickets selected" : `${count} ticket${count === 1 ? "" : "s"} selected`;
-  const importable = state.rows.filter(
-    (row) => state.selectedIds.includes(row.displayId) && row.review === null
-  ).length;
-  dom.bulkImport.disabled = importable === 0 || !canCreateReview() || paused;
+    count === 0
+      ? "No executions selected"
+      : `${count} execution${count === 1 ? "" : "s"} selected`;
   dom.bulkClear.disabled = count === 0;
   dom.bulkSelectAll.disabled = state.rows.length === 0;
   const flags = state.session?.featureFlags ?? {};
@@ -523,12 +375,12 @@ function renderAll(state) {
     : !canCurateBatches(role)
       ? "Freezing a batch needs the remediator role."
       : batchable.length === 0
-        ? "Select rows that already have a review; a ticket with no review cannot be frozen."
+        ? "Select executions with a versioned review to create a remediation batch."
         : `${batchable.length} review${batchable.length === 1 ? "" : "s"} will be frozen at the version shown.`;
 
   detail.render(state);
 
-  const rowsOnPage = state.rows.map((row) => row.displayId);
+  const rowsOnPage = state.rows.map((row) => row.executionId);
   dom.selectAll.checked = rowsOnPage.length > 0 && rowsOnPage.every((id) => state.selectedIds.includes(id));
   dom.selectAll.indeterminate = !dom.selectAll.checked && state.selectedIds.length > 0;
 
@@ -548,13 +400,12 @@ function renderTable(state) {
   const unchanged =
     state.rows === rendered.rows &&
     state.phase === rendered.phase &&
-    state.mode === rendered.mode &&
     state.error === rendered.error &&
     role === rendered.role;
 
   if (unchanged) {
     for (const row of Array.from(dom.body.querySelectorAll('[data-row="ticket"]'))) {
-      const selected = state.selectedIds.includes(row.dataset.displayId);
+      const selected = state.selectedIds.includes(row.dataset.executionId);
       row.setAttribute("aria-selected", selected ? "true" : "false");
       const box = row.querySelector("[data-select]");
       if (box !== null) {
@@ -564,7 +415,7 @@ function renderTable(state) {
     return;
   }
 
-  rendered = { rows: state.rows, phase: state.phase, mode: state.mode, error: state.error, role };
+  rendered = { rows: state.rows, phase: state.phase, error: state.error, role };
 
   if (state.phase === "loading") {
     render.renderSkeletons(dom.body);
@@ -580,18 +431,14 @@ function renderTable(state) {
   }
   if (state.rows.length === 0 && state.phase === "ready") {
     render.renderStateRow(dom.body, {
-      title: "No tickets match these filters",
-      body:
-        state.mode === "devrev"
-          ? "Clear a filter, or check the exact identifier."
-          : "Nothing in the durable queue matches. A ticket appears here once it has been added.",
+      title: "No RAG executions match these filters",
+      body: "Clear a filter, or verify the execution and ticket identifiers.",
     });
     return;
   }
   render.renderRows(dom.body, state.rows, {
     selectedIds: state.selectedIds,
-    canCreateReview: canCreateReview(),
-    commentsAvailable: state.mode === "reviews",
+    commentsAvailable: true,
   });
 }
 
@@ -640,51 +487,12 @@ function syncLocation(state) {
 // Events
 // ---------------------------------------------------------------------------
 
-function openDetail(displayId, source) {
-  detail.open(displayId, { source });
+function openDetail(executionId, source) {
+  detail.open(executionId, { source });
 }
 
 function closeDetail() {
   detail.close();
-}
-
-async function importSelected(displayIds) {
-  if (!canCreateReview()) {
-    toast({
-      title: "Your role does not allow this",
-      body: "Creating a review needs the reviewer role.",
-      tone: "error",
-    });
-    return;
-  }
-  let created = 0;
-  const failures = [];
-  for (const displayId of displayIds) {
-    try {
-      await api.createReview(displayId);
-      created += 1;
-    } catch (error) {
-      if (error instanceof api.AbortedError) {
-        continue;
-      }
-      failures.push(error);
-      if (error.retryAfterS !== null && error.retryAfterS !== undefined) {
-        startCooldown(error.retryAfterS);
-        break;
-      }
-    }
-  }
-  if (created > 0) {
-    toast({
-      title: `Added ${created} ticket${created === 1 ? "" : "s"} to the review queue`,
-      tone: "info",
-    });
-  }
-  if (failures.length > 0) {
-    reportError(failures[0]);
-  }
-  store.dispatch({ type: "selection/clear" });
-  await load({ refresh: true });
 }
 
 /**
@@ -695,8 +503,8 @@ async function importSelected(displayIds) {
  * of them has since moved — so the reviewer needs to see the count *and* the
  * versions they are committing to before it goes, not a 412 afterwards.
  *
- * Rows without a durable review are named and skipped rather than failing the
- * request: a mixed selection meant the imported ones.
+ * Rows without a versioned review are named and skipped rather than failing the
+ * request: an execution stays visible even while its linked review is unavailable.
  */
 async function createBatchFromSelection() {
   const state = store.getState();
@@ -757,80 +565,35 @@ async function createBatchFromSelection() {
   }
 }
 
-function wireTabs() {
-  for (const tab of dom.tabs) {
-    tab.addEventListener("click", () => {
-      store.dispatch({ type: "mode/set", mode: tab.dataset.mode });
-      load();
-    });
-    tab.addEventListener("keydown", (event) => {
-      if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") {
-        return;
-      }
-      event.preventDefault();
-      const index = dom.tabs.indexOf(tab);
-      const next = dom.tabs[(index + (event.key === "ArrowRight" ? 1 : dom.tabs.length - 1)) % dom.tabs.length];
-      next.focus();
-      store.dispatch({ type: "mode/set", mode: next.dataset.mode });
-      load();
-    });
-  }
-}
-
 function wireFilters() {
-  const submitDevrev = () => {
-    store.dispatch({ type: "filters/patch", mode: "devrev", patch: devrevFilterPatch() });
+  const submit = () => {
+    store.dispatch({ type: "filters/patch", patch: executionFilterPatch() });
     load();
   };
-  const submitReviews = () => {
-    store.dispatch({ type: "filters/patch", mode: "reviews", patch: reviewFilterPatch() });
-    load();
-  };
-  const debouncedDevrev = debounce(submitDevrev, TEXT_DEBOUNCE_MS);
-  const debouncedReviews = debounce(submitReviews, TEXT_DEBOUNCE_MS);
+  const debouncedSubmit = debounce(submit, TEXT_DEBOUNCE_MS);
 
-  dom.devrevForm.addEventListener("submit", (event) => event.preventDefault());
-  dom.reviewsForm.addEventListener("submit", (event) => event.preventDefault());
+  dom.executionForm.addEventListener("submit", (event) => event.preventDefault());
 
   // Typing is debounced so a keystroke does not spend a request; a deliberate
   // choice from a list is submitted at once.
-  dom.devrevForm.addEventListener("input", (event) => {
+  dom.executionForm.addEventListener("input", (event) => {
     if (event.target.tagName === "INPUT") {
-      debouncedDevrev();
+      debouncedSubmit();
     }
   });
-  dom.devrevForm.addEventListener("change", (event) => {
+  dom.executionForm.addEventListener("change", (event) => {
     if (event.target.tagName === "SELECT") {
-      submitDevrev();
-    }
-  });
-  dom.reviewsForm.addEventListener("input", (event) => {
-    if (event.target.type === "search") {
-      debouncedReviews();
-    }
-  });
-  dom.reviewsForm.addEventListener("change", (event) => {
-    if (event.target.type !== "search") {
-      submitReviews();
+      submit();
     }
   });
 
-  for (const [mode, node] of Object.entries(dom.refresh)) {
-    node.addEventListener("click", () => {
-      if (store.getState().mode !== mode) {
-        store.dispatch({ type: "mode/set", mode });
-      }
-      load({ refresh: true });
-    });
-  }
+  dom.refresh.addEventListener("click", () => load({ refresh: true }));
 
-  for (const [mode, id] of [["devrev", "devrev-clear"], ["reviews", "reviews-clear"]]) {
-    document.getElementById(id).addEventListener("click", (event) => {
-      event.preventDefault();
-      store.dispatch({ type: "filters/clear", mode });
-      load();
-    });
-  }
+  document.getElementById("executions-clear").addEventListener("click", (event) => {
+    event.preventDefault();
+    store.dispatch({ type: "filters/clear" });
+    load();
+  });
 
   dom.activeFilters.addEventListener("click", (event) => {
     const control = event.target.closest("button");
@@ -839,7 +602,7 @@ function wireFilters() {
     }
     const state = store.getState();
     if (control.dataset.action === "clear-filters") {
-      store.dispatch({ type: "filters/clear", mode: state.mode });
+      store.dispatch({ type: "filters/clear" });
       load();
       return;
     }
@@ -847,23 +610,7 @@ function wireFilters() {
     if (field === undefined) {
       return;
     }
-    if (field === "statuses") {
-      const remaining = state.filters.reviews.statuses.filter(
-        (item) => item !== control.dataset.chipItem
-      );
-      store.dispatch({ type: "filters/patch", mode: "reviews", patch: { statuses: remaining } });
-    } else if (field === "facet") {
-      store.dispatch({
-        type: "filters/patch",
-        mode: "reviews",
-        patch: { facet: "", facetValue: "" },
-      });
-    } else if (field === "includeReversed") {
-      store.dispatch({ type: "filters/patch", mode: "reviews", patch: { includeReversed: false } });
-    } else {
-      const blank = field === "statuses" ? [] : "";
-      store.dispatch({ type: "filters/patch", mode: state.mode, patch: { [field]: blank } });
-    }
+    store.dispatch({ type: "filters/patch", patch: { [field]: "" } });
     load();
   });
 
@@ -872,8 +619,7 @@ function wireFilters() {
     dom.sheetToggle.setAttribute("aria-expanded", open ? "true" : "false");
     dom.filterForms.dataset.open = open ? "true" : "false";
     if (open) {
-      const form = store.getState().mode === "devrev" ? dom.devrevForm : dom.reviewsForm;
-      const first = form.querySelector("input, select");
+      const first = dom.executionForm.querySelector("input, select");
       if (first !== null) {
         first.focus();
       }
@@ -909,16 +655,14 @@ function wireTable() {
     const control = event.target.closest("button");
     if (control !== null) {
       event.stopPropagation();
-      if (control.dataset.action === "import") {
-        importSelected([control.dataset.displayId]);
-      } else if (control.dataset.action === "open") {
-        openDetail(control.dataset.displayId, control);
+      if (control.dataset.action === "open") {
+        openDetail(control.dataset.executionId, control);
       }
       return;
     }
     const row = event.target.closest('[data-row="ticket"]');
     if (row !== null) {
-      openDetail(row.dataset.displayId, row);
+      openDetail(row.dataset.executionId, row);
     }
   });
 
@@ -931,12 +675,12 @@ function wireTable() {
       return;
     }
     event.preventDefault();
-    openDetail(row.dataset.displayId, row);
+    openDetail(row.dataset.executionId, row);
   });
 
   dom.selectAll.addEventListener("change", () => {
     const state = store.getState();
-    const ids = state.rows.map((row) => row.displayId);
+    const ids = state.rows.map((row) => row.executionId);
     store.dispatch({
       type: "selection/set",
       ids: dom.selectAll.checked ? ids : [],
@@ -946,16 +690,9 @@ function wireTable() {
   dom.bulkClear.addEventListener("click", () => store.dispatch({ type: "selection/clear" }));
   dom.bulkSelectAll.addEventListener("click", () => {
     const state = store.getState();
-    const ids = state.rows.map((row) => row.displayId);
+    const ids = state.rows.map((row) => row.executionId);
     const all = ids.length > 0 && ids.every((id) => state.selectedIds.includes(id));
     store.dispatch({ type: "selection/set", ids: all ? [] : ids });
-  });
-  dom.bulkImport.addEventListener("click", () => {
-    const state = store.getState();
-    const targets = state.rows
-      .filter((row) => state.selectedIds.includes(row.displayId) && row.review === null)
-      .map((row) => row.displayId);
-    importSelected(targets);
   });
   dom.bulkRemediation.addEventListener("click", () => {
     createBatchFromSelection();
@@ -985,14 +722,12 @@ function wireTable() {
 function applyLocation() {
   const parsed = readLocation(globalThis.location.search);
   // A `/tickets/<id>` deep link is the same document; treat its path segment as
-  // the selection so an older shared link still lands on the right ticket. The
+  // the selected execution. The
   // segment is a selection and never a URL to fetch: it is upper-cased, bounded
   // by the store's own reader, and only ever interpolated into a fixed path.
   const segments = globalThis.location.pathname.split("/").filter((part) => part !== "");
-  const fromPath = segments.length > 1 ? decodeURIComponent(segments[1]).toUpperCase() : "";
-  store.dispatch({ type: "mode/set", mode: parsed.mode });
-  store.dispatch({ type: "filters/patch", mode: "devrev", patch: parsed.devrev, reset: true });
-  store.dispatch({ type: "filters/patch", mode: "reviews", patch: parsed.reviews, reset: true });
+  const fromPath = segments.length > 1 ? decodeURIComponent(segments[1]) : "";
+  store.dispatch({ type: "filters/patch", patch: parsed.executionFilters, reset: true });
   const selected = parsed.selected !== "" ? parsed.selected : fromPath;
   if (selected !== "") {
     detail.open(selected);
@@ -1023,7 +758,6 @@ async function boot() {
   });
 
   store.subscribe(renderAll);
-  wireTabs();
   wireFilters();
   wireTable();
 

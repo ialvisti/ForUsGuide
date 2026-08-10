@@ -272,6 +272,16 @@ def test_firestore_json_mirror_matches_all_terraform_indexes_and_ttls() -> None:
         (("state", "ASCENDING"), ("lease_expires_at", "ASCENDING")),
         (("state", "ASCENDING"), ("created_at", "ASCENDING")),
         (("enqueue_state", "ASCENDING"), ("created_at", "ASCENDING")),
+        (
+            ("state", "ASCENDING"),
+            ("next_attempt_at", "ASCENDING"),
+            ("__name__", "ASCENDING"),
+        ),
+        (
+            ("state", "ASCENDING"),
+            ("next_recovery_at", "ASCENDING"),
+            ("__name__", "ASCENDING"),
+        ),
     }
     # The ticket handler and the /tickets review console share this canonical
     # file but live in different named databases, and only the handler's
@@ -286,12 +296,13 @@ def test_firestore_json_mirror_matches_all_terraform_indexes_and_ttls() -> None:
         "ticket_rate_windows",
         "ticket_executions",
         "execution_logs",
+        "ticket_evaluation_outbox",
+        "ticket_rag_invocations",
     }
     console_collections = {
         "ticket_reviews",
         "ticket_console_cache",
         "devrev_message_cache",
-        "ticket_import_staging",
         "idempotency_keys",
     }
     declared_collections = {index["collectionGroup"] for index in mirror["indexes"]} | {
@@ -313,6 +324,8 @@ def test_firestore_json_mirror_matches_all_terraform_indexes_and_ttls() -> None:
         ("ticket_rate_windows", "expires_at"),
         ("ticket_executions", "expires_at"),
         ("execution_logs", "expires_at"),
+        ("ticket_evaluation_outbox", "expires_at"),
+        ("ticket_rag_invocations", "expires_at"),
     }
     mirrored_ttls = {
         (field["collectionGroup"], field["fieldPath"])
@@ -330,7 +343,6 @@ def test_firestore_json_mirror_matches_all_terraform_indexes_and_ttls() -> None:
     assert console_ttls == {
         ("ticket_console_cache", "expires_at"),
         ("devrev_message_cache", "expires_at"),
-        ("ticket_import_staging", "expires_at"),
         ("idempotency_keys", "expires_at"),
     }
     assert not any(
@@ -345,9 +357,14 @@ def test_firestore_json_mirror_matches_all_terraform_indexes_and_ttls() -> None:
         assert f'collection = "{collection}"' in firestore
         assert f'field      = "{field}"' in firestore
 
-    # state+__name__ is covered by Firestore's automatic state index, whose
-    # final key is __name__ ASC. Do not declare a redundant manual index.
-    assert all("__name__" not in pair for index in expected_indexes for pair in index)
+    # Due-retry/recovery range scans require deterministic document-name
+    # pagination after their timestamp. Simpler job queries keep relying on
+    # Firestore's automatic trailing name index.
+    assert sum(
+        pair == ("__name__", "ASCENDING")
+        for index in expected_indexes
+        for pair in index
+    ) == 2
 
 
 def test_infra_only_may_omit_an_image_but_services_fail_closed() -> None:

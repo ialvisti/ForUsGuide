@@ -96,10 +96,10 @@ sed -n '1,220p' /Users/ivanalvis/Desktop/better_devrev_search/devrev.js
 sed -n '1,130p' /Users/ivanalvis/Desktop/better_devrev_search/README.md
 ```
 
-Record in the ADR that structured-filter routing/error presentation may inform
-the implementation, but its browser PAT, incomplete cursor handling, and lack
-of detail/timeline/durable audit are explicitly rejected. Do not copy any
-credential or persisted browser-storage behavior.
+Record in the ADR that only its general error presentation may inform the
+implementation. Its DevRev discovery/list routing, browser PAT, incomplete
+cursor handling, and lack of detail/timeline/durable audit are explicitly
+rejected. Do not copy any credential or persisted browser-storage behavior.
 
 ## Files
 
@@ -107,9 +107,9 @@ Create:
 
 - `kb-rag-system/api/tickets_console_config.py`
 - `kb-rag-system/api/ticket_review_models.py`
+- `kb-rag-system/api/ticket_evaluation_models.py`
 - `kb-rag-system/tests/test_ticket_review_models.py`
-- `kb-rag-system/tests/fixtures/devrev/works_list_page_1.json`
-- `kb-rag-system/tests/fixtures/devrev/works_list_page_2.json`
+- `kb-rag-system/tests/test_ticket_evaluation_models.py`
 - `kb-rag-system/tests/fixtures/devrev/work_get_ticket.json`
 - `kb-rag-system/tests/fixtures/devrev/timeline_page_empty_with_cursor.json`
 - `kb-rag-system/tests/fixtures/devrev/timeline_page_final.json`
@@ -140,8 +140,10 @@ Tests must initially fail because the new modules do not exist. Cover:
 7. `ReviewPatch` has at least one allowed mutable field and rejects immutable identifiers/version timestamps in the body.
 8. `DevRevTicketSummary`, `DevRevTimelineEntry`, `EvidenceLink`, `AuditEvent`,
    `VerificationEvidence`, `ReviewResolution`, `RemediationBatch`,
-   `TicketImport`, and forward/backward cursor response envelopes round-trip
-   through JSON mode.
+   `TicketEvaluationEvent`, `TicketEvaluationRun`, and forward/backward cursor
+   response envelopes round-trip through JSON mode. New events require
+   `invocation_id`, `attempt`, and `lease_epoch`; the compatibility parser alone
+   accepts legacy `{job_id}:{inquiry_index}` IDs.
 9. `TicketConsoleSettings` defaults to disabled/local-safe behavior and never provides a token default.
 10. Production configuration rejects:
     - missing DevRev token reference/value at runtime;
@@ -154,9 +156,9 @@ Tests must initially fail because the new modules do not exist. Cover:
 12. `legacy_type` and `observation_type` serialize independently.
 13. `If-Match` helpers accept only quoted `"vN"` values and distinguish
     missing (`428`) from stale (`412`) at the API mapping layer.
-14. Review, remediation-batch, and import state transitions match their closed
-    tables; terminal review resolution requires structured verification or a
-    no-change reason.
+14. Review and remediation-batch transitions match their closed tables;
+    evaluation status/hydration enums are closed, and terminal review
+    resolution requires structured verification or a no-change reason.
 15. The staged-scope helper exits non-zero for one extra file and handles
     spaces/NUL-delimited Git paths.
 16. Durable `TicketReview` has no DevRev title field; a title containing a
@@ -192,7 +194,6 @@ Required types:
 - `RemediationTarget`
 - `CorrelationStatus`
 - `CorrelationTrust`
-- `ImportState`
 - `ReviewerRole` (`viewer | reviewer | remediator | admin | agent`)
 - `ReviewerIdentity`
 - `DevRevActor`
@@ -211,7 +212,9 @@ Required types:
 - `RemediationBatchItem` containing frozen `review_id` + `review_version`
 - `BatchStatus`, `BatchLease`, `BatchOutcome`
 - `RemediationBatch`
-- `ImportStatus`, `TicketImport`, `TicketImportRow`
+- `EvaluationStatus`, `HydrationStatus`, `DevRevAuthorizationStatus`
+  (`quarantined | authorized | denied`), `TicketEvaluationEvent`,
+  `TicketEvaluationRun`, `TicketEvaluationSummary`
 - `CursorPage[T]`
 - request/response envelopes needed by the master API table
 
@@ -247,7 +250,11 @@ Also encode and test:
 
 - the exact `RemediationBatch` lifecycle and lease/heartbeat invariants in the
   master plan;
-- the exact `TicketImport` lifecycle and version-checked reversal;
+- immutable invocation/evaluation identity for new records
+  (`{job_id}-e{lease_epoch}-a{attempt}:{inquiry_index}`), distinct identities
+  for real retries, canonical transport replay, and retryable hydration without
+  mutation of captured RAG evidence. Legacy `{job_id}:{inquiry_index}` records
+  remain readable only;
 - `assigned_reviewer` self-assignment/admin-reassignment rules separately from
   the authenticated audit actor;
 - a terminal review resolution transaction that accepts only a closed
@@ -299,14 +306,12 @@ TICKETS_DEVREV_PAGE_SIZE
 TICKETS_CACHE_TTL_S
 TICKETS_MESSAGE_CACHE_TTL_S
 TICKETS_IDEMPOTENCY_TTL_S
-TICKETS_IMPORT_STAGING_TTL_S
 TICKETS_REVIEW_RETENTION_DAYS
 TICKETS_AUDIT_RETENTION_DAYS
 TICKETS_RETENTION_JOB_ENABLED
 TICKETS_MAX_TIMELINE_ENTRIES
-TICKETS_MAX_CSV_BYTES
 TICKETS_MAX_JSON_BYTES
-TICKETS_MAX_CSV_ROWS
+TICKETS_MAX_EXECUTION_EVENT_BYTES
 TICKETS_MAX_BATCH_REVIEWS
 TICKETS_REMEDIATION_LEASE_S
 TICKETS_REMEDIATION_HEARTBEAT_S
@@ -373,7 +378,10 @@ Include at least:
 - dedicated named Firestore database, no direct human/agent access, and a
   read-only evidence broker for production `(default)`;
 - Firestore as structured review/audit store, not a blind raw mirror;
-- live DevRev list vs Firestore review queue;
+- immutable RAG execution ledger as the sole collection source, with DevRev
+  `works.get` enrichment only after persist-first quarantine; only successful
+  scope validation promotes a row to the authorized user-facing projection;
+- no file interchange or manual-add path;
 - no fabricated RAG provenance;
 - verified n8n/HMAC correlation contract and the explicit external-owner gate;
 - no webhook/Cloud Tasks in MVP;
@@ -423,8 +431,8 @@ use the `TKT-1234` range and `example.invalid`.
 - Clean-base ancestry was proven.
 - Strict models and transitions exist with focused tests.
 - Console settings are independent of main RAG startup.
-- Legacy sheet fields, remediation/import models, limits, ETags, CSRF, and
-  state machines are frozen before downstream work.
+- Execution/review/remediation models, limits, ETags, CSRF, and state machines
+  are frozen before downstream work.
 - All DevRev fixtures are synthetic and include the empty-page-with-cursor edge case.
 - ADR freezes architecture and non-goals.
 - No network, Firestore, Pinecone, GCP, or DevRev mutation occurred.
@@ -435,10 +443,10 @@ use the `TKT-1234` range and `example.invalid`.
 git -C "$IMPL_ROOT" add \
   kb-rag-system/api/tickets_console_config.py \
   kb-rag-system/api/ticket_review_models.py \
+  kb-rag-system/api/ticket_evaluation_models.py \
   kb-rag-system/tests/test_ticket_review_models.py \
+  kb-rag-system/tests/test_ticket_evaluation_models.py \
   kb-rag-system/tests/test_verify_staged_scope.py \
-  kb-rag-system/tests/fixtures/devrev/works_list_page_1.json \
-  kb-rag-system/tests/fixtures/devrev/works_list_page_2.json \
   kb-rag-system/tests/fixtures/devrev/work_get_ticket.json \
   kb-rag-system/tests/fixtures/devrev/timeline_page_empty_with_cursor.json \
   kb-rag-system/tests/fixtures/devrev/timeline_page_final.json \
@@ -447,10 +455,10 @@ git -C "$IMPL_ROOT" add \
 "$PYTHON_BIN" "$KBRAG_ROOT/scripts/verify_staged_scope.py" \
   --allow kb-rag-system/api/tickets_console_config.py \
   --allow kb-rag-system/api/ticket_review_models.py \
+  --allow kb-rag-system/api/ticket_evaluation_models.py \
   --allow kb-rag-system/tests/test_ticket_review_models.py \
+  --allow kb-rag-system/tests/test_ticket_evaluation_models.py \
   --allow kb-rag-system/tests/test_verify_staged_scope.py \
-  --allow kb-rag-system/tests/fixtures/devrev/works_list_page_1.json \
-  --allow kb-rag-system/tests/fixtures/devrev/works_list_page_2.json \
   --allow kb-rag-system/tests/fixtures/devrev/work_get_ticket.json \
   --allow kb-rag-system/tests/fixtures/devrev/timeline_page_empty_with_cursor.json \
   --allow kb-rag-system/tests/fixtures/devrev/timeline_page_final.json \

@@ -50,10 +50,7 @@ from api.ticket_review_models import (
     DEVREV_READ_TIMEOUT_S,
     EVIDENCE_BROKER_MAX_RESPONSE_BYTES,
     IDEMPOTENCY_TTL_S,
-    IMPORT_STAGING_TTL_S,
     MAX_BATCH_REVIEWS,
-    MAX_CSV_REQUEST_BYTES,
-    MAX_CSV_ROWS,
     MAX_JSON_REQUEST_BYTES,
     MAX_PAGE_SIZE,
     MESSAGE_CACHE_TTL_S,
@@ -366,16 +363,13 @@ class TicketConsoleSettings(BaseSettings):
     CACHE_TTL_S: int = CACHE_TTL_S
     MESSAGE_CACHE_TTL_S: int = MESSAGE_CACHE_TTL_S
     IDEMPOTENCY_TTL_S: int = IDEMPOTENCY_TTL_S
-    IMPORT_STAGING_TTL_S: int = IMPORT_STAGING_TTL_S
     REVIEW_RETENTION_DAYS: int = REVIEW_RETENTION_DAYS
     AUDIT_RETENTION_DAYS: int = AUDIT_RETENTION_DAYS
     RETENTION_JOB_ENABLED: bool = False
 
     # Request and payload bounds.
     MAX_TIMELINE_ENTRIES: int = DEVREV_MAX_ENTRIES
-    MAX_CSV_BYTES: int = MAX_CSV_REQUEST_BYTES
     MAX_JSON_BYTES: int = MAX_JSON_REQUEST_BYTES
-    MAX_CSV_ROWS: int = MAX_CSV_ROWS
     MAX_BATCH_REVIEWS: int = MAX_BATCH_REVIEWS
 
     # Remediation leases.
@@ -570,14 +564,11 @@ def _canonical_bound_errors(settings: TicketConsoleSettings) -> list[str]:
             DEVREV_MAX_RESPONSE_BYTES,
         ),
         ("MAX_TIMELINE_ENTRIES", settings.MAX_TIMELINE_ENTRIES, DEVREV_MAX_ENTRIES),
-        ("MAX_CSV_BYTES", settings.MAX_CSV_BYTES, MAX_CSV_REQUEST_BYTES),
         ("MAX_JSON_BYTES", settings.MAX_JSON_BYTES, MAX_JSON_REQUEST_BYTES),
-        ("MAX_CSV_ROWS", settings.MAX_CSV_ROWS, MAX_CSV_ROWS),
         ("MAX_BATCH_REVIEWS", settings.MAX_BATCH_REVIEWS, MAX_BATCH_REVIEWS),
         ("CACHE_TTL_S", settings.CACHE_TTL_S, CACHE_TTL_S),
         ("MESSAGE_CACHE_TTL_S", settings.MESSAGE_CACHE_TTL_S, MESSAGE_CACHE_TTL_S),
         ("IDEMPOTENCY_TTL_S", settings.IDEMPOTENCY_TTL_S, IDEMPOTENCY_TTL_S),
-        ("IMPORT_STAGING_TTL_S", settings.IMPORT_STAGING_TTL_S, IMPORT_STAGING_TTL_S),
         ("CSRF_TOKEN_TTL_S", settings.CSRF_TOKEN_TTL_S, CSRF_TOKEN_TTL_S),
         ("DEVREV_TIMEOUT_S", settings.DEVREV_TIMEOUT_S, DEVREV_READ_TIMEOUT_S),
         ("DEVREV_CONNECT_TIMEOUT_S", settings.DEVREV_CONNECT_TIMEOUT_S, DEVREV_CONNECT_TIMEOUT_S),
@@ -627,6 +618,7 @@ class EvidenceBrokerSettings(BaseSettings):
     # missing TICKETS_BROKER_ENVIRONMENT must refuse to start, not validate
     # clean with an empty keyring, audience, and caller allowlist.
     ENVIRONMENT: str = FAIL_CLOSED_ENVIRONMENT
+    GCP_PROJECT: str = ""
     FIRESTORE_DATABASE: str = ""
     CONSOLE_SERVICE_ACCOUNT: str = ""
     AUDIENCE: str = ""
@@ -655,6 +647,8 @@ def validate_evidence_broker_settings(
 
     strict = settings.ENVIRONMENT in STRICT_ENVIRONMENTS
     if strict:
+        if not settings.GCP_PROJECT.strip():
+            errors.append("GCP_PROJECT is required")
         if not settings.FIRESTORE_DATABASE.strip():
             errors.append("FIRESTORE_DATABASE is required")
         if not settings.CONSOLE_SERVICE_ACCOUNT.strip():

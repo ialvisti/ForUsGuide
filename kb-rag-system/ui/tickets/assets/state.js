@@ -17,8 +17,11 @@
  * against handing out a bearer-shaped token in a link.
  */
 
-/** The two data sources the console lists. */
-export const MODES = Object.freeze(["devrev", "reviews"]);
+/** Routes that represent a ticket-associated RAG execution. */
+export const EXECUTION_ROUTES = Object.freeze(["knowledge_question", "generate_response"]);
+
+/** Durable outcomes retained by the execution ledger. */
+export const RUN_STATUSES = Object.freeze(["succeeded", "partial", "failed", "timeout"]);
 
 /**
  * The queue's facet vocabulary, exactly as the server's grammar defines it.
@@ -132,7 +135,6 @@ export const FIELD_LIMITS = Object.freeze({
   legacy_type: 80,
   comments: 10000,
   expected_behavior: 10000,
-  legacy_reviewer_display_name: 200,
   verification_summary: 5000,
   no_change_reason: 1000,
   branch: 256,
@@ -179,7 +181,6 @@ export const EVALUATION_FIELDS = Object.freeze([
   "status",
   "remediation_target",
   "assigned_reviewer",
-  "legacy_reviewer_display_name",
   "resolution",
 ]);
 
@@ -188,42 +189,20 @@ export const EVALUATION_FIELDS = Object.freeze([
  * the URL, so it is declared once and read by both directions of the mapping.
  */
 const URL_FILTER_KEYS = Object.freeze([
-  "tab",
   "selected",
-  "ticket_id",
-  "stage",
-  "state",
-  "source_channel",
-  "subtype",
-  "created_date",
-  "modified_date",
+  "execution_id",
   "display_id",
-  "status",
-  "facet",
-  "facet_value",
-  "updated_after",
-  "updated_before",
-  "include_reversed",
+  "route",
+  "run_status",
+  "review_status",
 ]);
 
-const DEFAULT_DEVREV_FILTERS = Object.freeze({
-  ticketId: "",
-  stage: "",
-  state: "",
-  sourceChannel: "",
-  subtype: "",
-  createdDate: "",
-  modifiedDate: "",
-});
-
-const DEFAULT_REVIEW_FILTERS = Object.freeze({
+const DEFAULT_EXECUTION_FILTERS = Object.freeze({
+  executionId: "",
   displayId: "",
-  statuses: [],
-  facet: "",
-  facetValue: "",
-  updatedAfter: "",
-  updatedBefore: "",
-  includeReversed: false,
+  route: "",
+  runStatus: "",
+  reviewStatus: "",
 });
 
 export const DEFAULT_PAGE_SIZE = 25;
@@ -264,7 +243,7 @@ function emptyFeed() {
     pages: 0,
     partial: false,
     warnings: [],
-    diagnostics: [],
+    diagnostics: {},
     error: null,
   };
 }
@@ -276,6 +255,7 @@ function initialDetail() {
     error: null,
     ticket: null,
     review: null,
+    execution: null,
     evidence: null,
     version: null,
     partial: false,
@@ -301,7 +281,6 @@ function initialDetail() {
 
 export function initialState() {
   return {
-    mode: "devrev",
     phase: "idle",
     partial: false,
     stale: false,
@@ -317,10 +296,7 @@ export function initialState() {
     pageNumber: 1,
     selectedIds: [],
     selected: "",
-    filters: {
-      devrev: { ...DEFAULT_DEVREV_FILTERS },
-      reviews: { ...DEFAULT_REVIEW_FILTERS, statuses: [] },
-    },
+    executionFilters: { ...DEFAULT_EXECUTION_FILTERS },
     session: null,
     readiness: null,
     cooldownS: 0,
@@ -352,12 +328,8 @@ function resetPaging(state) {
 }
 
 /** Whether the current source hands back a backward cursor of its own. */
-export function hasServerBackwardPaging(mode) {
-  // The live ticket list seals a token per direction, so backward paging is the
-  // server's job there. The durable queue's token is the repository's own and is
-  // bound to endpoint and filters only — it has no direction, so the only honest
-  // way back is the stack of tokens this session has already used.
-  return mode === "devrev";
+export function hasServerBackwardPaging() {
+  return false;
 }
 
 export function reduce(state, action) {
@@ -368,29 +340,11 @@ export function reduce(state, action) {
     case "readiness/loaded":
       return { ...state, readiness: action.readiness };
 
-    case "mode/set": {
-      if (!MODES.includes(action.mode) || action.mode === state.mode) {
-        return state;
-      }
-      return resetPaging(
-        withoutSelection({
-          ...state,
-          mode: action.mode,
-          rows: [],
-          phase: "idle",
-          error: null,
-          formGeneration: state.formGeneration + 1,
-        })
-      );
-    }
-
     case "filters/patch": {
-      const current = state.filters[action.mode] ?? {};
-      const filters = { ...state.filters, [action.mode]: { ...current, ...action.patch } };
       return resetPaging(
         withoutSelection({
           ...state,
-          filters,
+          executionFilters: { ...state.executionFilters, ...action.patch },
           // `reset` marks a patch that did not come from the controls — reading
           // an address, say — so the controls must be rewritten from it.
           formGeneration: action.reset ? state.formGeneration + 1 : state.formGeneration,
@@ -399,14 +353,10 @@ export function reduce(state, action) {
     }
 
     case "filters/clear": {
-      const blank =
-        action.mode === "devrev"
-          ? { ...DEFAULT_DEVREV_FILTERS }
-          : { ...DEFAULT_REVIEW_FILTERS, statuses: [] };
       return resetPaging(
         withoutSelection({
           ...state,
-          filters: { ...state.filters, [action.mode]: blank },
+          executionFilters: { ...DEFAULT_EXECUTION_FILTERS },
           // An explicit clear is a command about these very fields, so it
           // overrides whichever one currently has focus.
           formGeneration: state.formGeneration + 1,
@@ -456,20 +406,6 @@ export function reduce(state, action) {
     }
 
     case "page/back": {
-      // Two sources, two mechanisms, for the reason described on
-      // `hasServerBackwardPaging`.
-      if (hasServerBackwardPaging(state.mode)) {
-        if (state.prevCursor === null) {
-          return state;
-        }
-        return withoutSelection({
-          ...state,
-          cursorStack: state.cursorStack.slice(0, -1),
-          cursor: state.prevCursor,
-          direction: "before",
-          pageNumber: Math.max(1, state.pageNumber - 1),
-        });
-      }
       if (state.cursorStack.length === 0) {
         return state;
       }
@@ -531,11 +467,12 @@ export function reduce(state, action) {
           error: null,
           ticket: action.ticket ?? null,
           review,
+          execution: action.execution ?? null,
           evidence: action.evidence ?? null,
           version: typeof review?.version === "number" ? review.version : null,
           partial: Boolean(action.partial),
           warnings: action.warnings ?? [],
-          diagnostics: action.diagnostics ?? [],
+          diagnostics: action.diagnostics ?? {},
         },
       };
     }
@@ -722,7 +659,7 @@ function firstOf(params, key) {
 }
 
 /**
- * Read mode, filters, and the selected display id out of a query string.
+ * Read run-ledger filters and the selected execution id out of a query string.
  *
  * Anything not in `URL_FILTER_KEYS` is ignored rather than trusted, so a forged
  * link cannot introduce a key the interface does not model. A forged link *can*
@@ -732,32 +669,18 @@ function firstOf(params, key) {
  */
 export function readLocation(search) {
   const params = new URLSearchParams(search);
-  const requested = params.get("tab");
-  const mode = MODES.includes(requested) ? requested : "devrev";
-  const statuses = params
-    .getAll("status")
-    .filter((value) => REVIEW_STATUSES.includes(value));
-  const facet = firstOf(params, "facet");
   return {
-    mode,
-    selected: firstOf(params, "selected").toUpperCase(),
-    devrev: {
-      ticketId: firstOf(params, "ticket_id").toUpperCase(),
-      stage: firstOf(params, "stage"),
-      state: firstOf(params, "state"),
-      sourceChannel: firstOf(params, "source_channel"),
-      subtype: firstOf(params, "subtype"),
-      createdDate: firstOf(params, "created_date"),
-      modifiedDate: firstOf(params, "modified_date"),
-    },
-    reviews: {
+    selected: firstOf(params, "selected"),
+    executionFilters: {
+      executionId: firstOf(params, "execution_id"),
       displayId: firstOf(params, "display_id").toUpperCase(),
-      statuses,
-      facet: REVIEW_FACETS.includes(facet) ? facet : "",
-      facetValue: firstOf(params, "facet_value"),
-      updatedAfter: firstOf(params, "updated_after"),
-      updatedBefore: firstOf(params, "updated_before"),
-      includeReversed: params.get("include_reversed") === "true",
+      route: EXECUTION_ROUTES.includes(firstOf(params, "route")) ? firstOf(params, "route") : "",
+      runStatus: RUN_STATUSES.includes(firstOf(params, "run_status"))
+        ? firstOf(params, "run_status")
+        : "",
+      reviewStatus: REVIEW_STATUSES.includes(firstOf(params, "review_status"))
+        ? firstOf(params, "review_status")
+        : "",
     },
   };
 }
@@ -770,40 +693,21 @@ export function readLocation(search) {
  */
 export function writeLocation(state) {
   const params = new URLSearchParams();
-  if (state.mode !== "devrev") {
-    params.set("tab", state.mode);
-  }
   if (state.selected !== "") {
     params.set("selected", state.selected);
   }
-  const devrev = state.filters.devrev;
+  const filters = state.executionFilters;
   const pairs = [
-    ["ticket_id", devrev.ticketId],
-    ["stage", devrev.stage],
-    ["state", devrev.state],
-    ["source_channel", devrev.sourceChannel],
-    ["subtype", devrev.subtype],
-    ["created_date", devrev.createdDate],
-    ["modified_date", devrev.modifiedDate],
+    ["execution_id", filters.executionId],
+    ["display_id", filters.displayId],
+    ["route", filters.route],
+    ["run_status", filters.runStatus],
+    ["review_status", filters.reviewStatus],
   ];
-  const reviews = state.filters.reviews;
-  pairs.push(
-    ["display_id", reviews.displayId],
-    ["facet", reviews.facet],
-    ["facet_value", reviews.facetValue],
-    ["updated_after", reviews.updatedAfter],
-    ["updated_before", reviews.updatedBefore]
-  );
   for (const [key, value] of pairs) {
     if (value !== "" && value !== null && value !== undefined) {
       params.set(key, value);
     }
-  }
-  for (const status of reviews.statuses) {
-    params.append("status", status);
-  }
-  if (reviews.includeReversed) {
-    params.set("include_reversed", "true");
   }
   for (const key of params.keys()) {
     if (!URL_FILTER_KEYS.includes(key)) {
@@ -816,50 +720,24 @@ export function writeLocation(state) {
 
 /** Whether a previous page is reachable from where the store currently is. */
 export function canGoBack(state) {
-  return hasServerBackwardPaging(state.mode)
-    ? state.prevCursor !== null
-    : state.cursorStack.length > 0;
+  return state.cursorStack.length > 0;
 }
 
 /** The filters that are currently active, as label/value pairs for the chips. */
 export function activeFilters(state) {
   const chips = [];
-  if (state.mode === "devrev") {
-    const filters = state.filters.devrev;
-    const named = [
-      ["Ticket ID", "ticketId", filters.ticketId],
-      ["Stage", "stage", filters.stage],
-      ["State", "state", filters.state],
-      ["Source channel", "sourceChannel", filters.sourceChannel],
-      ["Subtype", "subtype", filters.subtype],
-      ["Created", "createdDate", filters.createdDate],
-      ["Modified", "modifiedDate", filters.modifiedDate],
-    ];
-    for (const [label, field, value] of named) {
-      if (value !== "") {
-        chips.push({ label, field, value });
-      }
+  const filters = state.executionFilters;
+  const named = [
+    ["Execution", "executionId", filters.executionId],
+    ["Ticket ID", "displayId", filters.displayId],
+    ["Route", "route", filters.route],
+    ["Run status", "runStatus", filters.runStatus],
+    ["Review status", "reviewStatus", filters.reviewStatus],
+  ];
+  for (const [label, field, value] of named) {
+    if (value !== "") {
+      chips.push({ label, field, value });
     }
-    return chips;
-  }
-  const filters = state.filters.reviews;
-  if (filters.displayId !== "") {
-    chips.push({ label: "Ticket ID", field: "displayId", value: filters.displayId });
-  }
-  for (const status of filters.statuses) {
-    chips.push({ label: "Status", field: "statuses", value: status, item: status });
-  }
-  if (filters.facet !== "" && filters.facetValue !== "") {
-    chips.push({ label: filters.facet, field: "facet", value: filters.facetValue });
-  }
-  if (filters.updatedAfter !== "") {
-    chips.push({ label: "Updated from", field: "updatedAfter", value: filters.updatedAfter });
-  }
-  if (filters.updatedBefore !== "") {
-    chips.push({ label: "Updated to", field: "updatedBefore", value: filters.updatedBefore });
-  }
-  if (filters.includeReversed) {
-    chips.push({ label: "Reversed imports", field: "includeReversed", value: "included" });
   }
   return chips;
 }
@@ -884,7 +762,6 @@ const SAVED_VALUE_PATHS = Object.freeze({
   severity: ["severity"],
   status: ["status"],
   remediation_target: ["remediation_target"],
-  legacy_reviewer_display_name: ["legacy_reviewer_display_name"],
   outcome: ["resolution", "outcome"],
   verification_summary: ["resolution", "verification_summary"],
   no_change_reason: ["resolution", "no_change_reason"],
@@ -1017,28 +894,22 @@ export function feedIsComplete(feed) {
 export function pageTallies(rows) {
   let unreviewed = 0;
   let lowRating = 0;
-  let highSeverity = 0;
   let remediating = 0;
   for (const row of rows) {
     const review = row.review;
     if (review === null || review === undefined) {
       unreviewed += 1;
-      continue;
-    }
-    if (review.status === "unreviewed") {
+    } else if (review.status === "unreviewed") {
       unreviewed += 1;
     }
-    if (typeof review.rating === "number" && review.rating <= 2) {
+    if (["failed", "partial", "timeout"].includes(row.runStatus)) {
       lowRating += 1;
     }
-    if (review.severity === "high" || review.severity === "critical") {
-      highSeverity += 1;
-    }
-    if (ACTIVE_REMEDIATION_STATUSES.includes(review.status)) {
+    if (ACTIVE_REMEDIATION_STATUSES.includes(review?.status)) {
       remediating += 1;
     }
   }
-  return { unreviewed, lowRating, highSeverity, remediating };
+  return { unreviewed, lowRating, remediating };
 }
 
 // ---------------------------------------------------------------------------
@@ -1129,16 +1000,16 @@ export function canCurateBatches(role) {
 /**
  * The selected rows that can actually be frozen, as `{reviewId, reviewVersion}`.
  *
- * A row with no durable review is skipped rather than rejected: a reviewer who
- * selected a mix of imported and unimported tickets meant the imported ones, and
- * refusing the whole selection would just make them do it twice.
+ * A row with no durable review is skipped rather than rejected. This can only be
+ * a transient or historical inconsistency now that RAG ingestion creates the
+ * review; the browser has no path that creates or imports one.
  */
 export function batchableSelection(rows, selectedIds) {
   const chosen = new Set(selectedIds);
   const refs = [];
   const skipped = [];
   for (const row of rows) {
-    if (!chosen.has(row.displayId)) {
+    if (!chosen.has(row.executionId)) {
       continue;
     }
     const reviewId = row.review?.review_id ?? null;

@@ -7,6 +7,7 @@ Pydantic BaseSettings reads env vars automatically — no os.getenv needed.
 
 import logging
 import math
+import re
 from typing import List
 from urllib.parse import urlsplit
 from pydantic_settings import BaseSettings
@@ -191,6 +192,18 @@ class Settings(BaseSettings):
     TICKET_WORKER_AUDIENCE: str = ""
     TICKET_WORKER_SERVICE_ACCOUNT: str = ""  # SA que firma el OIDC de Cloud Tasks
     TICKET_WORKER_REQUIRE_OIDC: bool = True
+    # RAG execution ledger delivery. Empty triple keeps the publisher disabled
+    # for backward-compatible local/rollout operation; once any identity or
+    # destination field is set, all three are required fail-closed.
+    TICKET_EVALUATION_PUBLISH_ENABLED: bool = False
+    TICKET_EVALUATION_INGEST_URL: str = ""
+    TICKET_EVALUATION_INGEST_AUDIENCE: str = ""
+    TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT: str = ""
+    TICKET_EVALUATION_PUBLISH_TIMEOUT_S: float = 10.0
+    TICKET_EVALUATION_PUBLISH_BATCH_SIZE: int = 25
+    # TTL begins only after receiver acknowledgement. Pending/retry/dead_letter
+    # remain durable; dead letters require an explicit audited manual replay.
+    TICKET_EVALUATION_OUTBOX_RETENTION_S: int = 86_400
     # v1 adapter: espera corta para poder responder 200 inline en rutas rápidas
     # ya terminadas; si el job sigue vivo al vencer, responde 202 + poll.
     TICKET_V1_INLINE_WAIT_S: float = 3.0
@@ -336,6 +349,71 @@ def validate_settings() -> bool:
             errors.append("ForUsBots max wait debe caber en inquiry budget")
         if settings.FORUSBOTS_POLL_BACKOFF < 1:
             errors.append("ForUsBots poll backoff debe ser >= 1")
+
+    evaluation_identity = {
+        "TICKET_EVALUATION_INGEST_URL": settings.TICKET_EVALUATION_INGEST_URL,
+        "TICKET_EVALUATION_INGEST_AUDIENCE": (
+            settings.TICKET_EVALUATION_INGEST_AUDIENCE
+        ),
+        "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT": (
+            settings.TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT
+        ),
+    }
+    if any(evaluation_identity.values()) and not \
+            settings.TICKET_EVALUATION_PUBLISH_ENABLED:
+        errors.append(
+            "TICKET_EVALUATION_PUBLISH_ENABLED debe ser true cuando se "
+            "configura identidad o destino de evaluation publisher"
+        )
+    if settings.TICKET_EVALUATION_PUBLISH_ENABLED or any(
+        evaluation_identity.values()
+    ):
+        for field_name, value in evaluation_identity.items():
+            if not isinstance(value, str) or not value.strip():
+                errors.append(
+                    f"{field_name} es obligatorio al activar evaluation publisher"
+                )
+        if settings.TICKET_EVALUATION_INGEST_URL and not _is_canonical_https_origin(
+            settings.TICKET_EVALUATION_INGEST_URL
+        ):
+            errors.append(
+                "TICKET_EVALUATION_INGEST_URL debe ser un origen HTTPS canónico"
+            )
+        if settings.TICKET_EVALUATION_INGEST_AUDIENCE and not \
+                _is_canonical_https_origin(
+                    settings.TICKET_EVALUATION_INGEST_AUDIENCE
+                ):
+            errors.append(
+                "TICKET_EVALUATION_INGEST_AUDIENCE debe ser un origen HTTPS canónico"
+            )
+        publisher_sa = settings.TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT
+        if publisher_sa and re.fullmatch(
+            r"[A-Za-z0-9][A-Za-z0-9._-]{0,252}@"
+            r"[A-Za-z0-9.-]+\.iam\.gserviceaccount\.com",
+            publisher_sa,
+        ) is None:
+            errors.append(
+                "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT debe ser un email "
+                "de service account"
+            )
+    if not _finite_positive(settings.TICKET_EVALUATION_PUBLISH_TIMEOUT_S) or \
+            not 0.1 <= float(settings.TICKET_EVALUATION_PUBLISH_TIMEOUT_S) <= 60:
+        errors.append(
+            "TICKET_EVALUATION_PUBLISH_TIMEOUT_S debe estar entre 0.1 y 60"
+        )
+    evaluation_batch = settings.TICKET_EVALUATION_PUBLISH_BATCH_SIZE
+    if isinstance(evaluation_batch, bool) or not isinstance(evaluation_batch, int) \
+            or not 1 <= evaluation_batch <= 100:
+        errors.append(
+            "TICKET_EVALUATION_PUBLISH_BATCH_SIZE debe estar entre 1 y 100"
+        )
+    evaluation_retention = settings.TICKET_EVALUATION_OUTBOX_RETENTION_S
+    if isinstance(evaluation_retention, bool) \
+            or not isinstance(evaluation_retention, int) \
+            or not 3_600 <= evaluation_retention <= 604_800:
+        errors.append(
+            "TICKET_EVALUATION_OUTBOX_RETENTION_S debe estar entre 3600 y 604800"
+        )
 
     valid_environments = {"development", "staging", "production"}
     if settings.ENVIRONMENT not in valid_environments:

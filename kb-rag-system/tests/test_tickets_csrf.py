@@ -33,7 +33,6 @@ from api.tickets_csrf import (
     CSRF_HEADER,
     CSRF_TOKEN_VERSION,
     CURSOR_HEADER,
-    CSV_CONTENT_TYPE,
     FETCH_SITE_HEADER,
     IDEMPOTENCY_HEADER,
     JSON_CONTENT_TYPE,
@@ -344,16 +343,6 @@ class TestUnsafeRequestMatrix:
     def test_a_non_utf8_charset_is_rejected(self):
         with pytest.raises(ContentTypeRejected):
             _check(_headers(**{"Content-Type": "application/json; charset=iso-8859-1"}))
-
-    def test_csv_import_may_opt_into_text_csv(self):
-        assert _check(
-            _headers(**{"Content-Type": CSV_CONTENT_TYPE}),
-            expected_content_type=CSV_CONTENT_TYPE,
-        )
-
-    def test_json_is_still_refused_where_csv_is_required(self):
-        with pytest.raises(ContentTypeRejected):
-            _check(expected_content_type=CSV_CONTENT_TYPE)
 
     def test_missing_csrf_token_is_rejected(self):
         with pytest.raises(CsrfTokenRejected):
@@ -767,4 +756,3 @@ class TestPolicyFromSettings:
         assert ORIGIN_HEADER == "Origin"
         assert FETCH_SITE_HEADER == "Sec-Fetch-Site"
         assert JSON_CONTENT_TYPE == "application/json"
-        assert CSV_CONTENT_TYPE == "text/csv"

@@ -32,7 +32,7 @@ import logging
 import time
 import uuid
 from datetime import datetime
-from typing import Callable, Dict, Optional, Protocol, Sequence
+from typing import Any, Callable, Dict, Optional, Protocol, Sequence
 
 from api import metrics as ticket_metrics
 
@@ -68,6 +68,14 @@ class ReconcilerQueue(Protocol):
     async def aclose(self) -> None: ...
 
 
+class EvaluationPublisher(Protocol):
+    async def publish_pending(self, *, batch_size: int) -> Dict[str, int]: ...
+
+    async def retry_due_hydrations(self, *, limit: int) -> Dict[str, int]: ...
+
+    async def aclose(self) -> None: ...
+
+
 class TicketReconciler:
 
     def __init__(
@@ -78,12 +86,22 @@ class TicketReconciler:
         batch_size: int = DEFAULT_BATCH_SIZE,
         owner: Optional[str] = None,
         metrics_hook: Optional[Callable[..., None]] = None,
+        evaluation_publisher: Optional[EvaluationPublisher] = None,
+        evaluation_batch_size: Optional[int] = None,
     ) -> None:
         self.repo = repo
         self.queue = queue
         self.batch_size = batch_size
         self.owner = owner or f"reconciler-{uuid.uuid4().hex[:10]}"
         self._metrics_hook = metrics_hook
+        self.evaluation_publisher = evaluation_publisher
+        self.evaluation_batch_size = (
+            batch_size if evaluation_batch_size is None
+            else evaluation_batch_size
+        )
+        if isinstance(self.evaluation_batch_size, bool) or not \
+                1 <= self.evaluation_batch_size <= 100:
+            raise ValueError("evaluation batch size must be between 1 and 100")
 
     def _metric(self, name: str, **labels: int) -> None:
         if self._metrics_hook is not None:
@@ -124,10 +142,35 @@ class TicketReconciler:
     async def run_once(self) -> Dict[str, int]:
         """Un lote acotado. Devuelve conteos sanitizados por categoría."""
         started_at = _monotonic()
-        counts = {"scanned": 0, "requeued_outbox": 0, "fenced_leases": 0,
-                  "deadline_terminalized": 0, "payload_expired": 0,
-                  "skipped_locked": 0, "errors": 0}
-        docs = await self.repo.scan_control_docs(limit=self.batch_size)
+        job_count_keys = (
+            "scanned", "requeued_outbox", "fenced_leases",
+            "deadline_terminalized", "payload_expired", "skipped_locked",
+            "errors",
+        )
+        evaluation_count_keys = (
+            "rag_invocations_scanned",
+            "rag_invocations_recovered",
+            "rag_invocations_rescheduled",
+            "rag_invocation_errors",
+            "evaluation_scanned",
+            "evaluation_delivered",
+            "evaluation_retried",
+            "evaluation_rejected",
+            "evaluation_errors",
+            "evaluation_hydration_attempted",
+            "evaluation_hydration_succeeded",
+            "evaluation_hydration_errors",
+        )
+        counts = {key: 0 for key in job_count_keys}
+        counts.update({key: 0 for key in evaluation_count_keys})
+        try:
+            docs = await self.repo.scan_control_docs(limit=self.batch_size)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - evaluation phases remain independent
+            docs = []
+            counts["errors"] += 1
+            logger.error("reconciler failed scanning ticket jobs")
         now = utcnow()
         for job_id, control in docs:
             counts["scanned"] += 1
@@ -238,7 +281,80 @@ class TicketReconciler:
             except Exception:  # noqa: BLE001
                 counts["errors"] += 1
                 logger.error("reconciler falló reparando un ticket job")
-        self._metric("ticket_reconciler_run", **counts)
+
+        # A provider call can finish immediately before a process crash.  Its
+        # pre-call journal intent survives independently of the job payload;
+        # recover it before publishing the outbox so this same tick can ship
+        # an explicit answer-less failure to the evaluation platform.
+        try:
+            due_invocations = await self.repo.scan_due_rag_invocations(
+                limit=self.evaluation_batch_size,
+                observed_at=now,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - later ticks retry the journal
+            due_invocations = []
+            counts["rag_invocation_errors"] += 1
+            logger.error("RAG invocation journal scan failed")
+        for invocation_id, _invocation in due_invocations:
+            counts["rag_invocations_scanned"] += 1
+            try:
+                recovered = await self.repo.recover_abandoned_rag_invocation(
+                    invocation_id,
+                    observed_at=now,
+                )
+                if recovered is None:
+                    counts["rag_invocations_rescheduled"] += 1
+                elif recovered.get("state") == "recovered":
+                    counts["rag_invocations_recovered"] += 1
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - next tick retries the intent
+                counts["rag_invocation_errors"] += 1
+                logger.error("RAG invocation recovery failed")
+        if self.evaluation_publisher is not None:
+            try:
+                evaluation_counts = await self.evaluation_publisher.publish_pending(
+                    batch_size=self.evaluation_batch_size,
+                )
+                for key in (
+                    "evaluation_scanned",
+                    "evaluation_delivered",
+                    "evaluation_retried",
+                    "evaluation_rejected",
+                    "evaluation_errors",
+                ):
+                    counts[key] = int(evaluation_counts.get(key, 0))
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - next Run Job retries the outbox
+                counts["evaluation_errors"] += 1
+                logger.error("evaluation outbox publication failed")
+            try:
+                hydration_counts = (
+                    await self.evaluation_publisher.retry_due_hydrations(
+                        limit=self.evaluation_batch_size,
+                    )
+                )
+                for key in (
+                    "evaluation_hydration_attempted",
+                    "evaluation_hydration_succeeded",
+                    "evaluation_hydration_errors",
+                ):
+                    counts[key] = int(hydration_counts.get(key, 0))
+            except asyncio.CancelledError:
+                raise
+            except Exception:  # noqa: BLE001 - next Run Job retries hydration
+                counts["evaluation_hydration_errors"] += 1
+                logger.error("evaluation hydration retry failed")
+        self._metric(
+            "ticket_reconciler_run",
+            **{
+                key: counts[key]
+                for key in (*job_count_keys, *evaluation_count_keys)
+            },
+        )
         await self._emit_active_gauges(utcnow())
         try:
             ticket_metrics.emit(
@@ -286,7 +402,32 @@ class TicketReconciler:
         )
 
 
-def _build_from_settings() -> tuple[TicketJobRepository, ReconcilerQueue]:
+def _build_evaluation_publisher(
+    repo: TicketJobRepository,
+    configured: Any,
+) -> Optional[EvaluationPublisher]:
+    if not configured.TICKET_EVALUATION_PUBLISH_ENABLED:
+        return None
+    from data_pipeline.ticket_evaluation_publisher import (
+        TicketEvaluationPublisher,
+    )
+
+    return TicketEvaluationPublisher(
+        repo,
+        base_url=configured.TICKET_EVALUATION_INGEST_URL,
+        audience=configured.TICKET_EVALUATION_INGEST_AUDIENCE,
+        service_account=(
+            configured.TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT
+        ),
+        timeout_s=configured.TICKET_EVALUATION_PUBLISH_TIMEOUT_S,
+    )
+
+
+def _build_from_settings() -> tuple[
+    TicketJobRepository,
+    ReconcilerQueue,
+    Optional[EvaluationPublisher],
+]:
     """Construcción para el Run Job batch (APP_ROLE=reconciler). No inicia
     Uvicorn ni sirve endpoints."""
     from api.config import settings, validate_settings
@@ -310,6 +451,9 @@ def _build_from_settings() -> tuple[TicketJobRepository, ReconcilerQueue]:
         retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
         max_outstanding=settings.TICKET_MAX_OUTSTANDING_JOBS,
         rate_limit_per_minute=settings.RATE_LIMIT_HANDLE_TICKET,
+        evaluation_outbox_retention_s=(
+            settings.TICKET_EVALUATION_OUTBOX_RETENTION_S
+        ),
     )
     queue = CloudTasksTicketQueue(
         project=settings.GCP_PROJECT,
@@ -322,7 +466,17 @@ def _build_from_settings() -> tuple[TicketJobRepository, ReconcilerQueue]:
         generation_bumper=None,
     )
     queue._generation_bumper = repo.bump_enqueue_generation
-    return repo, queue
+    publisher = _build_evaluation_publisher(repo, settings)
+    return repo, queue, publisher
+
+
+def _reconciler_exit_code(counts: Dict[str, int]) -> int:
+    return 0 if (
+        int(counts.get("errors", 0)) == 0
+        and int(counts.get("rag_invocation_errors", 0)) == 0
+        and int(counts.get("evaluation_errors", 0)) == 0
+        and int(counts.get("evaluation_hydration_errors", 0)) == 0
+    ) else 1
 
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
@@ -334,16 +488,26 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parser.parse_args(argv)
 
     logging.basicConfig(level=logging.INFO)
-    repo, queue = _build_from_settings()
-    reconciler = TicketReconciler(repo, queue, batch_size=args.batch_size)
+    repo, queue, publisher = _build_from_settings()
+    from api.config import settings
+
+    reconciler = TicketReconciler(
+        repo,
+        queue,
+        batch_size=args.batch_size,
+        evaluation_publisher=publisher,
+        evaluation_batch_size=settings.TICKET_EVALUATION_PUBLISH_BATCH_SIZE,
+    )
 
     async def _run() -> int:
         try:
             counts = await reconciler.run_once()
             # exit 0 sólo si completó el lote o no había trabajo
-            return 0 if counts["errors"] == 0 else 1
+            return _reconciler_exit_code(counts)
         finally:
             await queue.aclose()
+            if publisher is not None:
+                await publisher.aclose()
 
     return asyncio.run(_run())
 

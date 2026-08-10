@@ -63,31 +63,25 @@
 </header>
 
 <main id="tickets-main">
-  <h1>Ticket review</h1>
+  <h1>RAG ticket evaluations</h1>
 
   <section class="kpi-section" aria-labelledby="kpi-heading">
-    <h2 id="kpi-heading">Queue indicators</h2>
+    <h2 id="kpi-heading">Execution indicators</h2>
     <p class="kpi-note" id="kpi-note">
-      The administrative API returns bounded pages and exposes no aggregate
-      count, so no global total can be shown honestly yet. Each indicator shows
-      an em dash for the global figure and, separately, a count that is
-      explicitly scoped to the page you are looking at.
+      The administrative API returns bounded pages and no global aggregate.
+      Each indicator therefore keeps the global figure blank and states the
+      count for the current page separately.
     </p>
     <ul class="kpi-strip" id="kpi-strip">
       <li class="kpi">
-        <p class="kpi-label">Unreviewed</p>
+        <p class="kpi-label">Unreviewed executions</p>
         <p class="kpi-value" id="kpi-unreviewed-value" aria-describedby="kpi-note">&mdash;</p>
         <p class="kpi-scope" id="kpi-unreviewed-scope">0 on this page</p>
       </li>
       <li class="kpi">
-        <p class="kpi-label">Rating 1&ndash;2</p>
+        <p class="kpi-label">Failed or partial RAG</p>
         <p class="kpi-value" id="kpi-low-rating-value" aria-describedby="kpi-note">&mdash;</p>
         <p class="kpi-scope" id="kpi-low-rating-scope">0 on this page</p>
-      </li>
-      <li class="kpi">
-        <p class="kpi-label">High/Critical</p>
-        <p class="kpi-value" id="kpi-severity-value" aria-describedby="kpi-note">&mdash;</p>
-        <p class="kpi-scope" id="kpi-severity-scope">0 on this page</p>
       </li>
       <li class="kpi">
         <p class="kpi-label">Active remediation</p>
@@ -97,22 +91,12 @@
     </ul>
   </section>
 
-  <h2 id="tabs-heading">Ticket sources</h2>
-  <!--
-    Two tabs, one panel. The panel's whole contents are re-rendered on a tab
-    change and its `aria-labelledby` follows the selected tab, so duplicating an
-    eleven-column table, a filter form set, and a bulk bar would only create two
-    places for the same bug to live.
-  -->
-  <div class="tablist" role="tablist" aria-labelledby="tabs-heading">
-    <button type="button" role="tab" id="tab-devrev" data-mode="devrev"
-            aria-controls="tickets-panel" aria-selected="true">All DevRev tickets</button>
-    <button type="button" role="tab" id="tab-reviews" data-mode="reviews"
-            aria-controls="tickets-panel" aria-selected="false" tabindex="-1">Review queue</button>
-  </div>
-
-  <section class="panel" id="tickets-panel" role="tabpanel"
-           aria-labelledby="tab-devrev" tabindex="0">
+  <section class="panel" id="execution-queue" aria-labelledby="queue-heading">
+    <h2 id="queue-heading">RAG execution queue</h2>
+    <p>
+      Every row was created by a ticket-associated RAG route. DevRev adds ticket
+      context after the run is durable and cannot add a row by itself.
+    </p>
 
     <h3 id="filters-heading">Filters</h3>
     <button type="button" class="sheet-toggle" id="filter-sheet-toggle"
@@ -123,161 +107,66 @@
 
     <div class="filter-forms" id="filter-forms" aria-labelledby="filters-heading">
 
-      <form class="toolbar" id="filters-devrev" novalidate>
+      <form class="toolbar" id="filters-executions" novalidate>
         <div class="field">
-          <label for="devrev-ticket-id">Exact ticket ID</label>
-          <input type="search" id="devrev-ticket-id" name="ticket_id" autocomplete="off"
-                 maxlength="64" placeholder="Exact ticket ID"
-                 aria-describedby="devrev-ticket-id-help">
-          <p class="field-help" id="devrev-ticket-id-help">
-            Resolved on its own; not combinable with the filters below.
-          </p>
+          <label for="execution-id">Exact execution ID</label>
+          <input type="search" id="execution-id" name="execution_id" autocomplete="off"
+                 maxlength="160" placeholder="job-id:inquiry-index">
         </div>
-
         <div class="field">
-          <label for="devrev-stage">Stage</label>
-          <input type="search" id="devrev-stage" name="stage" autocomplete="off"
-                 maxlength="80" placeholder="Exact stage name">
+          <label for="execution-ticket-id">Exact ticket ID</label>
+          <input type="search" id="execution-ticket-id" name="devrev_display_id"
+                 autocomplete="off" maxlength="64" placeholder="Exact ticket ID">
         </div>
-
         <div class="field">
-          <label for="devrev-state">State</label>
-          <select id="devrev-state" name="state">
-            <option value="">Any state</option>
-            <option value="open">Open</option>
+          <label for="execution-route">RAG route</label>
+          <select id="execution-route" name="route">
+            <option value="">Any RAG route</option>
+            <option value="knowledge_question">Knowledge question</option>
+            <option value="generate_response">Generated response</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="execution-status">Run status</label>
+          <select id="execution-status" name="status">
+            <option value="">Any run status</option>
+            <option value="succeeded">Succeeded</option>
+            <option value="partial">Partial</option>
+            <option value="failed">Failed</option>
+            <option value="timeout">Timed out</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="execution-review-status">Review status</label>
+          <select id="execution-review-status" name="review_status">
+            <option value="">Any review status</option>
+            <option value="unreviewed">Unreviewed</option>
+            <option value="reviewed">Reviewed</option>
+            <option value="triaged">Triaged</option>
+            <option value="planned">Planned</option>
             <option value="in_progress">In progress</option>
-            <option value="closed">Closed</option>
+            <option value="changes_proposed">Changes proposed</option>
+            <option value="verifying">Verifying</option>
+            <option value="resolved">Resolved</option>
+            <option value="blocked">Blocked</option>
+            <option value="wont_fix">Will not fix</option>
           </select>
         </div>
-
-        <div class="field">
-          <label for="devrev-source-channel">Source channel</label>
-          <input type="search" id="devrev-source-channel" name="ticket_source_channel"
-                 autocomplete="off" maxlength="80" placeholder="Exact channel name">
-        </div>
-
-        <div class="field">
-          <label for="devrev-subtype">Subtype</label>
-          <input type="search" id="devrev-subtype" name="ticket_subtype"
-                 autocomplete="off" maxlength="80" placeholder="Exact subtype name">
-        </div>
-
-        <div class="field">
-          <label for="devrev-visibility">Visibility ID</label>
-          <select id="devrev-visibility" name="ticket_visibility" disabled
-                  aria-describedby="devrev-visibility-help">
-            <option value="">Every permitted visibility</option>
-          </select>
-          <p class="field-help" id="devrev-visibility-help">
-            Unavailable: the server scopes every request to its own allow-list
-            and does not publish it.
-          </p>
-        </div>
-
-        <div class="field">
-          <label for="devrev-created">Created</label>
-          <select id="devrev-created" name="created_date"
-                  aria-describedby="devrev-window-help">
-            <option value="">Any time</option>
-            <option value="last_7_days">Last 7 days</option>
-            <option value="last_30_days">Last 30 days</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="devrev-modified">Modified</label>
-          <select id="devrev-modified" name="modified_date"
-                  aria-describedby="devrev-window-help">
-            <option value="">Any time</option>
-            <option value="last_7_days">Last 7 days</option>
-            <option value="last_30_days">Last 30 days</option>
-          </select>
-          <p class="field-help" id="devrev-window-help">
-            Only the relative windows the upstream is known to accept.
-          </p>
-        </div>
-
         <div class="field field-actions">
-          <button type="button" class="button" id="devrev-refresh">
+          <button type="button" class="button" id="executions-refresh">
             <span class="icon" data-icon="refresh" aria-hidden="true"></span>
             <span>Refresh</span>
           </button>
-          <button type="reset" class="button button-quiet" id="devrev-clear">Clear all</button>
-        </div>
-      </form>
-
-      <form class="toolbar" id="filters-reviews" novalidate hidden>
-        <div class="field">
-          <label for="reviews-display-id">Exact ticket ID</label>
-          <input type="search" id="reviews-display-id" name="devrev_display_id"
-                 autocomplete="off" maxlength="64" placeholder="Exact ticket ID"
-                 aria-describedby="reviews-display-id-help">
-          <p class="field-help" id="reviews-display-id-help">
-            A standalone lookup; no substring search exists to fall back on.
-          </p>
-        </div>
-
-        <fieldset class="field field-statuses">
-          <legend>Status</legend>
-          <div class="checks" id="reviews-statuses"></div>
-        </fieldset>
-
-        <div class="field">
-          <label for="reviews-facet">Facet</label>
-          <select id="reviews-facet" name="facet" aria-describedby="reviews-facet-help">
-            <option value="">No facet</option>
-            <option value="observation_type">Observation type</option>
-            <option value="severity">Severity</option>
-            <option value="rating">Rating</option>
-            <option value="remediation_target">Remediation target</option>
-            <option value="topic" disabled>Topic &mdash; exact-value lookup not enabled</option>
-            <option value="assigned_reviewer.email" disabled>
-              Assigned reviewer &mdash; exact-value lookup not enabled
-            </option>
-          </select>
-          <p class="field-help" id="reviews-facet-help">
-            A status set plus at most one facet. Two facets match a free-text
-            value and need a lookup control that is not approved yet.
-          </p>
-        </div>
-
-        <div class="field">
-          <label for="reviews-facet-value">Facet value</label>
-          <select id="reviews-facet-value" name="facet_value" disabled>
-            <option value="">Choose a facet first</option>
-          </select>
-        </div>
-
-        <div class="field">
-          <label for="reviews-updated-after">Updated on or after</label>
-          <input type="date" id="reviews-updated-after" name="updated_after">
-        </div>
-
-        <div class="field">
-          <label for="reviews-updated-before">Updated on or before</label>
-          <input type="date" id="reviews-updated-before" name="updated_before">
-        </div>
-
-        <div class="field field-checkbox">
-          <input type="checkbox" id="reviews-include-reversed" name="include_reversed">
-          <label for="reviews-include-reversed">Include reversed imports</label>
-        </div>
-
-        <div class="field field-actions">
-          <button type="button" class="button" id="reviews-refresh">
-            <span class="icon" data-icon="refresh" aria-hidden="true"></span>
-            <span>Refresh</span>
-          </button>
-          <button type="reset" class="button button-quiet" id="reviews-clear">Clear all</button>
+          <button type="reset" class="button button-quiet" id="executions-clear">Clear all</button>
         </div>
       </form>
 
       <div class="active-filters" id="active-filters" aria-label="Active filters"></div>
     </div>
 
-    <h3 id="bulk-heading">Selected tickets</h3>
+    <h3 id="bulk-heading">Selected executions</h3>
     <div class="bulk-bar" id="bulk-bar" role="group" aria-labelledby="bulk-heading">
-      <p class="bulk-count" id="bulk-count">No tickets selected</p>
+      <p class="bulk-count" id="bulk-count">No executions selected</p>
       <div class="bulk-actions">
         <!--
           The table header's select-all checkbox is not displayed below the
@@ -287,9 +176,6 @@
         <button type="button" class="button button-quiet" id="bulk-select-all">
           Select all on this page
         </button>
-        <button type="button" class="button" id="bulk-import" disabled>
-          Add to review queue
-        </button>
         <button type="button" class="button button-quiet" id="bulk-clear" disabled>
           Clear selection
         </button>
@@ -298,8 +184,8 @@
           Create remediation batch
         </button>
         <p class="field-help" id="bulk-remediation-help">
-          Select rows that already have a review. Each one is frozen at the
-          version shown, and the batch is refused if any of them has moved.
+          Select runs whose linked review has a version. Each review is frozen
+          at the version shown.
         </p>
       </div>
     </div>
@@ -310,23 +196,23 @@
     <div class="table-wrap">
       <table id="tickets-table" aria-labelledby="results-heading" aria-describedby="tickets-caption">
         <caption id="tickets-caption">
-          Live DevRev tickets with the durable review overlaid on each row.
+          Ticket-associated RAG executions with review and DevRev enrichment status.
         </caption>
         <thead>
           <tr>
             <th scope="col" class="col-select">
               <input type="checkbox" id="select-all"
-                     aria-label="Select every ticket on this page">
+                     aria-label="Select every execution on this page">
             </th>
+            <th scope="col" class="col-execution">Execution</th>
             <th scope="col" class="col-id">Ticket ID</th>
-            <th scope="col" class="col-topic">Topic</th>
-            <th scope="col" class="col-legacy-type">Legacy Type</th>
-            <th scope="col" class="col-observation">Observation</th>
+            <th scope="col" class="col-route">Route</th>
+            <th scope="col" class="col-status">Run status</th>
+            <th scope="col" class="col-hydration">DevRev context</th>
+            <th scope="col" class="col-review-status">Review status</th>
+            <th scope="col" class="col-updated">Started</th>
             <th scope="col" class="col-rating">Rating</th>
             <th scope="col" class="col-reviewer">Reviewer</th>
-            <th scope="col" class="col-status">Status</th>
-            <th scope="col" class="col-updated" aria-sort="descending">Updated</th>
-            <th scope="col" class="col-comments">Comments</th>
             <th scope="col" class="col-actions">Actions</th>
           </tr>
         </thead>
@@ -373,7 +259,38 @@
     <p class="detail-target" id="detail-target"></p>
     <p class="detail-status" id="detail-status" role="status" aria-live="polite"></p>
 
-    <h3 id="detail-meta-heading">Ticket</h3>
+    <h3 id="run-heading">RAG execution</h3>
+    <dl class="meta-grid" id="run-summary" aria-labelledby="run-heading"></dl>
+
+    <h4 id="run-answer-heading">Generated answer</h4>
+    <div class="body-copy" id="run-answer" aria-labelledby="run-answer-heading"></div>
+
+    <h4 id="run-rationale-heading">Structured rationale</h4>
+    <p class="panel-note">
+      This is the explicit classification and outcome rationale recorded by the
+      application. Provider hidden chain-of-thought is not collected or shown.
+    </p>
+    <dl class="field-grid" id="run-rationale" aria-labelledby="run-rationale-heading"></dl>
+
+    <h4 id="run-diagnostics-heading">Diagnostics</h4>
+    <ul class="evidence-links" id="run-diagnostics" aria-labelledby="run-diagnostics-heading"></ul>
+
+    <h4 id="run-gaps-heading">Coverage gaps</h4>
+    <ul class="evidence-links" id="run-gaps" aria-labelledby="run-gaps-heading"></ul>
+
+    <h4 id="run-sources-heading">Source articles</h4>
+    <ul class="evidence-links" id="run-sources" aria-labelledby="run-sources-heading"></ul>
+
+    <h4 id="run-chunks-heading">Bounded chunk evidence</h4>
+    <ul class="evidence-links" id="run-chunks" aria-labelledby="run-chunks-heading"></ul>
+
+    <h4 id="run-metadata-heading">Model and timing</h4>
+    <dl class="field-grid" id="run-metadata" aria-labelledby="run-metadata-heading"></dl>
+
+    <h4 id="hydration-heading">DevRev context status</h4>
+    <p class="panel-status" id="hydration-status" aria-labelledby="hydration-heading"></p>
+
+    <h3 id="detail-meta-heading">DevRev ticket context</h3>
     <dl class="meta-grid" id="detail-meta" aria-labelledby="detail-meta-heading">
       <div class="meta-row">
         <dt>Ticket ID</dt>
@@ -428,7 +345,7 @@
     <div class="detail-actions" id="detail-actions">
       <button type="button" class="button button-quiet" id="detail-copy-id">
         <span class="icon" data-icon="copy" aria-hidden="true"></span>
-        <span>Copy ticket ID</span>
+        <span>Copy execution ID</span>
       </button>
       <!--
         The upstream link is deliberately absent unless the server sends a
@@ -450,12 +367,9 @@
         screen. The control is disabled when this deployment reports remediation
         as unavailable, or when your role may not curate a batch.
       </p>
-      <button type="button" class="button" id="detail-import" hidden>
-        Add to review queue
-      </button>
       <button type="button" class="button button-quiet" id="detail-reload">
         <span class="icon" data-icon="refresh" aria-hidden="true"></span>
-        <span>Reload ticket</span>
+        <span>Reload execution</span>
       </button>
     </div>
 
@@ -616,8 +530,8 @@
         <input type="text" id="eval-legacy-type" name="legacy_type" autocomplete="off"
                maxlength="80" aria-describedby="eval-legacy-type-help eval-legacy-type-count">
         <p class="field-help" id="eval-legacy-type-help">
-          The spreadsheet column, preserved verbatim. It is not the observation
-          type below, and one is never derived from the other.
+          Historical classification retained for continuity. It is not the
+          observation type below, and one is never derived from the other.
         </p>
         <p class="char-count" id="eval-legacy-type-count"></p>
       </div>
@@ -681,19 +595,6 @@
           <option value="none">Unassigned</option>
         </select>
         <p class="field-help" id="eval-assignment-help"></p>
-      </div>
-
-      <div class="field">
-        <label for="eval-legacy-reviewer">Legacy sheet reviewer</label>
-        <input type="text" id="eval-legacy-reviewer" name="legacy_reviewer_display_name"
-               autocomplete="off" maxlength="200"
-               aria-describedby="eval-legacy-reviewer-help eval-legacy-reviewer-count">
-        <p class="field-help" id="eval-legacy-reviewer-help">
-          A name carried over from the spreadsheet with no account behind it. It
-          is a record of who reviewed the row before the migration, never the
-          person signed in now.
-        </p>
-        <p class="char-count" id="eval-legacy-reviewer-count"></p>
       </div>
 
       <div class="field field-wide">

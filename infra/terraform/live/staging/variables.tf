@@ -136,3 +136,32 @@ variable "notification_channels" {
   type    = list(string)
   default = []
 }
+
+variable "ticket_evaluation_publish_enabled" {
+  type    = bool
+  default = false
+}
+
+variable "ticket_evaluation_ingest_url" {
+  type    = string
+  default = ""
+  validation {
+    condition = (
+      var.ticket_evaluation_ingest_url == "" ||
+      can(regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", var.ticket_evaluation_ingest_url))
+    )
+    error_message = "ticket_evaluation_ingest_url debe ser un origen HTTPS canónico."
+  }
+}
+
+variable "ticket_evaluation_ingest_audience" {
+  type    = string
+  default = ""
+  validation {
+    condition = (
+      var.ticket_evaluation_ingest_audience == "" ||
+      can(regex("^https://[A-Za-z0-9.-]+(:[0-9]{1,5})?$", var.ticket_evaluation_ingest_audience))
+    )
+    error_message = "ticket_evaluation_ingest_audience debe ser un origen HTTPS canónico."
+  }
+}

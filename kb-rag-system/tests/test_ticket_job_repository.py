@@ -26,6 +26,7 @@ from data_pipeline.ticket_job_models import (
 from data_pipeline.ticket_job_repository import (
     JOBS_COLLECTION,
     PAYLOADS_COLLECTION,
+    TICKET_EVALUATION_OUTBOX_COLLECTION,
     InMemoryTicketJobBackend,
     IdempotencyReceiptOrphaned,
     InvalidStateTransition,
@@ -1198,3 +1199,300 @@ class TestAtomicLazyTerminalization:
         assert current.state == TicketJobState.QUEUED
         assert current.lease_epoch == rec.lease_epoch
         assert await repo.count_active("n8n") == 1
+
+
+async def _create_ticket_rag_job(
+    repo, *, key="rag-outbox", routes=("knowledge_question",),
+):
+    payload = {
+        "participant_id": "158948",
+        "plan_id": "580",
+        "ticket": {
+            "ticket_id": "TKT-4242",
+            "username": "Ivan",
+            "user_email": "ivan@example.test",
+            "email_subject": "Rollover",
+            "email_body": "What are the rollover rules?",
+        },
+    }
+    plan = {
+        "version": 1,
+        "total_inquiries": len(routes),
+        "unprocessed_inquiries": 0,
+        "inquiries": [
+            {"inquiry": f"Question {index}", "topic": "rollover"}
+            for index, _route in enumerate(routes)
+        ],
+        "classifications": [
+            {
+                "route": route,
+                "confidence": 0.91,
+                "reasoning": f"Explicit rationale {index}",
+                "metadata": {"classifier_parse_ok": True},
+            }
+            for index, route in enumerate(routes)
+        ],
+        "gating": [
+            {"route": route, "override_reason": None} for route in routes
+        ],
+    }
+    fingerprint = fingerprint_request(payload)
+    record, _ = await repo.create_or_get(
+        principal_id="n8n",
+        idempotency_key=key,
+        request_fingerprint=fingerprint,
+        candidate=new_job_record(
+            principal_id="n8n",
+            tenant_id="tenant-a",
+            ticket_id="TKT-4242",
+            request_fingerprint=fingerprint,
+            request_payload=payload,
+            execution_plan=plan,
+            trace_id="trace-4242",
+        ),
+    )
+    epoch = await repo.claim(
+        record.job_id, worker_id="rag-outbox-test", lease_s=90,
+    )
+    assert epoch is not None
+    return await repo.get(record.job_id)
+
+
+def _rag_checkpoint(*, route="knowledge_question", status="succeeded"):
+    answer = {
+        "answer": "A generated answer",
+        "key_points": ["Keep this bounded"],
+        "source_articles": [{
+            "article_id": "article-1",
+            "article_title": "Rollover guide",
+            "used_info": True,
+            "max_score": 0.89,
+        }],
+        "used_chunks": [],
+        "confidence_note": "well_covered",
+        "metadata": {"model": "gpt-test", "chunks_used": 1},
+    }
+    result = {
+        "inquiry": "Question 0",
+        "topic": "rollover",
+        "route": route,
+        "knowledge_answer": answer if route == "knowledge_question" else None,
+        "generate_response": None,
+        "diagnostics": {"retrieval": {"match_count": 1}},
+    }
+    return {
+        "route": route,
+        "execution_status": status,
+        "participant_reply_safe": status == "succeeded",
+        "degraded": status != "succeeded",
+        "result": result,
+        "evaluation_evidence": {"chunks": [{
+            "chunk_id": "chunk-1",
+            "article_id": "article-1",
+            "content_hash": "a" * 64,
+            "preview": "Bounded source text",
+            "score": 0.89,
+        }]},
+        **({"error": {"code": "INTERNAL_ERROR", "retryable": False}}
+           if status != "succeeded" else {}),
+    }
+
+
+async def _record_rag_invocation(repo, record, index, checkpoint):
+    invocation_id = await repo.begin_rag_invocation(
+        record.job_id,
+        index,
+        route=checkpoint["route"],
+        worker_id="rag-outbox-test",
+        lease_epoch=record.lease_epoch,
+    )
+    await repo.record_inquiry_result(
+        record.job_id,
+        index,
+        checkpoint,
+        lease_epoch=record.lease_epoch,
+        invocation_id=invocation_id,
+    )
+    return invocation_id
+
+
+class TestTicketEvaluationOutbox:
+
+    async def test_due_retry_is_not_hidden_by_more_than_one_page_of_future_retries(
+        self, repo, backend,
+    ):
+        observed_at = utcnow()
+        collection = backend._data.setdefault(
+            TICKET_EVALUATION_OUTBOX_COLLECTION, {}
+        )
+        for index in range(101):
+            collection[f"a-future-{index:03d}:0"] = {
+                "state": "retry",
+                "next_attempt_at": observed_at + timedelta(hours=1),
+            }
+        collection["z-due:0"] = {
+            "state": "retry",
+            "next_attempt_at": observed_at - timedelta(seconds=1),
+        }
+
+        page = await repo.scan_ticket_evaluation_outbox(
+            limit=1,
+            observed_at=observed_at,
+        )
+
+        assert [execution_id for execution_id, _document in page] == ["z-due:0"]
+
+    async def test_dead_letter_is_durable_and_can_be_manually_replayed(
+        self, repo, backend,
+    ):
+        record = await _create_ticket_rag_job(repo, key="rag-dead-letter")
+        execution_id = await _record_rag_invocation(
+            repo, record, 0, _rag_checkpoint(),
+        )
+        original = await backend.get_doc(
+            TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id
+        )
+
+        dead_letter = await repo.record_ticket_evaluation_delivery_failure(
+            execution_id,
+            event_digest=original["event_digest"],
+            error_code="HTTP_422",
+            retryable=False,
+        )
+
+        assert dead_letter["state"] == "dead_letter"
+        assert dead_letter["dead_lettered_at"] == dead_letter["updated_at"]
+        assert "expires_at" not in dead_letter
+
+        replayed = await repo.replay_ticket_evaluation_dead_letter(
+            execution_id,
+            event_digest=original["event_digest"],
+            operator_id="oncall@example.test",
+        )
+
+        assert replayed["state"] == "pending"
+        assert replayed["manual_replay_count"] == 1
+        assert replayed["last_dead_letter_error_code"] == "HTTP_422"
+        assert len(replayed["last_manual_replay_operator_hash"]) == 32
+        assert "oncall@example.test" not in repr(replayed)
+        assert "expires_at" not in replayed
+
+    async def test_checkpoint_atomically_creates_one_pending_execution(self,
+                                                                       repo,
+                                                                       backend):
+        record = await _create_ticket_rag_job(repo)
+
+        execution_id = await _record_rag_invocation(
+            repo, record, 0, _rag_checkpoint(),
+        )
+
+        outbox = await backend.get_doc(
+            TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id,
+        )
+        assert outbox["state"] == "pending"
+        assert outbox["execution_id"] == execution_id
+        assert outbox["event"]["invocation_id"] == execution_id
+        assert outbox["event"]["ticket_id"] == "TKT-4242"
+        assert outbox["event"]["classification"]["reasoning"] == \
+            "Explicit rationale 0"
+        assert outbox["event"]["answer"] == "A generated answer"
+        assert outbox["event"]["diagnostics"]["retrieval"] == {
+            "match_count": 1
+        }
+        assert outbox["event"]["diagnostics"]["checkpoint"] == {
+            "degraded": False,
+            "execution_status": "succeeded",
+            "participant_reply_safe": True,
+        }
+        assert outbox["event"]["sources"][0]["article_id"] == "article-1"
+        assert outbox["event"]["chunks"][0]["content_hash"] == "a" * 64
+        assert outbox["event"]["retrieval_metadata"]["model"] == "gpt-test"
+        assert outbox["event"]["correlation"]["trace_id"] == "trace-4242"
+        assert "ivan@example.test" not in repr(outbox)
+
+    async def test_checkpoint_replay_does_not_duplicate_or_reset_delivery(self,
+                                                                           repo,
+                                                                           backend):
+        record = await _create_ticket_rag_job(repo, key="rag-replay")
+        checkpoint = _rag_checkpoint()
+        outbox_id = await _record_rag_invocation(
+            repo, record, 0, checkpoint,
+        )
+        backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION][outbox_id][
+            "state"
+        ] = "delivered"
+
+        await repo.record_inquiry_result(
+            record.job_id,
+            0,
+            checkpoint,
+            lease_epoch=record.lease_epoch,
+            invocation_id=outbox_id,
+        )
+
+        documents = backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION]
+        assert list(documents) == [outbox_id]
+        assert documents[outbox_id]["state"] == "delivered"
+
+    async def test_two_rag_inquiries_create_two_distinct_executions(self,
+                                                                    repo,
+                                                                    backend):
+        record = await _create_ticket_rag_job(
+            repo,
+            key="rag-two",
+            routes=("knowledge_question", "knowledge_question"),
+        )
+
+        first_id = await _record_rag_invocation(
+            repo, record, 0, _rag_checkpoint(),
+        )
+        second = _rag_checkpoint()
+        second["result"]["inquiry"] = "Question 1"
+        second_id = await _record_rag_invocation(
+            repo, record, 1, second,
+        )
+
+        assert set(backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION]) == {
+            first_id, second_id,
+        }
+
+    @pytest.mark.parametrize("route", ["needs_more_info", None])
+    async def test_non_rag_checkpoint_never_creates_platform_execution(
+        self, repo, backend, route,
+    ):
+        record = await _create_ticket_rag_job(
+            repo, key=f"not-rag-{route}", routes=("needs_more_info",)
+        )
+        entry = {
+            "route": route,
+            "execution_status": "succeeded",
+            "result": {"inquiry": "Question 0", "topic": "general"},
+        }
+
+        await repo.record_inquiry_result(record.job_id, 0, entry)
+
+        assert not backend._data.get(TICKET_EVALUATION_OUTBOX_COLLECTION)
+
+    @pytest.mark.parametrize(
+        ("checkpoint_status", "event_status"),
+        [("succeeded", "succeeded"), ("failed", "failed"),
+         ("timeout", "timeout")],
+    )
+    async def test_success_failure_and_timeout_remain_auditable(
+        self, repo, backend, checkpoint_status, event_status,
+    ):
+        record = await _create_ticket_rag_job(
+            repo, key=f"rag-status-{checkpoint_status}"
+        )
+
+        invocation_id = await _record_rag_invocation(
+            repo,
+            record,
+            0,
+            _rag_checkpoint(status=checkpoint_status),
+        )
+
+        outbox = backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION][
+            invocation_id
+        ]
+        assert outbox["event"]["status"] == event_status

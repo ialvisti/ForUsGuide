@@ -29,6 +29,7 @@ from __future__ import annotations
 import asyncio
 import copy
 import hashlib
+import re
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import (
@@ -45,6 +46,12 @@ from typing import (
 
 from google.cloud.firestore_v1.base_query import FieldFilter
 
+from api.ticket_evaluation_models import (
+    EvaluationRoute,
+    build_ticket_evaluation_event,
+    build_ticket_evaluation_seed,
+    rag_invocation_id,
+)
 from data_pipeline.durable_document import validate_durable_document
 from data_pipeline.ticket_job_models import (
     TERMINAL_STATES,
@@ -66,6 +73,8 @@ RECEIPTS_COLLECTION = "ticket_idempotency_receipts"
 COUNTERS_COLLECTION = "ticket_active_counters"
 RATE_WINDOWS_COLLECTION = "ticket_rate_windows"
 RECONCILER_STATE_COLLECTION = "ticket_reconciler_state"
+TICKET_EVALUATION_OUTBOX_COLLECTION = "ticket_evaluation_outbox"
+RAG_INVOCATIONS_COLLECTION = "ticket_rag_invocations"
 
 _ACTIVE_SCAN_CURSOR_ID = "active_jobs"
 
@@ -120,6 +129,22 @@ class TicketJobBackend(Protocol):
         start_after: Optional[str] = None,
     ) -> ScanPage: ...
 
+    async def scan_due_ticket_evaluation_retries(
+        self,
+        collection: str,
+        limit: int,
+        *,
+        due_before: datetime,
+    ) -> ScanPage: ...
+
+    async def scan_due_rag_invocations(
+        self,
+        collection: str,
+        limit: int,
+        *,
+        due_before: datetime,
+    ) -> ScanPage: ...
+
     async def active_job_stats(
         self, collection: str, states: list[str]
     ) -> tuple[int, Optional[datetime]]: ...
@@ -170,6 +195,14 @@ class IdempotencyTenantMismatch(TicketJobError):
 
 class StaleEnqueueGeneration(TicketJobError):
     """Una confirmación de Cloud Tasks corresponde a otra generación."""
+
+
+class TicketEvaluationConflict(TicketJobError):
+    """A deterministic execution id was reused with different evidence."""
+
+
+class TicketEvaluationReplayNotAllowed(TicketJobError):
+    """Only a durable evaluation dead letter can be manually replayed."""
 
 
 @dataclass(frozen=True)
@@ -301,6 +334,58 @@ class InMemoryTicketJobBackend:
             eligible = [item for item in eligible if item[0] > start_after]
         return [(doc_id, copy.deepcopy(doc))
                 for doc_id, doc in eligible[:limit]]
+
+    async def scan_due_ticket_evaluation_retries(
+        self,
+        collection: str,
+        limit: int,
+        *,
+        due_before: datetime,
+    ) -> ScanPage:
+        eligible: list[tuple[datetime, str, Document]] = []
+        for doc_id, document in self._data.get(collection, {}).items():
+            next_attempt_at = document.get("next_attempt_at")
+            if document.get("state") != "retry" or not isinstance(
+                next_attempt_at, datetime
+            ):
+                continue
+            try:
+                if next_attempt_at > due_before:
+                    continue
+            except TypeError:
+                continue
+            eligible.append((next_attempt_at, doc_id, document))
+        eligible.sort(key=lambda item: (item[0], item[1]))
+        return [
+            (doc_id, copy.deepcopy(document))
+            for _next_attempt_at, doc_id, document in eligible[:limit]
+        ]
+
+    async def scan_due_rag_invocations(
+        self,
+        collection: str,
+        limit: int,
+        *,
+        due_before: datetime,
+    ) -> ScanPage:
+        eligible: list[tuple[datetime, str, Document]] = []
+        for doc_id, document in self._data.get(collection, {}).items():
+            next_recovery_at = document.get("next_recovery_at")
+            if document.get("state") != "started" or not isinstance(
+                next_recovery_at, datetime
+            ):
+                continue
+            try:
+                if next_recovery_at > due_before:
+                    continue
+            except TypeError:
+                continue
+            eligible.append((next_recovery_at, doc_id, document))
+        eligible.sort(key=lambda item: (item[0], item[1]))
+        return [
+            (doc_id, copy.deepcopy(document))
+            for _next_recovery_at, doc_id, document in eligible[:limit]
+        ]
 
     async def active_job_stats(
         self, collection: str, states: list[str]
@@ -454,6 +539,54 @@ class FirestoreTicketJobBackend:
             out.append((snap.id, cast(Document, snap.to_dict())))
         return out
 
+    async def scan_due_ticket_evaluation_retries(
+        self,
+        collection: str,
+        limit: int,
+        *,
+        due_before: datetime,
+    ) -> ScanPage:  # pragma: no cover - exercised against emulator/staging
+        query: Any = (
+            self._client.collection(self._col(collection))
+            .where(filter=FieldFilter("state", "==", "retry"))
+            .where(
+                filter=FieldFilter(
+                    "next_attempt_at", "<=", due_before,
+                )
+            )
+            .order_by("next_attempt_at")
+            .order_by("__name__")
+            .limit(limit)
+        )
+        out: ScanPage = []
+        async for snap in query.stream():
+            out.append((snap.id, cast(Document, snap.to_dict())))
+        return out
+
+    async def scan_due_rag_invocations(
+        self,
+        collection: str,
+        limit: int,
+        *,
+        due_before: datetime,
+    ) -> ScanPage:  # pragma: no cover - exercised against emulator/staging
+        query: Any = (
+            self._client.collection(self._col(collection))
+            .where(filter=FieldFilter("state", "==", "started"))
+            .where(
+                filter=FieldFilter(
+                    "next_recovery_at", "<=", due_before,
+                )
+            )
+            .order_by("next_recovery_at")
+            .order_by("__name__")
+            .limit(limit)
+        )
+        out: ScanPage = []
+        async for snap in query.stream():
+            out.append((snap.id, cast(Document, snap.to_dict())))
+        return out
+
     async def active_job_stats(
         self, collection: str, states: list[str]
     ) -> tuple[int, Optional[datetime]]:  # pragma: no cover - staging
@@ -571,6 +704,71 @@ def build_validated_inquiry_checkpoint(
     return merged
 
 
+async def _stage_ticket_evaluation_outbox(
+    view: TransactionView,
+    event: Any,
+    *,
+    now: datetime,
+) -> Document:
+    """Stage one immutable invocation event without resetting delivery."""
+    execution_id = event.execution_id
+    digest = event.canonical_digest()
+    existing = await view.get(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id,
+    )
+    if existing is not None:
+        if existing.get("event_digest") != digest:
+            raise TicketEvaluationConflict(
+                "ticket evaluation invocation has conflicting evidence"
+            )
+        return existing
+    outbox = {
+        "execution_id": execution_id,
+        "event_digest": digest,
+        "state": "pending",
+        "attempt_count": 0,
+        "created_at": now,
+        "updated_at": now,
+        "next_attempt_at": now,
+        "delivered_at": None,
+        "last_error_code": None,
+        "event": event.to_document(),
+    }
+    validate_durable_document(
+        outbox,
+        max_depth=14,
+        max_size_bytes=450 * 1024,
+    )
+    view.set(
+        TICKET_EVALUATION_OUTBOX_COLLECTION,
+        execution_id,
+        outbox,
+    )
+    return outbox
+
+
+def _assert_invocation_matches(
+    invocation: Document,
+    *,
+    invocation_id: str,
+    job_id: str,
+    index: int,
+    lease_epoch: Optional[int] = None,
+) -> None:
+    if (
+        invocation.get("invocation_id") != invocation_id
+        or invocation.get("job_id") != job_id
+        or invocation.get("inquiry_index") != index
+        or (
+            lease_epoch is not None
+            and invocation.get("lease_epoch") != lease_epoch
+        )
+    ):
+        raise TicketEvaluationConflict(
+            "RAG invocation journal identity does not match"
+        )
+
+
 def _live_payload(
     payload: Optional[Document], observed_at: Optional[datetime] = None,
 ) -> Optional[Document]:
@@ -625,11 +823,15 @@ class TicketJobRepository:
         retention_days: int = 90,
         max_outstanding: int = 25,
         rate_limit_per_minute: int = 0,
+        evaluation_outbox_retention_s: int = 86_400,
     ) -> None:
         self.backend = backend
         self._retention = timedelta(days=max(retention_days, 90))
         self._max_outstanding = max_outstanding
         self._rate_limit = rate_limit_per_minute
+        self._evaluation_outbox_retention = timedelta(
+            seconds=max(3_600, min(int(evaluation_outbox_retention_s), 604_800))
+        )
         # Load-shedding local por el documento caliente de cuota/ventana. La
         # transacción Firestore sigue siendo la autoridad entre instancias;
         # este single-flight evita que hasta 80 requests de una misma instancia
@@ -976,9 +1178,105 @@ class TicketJobRepository:
             )
         return _doc_to_record(doc)
 
+    async def begin_rag_invocation(
+        self,
+        job_id: str,
+        index: int,
+        *,
+        route: str,
+        worker_id: str,
+        lease_epoch: int,
+    ) -> str:
+        """Persist an intent before the first instruction of a real RAG call.
+
+        One lease attempt may start each inquiry at most once.  A later lease
+        receives a different deterministic identity and therefore cannot
+        collapse a provider invocation that happened before a crash.
+        """
+        if route not in {item.value for item in EvaluationRoute}:
+            raise ValueError("begin_rag_invocation requires a RAG route")
+
+        async def _txn(view: TransactionView) -> str:
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is None:
+                raise JobNotFound(job_id)
+            payload = await view.get(PAYLOADS_COLLECTION, job_id)
+            now = utcnow()
+            live_payload = _live_payload(payload, now)
+            if live_payload is None:
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: payload expired before RAG invocation"
+                )
+            record = _join(control, live_payload, now)
+            if (
+                record.state != TicketJobState.RUNNING
+                or record.lease_epoch != lease_epoch
+                or record.lease_owner != worker_id
+                or record.lease_expires_at is None
+                or now >= record.lease_expires_at
+            ):
+                raise StaleLeaseEpoch(
+                    f"job {job_id}: lease lost before RAG invocation"
+                )
+            invocation_id = rag_invocation_id(
+                job_id,
+                index,
+                lease_epoch=lease_epoch,
+                attempt=record.attempt,
+            )
+            existing = await view.get(
+                RAG_INVOCATIONS_COLLECTION, invocation_id,
+            )
+            if existing is not None:
+                _assert_invocation_matches(
+                    existing,
+                    invocation_id=invocation_id,
+                    job_id=job_id,
+                    index=index,
+                    lease_epoch=lease_epoch,
+                )
+                raise TicketEvaluationConflict(
+                    "RAG invocation already started for this lease attempt"
+                )
+            event_seed = build_ticket_evaluation_seed(
+                record,
+                index,
+                route=route,
+                invocation_id=invocation_id,
+                lease_epoch=lease_epoch,
+                attempt=record.attempt,
+            )
+            worker_hash = hashlib.sha256(
+                worker_id.encode("utf-8")
+            ).hexdigest()[:32]
+            invocation = {
+                "invocation_id": invocation_id,
+                "job_id": job_id,
+                "inquiry_index": index,
+                "route": route,
+                "attempt": record.attempt,
+                "lease_epoch": lease_epoch,
+                "worker_hash": worker_hash,
+                "state": "started",
+                "started_at": now,
+                "updated_at": now,
+                "next_recovery_at": record.lease_expires_at,
+                "completed_at": None,
+                "event_digest": None,
+                "event_seed": event_seed,
+            }
+            validate_durable_document(invocation, max_depth=14)
+            view.set(
+                RAG_INVOCATIONS_COLLECTION, invocation_id, invocation,
+            )
+            return invocation_id
+
+        return await self.backend.transact(_txn)
+
     async def record_inquiry_result(self, job_id: str, index: int,
                                     entry: Dict[str, Any],
-                                    *, lease_epoch: Optional[int] = None
+                                    *, lease_epoch: Optional[int] = None,
+                                    invocation_id: Optional[str] = None,
                                     ) -> TicketJobRecord:
         """Checkpoint por inquiry: persiste inmediatamente (HT-08). Con
         ``lease_epoch`` la escritura es condicional: un worker fenced no
@@ -1028,6 +1326,63 @@ class TicketJobRepository:
                     )
             merged = build_validated_inquiry_checkpoint(record, index, entry)
             new_control, new_payload = split_record(merged)
+            if invocation_id is not None:
+                invocation = await view.get(
+                    RAG_INVOCATIONS_COLLECTION, invocation_id,
+                )
+                if invocation is None:
+                    raise TicketEvaluationConflict(
+                        "RAG invocation completion has no durable intent"
+                    )
+                _assert_invocation_matches(
+                    invocation,
+                    invocation_id=invocation_id,
+                    job_id=job_id,
+                    index=index,
+                    lease_epoch=lease_epoch,
+                )
+                if invocation.get("state") not in {"started", "completed"}:
+                    raise TicketEvaluationConflict(
+                        "RAG invocation was already recovered"
+                    )
+                started_at = invocation.get("started_at")
+                if not isinstance(started_at, datetime):
+                    raise TicketEvaluationConflict(
+                        "RAG invocation start timestamp is invalid"
+                    )
+                event = build_ticket_evaluation_event(
+                    merged,
+                    index,
+                    entry,
+                    observed_at=started_at,
+                    invocation_id=invocation_id,
+                    attempt=invocation.get("attempt"),
+                    lease_epoch=invocation.get("lease_epoch"),
+                    event_seed=invocation.get("event_seed"),
+                )
+                if event is None:
+                    raise TicketEvaluationConflict(
+                        "RAG invocation completion is not auditable"
+                    )
+                outbox = await _stage_ticket_evaluation_outbox(
+                    view, event, now=now,
+                )
+                if invocation.get("state") == "started":
+                    invocation.update({
+                        "state": "completed",
+                        "outcome": event.status.value,
+                        "completed_at": now,
+                        "updated_at": now,
+                        "next_recovery_at": None,
+                        "event_digest": outbox["event_digest"],
+                        "expires_at": now + self._evaluation_outbox_retention,
+                    })
+                    validate_durable_document(invocation, max_depth=14)
+                    view.set(
+                        RAG_INVOCATIONS_COLLECTION,
+                        invocation_id,
+                        invocation,
+                    )
             if record.state in TERMINAL_STATES and control.get("expires_at"):
                 new_control["expires_at"] = control["expires_at"]
             view.set(JOBS_COLLECTION, job_id, new_control)
@@ -1042,6 +1397,205 @@ class TicketJobRepository:
                 f"job {job_id}: payload expirado o ausente"
             )
         return _doc_to_record(doc)
+
+    async def complete_rag_invocation(
+        self,
+        invocation_id: str,
+        entry: Dict[str, Any],
+        *,
+        completed_at: Optional[datetime] = None,
+    ) -> Document:
+        """Complete only the invocation ledger, without changing job state.
+
+        This path is used by sampled shadow calls and as a last-resort fence
+        path when a real provider result returned after the job lease moved.
+        The journal CAS prevents a late worker from replacing an outcome that
+        the reconciler already recovered explicitly.
+        """
+        now = completed_at or utcnow()
+
+        async def _txn(view: TransactionView) -> Document:
+            invocation = await view.get(
+                RAG_INVOCATIONS_COLLECTION, invocation_id,
+            )
+            if invocation is None:
+                raise JobNotFound(invocation_id)
+            state = invocation.get("state")
+            if state not in {"started", "completed"}:
+                raise TicketEvaluationConflict(
+                    "RAG invocation already has a recovered outcome"
+                )
+            started_at = invocation.get("started_at")
+            event_seed = invocation.get("event_seed")
+            if not isinstance(started_at, datetime) or not isinstance(
+                event_seed, dict
+            ):
+                raise TicketEvaluationConflict(
+                    "RAG invocation journal is incomplete"
+                )
+            event = build_ticket_evaluation_event(
+                None,
+                int(invocation.get("inquiry_index", -1)),
+                entry,
+                observed_at=started_at,
+                invocation_id=invocation_id,
+                attempt=invocation.get("attempt"),
+                lease_epoch=invocation.get("lease_epoch"),
+                event_seed=event_seed,
+            )
+            if event is None:
+                raise TicketEvaluationConflict(
+                    "RAG invocation completion is not auditable"
+                )
+            outbox = await _stage_ticket_evaluation_outbox(
+                view, event, now=now,
+            )
+            if state == "started":
+                invocation.update({
+                    "state": "completed",
+                    "outcome": event.status.value,
+                    "completed_at": now,
+                    "updated_at": now,
+                    "next_recovery_at": None,
+                    "event_digest": outbox["event_digest"],
+                    "expires_at": now + self._evaluation_outbox_retention,
+                })
+                validate_durable_document(invocation, max_depth=14)
+                view.set(
+                    RAG_INVOCATIONS_COLLECTION,
+                    invocation_id,
+                    invocation,
+                )
+            return invocation
+
+        return await self.backend.transact(_txn)
+
+    async def scan_due_rag_invocations(
+        self,
+        *,
+        limit: int = 25,
+        observed_at: Optional[datetime] = None,
+    ) -> ScanPage:
+        if isinstance(limit, bool) or not 1 <= limit <= 100:
+            raise ValueError("RAG invocation scan limit must be between 1 and 100")
+        return await self.backend.scan_due_rag_invocations(
+            RAG_INVOCATIONS_COLLECTION,
+            limit,
+            due_before=observed_at or utcnow(),
+        )
+
+    async def recover_abandoned_rag_invocation(
+        self,
+        invocation_id: str,
+        *,
+        observed_at: Optional[datetime] = None,
+    ) -> Optional[Document]:
+        """Publish an explicit answer-less failure for an abandoned intent.
+
+        A stale journal deadline alone is not sufficient: the transaction
+        rechecks the current job lease.  Heartbeats therefore reschedule the
+        next observation instead of manufacturing a failure for a live call.
+        """
+        observed = observed_at or utcnow()
+
+        async def _txn(view: TransactionView) -> Optional[Document]:
+            invocation = await view.get(
+                RAG_INVOCATIONS_COLLECTION, invocation_id,
+            )
+            if invocation is None or invocation.get("state") != "started":
+                return None
+            next_recovery_at = invocation.get("next_recovery_at")
+            if isinstance(next_recovery_at, datetime):
+                try:
+                    if observed < next_recovery_at:
+                        return None
+                except TypeError:
+                    pass
+            job_id = str(invocation.get("job_id") or "")
+            control = await view.get(JOBS_COLLECTION, job_id)
+            if control is not None:
+                lease_expires_at = control.get("lease_expires_at")
+                same_live_attempt = (
+                    control.get("state") == TicketJobState.RUNNING.value
+                    and control.get("lease_epoch")
+                    == invocation.get("lease_epoch")
+                    and isinstance(lease_expires_at, datetime)
+                )
+                if same_live_attempt:
+                    try:
+                        same_live_attempt = observed < lease_expires_at
+                    except TypeError:
+                        same_live_attempt = False
+                if same_live_attempt:
+                    invocation["next_recovery_at"] = lease_expires_at
+                    invocation["updated_at"] = utcnow()
+                    view.set(
+                        RAG_INVOCATIONS_COLLECTION,
+                        invocation_id,
+                        invocation,
+                    )
+                    return None
+
+            route = invocation.get("route")
+            entry = {
+                "route": route,
+                "execution_status": "failed",
+                "participant_reply_safe": False,
+                "degraded": True,
+                "diagnostics": {
+                    "failure_phase": "rag_invocation_recovery",
+                    "invocation_outcome": "abandoned_after_lease",
+                },
+                "error": {
+                    "code": "RAG_INVOCATION_ABANDONED",
+                    "retryable": False,
+                },
+            }
+            started_at = invocation.get("started_at")
+            event_seed = invocation.get("event_seed")
+            if not isinstance(started_at, datetime) or not isinstance(
+                event_seed, dict
+            ):
+                raise TicketEvaluationConflict(
+                    "RAG invocation journal is incomplete"
+                )
+            event = build_ticket_evaluation_event(
+                None,
+                int(invocation.get("inquiry_index", -1)),
+                entry,
+                observed_at=started_at,
+                invocation_id=invocation_id,
+                attempt=invocation.get("attempt"),
+                lease_epoch=invocation.get("lease_epoch"),
+                event_seed=event_seed,
+            )
+            if event is None:
+                raise TicketEvaluationConflict(
+                    "abandoned RAG invocation is not auditable"
+                )
+            now = utcnow()
+            outbox = await _stage_ticket_evaluation_outbox(
+                view, event, now=now,
+            )
+            invocation.update({
+                "state": "recovered",
+                "outcome": "failed",
+                "recovery_reason": "abandoned_after_lease",
+                "completed_at": now,
+                "updated_at": now,
+                "next_recovery_at": None,
+                "event_digest": outbox["event_digest"],
+                "expires_at": now + self._evaluation_outbox_retention,
+            })
+            validate_durable_document(invocation, max_depth=14)
+            view.set(
+                RAG_INVOCATIONS_COLLECTION,
+                invocation_id,
+                invocation,
+            )
+            return invocation
+
+        return await self.backend.transact(_txn)
 
     async def prepare_forusbots_operation(
         self,
@@ -2066,6 +2620,187 @@ class TicketJobRepository:
         if next_cursor != cursor:
             await self.backend.transact(_advance_cursor)
         return docs
+
+    async def scan_ticket_evaluation_outbox(
+        self,
+        *,
+        limit: int = 25,
+        observed_at: Optional[datetime] = None,
+    ) -> ScanPage:
+        """Return a bounded page of new and due evaluation deliveries.
+
+        New events are read first so a future retry cannot starve newly
+        produced evidence.  Retry lookahead remains bounded and delivery is
+        idempotent at the receiver.
+        """
+        if isinstance(limit, bool) or not 1 <= limit <= 100:
+            raise ValueError("evaluation outbox limit must be between 1 and 100")
+        now = observed_at or utcnow()
+        pending = await self.backend.scan_collection(
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            limit,
+            states=["pending"],
+        )
+        remaining = limit - len(pending)
+        if remaining <= 0:
+            return pending
+        retries = await self.backend.scan_due_ticket_evaluation_retries(
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            remaining,
+            due_before=now,
+        )
+        return [*pending, *retries]
+
+    async def mark_ticket_evaluation_delivered(
+        self,
+        execution_id: str,
+        *,
+        event_digest: str,
+        delivered_at: Optional[datetime] = None,
+    ) -> Document:
+        now = delivered_at or utcnow()
+
+        async def _txn(view: TransactionView) -> Document:
+            document = await view.get(
+                TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id,
+            )
+            if document is None:
+                raise JobNotFound(execution_id)
+            if document.get("event_digest") != event_digest:
+                raise TicketEvaluationConflict(
+                    "ticket evaluation delivery digest does not match"
+                )
+            if document.get("state") == "delivered":
+                return document
+            if document.get("state") in {"dead_letter", "rejected"}:
+                return document
+            document.update({
+                "state": "delivered",
+                "attempt_count": int(document.get("attempt_count", 0)) + 1,
+                "updated_at": now,
+                "next_attempt_at": None,
+                "delivered_at": now,
+                "last_error_code": None,
+                "expires_at": now + self._evaluation_outbox_retention,
+            })
+            view.set(
+                TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id, document,
+            )
+            return document
+
+        return await self.backend.transact(_txn)
+
+    async def record_ticket_evaluation_delivery_failure(
+        self,
+        execution_id: str,
+        *,
+        event_digest: str,
+        error_code: str,
+        retryable: bool,
+        next_attempt_at: Optional[datetime] = None,
+        observed_at: Optional[datetime] = None,
+    ) -> Document:
+        if not re.fullmatch(r"[A-Z0-9_]{1,128}", error_code):
+            raise ValueError("evaluation delivery error code is invalid")
+        now = observed_at or utcnow()
+        if retryable and not isinstance(next_attempt_at, datetime):
+            raise ValueError("retryable evaluation delivery needs next_attempt_at")
+
+        async def _txn(view: TransactionView) -> Document:
+            document = await view.get(
+                TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id,
+            )
+            if document is None:
+                raise JobNotFound(execution_id)
+            if document.get("event_digest") != event_digest:
+                raise TicketEvaluationConflict(
+                    "ticket evaluation delivery digest does not match"
+                )
+            if document.get("state") in {
+                "delivered", "dead_letter", "rejected",
+            }:
+                return document
+            document.update({
+                "state": "retry" if retryable else "dead_letter",
+                "attempt_count": int(document.get("attempt_count", 0)) + 1,
+                "updated_at": now,
+                "next_attempt_at": next_attempt_at if retryable else None,
+                "last_error_code": error_code,
+            })
+            if retryable:
+                # Pending/retry transport copies must never disappear before
+                # the receiving platform acknowledges them.
+                document.pop("expires_at", None)
+            else:
+                # Dead letters are the durable operator-visible audit trail.
+                # They cannot expire until an explicit manual replay succeeds
+                # and the receiver later acknowledges the immutable event.
+                document["dead_lettered_at"] = now
+                document.pop("expires_at", None)
+            view.set(
+                TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id, document,
+            )
+            return document
+
+        return await self.backend.transact(_txn)
+
+    async def replay_ticket_evaluation_dead_letter(
+        self,
+        execution_id: str,
+        *,
+        event_digest: str,
+        operator_id: str,
+        replayed_at: Optional[datetime] = None,
+    ) -> Document:
+        """Return one dead letter to pending without changing its event.
+
+        The raw operator identity is never retained.  A stable hash plus the
+        original terminal error and timestamps provide an audit trail while
+        the next publisher tick performs the actual idempotent delivery.
+        """
+        if not isinstance(operator_id, str) or not operator_id.strip() \
+                or len(operator_id.strip()) > 320:
+            raise ValueError("evaluation replay operator identity is invalid")
+        now = replayed_at or utcnow()
+        operator_hash = hashlib.sha256(
+            operator_id.strip().encode("utf-8")
+        ).hexdigest()[:32]
+
+        async def _txn(view: TransactionView) -> Document:
+            document = await view.get(
+                TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id,
+            )
+            if document is None:
+                raise JobNotFound(execution_id)
+            if document.get("event_digest") != event_digest:
+                raise TicketEvaluationConflict(
+                    "ticket evaluation replay digest does not match"
+                )
+            if document.get("state") not in {"dead_letter", "rejected"}:
+                raise TicketEvaluationReplayNotAllowed(execution_id)
+            document.update({
+                "state": "pending",
+                "updated_at": now,
+                "next_attempt_at": now,
+                "last_dead_letter_error_code": document.get(
+                    "last_error_code"
+                ),
+                "last_dead_lettered_at": document.get("dead_lettered_at"),
+                "last_error_code": None,
+                "last_manual_replayed_at": now,
+                "last_manual_replay_operator_hash": operator_hash,
+                "manual_replay_count": int(
+                    document.get("manual_replay_count", 0)
+                ) + 1,
+            })
+            document.pop("dead_lettered_at", None)
+            document.pop("expires_at", None)
+            view.set(
+                TICKET_EVALUATION_OUTBOX_COLLECTION, execution_id, document,
+            )
+            return document
+
+        return await self.backend.transact(_txn)
 
     async def count_active(self, principal_id: str) -> int:
         """Jobs no-terminales del principal desde el contador transaccional

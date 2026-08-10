@@ -555,104 +555,128 @@ export async function readiness() {
   }
 }
 
-/**
- * One live ticket page, or exactly one ticket by identifier.
- *
- * An exact identifier is mutually exclusive with every list filter and with a
- * cursor, and the whole request is sent as asked even when it conflicts. The
- * server's 422 is the answer a forged or stale link deserves; dropping the
- * conflicting half here would make the interface disagree with its own URL and
- * hide a real refusal behind a plausible-looking result.
- */
-export async function listTickets({
-  ticketId = "",
-  stage = "",
-  state = "",
-  sourceChannel = "",
-  subtype = "",
-  createdDate = "",
-  modifiedDate = "",
-  cursor = null,
-  mode = "after",
-  pageSize = 25,
-} = {}) {
-  const query = {
-    stage: stage === "" ? null : [stage],
-    state: state === "" ? null : [state],
-    ticket_source_channel: sourceChannel === "" ? null : [sourceChannel],
-    ticket_subtype: subtype === "" ? null : [subtype],
-    created_date: createdDate,
-    modified_date: modifiedDate,
-    page_size: pageSize,
+/** Convert the public snake_case list projection into the UI's one row model. */
+export function normalizeExecutionSummary(item) {
+  const value = item ?? {};
+  return {
+    executionId: value.execution_id ?? "",
+    invocationId: value.invocation_id ?? value.execution_id ?? "",
+    jobId: value.job_id ?? "",
+    inquiryIndex: value.inquiry_index ?? null,
+    attempt: value.attempt ?? null,
+    leaseEpoch: value.lease_epoch ?? null,
+    ticketId: value.ticket_id ?? "",
+    displayId: value.devrev_display_id ?? value.ticket_id ?? "",
+    title: value.title ?? "",
+    route: value.route ?? "",
+    runStatus: value.status ?? "",
+    hydrationStatus: value.hydration_status ?? "unavailable",
+    classificationReasoning: value.classification_reasoning ?? "",
+    generatedAnswerExcerpt: value.generated_answer_excerpt ?? "",
+    occurredAt: value.occurred_at ?? "",
+    createdAt: value.occurred_at ?? "",
+    review: value.review ?? null,
   };
-  if (ticketId !== "") {
-    query.ticket_id = ticketId;
-  } else {
-    query.mode = mode;
-  }
-  return requestJson(`${API_ROOT}/tickets`, { query, cursor, channel: "list" });
 }
 
-/** Start of day, in UTC, for a `YYYY-MM-DD` control value. */
-function dayStart(value) {
-  return value === "" ? null : `${value}T00:00:00Z`;
+function normalizeSource(source) {
+  const value = source ?? {};
+  return {
+    articleId: value.article_id ?? null,
+    title: value.article_title ?? value.title ?? null,
+    url: value.url ?? null,
+    chunkTypesUsed: value.chunk_types_used ?? null,
+    relevance: value.relevance ?? null,
+    usedInfo: value.used_info ?? null,
+    maxScore: value.max_score ?? null,
+  };
 }
 
-/** End of day, in UTC, so an inclusive "on or before" really includes it. */
-function dayEnd(value) {
-  return value === "" ? null : `${value}T23:59:59Z`;
+function normalizeChunk(chunk) {
+  const value = chunk ?? {};
+  return {
+    chunkId: value.chunk_id ?? "",
+    sourceId: value.source_id ?? null,
+    articleId: value.article_id ?? null,
+    articleTitle: value.article_title ?? null,
+    chunkType: value.chunk_type ?? null,
+    chunkTier: value.chunk_tier ?? null,
+    contentHash: value.content_hash ?? "",
+    preview: value.preview ?? "",
+    score: value.score ?? null,
+  };
+}
+
+/** Normalize the persisted-run-first detail envelope at the network boundary. */
+export function normalizeExecutionDetail(envelope) {
+  const value = envelope ?? {};
+  const run = value.execution ?? {};
+  const event = run.event ?? {};
+  return {
+    execution: {
+      executionId: run.execution_id ?? event.execution_id ?? "",
+      invocationId: event.invocation_id ?? run.execution_id ?? event.execution_id ?? "",
+      jobId: event.job_id ?? "",
+      inquiryIndex: event.inquiry_index ?? null,
+      attempt: event.attempt ?? null,
+      leaseEpoch: event.lease_epoch ?? null,
+      ticketId: event.ticket_id ?? "",
+      route: event.route ?? "",
+      runStatus: event.status ?? "",
+      occurredAt: event.occurred_at ?? run.created_at ?? "",
+      inquiry: event.inquiry ?? "",
+      topic: event.topic ?? "",
+      generatedAnswer: value.generated_answer ?? event.answer ?? null,
+      structuredResponse: event.structured_response ?? {},
+      classificationReasoning: value.classification_reasoning ?? event.classification?.reasoning ?? "",
+      outcomeReason: value.outcome_reason ?? null,
+      diagnostics: value.diagnostics ?? event.diagnostics ?? {},
+      gaps: Array.isArray(value.gaps) ? value.gaps : [],
+      sourceArticles: Array.isArray(value.source_articles)
+        ? value.source_articles.map(normalizeSource)
+        : [],
+      chunkEvidence: Array.isArray(value.chunk_evidence)
+        ? value.chunk_evidence.map(normalizeChunk)
+        : [],
+      modelMetadata: value.model_metadata ?? {},
+      timingMetadata: value.timing_metadata ?? {},
+      retrievalMetadata: event.retrieval_metadata ?? {},
+      hydrationStatus: value.hydration_status ?? run.hydration_status ?? "unavailable",
+      hydrationErrorCode: run.hydration_error_code ?? null,
+      eventDigest: run.event_digest ?? "",
+    },
+    review: value.review ?? null,
+    ticket: value.ticket ?? null,
+    partial: Boolean(value.partial),
+    warnings: Array.isArray(value.warnings) ? value.warnings : [],
+  };
 }
 
 /**
- * One durable review page.
- *
- * The grammar is a status set plus at most one facet, or an exact identifier on
- * its own. There is no substring search to offer, so none is sent.
+ * One page from the durable RAG execution ledger.
  */
-export async function listReviews({
+export async function listExecutions({
+  executionId = "",
   displayId = "",
-  statuses = [],
-  facet = "",
-  facetValue = "",
-  updatedAfter = "",
-  updatedBefore = "",
-  includeReversed = false,
+  route = "",
+  runStatus = "",
+  reviewStatus = "",
   cursor = null,
   pageSize = 25,
 } = {}) {
   const query = {
-    statuses,
-    updated_after: dayStart(updatedAfter),
-    updated_before: dayEnd(updatedBefore),
+    execution_id: executionId,
+    devrev_display_id: displayId,
+    route,
+    status: runStatus,
+    review_status: reviewStatus,
     page_size: pageSize,
   };
-  if (displayId !== "") {
-    // Sent alongside whatever else is asked for, so an unsupported combination
-    // produces the server's stable refusal rather than a quietly narrowed query.
-    query.devrev_display_id = displayId;
-  }
-  if (includeReversed) {
-    query.include_reversed = "true";
-  }
-  if (facet !== "" && facetValue !== "") {
-    query.facet = facet;
-    query.facet_value = facetValue;
-  }
-  return requestJson(`${API_ROOT}/reviews`, { query, cursor, channel: "list" });
-}
-
-/**
- * Import a live ticket into the durable queue.
- *
- * Idempotent by key: a double click creates one review, and a retry after a
- * timeout does not create a second.
- */
-export async function createReview(ticketRef, seed = {}) {
-  return requestJson(`${API_ROOT}/tickets/${encodeURIComponent(ticketRef)}/review`, {
-    method: "POST",
-    body: seed,
-    channel: null,
-  });
+  const page = await requestJson(`${API_ROOT}/tickets`, { query, cursor, channel: "list" });
+  return {
+    ...page,
+    items: Array.isArray(page?.items) ? page.items.map(normalizeExecutionSummary) : [],
+  };
 }
 
 /** One review, by identifier. */
@@ -687,11 +711,12 @@ export async function patchReview(reviewId, patch, version) {
  * `timelineCursor` pages the embedded first conversation page only; every later
  * page comes from `getTimelinePage`, which is the route that exists for it.
  */
-export async function getTicketDetail(ticketRef, { timelineCursor = null } = {}) {
-  return requestJson(`${API_ROOT}/tickets/${encodeURIComponent(ticketRef)}`, {
+export async function getExecutionDetail(executionId, { timelineCursor = null } = {}) {
+  const envelope = await requestJson(`${API_ROOT}/tickets/${encodeURIComponent(executionId)}`, {
     cursor: timelineCursor,
     channel: "detail",
   });
+  return normalizeExecutionDetail(envelope);
 }
 
 /**
@@ -701,8 +726,8 @@ export async function getTicketDetail(ticketRef, { timelineCursor = null } = {})
  * allowlisted surface, so the server mints no `before` token and none is asked
  * for. Going back means the pages already on screen.
  */
-export async function getTimelinePage(ticketRef, { cursor = null, pageSize = 25 } = {}) {
-  return requestJson(`${API_ROOT}/tickets/${encodeURIComponent(ticketRef)}/timeline`, {
+export async function getTimelinePage(executionId, { cursor = null, pageSize = 25 } = {}) {
+  return requestJson(`${API_ROOT}/tickets/${encodeURIComponent(executionId)}/timeline`, {
     query: { page_size: pageSize },
     cursor,
     channel: "timeline",

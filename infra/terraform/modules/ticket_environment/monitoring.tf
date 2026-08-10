@@ -254,6 +254,24 @@ resource "google_logging_metric" "reconciler_errors" {
   }
 }
 
+resource "google_logging_metric" "evaluation_dead_letter" {
+  project     = var.project_id
+  name        = "${local.metric_prefix}_evaluation_dead_letter"
+  description = "Eventos de evaluación RAG enviados a dead-letter; sin IDs ni payloads."
+  filter      = <<-EOT
+    ${local.reconciler_log_filter}
+    textPayload:"ticket_metric_event"
+    textPayload:"\"metric\":\"ticket_reconciler_count\""
+    textPayload:"\"reason\":\"evaluation_rejected\""
+    textPayload=~"\"value\":[1-9][0-9]*"
+  EOT
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
 resource "google_logging_metric" "deadline_terminalized" {
   project     = var.project_id
   name        = "${local.metric_prefix}_deadline_terminalized"
@@ -1220,6 +1238,35 @@ resource "google_monitoring_alert_policy" "ticket_reconciler_health" {
   documentation {
     mime_type = "text/markdown"
     content   = "Inspeccionar Cloud Run Job/Scheduler y locks. La CLI de requeue es break-glass auditado, no sustituto del reconciler."
+  }
+  notification_channels = var.notification_channels
+}
+
+resource "google_monitoring_alert_policy" "ticket_evaluation_dead_letter" {
+  count        = local.monitoring_policy_count
+  project      = var.project_id
+  display_name = "[${var.env}] ticket evaluation dead-letter > 0"
+  combiner     = "OR"
+  user_labels  = local.alert_labels
+
+  conditions {
+    display_name = "evaluation delivery rejected"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.evaluation_dead_letter.name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "La entrega RAG quedó en dead-letter durable. Verificar contrato/autorización del receiver y usar scripts.replay_ticket_evaluation sólo tras corregir la causa; nunca copiar el payload a logs o archivos."
   }
   notification_channels = var.notification_channels
 }

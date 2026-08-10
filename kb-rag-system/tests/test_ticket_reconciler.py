@@ -9,6 +9,7 @@ por deadline absoluto y payload ausente, concurrencia de dos reconciliadores
 from __future__ import annotations
 
 from datetime import timedelta
+from types import SimpleNamespace
 
 import pytest
 
@@ -49,6 +50,37 @@ class FakeQueue:
 
     async def aclose(self):
         pass
+
+
+class FakeEvaluationPublisher:
+    def __init__(self, *, error=None, hydration_error=None, rejected=0):
+        self.error = error
+        self.hydration_error = hydration_error
+        self.rejected = rejected
+        self.calls = []
+        self.hydration_calls = []
+
+    async def publish_pending(self, *, batch_size):
+        self.calls.append(batch_size)
+        if self.error is not None:
+            raise self.error
+        return {
+            "evaluation_scanned": 2,
+            "evaluation_delivered": 1,
+            "evaluation_retried": 1,
+            "evaluation_rejected": self.rejected,
+            "evaluation_errors": 0,
+        }
+
+    async def retry_due_hydrations(self, *, limit):
+        self.hydration_calls.append(limit)
+        if self.hydration_error is not None:
+            raise self.hydration_error
+        return {
+            "evaluation_hydration_attempted": 3,
+            "evaluation_hydration_succeeded": 2,
+            "evaluation_hydration_errors": 0,
+        }
 
 
 @pytest.fixture
@@ -388,3 +420,153 @@ class TestReconcilerRepairs:
             }
             and (current.lease_owner is not None or current.claimed_by is not None)
         ), "un worker reclamó el job entre fence y terminalización"
+
+
+class TestEvaluationOutboxReconciliation:
+
+    async def test_dead_letters_are_emitted_as_a_closed_schema_alert_count(
+        self, repo, monkeypatch,
+    ):
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.ticket_reconciler.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+
+        await TicketReconciler(
+            repo,
+            FakeQueue(),
+            evaluation_publisher=FakeEvaluationPublisher(rejected=1),
+        ).run_once()
+
+        assert (
+            "ticket_reconciler_count",
+            1,
+            {"reason": "evaluation_rejected"},
+        ) in emitted
+
+    async def test_evaluation_phases_still_run_when_job_scan_fails(
+        self, repo, monkeypatch,
+    ):
+        publisher = FakeEvaluationPublisher()
+
+        async def failed_job_scan(*, limit):
+            raise RuntimeError(f"job scan unavailable at limit {limit}")
+
+        monkeypatch.setattr(repo, "scan_control_docs", failed_job_scan)
+
+        counts = await TicketReconciler(
+            repo,
+            FakeQueue(),
+            batch_size=7,
+            evaluation_publisher=publisher,
+        ).run_once()
+
+        assert counts["errors"] == 1
+        assert publisher.calls == [7]
+        assert publisher.hydration_calls == [7]
+        assert counts["evaluation_delivered"] == 1
+        assert counts["evaluation_hydration_attempted"] == 3
+
+    async def test_evaluation_delivery_runs_when_no_active_ticket_jobs(self, repo):
+        publisher = FakeEvaluationPublisher()
+
+        counts = await TicketReconciler(
+            repo,
+            FakeQueue(),
+            batch_size=7,
+            evaluation_publisher=publisher,
+        ).run_once()
+
+        assert publisher.calls == [7]
+        assert publisher.hydration_calls == [7]
+        assert counts["scanned"] == 0
+        assert counts["evaluation_scanned"] == 2
+        assert counts["evaluation_delivered"] == 1
+        assert counts["evaluation_retried"] == 1
+        assert counts["evaluation_hydration_attempted"] == 3
+        assert counts["evaluation_hydration_succeeded"] == 2
+
+    async def test_evaluation_destination_failure_does_not_block_job_repair(
+        self, repo,
+    ):
+        record = await _seed(repo)
+        publisher = FakeEvaluationPublisher(error=TimeoutError("destination down"))
+
+        counts = await TicketReconciler(
+            repo,
+            FakeQueue(),
+            evaluation_publisher=publisher,
+        ).run_once()
+
+        refreshed = await repo.get(record.job_id)
+        assert refreshed.enqueue_state == "enqueued"
+        assert counts["requeued_outbox"] == 1
+        assert counts["evaluation_errors"] == 1
+        assert publisher.hydration_calls == [25]
+
+    async def test_evaluation_delivery_uses_its_explicit_batch_limit(self, repo):
+        publisher = FakeEvaluationPublisher()
+
+        await TicketReconciler(
+            repo,
+            FakeQueue(),
+            batch_size=7,
+            evaluation_batch_size=3,
+            evaluation_publisher=publisher,
+        ).run_once()
+
+        assert publisher.calls == [3]
+        assert publisher.hydration_calls == [3]
+
+
+def test_evaluation_publisher_builder_respects_explicit_disable():
+    from data_pipeline.ticket_reconciler import _build_evaluation_publisher
+
+    repo = TicketJobRepository(InMemoryTicketJobBackend())
+    cfg = SimpleNamespace(TICKET_EVALUATION_PUBLISH_ENABLED=False)
+
+    assert _build_evaluation_publisher(repo, cfg) is None
+
+
+async def test_evaluation_publisher_builder_wires_reviewed_settings():
+    from data_pipeline.ticket_reconciler import _build_evaluation_publisher
+
+    repo = TicketJobRepository(InMemoryTicketJobBackend())
+    cfg = SimpleNamespace(
+        TICKET_EVALUATION_PUBLISH_ENABLED=True,
+        TICKET_EVALUATION_INGEST_URL="https://evaluation.example.run.app",
+        TICKET_EVALUATION_INGEST_AUDIENCE="https://evaluation.internal",
+        TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT=(
+            "ticket-publisher@example.iam.gserviceaccount.com"
+        ),
+        TICKET_EVALUATION_PUBLISH_TIMEOUT_S=7.0,
+    )
+
+    publisher = _build_evaluation_publisher(repo, cfg)
+    try:
+        assert publisher.base_url == "https://evaluation.example.run.app"
+        assert publisher.audience == "https://evaluation.internal"
+        assert publisher.timeout_s == 7.0
+    finally:
+        await publisher.aclose()
+
+
+@pytest.mark.parametrize(
+    ("counts", "expected"),
+    [
+        ({"errors": 0, "evaluation_errors": 0}, 0),
+        ({"errors": 1, "evaluation_errors": 0}, 1),
+        ({"errors": 0, "evaluation_errors": 1}, 1),
+        ({"errors": 0, "evaluation_errors": 0,
+          "evaluation_hydration_errors": 1}, 1),
+        ({"errors": 0, "evaluation_errors": 0,
+          "rag_invocation_errors": 1}, 1),
+    ],
+)
+def test_reconciler_exit_code_retries_any_failed_durable_plane(counts, expected):
+    from data_pipeline.ticket_reconciler import _reconciler_exit_code
+
+    assert _reconciler_exit_code(counts) == expected

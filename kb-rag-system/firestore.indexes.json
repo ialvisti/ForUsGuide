@@ -1,5 +1,5 @@
 {
-  "__comment": "Índices y TTL del flujo de tickets (Tarea 5 Paso 3). La fuente autoritativa de despliegue es infra/terraform (modules/ticket_environment/firestore.tf); este archivo es la declaración canónica que la IaC refleja. Se declara POR base (ticket-staging y (default)); los collection IDs son idénticos porque la base — no un prefijo — es el límite de aislamiento. La consola /tickets (Etapa 3) declara sus propias colecciones en sus bases nombradas (tickets-console-staging y tickets-console-prod): los índices de ticket_reviews cubren EXACTAMENTE la gramática de consulta maestra (un set de estados más a lo sumo una faceta) y el TTL vive SÓLO en las cuatro colecciones desechables; ticket_reviews, sus audit_events/evidence_links, los lotes, imports y exports usan retention_expires_at (730d) y legal_hold, nunca TTL.",
+  "__comment": "Índices y TTL del flujo de tickets. La fuente autoritativa de despliegue es infra/terraform/modules/ticket_environment/firestore.tf y este espejo canónico conserva las mismas consultas. El outbox y el journal RAG sólo reciben expires_at cuando llegan a un estado terminal; pending, retry, dead_letter y started no expiran. La consola /tickets usa bases nombradas aisladas y una retención explícita para reviews, evaluaciones y lotes; no existe ninguna colección de importación o exportación de archivos.",
   "indexes": [
     {
       "collectionGroup": "ticket_jobs",
@@ -35,6 +35,26 @@
         {"fieldPath": "created_at", "order": "ASCENDING"}
       ],
       "__comment": "reconciliador: outbox pending en orden FIFO acotado"
+    },
+    {
+      "collectionGroup": "ticket_evaluation_outbox",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "state", "order": "ASCENDING"},
+        {"fieldPath": "next_attempt_at", "order": "ASCENDING"},
+        {"fieldPath": "__name__", "order": "ASCENDING"}
+      ],
+      "__comment": "publisher: retries vencidos sin que un retry futuro oculte uno ya debido"
+    },
+    {
+      "collectionGroup": "ticket_rag_invocations",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "state", "order": "ASCENDING"},
+        {"fieldPath": "next_recovery_at", "order": "ASCENDING"},
+        {"fieldPath": "__name__", "order": "ASCENDING"}
+      ],
+      "__comment": "reconciliador: intents RAG started cuyo plazo de recuperación ya venció"
     },
     {
       "collectionGroup": "ticket_reviews",
@@ -151,6 +171,18 @@
       "__comment": "logs estructurados core con retención declarativa"
     },
     {
+      "collectionGroup": "ticket_evaluation_outbox",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "sólo delivery acknowledged lleva expires_at; pending/retry/dead_letter no expiran"
+    },
+    {
+      "collectionGroup": "ticket_rag_invocations",
+      "fieldPath": "expires_at",
+      "ttl": true,
+      "__comment": "sólo completed/recovered lleva expires_at; started conserva el intent hasta resolverlo"
+    },
+    {
       "collectionGroup": "devrev_message_cache",
       "fieldPath": "expires_at",
       "ttl": true,
@@ -167,12 +199,6 @@
       "fieldPath": "expires_at",
       "ttl": true,
       "__comment": "cache de listado/detalle: TTL 15 min (nunca retención de review)"
-    },
-    {
-      "collectionGroup": "ticket_import_staging",
-      "fieldPath": "expires_at",
-      "ttl": true,
-      "__comment": "filas parseadas del CSV: TTL 7d, jamás la auditoría durable"
     }
   ]
 }

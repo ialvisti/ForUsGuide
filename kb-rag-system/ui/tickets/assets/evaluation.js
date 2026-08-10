@@ -279,6 +279,8 @@ export function syncForm(dom, { review, draft, session, force = false }) {
 /** Enable or disable the whole form according to what the role may do. */
 export function applyRole(dom, { role, review, saving, dirty }) {
   const editable = canEdit(role);
+  dom.form.setAttribute("aria-busy", saving ? "true" : "false");
+  dom.save.textContent = saving ? "Saving…" : "Save review";
   for (const id of Object.values(CONTROL_IDS)) {
     const node = document.getElementById(id);
     if (node !== null && id !== "eval-status") {
@@ -311,6 +313,10 @@ export function syncResolutionVisibility(dom, { review, draft }) {
   return closing;
 }
 
+function displayLocale() {
+  return document.documentElement.lang === "es" ? "es" : "en";
+}
+
 /** Update every character counter, and mark the ones approaching their bound. */
 export function updateCounts(dom, { review, draft }) {
   for (const [id, field] of COUNTED_FIELDS) {
@@ -321,7 +327,7 @@ export function updateCounts(dom, { review, draft }) {
     }
     const limit = FIELD_LIMITS[field];
     const used = String(node.value ?? "").length;
-    counter.textContent = `${used.toLocaleString()} of ${limit.toLocaleString()} characters`;
+    counter.textContent = `${used.toLocaleString(displayLocale())} of ${limit.toLocaleString(displayLocale())} characters`;
     counter.dataset.state =
       used > limit ? "over" : used >= Math.floor(limit * NEAR_LIMIT_FRACTION) ? "near" : "ok";
   }
@@ -351,8 +357,8 @@ export function validate({ review, draft, role }) {
     const used = String(draft[field] ?? "").length;
     if (used > limit) {
       problems.push(
-        `${fieldLabel(field) || field} is ${used.toLocaleString()} characters; ` +
-          `the limit is ${limit.toLocaleString()}.`
+        `${fieldLabel(field) || field} is ${used.toLocaleString(displayLocale())} characters; ` +
+          `the limit is ${limit.toLocaleString(displayLocale())}.`
       );
     }
   }
@@ -522,7 +528,7 @@ export function renderConflict(dom, conflict, { role }) {
     `version ${conflict.currentVersion}` +
     (conflict.changedAt === "" || conflict.changedAt === null
       ? ". "
-      : `, changed ${new Date(conflict.changedAt).toLocaleString()}. `) +
+      : `, changed ${new Date(conflict.changedAt).toLocaleString(displayLocale())}. `) +
     (changed.size === 0
       ? "Nothing you edited differs from the saved version."
       : `These fields differ: ${[...changed].map((f) => fieldLabel(f) || f).join(", ")}.`);

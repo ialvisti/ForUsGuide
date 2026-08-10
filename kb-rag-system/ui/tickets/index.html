@@ -1,8 +1,9 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" id="theme-color" content="#f4f5f3">
 <meta name="referrer" content="no-referrer">
 <title>Ticket Review Console</title>
 <!--
@@ -26,77 +27,84 @@
 <script type="module" src="/tickets/assets/app.js"></script>
 </head>
 <body>
-<a class="skip-link" href="#tickets-main">Skip to the ticket list</a>
+<a class="skip-link" href="#tickets-main">Skip to main content</a>
 
 <header class="app-header">
-  <div class="brand">
-    <span class="brand-mark icon" data-icon="logo" aria-hidden="true"></span>
-    <p class="brand-name">ForUs Ticket Review</p>
+  <div class="app-header-inner">
+    <div class="brand">
+      <span class="brand-mark icon" data-icon="logo" aria-hidden="true"></span>
+      <div class="brand-copy">
+        <p class="brand-kicker">Quality operations</p>
+        <p class="brand-name">ForUs Review</p>
+      </div>
+    </div>
+
+    <div class="header-statuses">
+      <p class="env-badge" id="environment-badge" data-state="unknown">
+        <span class="env-label">Environment</span>
+        <span class="env-value" id="environment-value">unknown</span>
+      </p>
+
+      <p class="health" id="health-state" data-state="unknown"
+         role="status" aria-live="polite" aria-atomic="true">
+        <span class="health-dot" aria-hidden="true"></span>
+        <span class="health-text" id="health-text">Checking the console&hellip;</span>
+      </p>
+    </div>
+
+    <div class="header-actions">
+      <div class="preference-field">
+        <label class="visually-hidden" for="language-select">Language</label>
+        <span class="icon" data-icon="language" aria-hidden="true"></span>
+        <select id="language-select" aria-label="Language">
+          <option value="en">EN</option>
+          <option value="es">ES</option>
+        </select>
+      </div>
+
+      <button type="button" class="button button-quiet preference-button"
+              id="theme-toggle" aria-label="Switch to dark mode"
+              aria-pressed="false" title="Switch to dark mode">
+        <span class="icon theme-icon" data-icon="moon" aria-hidden="true"></span>
+        <span id="theme-label">Dark</span>
+      </button>
+
+      <div class="session">
+        <span class="session-avatar icon" data-icon="user" aria-hidden="true"></span>
+        <div class="session-copy">
+          <p class="session-line">
+            <span class="session-label">Signed in</span>
+            <span class="session-value" id="session-email">&mdash;</span>
+          </p>
+          <p class="session-line">
+            <span class="session-label">Role</span>
+            <span class="session-value" id="session-role">&mdash;</span>
+          </p>
+        </div>
+      </div>
+    </div>
   </div>
-
-  <p class="env-badge" id="environment-badge" data-state="unknown">
-    <span class="env-label">Environment</span>
-    <span class="env-value" id="environment-value">unknown</span>
-  </p>
-
-  <!--
-    The signed-in reviewer appears here and only here. The table's Reviewer
-    column is the *assigned* reviewer, or the legacy sheet's reviewer name, and
-    those are facts about different people; rendering the session actor into a
-    row would relabel migrated history with whoever is logged in.
-  -->
-  <div class="session">
-    <p class="session-line">
-      <span class="session-label">Signed in</span>
-      <span class="session-value" id="session-email">&mdash;</span>
-    </p>
-    <p class="session-line">
-      <span class="session-label">Role</span>
-      <span class="session-value" id="session-role">&mdash;</span>
-    </p>
-  </div>
-
-  <p class="health" id="health-state" data-state="unknown">
-    <span class="health-dot" aria-hidden="true"></span>
-    <span class="health-text" id="health-text">Checking the console&hellip;</span>
-  </p>
 </header>
 
 <main id="tickets-main">
-  <h1>RAG ticket evaluations</h1>
-
-  <section class="kpi-section" aria-labelledby="kpi-heading">
-    <h2 id="kpi-heading">Execution indicators</h2>
-    <p class="kpi-note" id="kpi-note">
-      The administrative API returns bounded pages and no global aggregate.
-      Each indicator therefore keeps the global figure blank and states the
-      count for the current page separately.
+  <header class="operational-heading" id="operational-heading" aria-labelledby="page-heading">
+    <p class="section-kicker">Reviewer workspace</p>
+    <h1 id="page-heading">Ticket reviews</h1>
+    <p>
+      Use the CRM to review the ticket and final answer, then record the quality decision here.
     </p>
-    <ul class="kpi-strip" id="kpi-strip">
-      <li class="kpi">
-        <p class="kpi-label">Unreviewed executions</p>
-        <p class="kpi-value" id="kpi-unreviewed-value" aria-describedby="kpi-note">&mdash;</p>
-        <p class="kpi-scope" id="kpi-unreviewed-scope">0 on this page</p>
-      </li>
-      <li class="kpi">
-        <p class="kpi-label">Failed or partial RAG</p>
-        <p class="kpi-value" id="kpi-low-rating-value" aria-describedby="kpi-note">&mdash;</p>
-        <p class="kpi-scope" id="kpi-low-rating-scope">0 on this page</p>
-      </li>
-      <li class="kpi">
-        <p class="kpi-label">Active remediation</p>
-        <p class="kpi-value" id="kpi-remediation-value" aria-describedby="kpi-note">&mdash;</p>
-        <p class="kpi-scope" id="kpi-remediation-scope">0 on this page</p>
-      </li>
-    </ul>
-  </section>
+  </header>
 
   <section class="panel" id="execution-queue" aria-labelledby="queue-heading">
-    <h2 id="queue-heading">RAG execution queue</h2>
-    <p>
-      Every row was created by a ticket-associated RAG route. DevRev adds ticket
-      context after the run is durable and cannot add a row by itself.
-    </p>
+    <div class="section-heading-row queue-intro">
+      <div>
+        <p class="section-kicker">Review queue</p>
+        <h2 id="queue-heading">Tickets ready for evaluation</h2>
+      </div>
+      <p>
+        Choose a ticket, record the rating, and add only the context needed for follow-up.
+      </p>
+    </div>
 
     <h3 id="filters-heading">Filters</h3>
     <button type="button" class="sheet-toggle" id="filter-sheet-toggle"
@@ -106,35 +114,19 @@
     </button>
 
     <div class="filter-forms" id="filter-forms" aria-labelledby="filters-heading">
+      <div class="filter-sheet-header">
+        <p class="filter-sheet-title">Filter tickets</p>
+        <button type="button" class="icon-button" id="filter-sheet-close"
+                aria-label="Close filters">
+          <span class="icon" data-icon="close" aria-hidden="true"></span>
+        </button>
+      </div>
 
       <form class="toolbar" id="filters-executions" novalidate>
-        <div class="field">
-          <label for="execution-id">Exact execution ID</label>
-          <input type="search" id="execution-id" name="execution_id" autocomplete="off"
-                 maxlength="160" placeholder="job-id:inquiry-index">
-        </div>
         <div class="field">
           <label for="execution-ticket-id">Exact ticket ID</label>
           <input type="search" id="execution-ticket-id" name="devrev_display_id"
                  autocomplete="off" maxlength="64" placeholder="Exact ticket ID">
-        </div>
-        <div class="field">
-          <label for="execution-route">RAG route</label>
-          <select id="execution-route" name="route">
-            <option value="">Any RAG route</option>
-            <option value="knowledge_question">Knowledge question</option>
-            <option value="generate_response">Generated response</option>
-          </select>
-        </div>
-        <div class="field">
-          <label for="execution-status">Run status</label>
-          <select id="execution-status" name="status">
-            <option value="">Any run status</option>
-            <option value="succeeded">Succeeded</option>
-            <option value="partial">Partial</option>
-            <option value="failed">Failed</option>
-            <option value="timeout">Timed out</option>
-          </select>
         </div>
         <div class="field">
           <label for="execution-review-status">Review status</label>
@@ -152,6 +144,34 @@
             <option value="wont_fix">Will not fix</option>
           </select>
         </div>
+        <details id="technical-filter-details" class="technical-filters">
+          <summary>Technical filters</summary>
+          <div class="technical-filter-grid">
+            <div class="field">
+              <label for="execution-id">Exact execution ID</label>
+              <input type="search" id="execution-id" name="execution_id" autocomplete="off"
+                     maxlength="160" placeholder="job-id:inquiry-index">
+            </div>
+            <div class="field">
+              <label for="execution-route">RAG route</label>
+              <select id="execution-route" name="route">
+                <option value="">Any RAG route</option>
+                <option value="knowledge_question">Knowledge question</option>
+                <option value="generate_response">Generated response</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="execution-status">Run status</label>
+              <select id="execution-status" name="status">
+                <option value="">Any run status</option>
+                <option value="succeeded">Succeeded</option>
+                <option value="partial">Partial</option>
+                <option value="failed">Failed</option>
+                <option value="timeout">Timed out</option>
+              </select>
+            </div>
+          </div>
+        </details>
         <div class="field field-actions">
           <button type="button" class="button" id="executions-refresh">
             <span class="icon" data-icon="refresh" aria-hidden="true"></span>
@@ -164,31 +184,34 @@
       <div class="active-filters" id="active-filters" aria-label="Active filters"></div>
     </div>
 
-    <h3 id="bulk-heading">Selected executions</h3>
-    <div class="bulk-bar" id="bulk-bar" role="group" aria-labelledby="bulk-heading">
-      <p class="bulk-count" id="bulk-count">No executions selected</p>
-      <div class="bulk-actions">
-        <!--
-          The table header's select-all checkbox is not displayed below the
-          narrow breakpoint, where the header row is hidden and rows are cards.
-          This control is the one that is reachable in every layout.
-        -->
-        <button type="button" class="button button-quiet" id="bulk-select-all">
-          Select all on this page
-        </button>
-        <button type="button" class="button button-quiet" id="bulk-clear" disabled>
-          Clear selection
-        </button>
-        <button type="button" class="button button-quiet" id="bulk-remediation" disabled
-                aria-describedby="bulk-remediation-help">
-          Create remediation batch
-        </button>
-        <p class="field-help" id="bulk-remediation-help">
-          Select runs whose linked review has a version. Each review is frozen
-          at the version shown.
-        </p>
+    <details id="technical-batch-details" class="technical-batch">
+      <summary>Technical batch actions</summary>
+      <h3 id="bulk-heading">Selected executions</h3>
+      <div class="bulk-bar" id="bulk-bar" role="group" aria-labelledby="bulk-heading">
+        <p class="bulk-count" id="bulk-count">No executions selected</p>
+        <div class="bulk-actions">
+          <!--
+            The table header's select-all checkbox is not displayed below the
+            narrow breakpoint, where the header row is hidden and rows are cards.
+            This control is the one that is reachable in every layout.
+          -->
+          <button type="button" class="button button-quiet" id="bulk-select-all">
+            Select all on this page
+          </button>
+          <button type="button" class="button button-quiet" id="bulk-clear" disabled>
+            Clear selection
+          </button>
+          <button type="button" class="button button-quiet" id="bulk-remediation" disabled
+                  aria-describedby="bulk-remediation-help">
+            Create remediation batch
+          </button>
+          <p class="field-help" id="bulk-remediation-help">
+            Select runs whose linked review has a version. Each review is frozen
+            at the version shown.
+          </p>
+        </div>
       </div>
-    </div>
+    </details>
 
     <h3 id="results-heading">Results</h3>
     <p class="table-status" id="table-status" role="status" aria-live="polite"></p>
@@ -196,21 +219,17 @@
     <div class="table-wrap">
       <table id="tickets-table" aria-labelledby="results-heading" aria-describedby="tickets-caption">
         <caption id="tickets-caption">
-          Ticket-associated RAG executions with review and DevRev enrichment status.
+          Tickets waiting for a quality decision, with their current review status and owner.
         </caption>
         <thead>
           <tr>
             <th scope="col" class="col-select">
               <input type="checkbox" id="select-all"
-                     aria-label="Select every execution on this page">
+                     aria-label="Select every ticket on this page">
             </th>
-            <th scope="col" class="col-execution">Execution</th>
-            <th scope="col" class="col-id">Ticket ID</th>
-            <th scope="col" class="col-route">Route</th>
-            <th scope="col" class="col-status">Run status</th>
-            <th scope="col" class="col-hydration">DevRev context</th>
+            <th scope="col" class="col-id">Ticket</th>
             <th scope="col" class="col-review-status">Review status</th>
-            <th scope="col" class="col-updated">Started</th>
+            <th scope="col" class="col-updated">Received</th>
             <th scope="col" class="col-rating">Rating</th>
             <th scope="col" class="col-reviewer">Reviewer</th>
             <th scope="col" class="col-actions">Actions</th>
@@ -240,24 +259,259 @@
   -->
   <section class="detail" id="ticket-detail" aria-labelledby="detail-heading" tabindex="-1" hidden>
 
-    <nav class="detail-crumbs" id="detail-breadcrumb" aria-label="Breadcrumb">
-      <ol>
-        <li>
-          <button type="button" class="link-button" id="detail-back">
-            Back to the ticket list
+    <div class="detail-topbar">
+      <nav class="detail-crumbs" id="detail-breadcrumb" aria-label="Breadcrumb">
+        <ol>
+          <li>
+            <button type="button" class="link-button" id="detail-back">
+              Back to the ticket list
+            </button>
+          </li>
+          <li class="crumb-current" id="detail-crumb" aria-current="page"></li>
+        </ol>
+      </nav>
+
+      <button type="button" class="icon-button" id="detail-close" aria-label="Close ticket detail">
+        <span class="icon" data-icon="close" aria-hidden="true"></span>
+      </button>
+    </div>
+
+    <div class="detail-title-group">
+      <p class="section-kicker">Focused review</p>
+      <h2 id="detail-heading">Ticket detail</h2>
+      <p class="detail-target" id="detail-target"></p>
+      <p class="detail-status" id="detail-status" role="status" aria-live="polite"></p>
+    </div>
+
+    <!-- ------------------------------------------------------- evaluation -->
+    <section class="evaluation-shell reviewer-task" aria-labelledby="evaluation-heading">
+      <h3 id="evaluation-heading">Evaluation</h3>
+      <p class="evaluation-intro">Rate the final answer and document the correction, if any.</p>
+      <p class="panel-status" id="evaluation-actor" role="status" aria-live="polite"></p>
+
+      <form class="evaluation" id="evaluation-form" novalidate aria-labelledby="evaluation-heading">
+        <fieldset class="field field-rating">
+          <legend>Rating</legend>
+          <div class="rating-choices" id="eval-rating-group">
+            <label class="rating-choice" for="eval-rating-1">
+              <input type="radio" name="rating" id="eval-rating-1" value="1"
+                     aria-describedby="eval-rating-1-note">
+              <span class="rating-number">1</span>
+              <span class="rating-note" id="eval-rating-1-note">Unsafe or incorrect</span>
+            </label>
+            <label class="rating-choice" for="eval-rating-2">
+              <input type="radio" name="rating" id="eval-rating-2" value="2"
+                     aria-describedby="eval-rating-2-note">
+              <span class="rating-number">2</span>
+              <span class="rating-note" id="eval-rating-2-note">Major correction required</span>
+            </label>
+            <label class="rating-choice" for="eval-rating-3">
+              <input type="radio" name="rating" id="eval-rating-3" value="3"
+                     aria-describedby="eval-rating-3-note">
+              <span class="rating-number">3</span>
+              <span class="rating-note" id="eval-rating-3-note">Partially useful</span>
+            </label>
+            <label class="rating-choice" for="eval-rating-4">
+              <input type="radio" name="rating" id="eval-rating-4" value="4"
+                     aria-describedby="eval-rating-4-note">
+              <span class="rating-number">4</span>
+              <span class="rating-note" id="eval-rating-4-note">Correct with minor improvement</span>
+            </label>
+            <label class="rating-choice" for="eval-rating-5">
+              <input type="radio" name="rating" id="eval-rating-5" value="5"
+                     aria-describedby="eval-rating-5-note">
+              <span class="rating-number">5</span>
+              <span class="rating-note" id="eval-rating-5-note">
+                Correct, complete, and appropriately scoped
+              </span>
+            </label>
+          </div>
+          <button type="button" class="link-button" id="eval-rating-clear">Clear rating</button>
+        </fieldset>
+
+        <div class="field field-wide">
+          <label for="eval-comments">Comments</label>
+          <textarea id="eval-comments" name="comments" rows="5" maxlength="10000"
+                    aria-describedby="eval-comments-count"></textarea>
+          <p class="char-count" id="eval-comments-count"></p>
+        </div>
+
+        <div class="field field-wide">
+          <label for="eval-expected-behavior">Expected behavior</label>
+          <textarea id="eval-expected-behavior" name="expected_behavior" rows="5" maxlength="10000"
+                    aria-describedby="eval-expected-behavior-help eval-expected-behavior-count"
+          ></textarea>
+          <p class="field-help" id="eval-expected-behavior-help">
+            What the assistant should have answered, and why.
+          </p>
+          <p class="char-count" id="eval-expected-behavior-count"></p>
+        </div>
+
+        <div class="field">
+          <label for="eval-observation-type">Observation type</label>
+          <select id="eval-observation-type" name="observation_type"
+                  aria-describedby="eval-observation-help">
+            <option value="">Not set</option>
+          </select>
+          <p class="field-help" id="eval-observation-help">
+            The root-cause taxonomy this console adds. Distinct from Legacy Type.
+          </p>
+        </div>
+
+        <div class="field">
+          <label for="eval-severity">Severity</label>
+          <select id="eval-severity" name="severity">
+            <option value="">Not set</option>
+          </select>
+        </div>
+
+        <div class="field">
+          <label for="eval-assignment">Assigned reviewer</label>
+          <select id="eval-assignment" name="assigned_reviewer"
+                  aria-describedby="eval-assignment-help">
+            <option value="keep">Leave unchanged</option>
+            <option value="self">Assign to the signed-in reviewer</option>
+            <option value="none">Unassigned</option>
+          </select>
+          <p class="field-help" id="eval-assignment-help"></p>
+        </div>
+
+        <div class="field">
+          <label for="eval-status">Status</label>
+          <select id="eval-status" name="status" aria-describedby="eval-status-help">
+            <option value="">Leave unchanged</option>
+          </select>
+          <p class="field-help" id="eval-status-help"></p>
+        </div>
+
+        <fieldset class="field field-wide field-resolution" id="eval-resolution" hidden>
+          <legend>Closing this review</legend>
+          <p class="field-help" id="eval-resolution-help">
+            A closing status is refused without a defensible record of how the
+            outcome was verified.
+          </p>
+
+          <div class="field">
+            <label for="eval-outcome">Outcome</label>
+            <select id="eval-outcome" name="outcome">
+              <option value="">Not set</option>
+            </select>
+          </div>
+
+          <div class="field field-wide">
+            <label for="eval-verification-summary">Verification summary</label>
+            <textarea id="eval-verification-summary" name="verification_summary" rows="3"
+                      maxlength="5000"
+                      aria-describedby="eval-verification-summary-count"></textarea>
+            <p class="char-count" id="eval-verification-summary-count"></p>
+          </div>
+
+          <div class="field field-wide">
+            <label for="eval-no-change-reason">Verification rationale</label>
+            <textarea id="eval-no-change-reason" name="no_change_reason" rows="3" maxlength="1000"
+                      aria-describedby="eval-no-change-help eval-no-change-reason-count"></textarea>
+            <p class="field-help" id="eval-no-change-help">
+              Machine-checked test evidence is attached by the remediation agent,
+              not typed here, so a review closed from this screen has to say in
+              words why the outcome is defensible.
+            </p>
+            <p class="char-count" id="eval-no-change-reason-count"></p>
+          </div>
+
+          <div class="field">
+            <label for="eval-branch">Branch</label>
+            <input type="text" id="eval-branch" name="branch" autocomplete="off" maxlength="256">
+          </div>
+
+          <div class="field">
+            <label for="eval-commit">Commit</label>
+            <input type="text" id="eval-commit" name="commit_sha" autocomplete="off" maxlength="256">
+          </div>
+        </fieldset>
+
+        <details id="advanced-review-fields" class="reviewer-advanced-fields">
+          <summary id="advanced-review-summary">Advanced review fields</summary>
+          <div class="advanced-review-grid">
+            <div class="field">
+              <label for="eval-topic">Topic</label>
+              <input type="text" id="eval-topic" name="topic" autocomplete="off" maxlength="80"
+                     aria-describedby="eval-topic-count">
+              <p class="char-count" id="eval-topic-count"></p>
+            </div>
+
+            <div class="field">
+              <label for="eval-legacy-type">Legacy Type</label>
+              <input type="text" id="eval-legacy-type" name="legacy_type" autocomplete="off"
+                     maxlength="80" aria-describedby="eval-legacy-type-help eval-legacy-type-count">
+              <p class="field-help" id="eval-legacy-type-help">
+                Historical classification retained for continuity. It is not the
+                observation type above, and one is never derived from the other.
+              </p>
+              <p class="char-count" id="eval-legacy-type-count"></p>
+            </div>
+
+            <div class="field">
+              <label for="eval-remediation-target">Remediation target</label>
+              <select id="eval-remediation-target" name="remediation_target">
+                <option value="">Not set</option>
+              </select>
+            </div>
+          </div>
+        </details>
+
+        <p class="form-errors" id="eval-errors" role="alert"></p>
+
+        <div class="field field-wide field-actions evaluation-actions">
+          <button type="button" class="button" id="eval-save">Save review</button>
+          <button type="button" class="button button-quiet" id="eval-reset">
+            Discard my changes
           </button>
-        </li>
-        <li class="crumb-current" id="detail-crumb" aria-current="page"></li>
-      </ol>
-    </nav>
+          <p class="dirty-flag" id="eval-dirty" hidden>Unsaved changes</p>
+          <p class="field-help" id="eval-role-help"></p>
+        </div>
+      </form>
+    </section>
 
-    <button type="button" class="icon-button" id="detail-close" aria-label="Close ticket detail">
-      <span class="icon" data-icon="close" aria-hidden="true"></span>
-    </button>
+    <!-- ---------------------------------------------------- edit conflict -->
+    <section class="conflict" id="conflict-panel" aria-labelledby="conflict-heading" hidden>
+      <h4 id="conflict-heading">Someone else saved this review first</h4>
+      <p class="conflict-summary" id="conflict-summary"></p>
+      <div class="conflict-columns">
+        <div class="conflict-column">
+          <h5 id="conflict-mine-heading">Your unsaved values</h5>
+          <dl class="conflict-values" id="conflict-mine"
+              aria-labelledby="conflict-mine-heading"></dl>
+        </div>
+        <div class="conflict-column">
+          <h5 id="conflict-theirs-heading">Currently saved on the server</h5>
+          <dl class="conflict-values" id="conflict-theirs"
+              aria-labelledby="conflict-theirs-heading"></dl>
+        </div>
+      </div>
+      <div class="conflict-actions">
+        <button type="button" class="button button-quiet" id="conflict-reload">
+          Discard mine and reload the server version
+        </button>
+        <button type="button" class="button" id="conflict-keep">Keep editing mine</button>
+        <button type="button" class="button button-danger" id="conflict-overwrite" hidden
+                aria-describedby="conflict-overwrite-help">
+          Reapply my values over the server version
+        </button>
+        <p class="field-help" id="conflict-overwrite-help">
+          Administrators only. This re-sends your values against the version you
+          are being shown, so the other reviewer's change is replaced rather than
+          merged. It is never sent automatically.
+        </p>
+      </div>
+    </section>
 
-    <h2 id="detail-heading">Ticket detail</h2>
-    <p class="detail-target" id="detail-target"></p>
-    <p class="detail-status" id="detail-status" role="status" aria-live="polite"></p>
+    <details id="technical-audit" class="technical-audit">
+      <summary id="technical-audit-summary">Technical audit details</summary>
+      <p class="technical-audit-intro">
+        Execution diagnostics, evidence, conversation, history, and remediation tools for technical audits.
+      </p>
+      <div class="technical-audit-body">
+    <section class="detail-overview" aria-labelledby="run-heading">
 
     <h3 id="run-heading">RAG execution</h3>
     <dl class="meta-grid" id="run-summary" aria-labelledby="run-heading"></dl>
@@ -372,6 +626,7 @@
         <span>Reload execution</span>
       </button>
     </div>
+    </section>
 
     <h3 id="detail-tabs-heading">Ticket workspace</h3>
     <div class="tablist" role="tablist" aria-labelledby="detail-tabs-heading" id="detail-tablist">
@@ -512,220 +767,8 @@
       </div>
     </section>
 
-    <!-- ------------------------------------------------------- evaluation -->
-    <h3 id="evaluation-heading">Evaluation</h3>
-    <p class="panel-status" id="evaluation-actor" role="status" aria-live="polite"></p>
-
-    <form class="evaluation" id="evaluation-form" novalidate aria-labelledby="evaluation-heading">
-
-      <div class="field">
-        <label for="eval-topic">Topic</label>
-        <input type="text" id="eval-topic" name="topic" autocomplete="off" maxlength="80"
-               aria-describedby="eval-topic-count">
-        <p class="char-count" id="eval-topic-count"></p>
       </div>
-
-      <div class="field">
-        <label for="eval-legacy-type">Legacy Type</label>
-        <input type="text" id="eval-legacy-type" name="legacy_type" autocomplete="off"
-               maxlength="80" aria-describedby="eval-legacy-type-help eval-legacy-type-count">
-        <p class="field-help" id="eval-legacy-type-help">
-          Historical classification retained for continuity. It is not the
-          observation type below, and one is never derived from the other.
-        </p>
-        <p class="char-count" id="eval-legacy-type-count"></p>
-      </div>
-
-      <div class="field">
-        <label for="eval-observation-type">Observation type</label>
-        <select id="eval-observation-type" name="observation_type"
-                aria-describedby="eval-observation-help">
-          <option value="">Not set</option>
-        </select>
-        <p class="field-help" id="eval-observation-help">
-          The root-cause taxonomy this console adds. Distinct from Legacy Type.
-        </p>
-      </div>
-
-      <fieldset class="field field-rating">
-        <legend>Rating</legend>
-        <div class="rating-choices" id="eval-rating-group">
-          <span class="rating-choice">
-            <input type="radio" name="rating" id="eval-rating-1" value="1"
-                   aria-describedby="eval-rating-1-note">
-            <label for="eval-rating-1">1</label>
-            <span class="rating-note" id="eval-rating-1-note">Unsafe or incorrect</span>
-          </span>
-          <span class="rating-choice">
-            <input type="radio" name="rating" id="eval-rating-2" value="2"
-                   aria-describedby="eval-rating-2-note">
-            <label for="eval-rating-2">2</label>
-            <span class="rating-note" id="eval-rating-2-note">Major correction required</span>
-          </span>
-          <span class="rating-choice">
-            <input type="radio" name="rating" id="eval-rating-3" value="3"
-                   aria-describedby="eval-rating-3-note">
-            <label for="eval-rating-3">3</label>
-            <span class="rating-note" id="eval-rating-3-note">Partially useful</span>
-          </span>
-          <span class="rating-choice">
-            <input type="radio" name="rating" id="eval-rating-4" value="4"
-                   aria-describedby="eval-rating-4-note">
-            <label for="eval-rating-4">4</label>
-            <span class="rating-note" id="eval-rating-4-note">Correct with minor improvement</span>
-          </span>
-          <span class="rating-choice">
-            <input type="radio" name="rating" id="eval-rating-5" value="5"
-                   aria-describedby="eval-rating-5-note">
-            <label for="eval-rating-5">5</label>
-            <span class="rating-note" id="eval-rating-5-note">
-              Correct, complete, and appropriately scoped
-            </span>
-          </span>
-        </div>
-        <button type="button" class="link-button" id="eval-rating-clear">Clear rating</button>
-      </fieldset>
-
-      <div class="field">
-        <label for="eval-assignment">Assigned reviewer</label>
-        <select id="eval-assignment" name="assigned_reviewer"
-                aria-describedby="eval-assignment-help">
-          <option value="keep">Leave unchanged</option>
-          <option value="self">Assign to the signed-in reviewer</option>
-          <option value="none">Unassigned</option>
-        </select>
-        <p class="field-help" id="eval-assignment-help"></p>
-      </div>
-
-      <div class="field field-wide">
-        <label for="eval-comments">Comments</label>
-        <textarea id="eval-comments" name="comments" rows="5" maxlength="10000"
-                  aria-describedby="eval-comments-count"></textarea>
-        <p class="char-count" id="eval-comments-count"></p>
-      </div>
-
-      <div class="field field-wide">
-        <label for="eval-expected-behavior">Expected behavior</label>
-        <textarea id="eval-expected-behavior" name="expected_behavior" rows="5" maxlength="10000"
-                  aria-describedby="eval-expected-behavior-help eval-expected-behavior-count"
-        ></textarea>
-        <p class="field-help" id="eval-expected-behavior-help">
-          What the assistant should have answered, and why.
-        </p>
-        <p class="char-count" id="eval-expected-behavior-count"></p>
-      </div>
-
-      <div class="field">
-        <label for="eval-severity">Severity</label>
-        <select id="eval-severity" name="severity">
-          <option value="">Not set</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="eval-remediation-target">Remediation target</label>
-        <select id="eval-remediation-target" name="remediation_target">
-          <option value="">Not set</option>
-        </select>
-      </div>
-
-      <div class="field">
-        <label for="eval-status">Status</label>
-        <select id="eval-status" name="status" aria-describedby="eval-status-help">
-          <option value="">Leave unchanged</option>
-        </select>
-        <p class="field-help" id="eval-status-help"></p>
-      </div>
-
-      <fieldset class="field field-wide field-resolution" id="eval-resolution" hidden>
-        <legend>Closing this review</legend>
-        <p class="field-help" id="eval-resolution-help">
-          A closing status is refused without a defensible record of how the
-          outcome was verified.
-        </p>
-
-        <div class="field">
-          <label for="eval-outcome">Outcome</label>
-          <select id="eval-outcome" name="outcome">
-            <option value="">Not set</option>
-          </select>
-        </div>
-
-        <div class="field field-wide">
-          <label for="eval-verification-summary">Verification summary</label>
-          <textarea id="eval-verification-summary" name="verification_summary" rows="3"
-                    maxlength="5000"
-                    aria-describedby="eval-verification-summary-count"></textarea>
-          <p class="char-count" id="eval-verification-summary-count"></p>
-        </div>
-
-        <div class="field field-wide">
-          <label for="eval-no-change-reason">Verification rationale</label>
-          <textarea id="eval-no-change-reason" name="no_change_reason" rows="3" maxlength="1000"
-                    aria-describedby="eval-no-change-help eval-no-change-reason-count"></textarea>
-          <p class="field-help" id="eval-no-change-help">
-            Machine-checked test evidence is attached by the remediation agent,
-            not typed here, so a review closed from this screen has to say in
-            words why the outcome is defensible.
-          </p>
-          <p class="char-count" id="eval-no-change-reason-count"></p>
-        </div>
-
-        <div class="field">
-          <label for="eval-branch">Branch</label>
-          <input type="text" id="eval-branch" name="branch" autocomplete="off" maxlength="256">
-        </div>
-
-        <div class="field">
-          <label for="eval-commit">Commit</label>
-          <input type="text" id="eval-commit" name="commit_sha" autocomplete="off" maxlength="256">
-        </div>
-      </fieldset>
-
-      <p class="form-errors" id="eval-errors" role="alert"></p>
-
-      <div class="field field-wide field-actions evaluation-actions">
-        <button type="button" class="button" id="eval-save">Save review</button>
-        <button type="button" class="button button-quiet" id="eval-reset">
-          Discard my changes
-        </button>
-        <p class="dirty-flag" id="eval-dirty" hidden>Unsaved changes</p>
-        <p class="field-help" id="eval-role-help"></p>
-      </div>
-    </form>
-
-    <!-- ---------------------------------------------------- edit conflict -->
-    <section class="conflict" id="conflict-panel" aria-labelledby="conflict-heading" hidden>
-      <h4 id="conflict-heading">Someone else saved this review first</h4>
-      <p class="conflict-summary" id="conflict-summary"></p>
-      <div class="conflict-columns">
-        <div class="conflict-column">
-          <h5 id="conflict-mine-heading">Your unsaved values</h5>
-          <dl class="conflict-values" id="conflict-mine"
-              aria-labelledby="conflict-mine-heading"></dl>
-        </div>
-        <div class="conflict-column">
-          <h5 id="conflict-theirs-heading">Currently saved on the server</h5>
-          <dl class="conflict-values" id="conflict-theirs"
-              aria-labelledby="conflict-theirs-heading"></dl>
-        </div>
-      </div>
-      <div class="conflict-actions">
-        <button type="button" class="button button-quiet" id="conflict-reload">
-          Discard mine and reload the server version
-        </button>
-        <button type="button" class="button" id="conflict-keep">Keep editing mine</button>
-        <button type="button" class="button button-danger" id="conflict-overwrite" hidden
-                aria-describedby="conflict-overwrite-help">
-          Reapply my values over the server version
-        </button>
-        <p class="field-help" id="conflict-overwrite-help">
-          Administrators only. This re-sends your values against the version you
-          are being shown, so the other reviewer's change is replaced rather than
-          merged. It is never sent automatically.
-        </p>
-      </div>
-    </section>
+    </details>
   </section>
 </main>
 

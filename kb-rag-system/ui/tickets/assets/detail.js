@@ -28,6 +28,7 @@ import * as api from "./api.js";
 import * as render from "./render.js";
 import * as evaluation from "./evaluation.js";
 import { el } from "./render.js";
+import { translateUiText } from "./preferences.js";
 import {
   BATCH_ACTIONS,
   BATCH_STATE_LABELS,
@@ -230,15 +231,24 @@ export async function open(ref, { source = null } = {}) {
   if (current.ref === ref && current.phase !== "idle") {
     // Already here. Back and forward across the same selection must not re-fetch
     // and must not throw away a draft; `Reload ticket` is the deliberate refresh.
-    dom.region.focus();
+    moveWorkspaceIntoView();
     return true;
   }
   context.rememberFocus(source);
   dispatch({ type: "detail/open", id: ref });
   expandedEntries = new Set();
-  dom.region.focus();
+  moveWorkspaceIntoView();
   await load();
   return true;
+}
+
+function moveWorkspaceIntoView() {
+  const reduceMotion = globalThis.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+  dom.region.scrollIntoView({
+    behavior: reduceMotion ? "auto" : "smooth",
+    block: "start",
+  });
+  dom.region.focus({ preventScroll: true });
 }
 
 export function close() {
@@ -250,9 +260,12 @@ export function close() {
   return true;
 }
 
-function confirmDiscard() {
+function confirmDiscard(message = "This review has unsaved changes. Leaving now discards them. Continue?") {
   return globalThis.confirm(
-    "This review has unsaved changes. Leaving now discards them. Continue?"
+    translateUiText(
+      message,
+      document.documentElement.lang
+    )
   );
 }
 
@@ -565,6 +578,11 @@ async function unlinkEvidence(linkId) {
     input?.focus();
     return;
   }
+  const approved = globalThis.confirm(translateUiText(
+    "Unlink this evidence from the review? The reason will remain in the audit ledger.",
+    document.documentElement.lang
+  ));
+  if (!approved) return;
   try {
     const review = await api.deleteEvidenceLink(
       current.review.review_id,
@@ -685,6 +703,9 @@ function wireForm() {
 
   dom.save.addEventListener("click", () => save());
   dom.reset.addEventListener("click", () => {
+    if (detailState().dirty && !confirmDiscard(
+      "Discard your unsaved changes and restore the saved review?"
+    )) return;
     dispatch({ type: "draft/reset" });
     dom.errors.textContent = "";
     renderDetail(state());
@@ -1211,8 +1232,7 @@ function renderEvaluation(current) {
   dom.actorLine.textContent =
     identity === null
       ? "Loading who you are signed in as…"
-      : `Signed in as ${identity.email} with the ${activeRole} role. ` +
-        "That is who the audit ledger records; assignment is the field below.";
+      : `Changes will be recorded as ${identity.email}.`;
 
   evaluation.populateStatuses(dom, { review: current.review, role: activeRole });
   evaluation.syncForm(dom, {
@@ -1459,8 +1479,11 @@ export function renderDetail(next) {
     return;
   }
   dom.region.hidden = false;
-  dom.target.textContent = current.ref;
-  dom.crumb.textContent = current.ref;
+  const displayId = current.ticket?.devrev_display_id ?? current.ref;
+  const title = current.ticket?.title ?? "";
+  const ticketIdentity = title === "" ? displayId : `${displayId} · ${title}`;
+  dom.target.textContent = ticketIdentity;
+  dom.crumb.textContent = displayId;
 
   renderRun(current);
   renderMeta(current);

@@ -21,7 +21,7 @@
  */
 
 /** Column count of the results table; a full-width state row spans all of it. */
-export const COLUMN_COUNT = 11;
+export const COLUMN_COUNT = 7;
 
 /** Longest live title preview rendered in a row, in characters. */
 const TITLE_PREVIEW_LIMIT = 160;
@@ -270,7 +270,8 @@ export function timeElement(iso) {
   }
   const node = document.createElement("time");
   node.dateTime = parsed.toISOString();
-  node.textContent = parsed.toLocaleString(undefined, {
+  const locale = document.documentElement.lang || undefined;
+  node.textContent = parsed.toLocaleString(locale, {
     year: "numeric",
     month: "short",
     day: "numeric",
@@ -376,86 +377,47 @@ export function ticketRow(row, { selected }) {
     attrs: {
       type: "checkbox",
       "data-select": row.executionId,
-      "aria-label": `Select execution ${row.executionId}`,
+      "aria-label": `Select ticket ${row.displayId || row.executionId}`,
     },
   });
   box.checked = selected;
   select.appendChild(box);
   tr.appendChild(select);
 
-  const executionCell = el("th", {
+  const ticketCell = el("th", {
     className: "cell-id",
-    attrs: { scope: "row", "data-label": "Execution" },
+    attrs: { scope: "row", "data-label": "Ticket" },
   });
-  executionCell.appendChild(
-    el("span", { className: "cell-id-value", text: clip(row.executionId, TITLE_PREVIEW_LIMIT) })
+  ticketCell.appendChild(
+    el("span", { className: "cell-id-value", text: row.displayId || "Not loaded" })
   );
-  if (row.attempt !== null && row.attempt !== undefined) {
-    const inquiry = row.inquiryIndex !== null && row.inquiryIndex !== undefined
-      ? ` · inquiry ${row.inquiryIndex}`
-      : "";
-    executionCell.appendChild(
-      el("span", { className: "cell-title", text: `Attempt ${row.attempt}${inquiry}` })
+  if (row.title) {
+    ticketCell.appendChild(
+      el("span", { className: "cell-title", text: clip(row.title, TITLE_PREVIEW_LIMIT) })
     );
   }
-  executionCell.appendChild(hiddenText(row.executionId));
-  tr.appendChild(executionCell);
-
-  const idCell = cell("Ticket ID", "cell-id");
-  idCell.appendChild(el("span", { className: "cell-id-value", text: row.displayId || "Not loaded" }));
-  if (row.title) {
-    idCell.appendChild(el("span", { className: "cell-title", text: clip(row.title, TITLE_PREVIEW_LIMIT) }));
-  }
-  tr.appendChild(idCell);
-
-  tr.appendChild(textCell("Route", row.route || "Not recorded"));
-
-  const runStatus = cell("Run status", "cell-status");
-  runStatus.appendChild(
-    pill(
-      row.runStatus === "succeeded"
-        ? "Succeeded"
-        : row.runStatus === "partial"
-          ? "Partial"
-          : row.runStatus === "failed"
-            ? "Failed"
-            : row.runStatus === "timeout"
-              ? "Timed out"
-              : "Unknown",
-      { "data-status": row.runStatus ?? "unknown" }
-    )
-  );
-  tr.appendChild(runStatus);
-
-  const hydration = cell("DevRev context", "cell-status");
-  hydration.appendChild(
-    pill(
-      row.hydrationStatus === "succeeded"
-        ? "Loaded"
-        : "Unavailable",
-      { "data-status": row.hydrationStatus ?? "unavailable" }
-    )
-  );
-  tr.appendChild(hydration);
+  tr.appendChild(ticketCell);
 
   const review = row.review ?? null;
   const reviewStatus = cell("Review status", "cell-status");
   reviewStatus.appendChild(statusPill(review?.status ?? "unreviewed"));
   tr.appendChild(reviewStatus);
 
-  const started = cell("Started", "cell-updated");
-  started.appendChild(timeElement(row.createdAt));
-  tr.appendChild(started);
+  const received = cell("Received", "cell-updated");
+  received.appendChild(timeElement(row.createdAt));
+  tr.appendChild(received);
 
   tr.appendChild(ratingCell(review ? review.rating ?? null : null));
   tr.appendChild(reviewerCell(review));
 
   const actions = cell("Actions", "col-actions");
+  const ticketLabel = row.displayId || row.executionId;
   actions.appendChild(
     button({
-      label: `Open RAG execution ${row.executionId}`,
+      label: `Review ticket ${ticketLabel}`,
+      text: "Review",
       icon: "next",
-      className: "icon-button",
+      className: "button button-compact",
       dataset: { action: "open", executionId: row.executionId },
     })
   );

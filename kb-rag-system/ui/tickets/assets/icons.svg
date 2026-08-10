@@ -13,7 +13,30 @@
     every icon silently missing.
   -->
   <symbol id="logo" viewBox="0 0 24 24">
-    <path d="M4 5h16M4 12h10M4 19h6" />
+    <path d="M5 4.5h8a6.5 6.5 0 0 1 0 13H9" />
+    <path d="M5 4.5v15M5 12h8" />
+  </symbol>
+  <symbol id="spark" viewBox="0 0 24 24">
+    <path d="M12 3l1.25 4.1a5 5 0 0 0 3.4 3.4L21 12l-4.35 1.5a5 5 0 0 0-3.4 3.4L12 21l-1.25-4.1a5 5 0 0 0-3.4-3.4L3 12l4.35-1.5a5 5 0 0 0 3.4-3.4z" />
+  </symbol>
+  <symbol id="language" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M3.5 9h17M3.5 15h17M12 3c2 2.4 3 5.4 3 9s-1 6.6-3 9M12 3c-2 2.4-3 5.4-3 9s1 6.6 3 9" />
+  </symbol>
+  <symbol id="moon" viewBox="0 0 24 24">
+    <path d="M20 15.2A8.5 8.5 0 0 1 8.8 4a8.5 8.5 0 1 0 11.2 11.2z" />
+  </symbol>
+  <symbol id="sun" viewBox="0 0 24 24">
+    <circle cx="12" cy="12" r="3.5" />
+    <path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+  </symbol>
+  <symbol id="user" viewBox="0 0 24 24">
+    <circle cx="12" cy="8" r="3.5" />
+    <path d="M5 20a7 7 0 0 1 14 0" />
+  </symbol>
+  <symbol id="copy" viewBox="0 0 24 24">
+    <rect x="8" y="8" width="11" height="11" rx="2" />
+    <path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2" />
   </symbol>
   <symbol id="refresh" viewBox="0 0 24 24">
     <path d="M20 11a8 8 0 1 0-2.3 5.7" />

@@ -126,6 +126,25 @@ REQUIRED_META_IDS = (
     "meta-review-state",
 )
 
+TECHNICAL_AUDIT_IDS = (
+    "run-summary",
+    "run-answer",
+    "run-rationale",
+    "run-diagnostics",
+    "run-gaps",
+    "run-sources",
+    "run-chunks",
+    "run-metadata",
+    "hydration-status",
+    "detail-meta",
+    "detail-actions",
+    "detail-tablist",
+    "panel-conversation",
+    "panel-evidence",
+    "panel-history",
+    "panel-remediation",
+)
+
 #: Each editable control, and the canonical bound its ``maxlength`` must equal.
 CANONICAL_LIMITS = {
     "eval-topic": MAX_TOPIC_LENGTH,
@@ -281,6 +300,52 @@ class TestWorkspaceStructure:
         force it to be weakened. Description lists are the right element anyway.
         """
         assert _detail(dom).find_all("table") == []
+
+
+class TestReviewerFirstWorkflow:
+
+    def test_the_detail_identity_leads_with_the_crm_ticket(self, scripts):
+        detail = scripts["detail.js"]
+        assert "current.ticket?.devrev_display_id" in detail
+        assert "dom.target.textContent = ticketIdentity" in detail
+        assert "dom.crumb.textContent = displayId" in detail
+
+    def test_the_actor_note_is_concise_and_keeps_assignment_separate(self, scripts):
+        detail = scripts["detail.js"]
+        assert "Changes will be recorded as ${identity.email}." in detail
+        assert "That is who the audit ledger records" not in detail
+
+    def test_the_evaluation_precedes_the_technical_audit(self, dom):
+        detail = _detail(dom)
+        order = list(detail.walk())
+        form = _by_id(detail, "evaluation-form")
+        audit = _by_id(detail, "technical-audit")
+        assert audit not in list(form.ancestors())
+        assert order.index(form) < order.index(audit)
+
+    def test_technical_audit_is_a_native_collapsed_disclosure(self, dom):
+        audit = _by_id(_detail(dom), "technical-audit")
+        assert audit.tag == "details"
+        assert audit.get("open") is None
+        summaries = [child for child in audit.children if child.tag == "summary"]
+        assert len(summaries) == 1
+        assert summaries[0].get("id") == "technical-audit-summary"
+        assert summaries[0].all_text() == "Technical audit details"
+
+    @pytest.mark.parametrize("region_id", TECHNICAL_AUDIT_IDS)
+    def test_every_technical_surface_is_inside_the_disclosure(self, dom, region_id):
+        detail = _detail(dom)
+        audit = _by_id(detail, "technical-audit")
+        assert audit in list(_by_id(detail, region_id).ancestors())
+
+    def test_advanced_classification_is_secondary(self, dom):
+        form = _by_id(dom, "evaluation-form")
+        advanced = _by_id(form, "advanced-review-fields")
+        assert advanced.tag == "details"
+        assert advanced.get("open") is None
+        assert _by_id(advanced, "advanced-review-summary").all_text() == "Advanced review fields"
+        for control in ("eval-topic", "eval-legacy-type", "eval-remediation-target"):
+            assert advanced in list(_by_id(form, control).ancestors())
 
 
 # =====================================================================
@@ -883,6 +948,11 @@ class TestConcurrency:
         assert "setTimeout" not in source
         assert "setInterval" not in source
 
+    def test_a_pending_save_is_announced_and_visible(self, new_scripts):
+        evaluation = new_scripts["evaluation.js"]
+        assert 'setAttribute("aria-busy"' in evaluation
+        assert "Saving…" in evaluation
+
     def test_the_dirty_state_is_visible_and_warns_before_leaving(self, dom, new_scripts):
         assert "eval-dirty" in _ids(_detail(dom))
         source = new_scripts["detail.js"]
@@ -1135,6 +1205,13 @@ class TestNavigationSafety:
         detail = new_scripts["detail.js"]
         assert re.search(r"if \(mine !== serial\)", detail)
 
+    def test_opening_a_ticket_brings_the_workspace_into_view(self, new_scripts):
+        detail = new_scripts["detail.js"]
+        assert "scrollIntoView" in detail
+        assert 'block: "start"' in detail
+        assert "prefers-reduced-motion: reduce" in detail
+        assert "preventScroll: true" in detail
+
     def test_each_subresource_cancels_only_its_own_requests(self, scripts):
         adapter = scripts["api.js"]
         for channel in ("detail", "timeline", "audit", "evidence"):
@@ -1157,6 +1234,11 @@ class TestNavigationSafety:
         # Back and forward across the same ticket must not refetch or reset.
         assert "must not re-fetch and must not throw away a draft" in _prose(detail)
         assert "detail.close()" in scripts["app.js"]
+
+    def test_destructive_review_actions_ask_before_discarding(self, new_scripts):
+        detail = new_scripts["detail.js"]
+        assert re.search(r"async function unlinkEvidence[\s\S]+?globalThis\.confirm", detail)
+        assert re.search(r"dom\.reset\.addEventListener[\s\S]+?confirmDiscard\(", detail)
 
 
 # =====================================================================

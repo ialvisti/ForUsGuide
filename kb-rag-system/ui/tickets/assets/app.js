@@ -23,13 +23,13 @@
 import * as api from "./api.js";
 import * as render from "./render.js";
 import { initDetail } from "./detail.js";
+import { initPreferences } from "./preferences.js";
 import {
   activeFilters,
   batchableSelection,
   canCurateBatches,
   canGoBack,
   createStore,
-  pageTallies,
   readLocation,
   writeLocation,
 } from "./state.js";
@@ -46,12 +46,8 @@ const dom = {
   sessionRole: document.getElementById("session-role"),
   health: document.getElementById("health-state"),
   healthText: document.getElementById("health-text"),
-  kpi: {
-    unreviewed: document.getElementById("kpi-unreviewed-scope"),
-    lowRating: document.getElementById("kpi-low-rating-scope"),
-    remediating: document.getElementById("kpi-remediation-scope"),
-  },
   sheetToggle: document.getElementById("filter-sheet-toggle"),
+  filterSheetClose: document.getElementById("filter-sheet-close"),
   filterForms: document.getElementById("filter-forms"),
   executionForm: document.getElementById("filters-executions"),
   activeFilters: document.getElementById("active-filters"),
@@ -72,12 +68,15 @@ const dom = {
   detail: document.getElementById("ticket-detail"),
   sprite: document.getElementById("icon-sprite"),
   refresh: document.getElementById("executions-refresh"),
+  themeToggle: document.getElementById("theme-toggle"),
+  languageSelect: document.getElementById("language-select"),
 };
 
 let icons = new Map();
 let requestSerial = 0;
 let cooldownTimer = null;
 let restoreFocusTo = null;
+let filterSheetInerted = [];
 
 /**
  * The detail view, installed once at boot.
@@ -88,6 +87,7 @@ let restoreFocusTo = null;
  * surface, and the icon map. Those are handed over explicitly below.
  */
 let detail = null;
+let preferences = null;
 
 /**
  * What the table body currently shows.
@@ -308,8 +308,8 @@ function describeDisabledCapabilities(flags) {
 // ---------------------------------------------------------------------------
 
 function renderAll(state) {
-  dom.caption.textContent =
-    "Authorized ticket-associated RAG invocations in stable ledger order.";
+  document.body.classList.toggle("detail-open", state.selected !== "");
+  dom.caption.textContent = "Tickets ready for evaluation in stable queue order.";
 
   const identity = state.session;
   dom.sessionEmail.textContent = identity?.email ?? "—";
@@ -329,11 +329,6 @@ function renderAll(state) {
     dom.health.dataset.state = "ok";
     dom.healthText.textContent = "Ready";
   }
-
-  const tallies = pageTallies(state.rows);
-  dom.kpi.unreviewed.textContent = `${tallies.unreviewed} on this page`;
-  dom.kpi.lowRating.textContent = `${tallies.lowRating} on this page`;
-  dom.kpi.remediating.textContent = `${tallies.remediating} on this page`;
 
   render.renderChips(dom.activeFilters, activeFilters(state));
   renderTable(state);
@@ -526,19 +521,31 @@ async function createBatchFromSelection() {
     });
     return;
   }
+  const spanish = document.documentElement.lang === "es";
   const listed = refs
     .slice(0, 10)
-    .map((ref) => `${ref.displayId} at version ${ref.reviewVersion}`)
+    .map((ref) => spanish
+      ? `${ref.displayId} en la versión ${ref.reviewVersion}`
+      : `${ref.displayId} at version ${ref.reviewVersion}`)
     .join("\n");
-  const more = refs.length > 10 ? `\n…and ${refs.length - 10} more` : "";
+  const more = refs.length > 10
+    ? (spanish ? `\n…y ${refs.length - 10} más` : `\n…and ${refs.length - 10} more`)
+    : "";
   const note =
     skipped.length > 0
-      ? `\n\n${skipped.length} selected ticket${skipped.length === 1 ? "" : "s"} ` +
-        "will be skipped for having no review."
+      ? (spanish
+        ? `\n\n${skipped.length} ticket${skipped.length === 1 ? "" : "s"} `
+          + `seleccionado${skipped.length === 1 ? "" : "s"} `
+          + `${skipped.length === 1 ? "se omitirá" : "se omitirán"} por no tener revisión.`
+        : `\n\n${skipped.length} selected ticket${skipped.length === 1 ? "" : "s"} `
+          + "will be skipped for having no review.")
       : "";
   const proceed = globalThis.confirm(
-    `Freeze ${refs.length} review${refs.length === 1 ? "" : "s"} into a ` +
-      `remediation batch?\n\n${listed}${more}${note}`
+    spanish
+      ? `¿Fijar ${refs.length} revisión${refs.length === 1 ? "" : "es"} en un `
+        + `lote de remediación?\n\n${listed}${more}${note}`
+      : `Freeze ${refs.length} review${refs.length === 1 ? "" : "s"} into a `
+        + `remediation batch?\n\n${listed}${more}${note}`
   );
   if (!proceed) {
     return;
@@ -614,30 +621,87 @@ function wireFilters() {
     load();
   });
 
-  dom.sheetToggle.addEventListener("click", () => {
-    const open = dom.sheetToggle.getAttribute("aria-expanded") !== "true";
+  const filterSheetFocusable = () => Array.from(dom.filterForms.querySelectorAll(
+    "button:not(:disabled), input:not(:disabled), select:not(:disabled), "
+      + "textarea:not(:disabled), [href], [tabindex]:not([tabindex='-1'])"
+  )).filter((node) => node.hidden !== true);
+
+  const setFilterSheetBackgroundInert = (inert) => {
+    if (!inert) {
+      for (const node of filterSheetInerted) node.inert = false;
+      filterSheetInerted = [];
+      return;
+    }
+
+    let branch = dom.filterForms;
+    while (branch.parentElement !== null && branch.parentElement !== document.documentElement) {
+      for (const sibling of Array.from(branch.parentElement.children)) {
+        if (sibling !== branch && sibling.inert !== true) {
+          sibling.inert = true;
+          filterSheetInerted.push(sibling);
+        }
+      }
+      branch = branch.parentElement;
+    }
+  };
+
+  const setFilterSheet = (open, { restoreFocus = true } = {}) => {
     dom.sheetToggle.setAttribute("aria-expanded", open ? "true" : "false");
     dom.filterForms.dataset.open = open ? "true" : "false";
+    document.body.classList.toggle("filter-sheet-open", open);
     if (open) {
-      const first = dom.executionForm.querySelector("input, select");
-      if (first !== null) {
-        first.focus();
+      dom.filterForms.setAttribute("role", "dialog");
+      dom.filterForms.setAttribute("aria-modal", "true");
+      setFilterSheetBackgroundInert(true);
+      dom.filterSheetClose.focus();
+      return;
+    }
+
+    dom.filterForms.removeAttribute("role");
+    dom.filterForms.removeAttribute("aria-modal");
+    setFilterSheetBackgroundInert(false);
+    if (restoreFocus) dom.sheetToggle.focus();
+  };
+
+  dom.sheetToggle.addEventListener("click", () => {
+    setFilterSheet(dom.sheetToggle.getAttribute("aria-expanded") !== "true");
+  });
+  dom.filterSheetClose.addEventListener("click", () => setFilterSheet(false));
+
+  document.addEventListener("keydown", (event) => {
+    if (dom.filterForms.dataset.open === "true") {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        setFilterSheet(false);
+        return;
       }
-    } else {
-      dom.sheetToggle.focus();
+      if (event.key === "Tab") {
+        const focusable = filterSheetFocusable();
+        const first = focusable[0];
+        const last = focusable.at(-1);
+        if (first === undefined || last === undefined) {
+          event.preventDefault();
+          dom.filterForms.focus();
+        } else if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
+      return;
+    }
+    if (event.key !== "Escape") return;
+    if (!dom.detail.hidden) {
+      closeDetail();
     }
   });
 
-  document.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") {
-      return;
-    }
-    if (dom.filterForms.dataset.open === "true") {
-      dom.sheetToggle.click();
-      return;
-    }
-    if (!dom.detail.hidden) {
-      closeDetail();
+  const narrowLayout = globalThis.matchMedia?.("(max-width: 768px)");
+  narrowLayout?.addEventListener?.("change", (event) => {
+    if (event.matches !== true && dom.filterForms.dataset.open === "true") {
+      setFilterSheet(false, { restoreFocus: false });
     }
   });
 }
@@ -739,6 +803,15 @@ function applyLocation() {
 }
 
 async function boot() {
+  preferences = initPreferences({
+    themeToggle: dom.themeToggle,
+    languageSelect: dom.languageSelect,
+  });
+
+  document.addEventListener("preferenceschange", () => {
+    render.mountIcons(document.body, icons);
+  });
+
   // Installed before the first render, because `renderAll` draws the detail
   // region through it.
   detail = initDetail({

@@ -75,17 +75,15 @@ EXPECTED_ASSET_TYPES: dict[str, tuple[str, ...]] = {
     "icons.svg": ("image/svg+xml",),
 }
 
-#: The run ledger is the only collection the console may render.  These columns
-#: make the identity and state of each RAG execution visible without consulting
-#: DevRev first.
+#: The queue is an operational review surface.  Technical execution data stays
+#: available in the detail disclosure, but it must not dominate the list.
 REQUIRED_EXECUTION_COLUMNS = (
-    "Execution",
-    "Ticket ID",
-    "Route",
-    "Run status",
-    "DevRev context",
+    "Ticket",
     "Review status",
-    "Started",
+    "Received",
+    "Rating",
+    "Reviewer",
+    "Actions",
 )
 
 FORBIDDEN_FILE_EGRESS_WORDS = re.compile(
@@ -287,6 +285,12 @@ def dom(html_source: str) -> Node:
     return parse(html_source)
 
 
+def _by_id(node: Node, wanted: str) -> Node:
+    matches = [item for item in node.walk() if item.get("id") == wanted]
+    assert len(matches) == 1, f"expected exactly one #{wanted}, found {len(matches)}"
+    return matches[0]
+
+
 @pytest.fixture(scope="module")
 def css_source() -> str:
     return (UI_ASSETS_DIRECTORY / "tickets.css").read_text(encoding="utf-8")
@@ -396,6 +400,7 @@ class TestDocumentStructure:
         assert target.startswith("#")
         main = dom.find_all("main")[0]
         assert main.get("id") == target[1:]
+        assert first.all_text() == "Skip to main content"
 
     def test_the_headings_are_real_and_never_skip_a_level(self, dom):
         levels = [
@@ -422,6 +427,12 @@ class TestDocumentStructure:
         ]
         assert regions, "no live region: state changes would be silent"
         assert any((node.get("aria-live") or "") == "polite" for node in regions)
+
+    def test_readiness_changes_are_announced(self, dom):
+        health = next(node for node in dom.walk() if node.get("id") == "health-state")
+        assert health.get("role") == "status"
+        assert health.get("aria-live") == "polite"
+        assert health.get("aria-atomic") == "true"
 
     def test_the_table_has_a_caption_and_column_headers(self, dom):
         tables = dom.find_all("table")
@@ -462,7 +473,7 @@ class TestDocumentStructure:
             "session-email",
             "session-role",
             "health-state",
-            "kpi-strip",
+            "operational-heading",
             "execution-queue",
             "filters-executions",
             "bulk-bar",
@@ -482,7 +493,7 @@ class TestDocumentStructure:
         assert source_tablists == []
         queues = [node for node in dom.walk() if node.get("id") == "execution-queue"]
         assert len(queues) == 1
-        assert "RAG execution" in queues[0].all_text()
+        assert "Tickets ready for evaluation" in queues[0].all_text()
 
     def test_no_file_exchange_or_manual_queue_language_is_visible(self, dom):
         visible = dom.all_text()
@@ -510,10 +521,14 @@ class TestColumns:
     def test_every_execution_column_is_present(self, dom, column):
         assert column in self._column_headers(dom)
 
-    def test_run_identity_precedes_ticket_and_status(self, dom):
+    def test_reviewer_columns_follow_the_operational_order(self, dom):
         headers = self._column_headers(dom)
         positions = [headers.index(name) for name in REQUIRED_EXECUTION_COLUMNS]
         assert positions == sorted(positions), headers
+        assert all(
+            technical not in headers
+            for technical in ("Execution", "Route", "Run status", "DevRev context")
+        )
 
 
 class TestReviewerIsNotTheSessionActor:
@@ -551,6 +566,116 @@ class TestReviewerIsNotTheSessionActor:
 # =====================================================================
 # 5 — how the scripts are loaded
 # =====================================================================
+
+
+class TestThemeAndLanguagePreferences:
+
+    def test_theme_and_language_controls_are_labeled(self, dom):
+        controls = {node.get("id"): node for node in dom.walk() if node.get("id")}
+
+        theme = controls["theme-toggle"]
+        assert theme.tag == "button"
+        assert theme.get("type") == "button"
+        assert theme.get("aria-label")
+        assert theme.get("aria-pressed") in {"true", "false"}
+
+        language = controls["language-select"]
+        assert language.tag == "select"
+        labels = [
+            node
+            for node in dom.find_all("label")
+            if node.get("for") == "language-select"
+        ]
+        assert labels and labels[0].all_text()
+        options = {(node.get("value") or "") for node in language.find_all("option")}
+        assert {"en", "es"} <= options
+
+    def test_preferences_are_reached_from_the_entry_module(self, scripts):
+        assert 'from "./preferences.js"' in scripts["app.js"]
+        assert "initPreferences" in scripts["app.js"]
+
+    def test_explicit_themes_override_the_system_scheme(self, css_source):
+        assert 'html[data-theme="light"]' in css_source
+        assert 'html[data-theme="dark"]' in css_source
+        assert "prefers-color-scheme: dark" in css_source
+
+    def test_light_is_the_deterministic_initial_theme(self, dom, scripts):
+        html = dom.find_all("html")[0]
+        assert html.get("data-theme") == "light"
+        assert _by_id(dom, "theme-toggle").get("aria-pressed") == "false"
+        assert _by_id(dom, "theme-color").get("content") == "#f4f5f3"
+        assert 'matchMedia("(prefers-color-scheme: dark)")' not in scripts["preferences.js"]
+
+    def test_dark_destructive_actions_keep_accessible_contrast(self, css_source):
+        dark_button = re.search(
+            r'html\[data-theme="dark"\]\s+\.button-danger\s*\{([^}]*)\}',
+            css_source,
+        )
+        assert dark_button is not None
+        assert "color: #07101f" in dark_button.group(1)
+        assert ':root:not([data-theme]) .button-danger' in css_source
+
+    def test_browser_chrome_tracks_the_selected_theme(self, dom, scripts):
+        theme_colors = [
+            node for node in dom.find_all("meta") if node.get("name") == "theme-color"
+        ]
+        assert len(theme_colors) == 1
+        assert theme_colors[0].get("id") == "theme-color"
+        preferences = scripts["preferences.js"]
+        assert 'getElementById("theme-color")' in preferences
+        assert '"#f4f5f3"' in preferences
+        assert '"#07101f"' in preferences
+
+    def test_spanish_is_a_complete_selectable_locale(self, scripts):
+        preferences = scripts["preferences.js"]
+        assert '"es"' in preferences
+        assert "document.documentElement.lang" in preferences
+        assert "MutationObserver" in preferences
+        for phrase in (
+            "Quality operations",
+            "Reviewer workspace",
+            "Ticket reviews",
+            "Tickets ready for evaluation",
+            "Use the CRM to review the ticket and final answer, then record the quality decision here.",
+            "Technical filters",
+            "Technical batch actions",
+            "Select every ticket on this page",
+            "Focused review",
+            "Evaluation",
+            "Rate the final answer and document the correction, if any.",
+            "Advanced review fields",
+            "Technical audit details",
+            "Save review",
+        ):
+            assert phrase in preferences
+        assert '["on this page", "en esta página"]' in preferences
+        assert ".cell-title" in preferences
+        assert "Review ticket" in preferences
+        assert "Evaluar ticket" in preferences
+        assert '  ".toast-body",' not in preferences
+        assert '  ".state-body",' not in preferences
+        assert "normalizeCountNumber" in preferences
+        assert "navigator.languages" in preferences
+        assert "This review has unsaved changes" in preferences
+        assert "Esta revisión tiene cambios sin guardar" in preferences
+        assert "Your session ended" in preferences
+        assert "Tu sesión terminó" in preferences
+        assert "The request could not be completed" in preferences
+        assert "No se pudo completar la solicitud" in preferences
+        assert "Solo se ofrecen los cambios permitidos por el ciclo de revisión" in preferences
+        assert "Puedes tomar una revisión sin asignar o liberar una asignada a ti" in preferences
+        assert "¿Fijar" in scripts["app.js"]
+        assert 'from "./preferences.js"' in scripts["detail.js"]
+
+    def test_dates_follow_the_selected_document_locale(self, scripts):
+        assert "document.documentElement.lang" in scripts["render.js"]
+        evaluation = scripts["evaluation.js"]
+        assert "displayLocale" in evaluation
+        assert evaluation.count("toLocaleString(displayLocale())") >= 3
+
+    def test_detail_mode_focuses_the_workspace(self, scripts, css_source):
+        assert 'classList.toggle("detail-open"' in scripts["app.js"]
+        assert "body.detail-open" in css_source
 
 
 class TestScriptLoading:
@@ -760,6 +885,10 @@ class TestStylesheet:
     def test_touch_targets_meet_the_shared_minimum(self, css_source):
         assert f"{MIN_TOUCH_TARGET_PX}px" in css_source
 
+    def test_touch_controls_avoid_delayed_taps(self, css_source):
+        assert "touch-action: manipulation" in css_source
+        assert "-webkit-tap-highlight-color" in css_source
+
     def test_wide_content_scrolls_inside_its_own_container(self, css_source):
         assert "overflow-x: auto" in css_source
 
@@ -805,7 +934,24 @@ class TestNarrowLayout:
     def test_the_filters_open_as_an_accessible_sheet(self, css_source, dom, scripts):
         ids = {node.get("id") for node in dom.walk() if node.get("id")}
         assert "filter-sheet-toggle" in ids
+        assert "filter-sheet-close" in ids
         assert "aria-expanded" in scripts["app.js"]
+        block = self._narrow_block(css_source)
+        assert "overscroll-behavior: contain" in block
+        app = scripts["app.js"]
+        assert 'setAttribute("role", "dialog")' in app
+        assert 'setAttribute("aria-modal", "true")' in app
+        assert "filterSheetFocusable" in app
+        assert "filterSheetInerted" in app
+        assert ".inert = true" in app
+        assert 'classList.toggle("filter-sheet-open"' in app
+        assert "Close filters" in scripts["preferences.js"]
+
+    def test_the_mobile_announcement_does_not_clip_two_long_messages(self, css_source):
+        block = self._narrow_block(css_source)
+        assert ".announcement-rail p:last-child" in block
+        announcement = block.split(".announcement-rail p:last-child", 1)[1]
+        assert re.search(r"\{[^}]*display:\s*none", announcement)
 
 
 class TestIconButtons:
@@ -1047,10 +1193,11 @@ class TestRowRendering:
         renderer = scripts["render.js"]
         assert "visually-hidden" in renderer or "sr-only" in renderer
 
-    def test_each_row_surfaces_the_execution_and_hydration_contract(self, scripts):
+    def test_each_row_uses_execution_identity_without_exposing_technical_columns(self, scripts):
         renderer = scripts["render.js"]
-        for field in ("executionId", "route", "runStatus", "hydrationStatus"):
-            assert field in renderer, field
+        assert '"data-execution-id": row.executionId' in renderer
+        assert 'dataset: { action: "open", executionId: row.executionId }' in renderer
+        assert "Review ticket" in renderer
         assert "Add to review queue" not in renderer
 
     def test_the_browser_never_creates_a_review_manually(self, scripts):
@@ -1072,49 +1219,52 @@ class TestRowRendering:
         assert "devrev_unavailable" in renderer
 
 
-class TestKpiHonesty:
+class TestReviewerFirstLayout:
 
-    def test_the_three_indicators_are_the_named_ones(self, dom):
-        strip = [node for node in dom.walk() if node.get("id") == "kpi-strip"][0]
-        labels = [
-            node.all_text()
-            for node in strip.find_all("p", "span", "dt")
-            if "kpi-label" in (node.get("class") or "")
-        ]
-        assert labels == [
-            "Unreviewed executions",
-            "Failed or partial RAG",
-            "Active remediation",
-        ]
+    def test_the_operational_page_has_no_marketing_hero_or_kpis(self, dom, scripts):
+        forbidden = {
+            "page-hero",
+            "hero-copy",
+            "hero-signal",
+            "signal-orbit",
+            "signal-node",
+            "kpi-section",
+            "kpi-strip",
+            "kpi",
+        }
+        shipped = {
+            token
+            for node in dom.walk()
+            for token in (node.get("class") or "").split()
+        }
+        assert forbidden.isdisjoint(shipped)
+        assert "Ticket evaluation flow" not in dom.all_text()
+        assert "pageTallies" not in scripts["app.js"]
 
-    def test_no_indicator_claims_a_global_total_it_cannot_have(self, dom, html_source):
-        """The admin API exposes no aggregate, so the value is an em dash.
+    def test_the_page_opens_with_a_flat_reviewer_instruction(self, dom):
+        heading = _by_id(dom, "operational-heading")
+        assert heading.tag == "header"
+        assert "operational-heading" in (heading.get("class") or "").split()
+        assert _by_id(heading, "page-heading").tag == "h1"
+        assert _by_id(heading, "page-heading").all_text() == "Ticket reviews"
+        assert "CRM" in heading.all_text()
 
-        A page count labeled as a global total is the failure mode this pins:
-        it looks authoritative and is wrong by however much the queue exceeds
-        one page.
-        """
-        strip = [node for node in dom.walk() if node.get("id") == "kpi-strip"][0]
-        values = [
-            node.all_text()
-            for node in strip.walk()
-            if "kpi-value" in (node.get("class") or "")
-        ]
-        assert values == ["—"] * 3
-
-    def test_the_missing_total_is_explained_in_visible_text(self, dom):
-        notes = [node for node in dom.walk() if node.get("id") == "kpi-note"]
-        assert notes and len(notes[0].all_text()) > 40
-
-    def test_the_page_scoped_count_is_labeled_as_page_scoped(self, dom):
-        strip = [node for node in dom.walk() if node.get("id") == "kpi-strip"][0]
-        scopes = [
-            node.all_text()
-            for node in strip.walk()
-            if "kpi-scope" in (node.get("class") or "")
-        ]
-        assert len(scopes) == 3
-        assert all("this page" in text for text in scopes), scopes
+    @pytest.mark.parametrize(
+        ("disclosure_id", "summary_text"),
+        (
+            ("technical-filter-details", "Technical filters"),
+            ("technical-batch-details", "Technical batch actions"),
+        ),
+    )
+    def test_technical_queue_controls_are_collapsed_disclosures(
+        self, dom, disclosure_id, summary_text,
+    ):
+        disclosure = _by_id(dom, disclosure_id)
+        assert disclosure.tag == "details"
+        assert disclosure.get("open") is None
+        summaries = [child for child in disclosure.children if child.tag == "summary"]
+        assert len(summaries) == 1
+        assert summaries[0].all_text() == summary_text
 
 
 class TestFeatureFlagBranching:
@@ -1205,7 +1355,7 @@ class TestRagExecutionDetailContract:
         assert "RAG execution remains available while enrichment continues" not in detail
         assert "RAG execution and durable review remain visible" not in detail
 
-    def test_invocation_attempt_identity_survives_adapter_and_rendering(
+    def test_invocation_attempt_identity_survives_adapter_and_technical_detail(
         self, scripts,
     ):
         adapter = scripts["api.js"]
@@ -1215,8 +1365,6 @@ class TestRagExecutionDetailContract:
         assert 'definitionRow("Invocation ID"' in detail
         assert 'definitionRow("Attempt"' in detail
         assert 'definitionRow("Lease epoch"' in detail
-        rows = scripts["render.js"]
-        assert "Attempt ${row.attempt}" in rows
 
     def test_initial_conversation_is_loaded_by_execution_id(self, scripts):
         detail = scripts["detail.js"]

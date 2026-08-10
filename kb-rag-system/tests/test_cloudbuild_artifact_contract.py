@@ -12,6 +12,18 @@ import pytest
 KB_ROOT = Path(__file__).resolve().parent.parent
 
 
+def test_runtime_build_uses_the_dedicated_scanner_identity() -> None:
+    controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+    expected = (
+        "serviceAccount: 'projects/rag-kb-system/serviceAccounts/"
+        "ticket-ci@rag-kb-system.iam.gserviceaccount.com'"
+    )
+
+    assert controller.count("serviceAccount:") == 1
+    assert expected in controller
+    assert "900340137010-compute@" not in controller
+
+
 def test_image_tags_and_evidence_paths_use_the_full_commit_sha() -> None:
     for name in ("cloudbuild.yaml", "cloudbuild.e2e-image.yaml"):
         controller = (KB_ROOT / name).read_text(encoding="utf-8")

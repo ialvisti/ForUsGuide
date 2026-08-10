@@ -4,6 +4,8 @@
 #
 # Digests de imágenes-herramienta: kb-rag-system/ci/tool-images.env
 # (python:3.12-slim y anchore/syft fijados por @sha256:). No usar :latest.
+serviceAccount: 'projects/rag-kb-system/serviceAccounts/ticket-ci@rag-kb-system.iam.gserviceaccount.com'
+
 substitutions:
   _EVIDENCE_BUCKET: "rag-kb-system-ticket-evidence-900340137010"
   _SCAN_LOCATION: "us"

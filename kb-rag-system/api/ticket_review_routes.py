@@ -37,7 +37,7 @@ import json
 import logging
 from collections.abc import Mapping
 from datetime import datetime
-from typing import Annotated, Any, Callable, Literal, Optional
+from typing import Annotated, Any, Callable, Optional
 
 from fastapi import APIRouter, Depends, Header, Path, Query, Request, Response, status
 from fastapi.responses import JSONResponse
@@ -64,13 +64,10 @@ from api.ticket_review_models import (
     CreateEvidenceLinkRequest,
     CreateRemediationBatchRequest,
     CreateRemediationBatchResponse,
-    CreateReviewRequest,
     CursorError,
     CursorPage,
     DeleteEvidenceLinkRequest,
     DevRevHydrationStatus,
-    DevRevTicketFilters,
-    DevRevTicketWithReviewSummary,
     ErrorBody,
     ErrorResponse,
     EvaluationRoute,
@@ -97,7 +94,6 @@ from api.ticket_review_models import (
     SessionResponse,
     StalePreconditionError,
     StartVerificationRequest,
-    TicketDetailEnvelope,
     TicketEvaluationDetailEnvelope,
     TicketEvaluationSummary,
     TicketReview,

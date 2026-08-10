@@ -1864,7 +1864,7 @@ class CreateRemediationBatchResponse(_Base):
 #: place the plaintext is allowed to exist is this header, set by the claim route
 #: and read by the CLI. The console's access log records method, route template,
 #: status, duration, and a subject hash; it never records a response header.
-LEASE_TOKEN_HEADER = "X-Tickets-Lease-Token"
+LEASE_TOKEN_HEADER = "X-Tickets-Lease-Token"  # noqa: S105 - HTTP header name, not a token
 
 
 class ClaimBatchResponse(_Base):

@@ -92,7 +92,6 @@ from api.ticket_review_models import (
     ReviewOutcome,
     ReviewPatch,
     ReviewRef,
-    ReviewResolution,
     ReviewStatus,
     Sha256Hex,
     StrictInt,

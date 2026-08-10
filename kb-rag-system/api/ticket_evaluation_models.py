@@ -287,14 +287,14 @@ def rag_invocation_id(
         raise ValueError("job_id is not usable for an invocation identity")
     if not 0 <= inquiry_index <= 99:
         raise ValueError("inquiry_index is not usable")
-    for name, value in (("lease_epoch", lease_epoch), ("attempt", attempt)):
-        if isinstance(value, bool) or not isinstance(value, int) \
-                or not 1 <= value <= 2_147_483_647:
+    for name, numeric_value in (("lease_epoch", lease_epoch), ("attempt", attempt)):
+        if isinstance(numeric_value, bool) or not isinstance(numeric_value, int) \
+                or not 1 <= numeric_value <= 2_147_483_647:
             raise ValueError(f"{name} is not usable")
-    value = f"{job_id}-e{lease_epoch}-a{attempt}:{inquiry_index}"
-    if len(value) > 160:
+    invocation_id = f"{job_id}-e{lease_epoch}-a{attempt}:{inquiry_index}"
+    if len(invocation_id) > 160:
         raise ValueError("invocation identity is too long")
-    return value
+    return invocation_id
 
 
 def build_ticket_evaluation_seed(
@@ -315,7 +315,7 @@ def build_ticket_evaluation_seed(
     if route not in {item.value for item in EvaluationRoute}:
         raise ValueError("invocation seed requires a RAG route")
     expected_id = rag_invocation_id(
-        str(getattr(record, "job_id")),
+        str(record.job_id),
         index,
         lease_epoch=lease_epoch,
         attempt=attempt,
@@ -352,7 +352,7 @@ def build_ticket_evaluation_seed(
         metadata = {}
     seed: dict[str, Any] = {
         "invocation_id": invocation_id,
-        "job_id": str(getattr(record, "job_id")),
+        "job_id": str(record.job_id),
         "inquiry_index": index,
         "attempt": attempt,
         "lease_epoch": lease_epoch,
@@ -573,7 +573,7 @@ def build_ticket_evaluation_event(
 
     job_id = str(
         event_seed.get("job_id")
-        if event_seed is not None else getattr(record, "job_id")
+        if event_seed is not None else record.job_id
     )
     resolved_invocation_id = invocation_id or f"{job_id}:{index}"
     resolved_attempt = (

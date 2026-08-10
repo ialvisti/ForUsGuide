@@ -1522,8 +1522,10 @@ class TicketJobRepository:
                     and isinstance(lease_expires_at, datetime)
                 )
                 if same_live_attempt:
+                    live_lease_expires_at = lease_expires_at
+                    assert isinstance(live_lease_expires_at, datetime)
                     try:
-                        same_live_attempt = observed < lease_expires_at
+                        same_live_attempt = observed < live_lease_expires_at
                     except TypeError:
                         same_live_attempt = False
                 if same_live_attempt:

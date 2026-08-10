@@ -1399,7 +1399,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                                 },
                             )
                         except Exception:  # noqa: BLE001 - first CAS may have won
-                            pass
+                            logger.info(
+                                "shadow invocation terminal state was already recorded"
+                            )
                     shadow_summary.append({"index": i,
                                            "route": getattr(cls, "route", None),
                                            "error": "shadow_pipeline_failed"})

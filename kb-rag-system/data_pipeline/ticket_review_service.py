@@ -37,7 +37,7 @@ import asyncio
 import logging
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from typing import Any, Callable, Optional, Protocol
 
 from api.ticket_review_models import (
@@ -114,7 +114,6 @@ from data_pipeline.ticket_review_repository import (
     TicketReviewRepository,
     UnsupportedFilterCombination,
     normalize_display_id,
-    sha256_hex,
 )
 
 logger = logging.getLogger(__name__)
@@ -122,7 +121,7 @@ logger = logging.getLogger(__name__)
 # AEAD associated-data context for a manual-evidence candidate token. Distinct
 # from every cursor context, so a page cursor can never be replayed as a
 # candidate and vice versa.
-CANDIDATE_TOKEN_CONTEXT = "tickets:evidence-candidate:v1"
+CANDIDATE_TOKEN_CONTEXT = "tickets:evidence-candidate:v1"  # noqa: S105 - AEAD context
 
 # Bounded warning/diagnostic vocabulary. These cross into API envelopes.
 WARNING_DEVREV_UNAVAILABLE = "devrev_unavailable"
@@ -757,7 +756,7 @@ class TicketReviewService:
         rows: list[DevRevTicketWithReviewSummary] = []
         partial = False
         warnings: list[str] = []
-        for ticket, result in zip(tickets, results):
+        for ticket, result in zip(tickets, results, strict=True):
             if isinstance(result, BaseException):
                 # Explicit partial failure: the live ticket is still shown, and
                 # the missing overlay is reported rather than looking like

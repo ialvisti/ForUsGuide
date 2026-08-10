@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
-from typing import Any, Callable, Mapping, Optional
+from typing import Annotated, Any, Callable, Mapping, Optional
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 
@@ -216,9 +216,11 @@ def get_claims_verifier(request: Request) -> Callable[[str, str], Mapping[str, A
 
 async def require_console_caller(
     request: Request,
+    settings: Annotated[EvidenceBrokerSettings, Depends(get_settings)],
+    verifier: Annotated[
+        Callable[[str, str], Mapping[str, Any]], Depends(get_claims_verifier)
+    ],
     authorization: Optional[str] = Header(default=None),
-    settings: EvidenceBrokerSettings = Depends(get_settings),
-    verifier: Callable[[str, str], Mapping[str, Any]] = Depends(get_claims_verifier),
 ) -> str:
     """Authorize exactly one caller: the configured console service account.
 
@@ -279,7 +281,7 @@ async def readyz(request: Request) -> dict[str, Any]:
 )
 async def lookup_ticket_evidence(
     payload: TicketEvidenceLookupRequest,
-    broker: TicketEvidenceBroker = Depends(get_broker),
+    broker: Annotated[TicketEvidenceBroker, Depends(get_broker)],
 ) -> RagEvidenceEnvelope:
     """Map one transient DON to a bounded sanitized provenance envelope.
 

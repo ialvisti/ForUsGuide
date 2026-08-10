@@ -42,7 +42,8 @@ def default_id_token_factory(
     from google.auth.transport import requests as google_requests
     from google.oauth2 import id_token
 
-    token = id_token.fetch_id_token(google_requests.Request(), audience)
+    fetch_id_token: Callable[[Any, str], str] = id_token.fetch_id_token
+    token = fetch_id_token(google_requests.Request(), audience)
     if not isinstance(token, str) or not token:
         raise RuntimeError("could not mint evaluation ingestion identity token")
     _assert_minted_token_identity(

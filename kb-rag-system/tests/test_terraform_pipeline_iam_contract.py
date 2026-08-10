@@ -134,6 +134,20 @@ def test_image_builders_are_explicit_and_can_scan_without_deploy() -> None:
     assert "google_artifact_registry_repository.images.repository_id" in iam
 
 
+def test_runtime_builder_reads_only_cloud_build_source_objects() -> None:
+    iam = _read("pipeline_iam.tf")
+    block = iam.split(
+        'resource "google_storage_bucket_iam_member" '
+        '"runtime_builder_source_reader"',
+        1,
+    )[1].split("\n}", 1)[0]
+
+    assert 'bucket = "${var.project_id}_cloudbuild"' in block
+    assert 'role   = "roles/storage.objectViewer"' in block
+    assert "google_service_account.ci.email" in block
+    assert "objects/source/" in block
+
+
 def test_controller_candidate_verifier_has_no_publish_scan_or_state_authority() -> None:
     iam = _read("pipeline_iam.tf")
     cloud_build = _read("cloud_build.tf")

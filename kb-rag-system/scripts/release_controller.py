@@ -667,6 +667,8 @@ PLATFORM_IAM_ROLE_POLICY = {
         {"roles/storage.objectViewer"},
     ("google_storage_bucket_iam_member", "controller_verifier_source_reader"):
         {"roles/storage.objectViewer"},
+    ("google_storage_bucket_iam_member", "runtime_builder_source_reader"):
+        {"roles/storage.objectViewer"},
 }
 PLATFORM_CUSTOM_ROLE_PERMISSION_HASHES = {
     "platform_plan_reader": "6469b93f55fb5584e60bc3b618109605a05b9fa7996c7b6a9ff0dcd92d8d8973",

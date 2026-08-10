@@ -1033,3 +1033,17 @@ resource "google_storage_bucket_iam_member" "controller_verifier_source_reader" 
   role   = "roles/storage.objectViewer"
   member = "serviceAccount:${google_service_account.controller_verifier.email}"
 }
+
+# El builder runtime usa el mismo bucket sólo para descargar el tarball que
+# Cloud Build ya aceptó. La condición evita lectura de logs u otros objetos.
+resource "google_storage_bucket_iam_member" "runtime_builder_source_reader" {
+  bucket = "${var.project_id}_cloudbuild"
+  role   = "roles/storage.objectViewer"
+  member = "serviceAccount:${google_service_account.ci.email}"
+
+  condition {
+    title       = "runtime_builder_source_only"
+    description = "Read-only exclusivamente bajo el prefijo source/."
+    expression  = "resource.name.startsWith(\"projects/_/buckets/${var.project_id}_cloudbuild/objects/source/\")"
+  }
+}

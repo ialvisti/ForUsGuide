@@ -181,6 +181,17 @@ def test_read_only_chat_copy_round_trips() -> None:
     )
 
 
+def test_primary_outcome_filter_copy_round_trips() -> None:
+    _round_trip(
+        [
+            ("Outcome", "Resultado"),
+            ("Any outcome", "Cualquier resultado"),
+            ("Knowledge Question", "Pregunta de conocimiento"),
+            ("Generate Response", "Generar respuesta"),
+        ]
+    )
+
+
 def test_every_emitted_closing_requirement_combination_round_trips() -> None:
     english_parts = [
         "an outcome",

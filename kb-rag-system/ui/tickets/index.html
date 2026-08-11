@@ -144,6 +144,14 @@
             <option value="wont_fix">Will not fix</option>
           </select>
         </div>
+        <div class="field">
+          <label for="execution-route">Outcome</label>
+          <select id="execution-route" name="route">
+            <option value="">Any outcome</option>
+            <option value="knowledge_question">Knowledge Question</option>
+            <option value="generate_response">Generate Response</option>
+          </select>
+        </div>
         <details id="technical-filter-details" class="technical-filters">
           <summary>Technical filters</summary>
           <div class="technical-filter-grid">
@@ -151,14 +159,6 @@
               <label for="execution-id">Exact execution ID</label>
               <input type="search" id="execution-id" name="execution_id" autocomplete="off"
                      maxlength="160" placeholder="job-id:inquiry-index">
-            </div>
-            <div class="field">
-              <label for="execution-route">RAG route</label>
-              <select id="execution-route" name="route">
-                <option value="">Any RAG route</option>
-                <option value="knowledge_question">Knowledge question</option>
-                <option value="generate_response">Generated response</option>
-              </select>
             </div>
             <div class="field">
               <label for="execution-status">Run status</label>

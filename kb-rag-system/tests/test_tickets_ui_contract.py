@@ -1268,6 +1268,35 @@ class TestReviewerFirstLayout:
         assert len(summaries) == 1
         assert summaries[0].all_text() == summary_text
 
+    def test_outcome_is_a_primary_filter_with_stable_route_values(self, dom):
+        form = _by_id(dom, "filters-executions")
+        outcome = _by_id(dom, "execution-route")
+        field = outcome.parent
+
+        assert field is not None
+        assert "field" in (field.get("class") or "").split()
+        assert field.parent is form
+        assert _by_id(dom, "technical-filter-details") not in list(outcome.ancestors())
+
+        labels = [
+            node
+            for node in field.find_all("label")
+            if node.get("for") == "execution-route"
+        ]
+        assert [label.all_text() for label in labels] == ["Outcome"]
+        assert [
+            (option.get("value") or "", option.all_text())
+            for option in outcome.find_all("option")
+        ] == [
+            ("", "Any outcome"),
+            ("knowledge_question", "Knowledge Question"),
+            ("generate_response", "Generate Response"),
+        ]
+
+    def test_active_filter_names_the_route_as_outcome(self, scripts):
+        state = scripts["state.js"]
+        assert '["Outcome", "route", filters.route]' in state
+
 
 class TestFeatureFlagBranching:
 

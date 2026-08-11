@@ -195,7 +195,7 @@ _VALUES = {
 
 _ENGLISH = {
     "total_inquiries_in_ticket": "Total inquiries in ticket",
-    "generate_response": "Generate response",
+    "generate_response": "Generate Response",
     "forusbots_elapsed_s": "ForUsBots elapsed time (seconds)",
     "forusbots_job_id": "ForUsBots job ID",
     "forusbots_participant_elapsed_s": "ForUsBots participant elapsed time (seconds)",

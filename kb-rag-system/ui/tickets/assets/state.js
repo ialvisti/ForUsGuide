@@ -731,7 +731,7 @@ export function activeFilters(state) {
   const named = [
     ["Execution", "executionId", filters.executionId],
     ["Ticket ID", "displayId", filters.displayId],
-    ["Route", "route", filters.route],
+    ["Outcome", "route", filters.route],
     ["Run status", "runStatus", filters.runStatus],
     ["Review status", "reviewStatus", filters.reviewStatus],
   ];

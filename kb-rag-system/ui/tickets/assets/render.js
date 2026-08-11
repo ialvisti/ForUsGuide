@@ -22,7 +22,7 @@
  */
 
 /** Column count of the results table; a full-width state row spans all of it. */
-export const COLUMN_COUNT = 7;
+export const COLUMN_COUNT = 8;
 
 /** Longest live title preview rendered in a row, in characters. */
 const TITLE_PREVIEW_LIMIT = 160;
@@ -46,6 +46,11 @@ const STATUS_LABELS = new Map([
   ["resolved", "Resolved"],
   ["blocked", "Blocked"],
   ["wont_fix", "Will not fix"],
+]);
+
+const REQUEST_TYPE_LABELS = new Map([
+  ["knowledge_question", "Knowledge Question"],
+  ["generate_response", "Generate Response"],
 ]);
 
 const OBSERVATION_LABELS = new Map([
@@ -403,6 +408,12 @@ export function ticketRow(row, { selected }) {
   const reviewStatus = cell("Review status", "cell-status");
   reviewStatus.appendChild(statusPill(review?.status ?? "unreviewed"));
   tr.appendChild(reviewStatus);
+
+  const requestType = cell("Request type", "cell-request-type");
+  requestType.appendChild(
+    el("span", { text: REQUEST_TYPE_LABELS.get(row.route) ?? (row.route || "Unknown") })
+  );
+  tr.appendChild(requestType);
 
   const received = cell("Received", "cell-updated");
   received.appendChild(timeElement(row.createdAt));

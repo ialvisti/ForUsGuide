@@ -82,6 +82,7 @@ EXPECTED_ASSET_TYPES: dict[str, tuple[str, ...]] = {
 REQUIRED_EXECUTION_COLUMNS = (
     "Ticket",
     "Review status",
+    "Request type",
     "Received",
     "Rating",
     "Reviewer",
@@ -527,9 +528,23 @@ class TestColumns:
         headers = self._column_headers(dom)
         positions = [headers.index(name) for name in REQUIRED_EXECUTION_COLUMNS]
         assert positions == sorted(positions), headers
+        assert headers.index("Request type") == headers.index("Review status") + 1
         assert all(
             technical not in headers
             for technical in ("Execution", "Route", "Run status", "DevRev context")
+        )
+
+    def test_request_type_uses_the_normalized_route(self, scripts):
+        renderer = scripts["render.js"]
+        assert "REQUEST_TYPE_LABELS" in renderer
+        assert "row.route" in renderer
+        assert "knowledge_question" in renderer
+        assert "generate_response" in renderer
+
+    def test_the_queue_declares_newest_received_first(self, scripts):
+        assert (
+            'dom.caption.textContent = "Tickets ready for evaluation, newest received first.";'
+            in scripts["app.js"]
         )
 
 

@@ -217,6 +217,34 @@ async def test_two_runs_for_one_ticket_remain_two_rows_with_opaque_cursor(stack)
     }
 
 
+async def test_queue_pages_newest_occurrence_first_with_stable_ties(stack):
+    _backend, repo, _devrev, service, _clock = stack
+    cases = [
+        ("aaa-old", T0 - timedelta(minutes=2)),
+        ("bbb-new-low", T0),
+        ("ccc-new-high", T0),
+        ("zzz-mid", T0 - timedelta(minutes=1)),
+    ]
+    for job_id, occurred_at in cases:
+        await service.ingest(_event(job_id=job_id, occurred_at=occurred_at))
+
+    execution_ids: list[str] = []
+    cursor = None
+    for _ in cases:
+        page = await repo.list_ticket_evaluations(limit=1, cursor=cursor)
+        assert len(page.items) == 1
+        execution_ids.append(page.items[0].execution_id)
+        cursor = page.next_cursor
+
+    assert execution_ids == [
+        "ccc-new-high:0",
+        "bbb-new-low:0",
+        "zzz-mid:0",
+        "aaa-old:0",
+    ]
+    assert cursor is None
+
+
 async def test_two_attempts_of_same_job_and_inquiry_remain_distinct_rows(stack):
     _backend, repo, _devrev, service, _clock = stack
     first_id = "job123-e1-a1:0"
@@ -421,15 +449,15 @@ async def test_hydration_success_is_monotonic_against_a_stale_failure(stack):
 async def test_filtered_scan_returns_a_continuation_before_matches_after_one_thousand(stack):
     _backend, repo, _devrev, service, _clock = stack
     for index in range(1_001):
-        await repo.persist_ticket_evaluation(_event(job_id=f"aaa{index:04d}"))
-    await service.ingest(_event(job_id="zzz9999"))
+        await repo.persist_ticket_evaluation(_event(job_id=f"zzz{index:04d}"))
+    await service.ingest(_event(job_id="aaa0000"))
 
     first = await repo.list_ticket_evaluations(limit=1)
     second = await repo.list_ticket_evaluations(limit=1, cursor=first.next_cursor)
 
     assert first.items == []
     assert first.next_cursor is not None
-    assert [run.execution_id for run in second.items] == ["zzz9999:0"]
+    assert [run.execution_id for run in second.items] == ["aaa0000:0"]
     assert second.next_cursor is None
 
 

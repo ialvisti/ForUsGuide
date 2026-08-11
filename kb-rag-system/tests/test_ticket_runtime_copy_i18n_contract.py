@@ -185,9 +185,14 @@ def test_primary_outcome_filter_copy_round_trips() -> None:
     _round_trip(
         [
             ("Outcome", "Resultado"),
+            ("Request type", "Tipo de solicitud"),
             ("Any outcome", "Cualquier resultado"),
             ("Knowledge Question", "Pregunta de conocimiento"),
             ("Generate Response", "Generar respuesta"),
+            (
+                "Tickets ready for evaluation, newest received first.",
+                "Tickets listos para evaluar, del más reciente al más antiguo.",
+            ),
         ]
     )
 

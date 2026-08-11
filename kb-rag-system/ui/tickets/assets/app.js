@@ -309,7 +309,7 @@ function describeDisabledCapabilities(flags) {
 
 function renderAll(state) {
   document.body.classList.toggle("detail-open", state.selected !== "");
-  dom.caption.textContent = "Tickets ready for evaluation in stable queue order.";
+  dom.caption.textContent = "Tickets ready for evaluation, newest received first.";
 
   const identity = state.session;
   dom.sessionEmail.textContent = identity?.email ?? "—";

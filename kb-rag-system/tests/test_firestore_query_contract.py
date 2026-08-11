@@ -9,6 +9,7 @@ from typing import AsyncIterator, cast
 from google.cloud.firestore_v1.base_query import FieldFilter
 
 from data_pipeline.ticket_job_repository import FirestoreTicketJobBackend
+from data_pipeline.ticket_review_repository import FirestoreTicketReviewBackend
 
 
 class _Aggregation:
@@ -51,6 +52,35 @@ class _ClientProbe:
         query = _QueryProbe()
         self.queries.append(query)
         return query
+
+
+class _DescendingQueryProbe:
+    def __init__(self) -> None:
+        self.order_by_calls: list[tuple[object, dict[str, object]]] = []
+        self.start_after_calls: list[object] = []
+
+    def order_by(self, field: object, **kwargs: object) -> _DescendingQueryProbe:
+        self.order_by_calls.append((field, kwargs))
+        return self
+
+    def start_after(self, cursor: object) -> _DescendingQueryProbe:
+        self.start_after_calls.append(cursor)
+        return self
+
+    def limit(self, _limit: object) -> _DescendingQueryProbe:
+        return self
+
+    async def stream(self) -> AsyncIterator[object]:
+        if False:  # pragma: no cover - makes this an empty async generator
+            yield None
+
+
+class _DescendingClientProbe:
+    def __init__(self) -> None:
+        self.query = _DescendingQueryProbe()
+
+    def collection(self, _name: object) -> _DescendingQueryProbe:
+        return self.query
 
 
 async def test_firestore_queries_use_fieldfilter_keyword_without_positional_where(
@@ -104,4 +134,26 @@ async def test_firestore_queries_use_fieldfilter_keyword_without_positional_wher
     assert client.queries[-2].order_by_calls == ["next_attempt_at", "__name__"]
     assert client.queries[-1].order_by_calls == [
         "next_recovery_at", "__name__",
+    ]
+
+
+async def test_evaluation_query_orders_timestamp_and_id_descending() -> None:
+    backend = object.__new__(FirestoreTicketReviewBackend)
+    client = _DescendingClientProbe()
+    object.__setattr__(backend, "_client", cast(object, client))
+    occurred_at = datetime(2026, 8, 11, 17, 30, tzinfo=timezone.utc)
+
+    await backend.list_collection_descending(
+        "ticket_evaluation_runs",
+        order_by="event.occurred_at",
+        limit=25,
+        start_after=(occurred_at, "run-2"),
+    )
+
+    assert client.query.order_by_calls == [
+        ("event.occurred_at", {"direction": "DESCENDING"}),
+        ("__name__", {"direction": "DESCENDING"}),
+    ]
+    assert client.query.start_after_calls == [
+        {"event.occurred_at": occurred_at, "__name__": "run-2"}
     ]

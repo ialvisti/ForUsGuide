@@ -878,6 +878,15 @@ class TicketReviewBackend(Protocol):
         start_after_id: Optional[str] = None,
     ) -> list[tuple[str, Document]]: ...
 
+    async def list_collection_descending(
+        self,
+        collection: str,
+        *,
+        order_by: str,
+        limit: int = DEFAULT_PAGE_SIZE,
+        start_after: Optional[tuple[datetime, str]] = None,
+    ) -> list[tuple[str, Document]]: ...
+
     async def scan_by_field(
         self,
         collection: str,
@@ -1067,6 +1076,38 @@ class InMemoryTicketReviewBackend:
             rows.sort(key=lambda row: (row[1][order_by], row[0]))
         if start_after_id is not None:
             rows = [row for row in rows if row[0] > start_after_id]
+        return rows[:limit]
+
+    async def list_collection_descending(
+        self,
+        collection: str,
+        *,
+        order_by: str,
+        limit: int = DEFAULT_PAGE_SIZE,
+        start_after: Optional[tuple[datetime, str]] = None,
+    ) -> list[tuple[str, Document]]:
+        rows = [
+            (path[1], copy.deepcopy(doc))
+            for path, doc in self._data.items()
+            if len(path) == 2
+            and path[0] == collection
+            and isinstance(_resolve_path(doc, order_by), datetime)
+        ]
+        rows.sort(
+            key=lambda row: (cast(datetime, _resolve_path(row[1], order_by)), row[0]),
+            reverse=True,
+        )
+        if start_after is not None:
+            last_at, last_id = start_after
+            rows = [
+                row
+                for row in rows
+                if cast(datetime, _resolve_path(row[1], order_by)) < last_at
+                or (
+                    cast(datetime, _resolve_path(row[1], order_by)) == last_at
+                    and row[0] < last_id
+                )
+            ]
         return rows[:limit]
 
     async def scan_by_field(
@@ -1298,6 +1339,26 @@ class FirestoreTicketReviewBackend:
         query: Any = handle.order_by(order_by) if order_by else handle.order_by("__name__")
         if start_after_id is not None:
             query = query.start_after(handle.document(start_after_id))
+        rows: list[tuple[str, Document]] = []
+        async for snapshot in query.limit(limit).stream():
+            rows.append((snapshot.id, cast(Document, snapshot.to_dict())))
+        return rows
+
+    async def list_collection_descending(
+        self,
+        collection: str,
+        *,
+        order_by: str,
+        limit: int = DEFAULT_PAGE_SIZE,
+        start_after: Optional[tuple[datetime, str]] = None,
+    ) -> list[tuple[str, Document]]:
+        handle = self._client.collection(collection)
+        query: Any = handle.order_by(order_by, direction="DESCENDING").order_by(
+            "__name__", direction="DESCENDING"
+        )
+        if start_after is not None:
+            last_at, last_id = start_after
+            query = query.start_after({order_by: last_at, "__name__": last_id})
         rows: list[tuple[str, Document]] = []
         async for snapshot in query.limit(limit).stream():
             rows.append((snapshot.id, cast(Document, snapshot.to_dict())))
@@ -1805,11 +1866,12 @@ class TicketReviewRepository:
         cursor: Optional[str] = None,
         filters: Optional[Mapping[str, str]] = None,
     ) -> CursorPageOf:
-        """List only persisted RAG runs in deterministic document-id order.
+        """List persisted RAG runs from newest occurrence to oldest.
 
         Filtering uses a bounded scan over the dedicated ledger, never DevRev
-        discovery. The opaque cursor records both the last scanned id and the
-        filter digest, so it cannot be replayed against a different queue.
+        discovery. The opaque cursor records the occurrence timestamp, the
+        execution-id tie-breaker, and the filter digest, so it cannot be replayed
+        against a different queue or sort position.
         """
         page_size = max(1, min(int(limit), MAX_PAGE_SIZE))
         normalized_filters = {
@@ -1823,7 +1885,7 @@ class TicketReviewRepository:
         filter_digest = hashlib.sha256(
             json.dumps(normalized_filters, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
-        start_after_id: Optional[str] = None
+        start_after: Optional[tuple[datetime, str]] = None
         if cursor:
             payload = open_cursor(
                 self._cursor_key,
@@ -1832,31 +1894,42 @@ class TicketReviewRepository:
                 now=self._now(),
             )
             value = payload.get("execution_id")
+            occurred_at_unix_us = payload.get("occurred_at_unix_us")
             if (
                 not isinstance(value, str)
                 or not value
+                or isinstance(occurred_at_unix_us, bool)
+                or not isinstance(occurred_at_unix_us, int)
+                or occurred_at_unix_us < 0
                 or payload.get("filter_digest") != filter_digest
             ):
                 raise CursorError("evaluation cursor payload is not readable")
-            start_after_id = value
+            try:
+                occurred_at = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
+                    microseconds=occurred_at_unix_us
+                )
+            except OverflowError as exc:
+                raise CursorError("evaluation cursor timestamp is not readable") from exc
+            start_after = (occurred_at, value)
 
         matched: list[tuple[str, Document]] = []
-        scan_cursor = start_after_id
+        scan_cursor = start_after
         scanned = 0
         exhausted = False
         while len(matched) <= page_size and scanned < 1_000:
-            rows = await self.backend.list_collection(
+            rows = await self.backend.list_collection_descending(
                 EVALUATION_RUNS_COLLECTION,
+                order_by="event.occurred_at",
                 limit=MAX_PAGE_SIZE,
-                start_after_id=scan_cursor,
+                start_after=scan_cursor,
             )
             if not rows:
                 exhausted = True
                 break
             for row_id, doc in rows:
                 scanned += 1
-                scan_cursor = row_id
                 run = _from_doc(TicketEvaluationRun, doc)
+                scan_cursor = (run.event.occurred_at, row_id)
                 if not _evaluation_matches(run, normalized_filters):
                     continue
                 expected_review_status = normalized_filters.get("review_status")
@@ -1884,11 +1957,23 @@ class TicketReviewRepository:
         visible = matched[:page_size]
         next_cursor = None
         if scan_cursor is not None and (len(matched) > page_size or not exhausted):
-            cursor_id = visible[-1][0] if len(matched) > page_size else scan_cursor
+            if len(matched) > page_size:
+                cursor_id, cursor_doc = visible[-1]
+                cursor_at = _from_doc(TicketEvaluationRun, cursor_doc).event.occurred_at
+            else:
+                cursor_at, cursor_id = scan_cursor
+            epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+            delta = cursor_at.astimezone(timezone.utc) - epoch
+            occurred_at_unix_us = (
+                delta.days * 86_400_000_000
+                + delta.seconds * 1_000_000
+                + delta.microseconds
+            )
             next_cursor = seal_cursor(
                 self._cursor_key,
                 {
                     "execution_id": cursor_id,
+                    "occurred_at_unix_us": occurred_at_unix_us,
                     "filter_digest": filter_digest,
                 },
                 context=EVALUATION_LIST_CURSOR_CONTEXT,

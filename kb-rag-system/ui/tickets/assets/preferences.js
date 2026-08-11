@@ -54,6 +54,7 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Ready; evidence lookup is not configured", "Lista; la consulta de evidencia no está configurada"],
   ["Ready", "Lista"],
   ["unknown", "desconocido"],
+  ["The server reports these as unavailable in this build: remediation batches.", "El servidor informa que estas funciones no están disponibles en esta versión: lotes de remediación."],
 
   // Session, request, and dependency failures.
   ["Your session ended", "Tu sesión terminó"],
@@ -483,6 +484,7 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Entry unknown", "Entrada desconocida"],
   ["A change was recorded with no summary.", "Se registró un cambio sin resumen."],
   ["No body is shown here.", "No se muestra contenido aquí."],
+  ["No body is shown here because the upstream body was not plain text.", "Aquí no se muestra contenido porque el contenido original no era texto sin formato."],
   ["No conversation entries have loaded for this ticket.", "No se han cargado entradas de conversación para este ticket."],
   ["No entries on the pages loaded so far match this filter.", "Ninguna entrada de las páginas cargadas coincide con este filtro."],
   ["A later page may contain some; the filter applies to what is loaded.", "Una página posterior podría contener resultados; el filtro se aplica a lo ya cargado."],
@@ -623,7 +625,7 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Advanced review fields", "Campos avanzados de revisión"],
   ["Topic", "Tema"],
   ["Legacy Type", "Tipo histórico"],
-  ["Historical classification retained for continuity. It is not the observation type below, and one is never derived from the other.", "Clasificación histórica conservada por continuidad. No es el tipo de observación de abajo y ninguno se deriva del otro."],
+  ["Historical classification retained for continuity. It is not the observation type above, and one is never derived from the other.", "Clasificación histórica conservada por continuidad. No corresponde al tipo de observación anterior; ninguno se deriva del otro."],
   ["Observation type", "Tipo de observación"],
   ["The root-cause taxonomy this console adds. Distinct from Legacy Type.", "Taxonomía de causa raíz que agrega esta consola, distinta del tipo histórico."],
   ["Unsafe or incorrect", "Insegura o incorrecta"],
@@ -646,6 +648,7 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Outcome", "Resultado"],
   ["Verification summary", "Resumen de verificación"],
   ["Verification rationale", "Justificación de verificación"],
+  ["Machine-checked test evidence is attached by the remediation agent, not typed here, so a review closed from this screen has to say in words why the outcome is defensible.", "La evidencia de pruebas verificada automáticamente la adjunta el agente de remediación; no se escribe aquí. Por eso, al cerrar una revisión desde esta pantalla debes explicar con palabras por qué el resultado es defendible."],
   ["Branch", "Rama"],
   ["Commit", "Commit"],
   ["Save review", "Guardar revisión"],
@@ -712,6 +715,10 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Reason", "Motivo"],
   ["Copy Codex prompt", "Copiar prompt de Codex"],
   ["No durable review, so nothing is planned or resolved yet.", "No hay una revisión durable, así que todavía no hay nada planificado ni resuelto."],
+  ["The server reports batches as disabled in this deployment, so a review cannot be added to one from here.", "El servidor informa que los lotes están deshabilitados en este despliegue, por lo que una revisión no se puede agregar a un lote desde aquí."],
+  ["No remediation batch is selected. Choose reviews in the queue and create one to hand a group of observations to the agent.", "No hay ningún lote de remediación seleccionado. Elige revisiones en la cola y crea uno para entregar al agente un grupo de observaciones."],
+  ["Required for every batch decision except “Mark ready”, and recorded in the append-only audit ledger. For “Start verification” this is your attestation that you did not author the change.", "Se requiere para cada decisión del lote excepto “Marcar como listo” y se registra en el registro de auditoría inmutable. Para “Iniciar verificación”, es tu constancia de que no creaste el cambio."],
+  ["Shown only when the browser refuses clipboard access. The prompt is not stored by this console; it is fetched, handed over, and dropped.", "Se muestra solo cuando el navegador rechaza el acceso al portapapeles. Esta consola no almacena el prompt: se obtiene, se entrega y se descarta."],
 ]);
 
 const SPANISH_TO_ENGLISH = new Map(
@@ -732,6 +739,15 @@ const MISSING_PROVENANCE_TO_SPANISH = new Map([
 const MISSING_PROVENANCE_TO_ENGLISH = new Map(
   Array.from(MISSING_PROVENANCE_TO_SPANISH, ([english, spanish]) => [spanish, english])
 );
+
+const CLOSING_REQUIREMENT_COMPONENTS = [
+  ["an outcome", "un resultado"],
+  ["a verification summary", "un resumen de verificación"],
+  [
+    "a verification rationale, since no machine-checked test evidence is attached",
+    "una justificación de verificación, ya que no se adjuntó evidencia de pruebas verificada automáticamente",
+  ],
+];
 
 const PROTECTED_CONTENT = [
   "script",
@@ -787,6 +803,24 @@ function translateMissingProvenanceList(value, labels) {
     .split(", ")
     .map((name) => labels.get(name) ?? name)
     .join(", ");
+}
+
+function translateClosingRequirements(value, sourceIndex, targetIndex) {
+  let remaining = String(value ?? "");
+  const translated = [];
+  for (const component of CLOSING_REQUIREMENT_COMPONENTS) {
+    const source = component[sourceIndex];
+    if (remaining === source) {
+      translated.push(component[targetIndex]);
+      remaining = "";
+      break;
+    }
+    if (remaining.startsWith(`${source}, `)) {
+      translated.push(component[targetIndex]);
+      remaining = remaining.slice(source.length + 2);
+    }
+  }
+  return remaining === "" && translated.length > 0 ? translated.join(", ") : null;
 }
 
 function spanishUiLabel(value) {
@@ -976,6 +1010,14 @@ function spanishPattern(core) {
     return `Estado actual: ${status}. Para cerrarla se necesita un resultado documentado y justificable.`;
   }
 
+  match = core.match(/^Closing this review needs (.+)\.$/);
+  if (match !== null) {
+    const requirements = translateClosingRequirements(match[1], 0, 1);
+    if (requirements !== null) {
+      return `Para cerrar esta revisión se requiere ${requirements}.`;
+    }
+  }
+
   match = core.match(/^Unassigned\. You may take an unassigned review or release your own\. Reassigning someone else's is an administrator action\.$/);
   if (match !== null) {
     return "Sin asignar. Puedes tomar una revisión sin asignar o liberar una asignada a ti. Reasignar la revisión de otra persona requiere un administrador.";
@@ -990,6 +1032,24 @@ function spanishPattern(core) {
   if (match !== null) {
     return `Asignada a ${match[1]}. Puedes tomar una revisión sin asignar o liberar una asignada a ti. Reasignar la revisión de otra persona requiere un administrador.`;
   }
+
+  match = core.match(/^Unassigned\. As an administrator you may take it or clear it\. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here\.$/);
+  if (match !== null) {
+    return "Sin asignar. Como administrador, puedes tomarla o dejarla sin asignar. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí.";
+  }
+
+  match = core.match(/^Assigned to you\. As an administrator you may take it or clear it\. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here\.$/);
+  if (match !== null) {
+    return "Asignada a ti. Como administrador, puedes tomarla o dejarla sin asignar. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí.";
+  }
+
+  match = core.match(/^Assigned to (.+)\. As an administrator you may take it or clear it\. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here\.$/);
+  if (match !== null) {
+    return `Asignada a ${match[1]}. Como administrador, puedes tomarla o dejarla sin asignar. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí.`;
+  }
+
+  match = core.match(/^The upstream body was (\d+) characters\.$/);
+  if (match !== null) return `El contenido original tenía ${match[1]} caracteres.`;
 
   match = core.match(/^([\d,.\s]+) of ([\d,.\s]+) characters$/);
   if (match !== null) {
@@ -1262,6 +1322,14 @@ function englishPattern(core) {
     return `Currently ${status}. Closing it needs a documented, defensible outcome.`;
   }
 
+  match = core.match(/^Para cerrar esta revisión se requiere (.+)\.$/);
+  if (match !== null) {
+    const requirements = translateClosingRequirements(match[1], 1, 0);
+    if (requirements !== null) {
+      return `Closing this review needs ${requirements}.`;
+    }
+  }
+
   match = core.match(/^Sin asignar\. Puedes tomar una revisión sin asignar o liberar una asignada a ti\. Reasignar la revisión de otra persona requiere un administrador\.$/);
   if (match !== null) {
     return "Unassigned. You may take an unassigned review or release your own. Reassigning someone else's is an administrator action.";
@@ -1276,6 +1344,24 @@ function englishPattern(core) {
   if (match !== null) {
     return `Assigned to ${match[1]}. You may take an unassigned review or release your own. Reassigning someone else's is an administrator action.`;
   }
+
+  match = core.match(/^Sin asignar\. Como administrador, puedes tomarla o dejarla sin asignar\. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí\.$/);
+  if (match !== null) {
+    return "Unassigned. As an administrator you may take it or clear it. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here.";
+  }
+
+  match = core.match(/^Asignada a ti\. Como administrador, puedes tomarla o dejarla sin asignar\. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí\.$/);
+  if (match !== null) {
+    return "Assigned to you. As an administrator you may take it or clear it. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here.";
+  }
+
+  match = core.match(/^Asignada a (.+)\. Como administrador, puedes tomarla o dejarla sin asignar\. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí\.$/);
+  if (match !== null) {
+    return `Assigned to ${match[1]}. As an administrator you may take it or clear it. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here.`;
+  }
+
+  match = core.match(/^El contenido original tenía (\d+) caracteres\.$/);
+  if (match !== null) return `The upstream body was ${match[1]} characters.`;
 
   match = core.match(/^([\d,.\s]+) de ([\d,.\s]+) caracteres$/);
   if (match !== null) {

@@ -1121,6 +1121,17 @@ function spanishPattern(core) {
   match = core.match(/^(\d+) events?; earlier events are not on this page\.$/);
   if (match !== null) return `${match[1]} evento${match[1] === "1" ? "" : "s"}; los anteriores no están en esta página.`;
 
+  match = core.match(
+    /^(\d+) entr(?:y|ies) loaded; (more remain|that is the whole conversation)\. (\d+) shown by this filter\.$/
+  );
+  if (match !== null) {
+    const loaded = `${match[1]} entrada${match[1] === "1" ? "" : "s"} cargada${match[1] === "1" ? "" : "s"}`;
+    const completion = match[2] === "more remain"
+      ? "quedan más"
+      : "es toda la conversación";
+    return `${loaded}; ${completion}. ${match[3]} mostrada${match[3] === "1" ? "" : "s"} por este filtro.`;
+  }
+
   match = core.match(/^(\d+) entr(?:y|ies) loaded; more remain\.$/);
   if (match !== null) return `${match[1]} entrada${match[1] === "1" ? "" : "s"} cargada${match[1] === "1" ? "" : "s"}; quedan más.`;
 
@@ -1151,6 +1162,17 @@ function spanishPattern(core) {
 function englishPattern(core) {
   let match = core.match(/^(\d+) en esta página$/);
   if (match !== null) return `${match[1]} on this page`;
+
+  match = core.match(
+    /^(\d+) entradas? cargadas?; (quedan más|es toda la conversación)\. (\d+) mostradas? por este filtro\.$/
+  );
+  if (match !== null) {
+    const loaded = `${match[1]} entr${match[1] === "1" ? "y" : "ies"} loaded`;
+    const completion = match[2] === "quedan más"
+      ? "more remain"
+      : "that is the whole conversation";
+    return `${loaded}; ${completion}. ${match[3]} shown by this filter.`;
+  }
 
   match = core.match(/^(\d+) entradas? cargadas?; quedan más\.$/);
   if (match !== null) {

@@ -167,6 +167,16 @@ def test_read_only_chat_copy_round_trips() -> None:
                 "No messages have loaded for this ticket.",
                 "No se han cargado mensajes para este ticket.",
             ),
+            (
+                "18 entries loaded; that is the whole conversation. "
+                "5 shown by this filter.",
+                "18 entradas cargadas; es toda la conversación. "
+                "5 mostradas por este filtro.",
+            ),
+            (
+                "1 entry loaded; more remain. 1 shown by this filter.",
+                "1 entrada cargada; quedan más. 1 mostrada por este filtro.",
+            ),
         ]
     )
 

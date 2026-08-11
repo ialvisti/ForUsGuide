@@ -271,9 +271,15 @@
         </ol>
       </nav>
 
-      <button type="button" class="icon-button" id="detail-close" aria-label="Close ticket detail">
-        <span class="icon" data-icon="close" aria-hidden="true"></span>
-      </button>
+      <div class="detail-topbar-actions">
+        <button type="button" class="button button-quiet" id="detail-reload">
+          <span class="icon" data-icon="refresh" aria-hidden="true"></span>
+          <span>Reload execution</span>
+        </button>
+        <button type="button" class="icon-button" id="detail-close" aria-label="Close ticket detail">
+          <span class="icon" data-icon="close" aria-hidden="true"></span>
+        </button>
+      </div>
     </div>
 
     <div class="detail-title-group">
@@ -508,125 +514,32 @@
     <details id="technical-audit" class="technical-audit">
       <summary id="technical-audit-summary">Technical audit details</summary>
       <p class="technical-audit-intro">
-        Execution diagnostics, evidence, conversation, history, and remediation tools for technical audits.
+        <strong>Evidence and audit details.</strong>
+        <span>Start with the recorded answer and decision, then open the evidence, diagnostics, or exact runtime data only when you need it.</span>
+        <span>Every safe recorded field remains available; technical keys are shown beside plain-language labels.</span>
       </p>
       <div class="technical-audit-body">
-    <section class="detail-overview" aria-labelledby="run-heading">
+        <details class="audit-section" open>
+          <summary class="audit-section-summary">
+            <span>Answer and decision</span>
+            <span class="audit-summary-line">What the system answered and why it chose this route.</span>
+          </summary>
+          <div class="audit-section-body detail-overview" aria-labelledby="run-answer-heading">
+            <h3 id="run-answer-heading">Generated answer</h3>
+            <p class="panel-note">
+              This is the answer recorded by the execution. It does not by itself prove what the
+              participant saw; use the conversation visibility labels for that distinction.
+            </p>
+            <div id="run-answer" aria-labelledby="run-answer-heading"></div>
 
-    <h3 id="run-heading">RAG execution</h3>
-    <dl class="meta-grid" id="run-summary" aria-labelledby="run-heading"></dl>
-
-    <h4 id="run-answer-heading">Generated answer</h4>
-    <div class="body-copy" id="run-answer" aria-labelledby="run-answer-heading"></div>
-
-    <h4 id="run-rationale-heading">Structured rationale</h4>
-    <p class="panel-note">
-      This is the explicit classification and outcome rationale recorded by the
-      application. Provider hidden chain-of-thought is not collected or shown.
-    </p>
-    <dl class="field-grid" id="run-rationale" aria-labelledby="run-rationale-heading"></dl>
-
-    <h4 id="run-diagnostics-heading">Diagnostics</h4>
-    <ul class="evidence-links" id="run-diagnostics" aria-labelledby="run-diagnostics-heading"></ul>
-
-    <h4 id="run-gaps-heading">Coverage gaps</h4>
-    <ul class="evidence-links" id="run-gaps" aria-labelledby="run-gaps-heading"></ul>
-
-    <h4 id="run-sources-heading">Source articles</h4>
-    <ul class="evidence-links" id="run-sources" aria-labelledby="run-sources-heading"></ul>
-
-    <h4 id="run-chunks-heading">Bounded chunk evidence</h4>
-    <ul class="evidence-links" id="run-chunks" aria-labelledby="run-chunks-heading"></ul>
-
-    <h4 id="run-metadata-heading">Model and timing</h4>
-    <dl class="field-grid" id="run-metadata" aria-labelledby="run-metadata-heading"></dl>
-
-    <h4 id="hydration-heading">DevRev context status</h4>
-    <p class="panel-status" id="hydration-status" aria-labelledby="hydration-heading"></p>
-
-    <h3 id="detail-meta-heading">DevRev ticket context</h3>
-    <dl class="meta-grid" id="detail-meta" aria-labelledby="detail-meta-heading">
-      <div class="meta-row">
-        <dt>Ticket ID</dt>
-        <dd id="meta-display-id" class="mono"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Summary</dt>
-        <dd id="meta-title"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Stage</dt>
-        <dd id="meta-stage"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>State</dt>
-        <dd id="meta-state"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Reported severity</dt>
-        <dd id="meta-severity"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Source channel</dt>
-        <dd id="meta-channel"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Subtype</dt>
-        <dd id="meta-subtype"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Owner</dt>
-        <dd id="meta-owner"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Reporter</dt>
-        <dd id="meta-reporter"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Created</dt>
-        <dd id="meta-created"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Updated</dt>
-        <dd id="meta-updated"></dd>
-      </div>
-      <div class="meta-row">
-        <dt>Review record</dt>
-        <dd id="meta-review-state"></dd>
-      </div>
-    </dl>
-
-    <div class="detail-actions" id="detail-actions">
-      <button type="button" class="button button-quiet" id="detail-copy-id">
-        <span class="icon" data-icon="copy" aria-hidden="true"></span>
-        <span>Copy execution ID</span>
-      </button>
-      <!--
-        The upstream link is deliberately absent unless the server sends a
-        validated absolute one. Building a permalink here from an organization
-        slug would guess at a host, and a guessed link on an internal console is
-        an open redirect with a friendly label.
-      -->
-      <a class="button button-quiet" id="detail-devrev-link" hidden>Open in the ticket system</a>
-      <p class="field-help" id="detail-devrev-help">
-        No verified upstream link is configured, so the identifier is offered for
-        copying instead of a guessed address.
-      </p>
-      <button type="button" class="button button-quiet" id="detail-add-batch" disabled
-              aria-describedby="detail-batch-help">
-        Add to remediation batch
-      </button>
-      <p class="field-help" id="detail-batch-help">
-        Adds this review to a new remediation batch, frozen at the version on
-        screen. The control is disabled when this deployment reports remediation
-        as unavailable, or when your role may not curate a batch.
-      </p>
-      <button type="button" class="button button-quiet" id="detail-reload">
-        <span class="icon" data-icon="refresh" aria-hidden="true"></span>
-        <span>Reload execution</span>
-      </button>
-    </div>
-    </section>
+            <h4 id="run-rationale-heading">Structured rationale</h4>
+            <p class="panel-note">
+              These are the explicit classification and outcome explanations recorded by the
+              application. Provider hidden chain-of-thought is not collected or shown.
+            </p>
+            <div id="run-rationale" aria-labelledby="run-rationale-heading"></div>
+          </div>
+        </details>
 
     <h3 id="detail-tabs-heading">Ticket workspace</h3>
     <div class="tablist" role="tablist" aria-labelledby="detail-tabs-heading" id="detail-tablist">
@@ -697,7 +610,32 @@
       <h4 id="evidence-heading">Retrieval and prompt evidence</h4>
       <p class="panel-status" id="evidence-status" role="status" aria-live="polite"></p>
       <p class="panel-note" id="evidence-explanation"></p>
-      <div class="evidence-body" id="evidence-body" aria-labelledby="evidence-heading"></div>
+      <div class="evidence-body" id="evidence-body" aria-labelledby="evidence-heading">
+        <section class="evidence-source-section" id="execution-evidence"
+                 data-evidence-source="persisted">
+          <h4>Evidence used</h4>
+          <p class="audit-type">Persisted execution evidence</p>
+          <h5 id="run-sources-heading">Final source articles</h5>
+          <p class="panel-note">
+            Sources attached to the persisted answer. Candidate retrieval records remain in the
+            correlation section below, so final sources and candidates are not conflated.
+          </p>
+          <div id="run-sources" aria-labelledby="run-sources-heading"></div>
+
+          <h5 id="run-chunks-heading">Bounded chunk evidence</h5>
+          <p class="panel-note">
+            Safe previews captured with the execution. Full knowledge-base chunks remain outside
+            the browser privacy boundary.
+          </p>
+          <div id="run-chunks" aria-labelledby="run-chunks-heading"></div>
+        </section>
+
+        <section class="evidence-source-section" id="correlation-evidence"
+                 data-evidence-source="correlation">
+          <h4>Correlation and candidate evidence</h4>
+          <div class="evidence-correlation-body" id="evidence-correlation-body"></div>
+        </section>
+      </div>
 
       <h4 id="evidence-links-heading">Confirmed evidence links</h4>
       <p class="panel-status" id="evidence-links-status" role="status" aria-live="polite"></p>
@@ -730,6 +668,17 @@
              aria-labelledby="tab-remediation" tabindex="0" hidden>
       <h4 id="remediation-heading">Remediation and resolution</h4>
       <p class="panel-status" id="remediation-status" role="status" aria-live="polite"></p>
+      <div class="remediation-workflow-actions">
+        <button type="button" class="button button-quiet" id="detail-add-batch" disabled
+                aria-describedby="detail-batch-help">
+          Add to remediation batch
+        </button>
+        <p class="field-help" id="detail-batch-help">
+          Adds this review to a new remediation batch, frozen at the version on
+          screen. The control is disabled when this deployment reports remediation
+          as unavailable, or when your role may not curate a batch.
+        </p>
+      </div>
       <div class="remediation-body" id="remediation-body"
            aria-labelledby="remediation-heading"></div>
 
@@ -766,6 +715,122 @@
         </p>
       </div>
     </section>
+
+        <details class="audit-section">
+          <summary class="audit-section-summary">
+            <span>Data coverage and diagnostics</span>
+            <span class="audit-summary-line">What the pipeline found, mapped, missed, or flagged.</span>
+          </summary>
+          <div class="audit-section-body">
+            <div class="audit-callout" data-tone="info">
+              <strong>How to read this section.</strong>
+              A missing field is a recorded coverage signal, not automatically a blocker. Compare
+              it with the final outcome and rationale before deciding whether the answer is valid.
+            </div>
+
+            <h3 id="hydration-heading">Ticket context loading</h3>
+            <p class="panel-status" id="hydration-status" aria-labelledby="hydration-heading"></p>
+
+            <h3 id="run-diagnostics-heading">Recorded diagnostics</h3>
+            <div id="run-diagnostics" aria-labelledby="run-diagnostics-heading"></div>
+
+            <h3 id="run-gaps-heading">Coverage gaps</h3>
+            <div id="run-gaps" aria-labelledby="run-gaps-heading"></div>
+          </div>
+        </details>
+
+        <details class="audit-section">
+          <summary class="audit-section-summary">
+            <span>Runtime and exact identifiers</span>
+            <span class="audit-summary-line">Execution identity, timing, model, and retrieval trace.</span>
+          </summary>
+          <div class="audit-section-body">
+            <h3 id="run-heading">Execution overview</h3>
+            <dl class="meta-grid technical-identifiers" id="run-summary"
+                aria-labelledby="run-heading"></dl>
+
+            <h3 id="run-metadata-heading">Model, timing, and retrieval</h3>
+            <div id="run-metadata" aria-labelledby="run-metadata-heading"></div>
+
+            <div class="detail-actions" id="detail-actions">
+              <button type="button" class="button button-quiet" id="detail-copy-id">
+                <span class="icon" data-icon="copy" aria-hidden="true"></span>
+                <span>Copy execution ID</span>
+              </button>
+              <!--
+                The upstream link is deliberately absent unless the server sends a
+                validated absolute one. Building a permalink here from an organization
+                slug would guess at a host, and a guessed link on an internal console is
+                an open redirect with a friendly label.
+              -->
+              <a class="button button-quiet" id="detail-devrev-link" hidden>Open in the ticket system</a>
+              <p class="field-help" id="detail-devrev-help">
+                No verified upstream link is configured, so the identifier is offered for
+                copying instead of a guessed address.
+              </p>
+            </div>
+          </div>
+        </details>
+
+        <details class="audit-section">
+          <summary class="audit-section-summary">
+            <span>Ticket snapshot at execution</span>
+            <span class="audit-summary-line">The CRM fields visible at the time of this review.</span>
+          </summary>
+          <div class="audit-section-body">
+            <h3 id="detail-meta-heading">Recorded ticket context</h3>
+            <dl class="meta-grid" id="detail-meta" aria-labelledby="detail-meta-heading">
+              <div class="meta-row">
+                <dt>Ticket ID</dt>
+                <dd id="meta-display-id" class="mono"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Summary</dt>
+                <dd id="meta-title"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Stage</dt>
+                <dd id="meta-stage"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>State</dt>
+                <dd id="meta-state"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Reported severity</dt>
+                <dd id="meta-severity"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Source channel</dt>
+                <dd id="meta-channel"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Subtype</dt>
+                <dd id="meta-subtype"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Internal owner identifier</dt>
+                <dd id="meta-owner" class="mono"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Reporter</dt>
+                <dd id="meta-reporter"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Created</dt>
+                <dd id="meta-created"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Updated</dt>
+                <dd id="meta-updated"></dd>
+              </div>
+              <div class="meta-row">
+                <dt>Review record</dt>
+                <dd id="meta-review-state"></dd>
+              </div>
+            </dl>
+          </div>
+        </details>
 
       </div>
     </details>

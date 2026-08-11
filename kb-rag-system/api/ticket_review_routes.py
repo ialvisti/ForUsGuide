@@ -1032,7 +1032,11 @@ async def get_ticket_detail(
     _assert_no_raw_cursor(request)
     _rate_limited(request, reviewer, write=False)
     value = validated_execution_id(execution_id)
-    return await service.get_evaluation_detail(value)
+    return await service.get_evaluation_detail(
+        value,
+        reviewer.identity,
+        include_evidence=True,
+    )
 
 
 @router.get(

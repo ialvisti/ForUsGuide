@@ -31,6 +31,11 @@ import {
   timeElement,
   visibilityLabel,
 } from "./render.js";
+import {
+  parseStructuredText,
+  renderStructuredData,
+  tokenizeStructuredText,
+} from "./structured.js";
 
 /** Why a body was withheld, in words. Unknown reasons are shown as given. */
 const PLACEHOLDER_REASONS = new Map([
@@ -58,17 +63,73 @@ function placeholderText(message) {
  * A display name is decoration on this panel: it is shown because it helps a
  * reviewer follow a thread, and it is never what decided the badge beside it.
  */
-function authorName(message) {
+function authorPresentation(message) {
   const actor = message.actor ?? null;
   if (actor === null) {
-    return message.actor_class === "event" ? "Ticket system" : "Author not recorded";
+    return {
+      text: message.actor_class === "event" ? "Ticket system" : "Author not recorded",
+      recorded: false,
+    };
   }
   const name = actor.display_name ?? "";
-  return name === "" ? "Author not recorded" : name;
+  return name === ""
+    ? { text: "Author not recorded", recorded: false }
+    : { text: name, recorded: true };
 }
 
 function pill(text, attrs) {
   return el("span", { className: "pill", text, attrs });
+}
+
+function protectedRemoteText(value) {
+  return el("span", {
+    text: value,
+    attrs: { "data-user-content": "", translate: "no" },
+  });
+}
+
+function metadataWithRemoteValue(label, value) {
+  const row = el("p", { className: "entry-meta" });
+  row.appendChild(el("span", { text: label }));
+  row.appendChild(protectedRemoteText(value));
+  return row;
+}
+
+function bodyId(entryId) {
+  const raw = String(entryId ?? "unknown");
+  const slug = raw.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "").slice(0, 48)
+    || "unknown";
+  let hash = 2166136261;
+  for (const character of raw) {
+    hash ^= character.codePointAt(0);
+    hash = Math.imul(hash, 16777619) >>> 0;
+  }
+  return `conversation-body-${slug}-${hash.toString(16).padStart(8, "0")}`;
+}
+
+function messageTokens(value) {
+  const whole = parseStructuredText(value);
+  return whole === null
+    ? tokenizeStructuredText(value)
+    : [{ kind: "structured", value: whole }];
+}
+
+function messageBodyNodes(tokens, entryId) {
+  const nodes = [];
+  let structuredIndex = 0;
+  for (const token of tokens) {
+    if (token.kind === "structured") {
+      nodes.push(renderStructuredData(token.value, {
+        label: "Structured message",
+        path: `$/conversation/${entryId ?? "unknown"}/structured/${structuredIndex}`,
+        open: false,
+      }));
+      structuredIndex += 1;
+    } else {
+      nodes.push(...paragraphs(token.value));
+    }
+  }
+  return nodes;
 }
 
 /**
@@ -92,7 +153,12 @@ export function conversationEntry(message, { expanded = false } = {}) {
   });
 
   const head = el("div", { className: "entry-head" });
-  head.appendChild(el("span", { className: "entry-author", text: authorName(message) }));
+  const author = authorPresentation(message);
+  head.appendChild(el("span", {
+    className: "entry-author",
+    text: author.text,
+    attrs: author.recorded ? { "data-user-content": "", translate: "no" } : {},
+  }));
   head.appendChild(
     pill(actorClassLabel(actorClass), { "data-actor-class": actorClass })
   );
@@ -118,57 +184,66 @@ export function conversationEntry(message, { expanded = false } = {}) {
   item.appendChild(head);
 
   if (message.in_reply_to) {
-    item.appendChild(
-      el("p", { className: "entry-meta", text: `In reply to entry ${message.in_reply_to}` })
-    );
+    item.appendChild(metadataWithRemoteValue("In reply to entry ", message.in_reply_to));
   }
 
   if (actorClass === "event" || message.kind === "change_event") {
     // A change event is summarized and kept visually apart from messages. It has
     // no body and no author by construction, so rendering it in the same shape as
     // a reply would invent both.
-    item.appendChild(
-      el("p", {
-        className: "entry-body",
-        text: message.change_summary || "A change was recorded with no summary.",
-      })
-    );
+    const hasRecordedSummary = Boolean(message.change_summary);
+    item.appendChild(el("p", {
+      className: "entry-body",
+      text: hasRecordedSummary
+        ? message.change_summary
+        : "A change was recorded with no summary.",
+      attrs: hasRecordedSummary
+        ? { "data-user-content": "", translate: "no" }
+        : {},
+    }));
     return item;
   }
 
   if (message.rendering === "text" && message.body) {
-    const long = String(message.body).length > BODY_COLLAPSE_LIMIT;
+    const tokens = messageTokens(message.body);
+    const hasStructured = tokens.some((token) => token.kind === "structured");
+    // A CSS line clamp is safe only for inert prose. Structured bodies contain
+    // native disclosures; clipping those would leave invisible controls in the
+    // keyboard order, so their own progressive hierarchy does the collapsing.
+    const long = !hasStructured && String(message.body).length > BODY_COLLAPSE_LIMIT;
+    const controlledBodyId = bodyId(message.entry_id);
     const body = el("div", {
-      className: "entry-body",
-      attrs: { "data-collapsed": long && !expanded ? "true" : "false" },
+      className: hasStructured ? "entry-body entry-body--structured" : "entry-body",
+      attrs: {
+        id: controlledBodyId,
+        "data-collapsed": long && !expanded ? "true" : "false",
+      },
     });
-    replaceChildren(body, paragraphs(message.body));
+    replaceChildren(body, messageBodyNodes(tokens, message.entry_id));
     item.appendChild(body);
     if (long) {
-      item.appendChild(
-        button({
-          text: expanded ? "Show less" : "Show the whole message",
-          className: "link-button",
-          dataset: { action: "toggle-entry", entryId: message.entry_id ?? "" },
-        })
-      );
+      const control = button({
+        text: expanded ? "Show less" : "Show the whole message",
+        className: "link-button",
+        dataset: { action: "toggle-entry", entryId: message.entry_id ?? "" },
+      });
+      control.setAttribute("aria-expanded", expanded ? "true" : "false");
+      control.setAttribute("aria-controls", controlledBodyId);
+      item.appendChild(control);
     }
   } else {
     const body = el("p", { className: "entry-body", text: placeholderText(message) });
     item.appendChild(body);
     if (message.unsupported_type) {
-      item.appendChild(
-        el("p", {
-          className: "entry-meta",
-          text: `Upstream entry type: ${message.unsupported_type}`,
-        })
-      );
+      item.appendChild(metadataWithRemoteValue("Upstream entry type: ", message.unsupported_type));
     }
     // The identifier, not the payload. It is what a support request can be
     // filed against; the raw object is not the reviewer's problem to read.
-    item.appendChild(
-      el("p", { className: "entry-meta", text: `Entry ${message.entry_id ?? "unknown"}` })
-    );
+    if (message.entry_id === null || message.entry_id === undefined) {
+      item.appendChild(el("p", { className: "entry-meta", text: "Entry unknown" }));
+    } else {
+      item.appendChild(metadataWithRemoteValue("Entry ", message.entry_id));
+    }
   }
 
   if (message.body_length > 0 && message.rendering !== "text") {

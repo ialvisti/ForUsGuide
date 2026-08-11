@@ -1427,6 +1427,11 @@ class TicketEvidenceSummary(_Base):
     candidate_links: list[EvidenceCandidateLink] = Field(
         default_factory=list, max_length=MAX_EVIDENCE_CANDIDATES
     )
+    result_digest: Optional[Sha256Hex] = Field(default=None)
+    key_versions_queried: list[StrictInt] = Field(
+        default_factory=list, max_length=MAX_BROKER_KEY_VERSIONS
+    )
+    truncated: bool = Field(default=False)
     broker_available: bool = Field(default=False)
     warnings: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)
 
@@ -1624,6 +1629,7 @@ class TicketEvaluationDetailEnvelope(_Base):
     chunk_evidence: list[ChunkEvidence] = Field(default_factory=list, max_length=20)
     model_metadata: dict[str, Any] = Field(default_factory=dict)
     timing_metadata: dict[str, Any] = Field(default_factory=dict)
+    evidence: TicketEvidenceSummary = Field(default_factory=TicketEvidenceSummary)
     hydration_status: DevRevHydrationStatus = Field(...)
     partial: bool = Field(default=False)
     warnings: list[str] = Field(default_factory=list, max_length=MAX_WARNINGS)

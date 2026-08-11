@@ -801,12 +801,30 @@ class TestTicketDetailAndTimeline:
                 "chunk_evidence",
                 "model_metadata",
                 "timing_metadata",
+                "evidence",
                 "hydration_status",
                 "partial",
                 "warnings",
             }
         )
         assert set(body["ticket"]) == set(DevRevTicketDetail.model_fields)
+
+    def test_execution_detail_includes_the_bounded_evidence_summary(self, monkeypatch):
+        broker = _FailingBroker()
+        harness = _harness(monkeypatch, broker=broker)
+        run = _ingest_execution(harness).run
+
+        response = harness.client.get(
+            f"{API_PREFIX}/tickets/{run.execution_id}", headers=_auth_headers()
+        )
+
+        assert response.status_code == 200, response.text
+        evidence = response.json()["evidence"]
+        assert evidence["correlation_status"] == "linked"
+        assert evidence["broker_available"] is False
+        assert evidence["warnings"] == ["evidence_broker_unavailable"]
+        assert broker.calls == 1
+        assert "candidate_token" not in response.text
 
 
 # =====================================================================

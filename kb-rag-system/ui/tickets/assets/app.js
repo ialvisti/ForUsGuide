@@ -808,8 +808,17 @@ async function boot() {
     languageSelect: dom.languageSelect,
   });
 
-  document.addEventListener("preferenceschange", () => {
+  let renderedPreferenceLanguage = document.documentElement.lang;
+  document.addEventListener("preferenceschange", (event) => {
     render.mountIcons(document.body, icons);
+    const nextLanguage = event.detail?.language ?? document.documentElement.lang;
+    if (nextLanguage !== renderedPreferenceLanguage) {
+      renderedPreferenceLanguage = nextLanguage;
+      // Rebuild generated audit labels and count formatting from the original
+      // state. Restoring translated text alone would preserve the previous
+      // locale's number separators in dynamically created summaries.
+      detail?.render(store.getState());
+    }
   });
 
   // Installed before the first render, because `renderAll` draws the detail

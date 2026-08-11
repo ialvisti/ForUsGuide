@@ -1,6 +1,7 @@
 /**
- * Every pixel of remote content is produced here, and only through
- * `document.createElement` and `textContent`.
+ * Every shared primitive for remote content is produced here, and only through
+ * `document.createElement` and `textContent`. The structured audit presenter
+ * composes these primitives in `structured.js`; it never introduces an HTML sink.
  *
  * The strings this module receives are a participant's ticket title, a
  * reviewer's typed comment, an email address, and an upstream stage name. Not
@@ -903,7 +904,11 @@ export function digest(value) {
  * difference between "no vectors were retrieved" and "we did not record which
  * vectors were retrieved" is the whole point.
  */
-export function definitionRow(term, value, { absentNote = "Not recorded", full = "" } = {}) {
+export function definitionRow(
+  term,
+  value,
+  { absentNote = "Not recorded", full = "", recorded = true } = {}
+) {
   const wrap = el("div");
   wrap.appendChild(el("dt", { text: term }));
   const text = value === null || value === undefined ? "" : String(value);
@@ -911,7 +916,10 @@ export function definitionRow(term, value, { absentNote = "Not recorded", full =
     wrap.appendChild(el("dd", { text: absentNote, attrs: { "data-absent": "true" } }));
     return wrap;
   }
-  const node = el("dd", { text });
+  const node = el("dd", {
+    text,
+    attrs: recorded ? { "data-audit-value": "", translate: "no" } : {},
+  });
   if (full !== "" && full !== text) {
     // The shortened form is what is read; the whole value is what is announced
     // and copied, so nothing is actually lost by shortening.
@@ -976,7 +984,11 @@ export function httpsLink(value, { text = "" } = {}) {
     parsed = null;
   }
   if (parsed === null || parsed.protocol !== REQUIRED_LINK_SCHEME) {
-    const node = el("span", { className: "mono", text: raw });
+    const node = el("span", {
+      className: "mono",
+      text: raw,
+      attrs: { "data-audit-value": "", translate: "no" },
+    });
     node.appendChild(hiddenText("not a usable secure link; shown as text"));
     return node;
   }

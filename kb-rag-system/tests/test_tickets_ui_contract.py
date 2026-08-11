@@ -72,6 +72,8 @@ EXPECTED_ASSET_TYPES: dict[str, tuple[str, ...]] = {
     "api.js": ("text/javascript", "application/javascript"),
     "state.js": ("text/javascript", "application/javascript"),
     "render.js": ("text/javascript", "application/javascript"),
+    "structured.js": ("text/javascript", "application/javascript"),
+    "answer-presentation.js": ("text/javascript", "application/javascript"),
     "icons.svg": ("image/svg+xml",),
 }
 
@@ -1310,6 +1312,8 @@ class TestRagExecutionDetailContract:
 
     def test_the_detail_controller_reads_the_execution_envelope(self, scripts):
         detail = scripts["detail.js"]
+        answer_planner = scripts["answer-presentation.js"]
+        consumers = detail + answer_planner
         for field in (
             "execution",
             "generatedAnswer",
@@ -1317,13 +1321,14 @@ class TestRagExecutionDetailContract:
             "outcomeReason",
             "diagnostics",
             "gaps",
-            "sourceArticles",
-            "chunkEvidence",
             "modelMetadata",
             "timingMetadata",
             "hydrationStatus",
         ):
-            assert field in detail, field
+            assert field in consumers, field
+        evidence = scripts["evidence.js"]
+        for field in ("sourceArticles", "chunkEvidence"):
+            assert field in evidence, field
         adapter = scripts["api.js"]
         for wire_field in (
             "generated_answer",
@@ -1347,7 +1352,9 @@ class TestRagExecutionDetailContract:
         assert "function executionEvidenceSummary" in detail
         assert "current.execution" in detail
         assert "persisted RAG execution recorded" in detail
-        assert "renderExecutionEvidence(sourceList, chunkList, current.execution)" in detail
+        assert "executionEvidenceCounts" in detail
+        assert "renderExecutionEvidence(dom.runSources, dom.runChunks, current.execution)" in detail
+        assert detail.count("renderExecutionEvidence(") == 1
 
     def test_hydration_is_rendered_as_an_authorized_trust_signal(self, scripts):
         detail = scripts["detail.js"]
@@ -1362,9 +1369,9 @@ class TestRagExecutionDetailContract:
         for wire_field in ("invocation_id", "attempt", "lease_epoch"):
             assert wire_field in adapter
         detail = scripts["detail.js"]
-        assert 'definitionRow("Invocation ID"' in detail
-        assert 'definitionRow("Attempt"' in detail
-        assert 'definitionRow("Lease epoch"' in detail
+        assert 'summaryRow("Invocation ID"' in detail
+        assert 'summaryRow("Attempt"' in detail
+        assert 'summaryRow("Lease epoch"' in detail
 
     def test_initial_conversation_is_loaded_by_execution_id(self, scripts):
         detail = scripts["detail.js"]

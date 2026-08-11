@@ -29,6 +29,11 @@ import * as render from "./render.js";
 import * as evaluation from "./evaluation.js";
 import { el } from "./render.js";
 import { translateUiText } from "./preferences.js";
+import { planAnswerPresentation } from "./answer-presentation.js";
+import {
+  renderGeneratedAnswer,
+  renderStructuredData,
+} from "./structured.js";
 import {
   BATCH_ACTIONS,
   BATCH_STATE_LABELS,
@@ -43,6 +48,7 @@ import {
 import { conversationStatusText, renderConversation } from "./conversation.js";
 import {
   evidenceStatusText,
+  executionEvidenceCounts,
   renderExecutionEvidence,
   renderEvidence,
   renderEvidenceLinks,
@@ -126,6 +132,9 @@ function collectDom() {
     evidenceStatus: byId("evidence-status"),
     evidenceExplanation: byId("evidence-explanation"),
     evidenceBody: byId("evidence-body"),
+    evidencePersisted: byId("execution-evidence"),
+    evidenceCorrelation: byId("correlation-evidence"),
+    evidenceCorrelationBody: byId("evidence-correlation-body"),
     evidenceLinksStatus: byId("evidence-links-status"),
     evidenceLinks: byId("evidence-links"),
     evidenceLinksMore: byId("evidence-links-more"),
@@ -749,13 +758,23 @@ function wireUnloadGuard() {
 // ---------------------------------------------------------------------------
 
 function text(node, value, fallback = "Not recorded") {
-  const shown = value === null || value === undefined || value === "" ? fallback : String(value);
+  const absent = value === null || value === undefined || value === "";
+  const shown = absent ? fallback : String(value);
   node.textContent = shown;
-  node.dataset.absent = shown === fallback ? "true" : "false";
+  node.dataset.absent = absent ? "true" : "false";
+  if (absent) {
+    node.removeAttribute("data-audit-value");
+    node.removeAttribute("translate");
+  } else {
+    node.setAttribute("data-audit-value", "");
+    node.setAttribute("translate", "no");
+  }
 }
 
 function timeInto(node, iso) {
   render.replaceChildren(node, []);
+  node.removeAttribute("data-audit-value");
+  node.removeAttribute("translate");
   if (!iso) {
     text(node, "");
     return;
@@ -790,90 +809,212 @@ export function resolveUpstreamLink(envelope) {
   return parsed.href;
 }
 
-function readable(value, absent = "Not recorded") {
-  if (value === null || value === undefined || value === "") {
-    return absent;
-  }
-  if (typeof value === "string") {
-    return value;
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-function renderRunList(container, values, emptyText) {
-  const items = Array.isArray(values)
-    ? values
-    : values !== null && typeof values === "object"
-      ? Object.entries(values).map(([key, value]) => `${key}: ${readable(value)}`)
-      : [];
-  render.replaceChildren(
-    container,
-    items.length === 0
-      ? [el("li", { text: emptyText })]
-      : items.map((value) => el("li", { text: readable(value) }))
-  );
-}
-
-function hydrationText(status) {
+function hydrationText(status, errorCode = "") {
   if (status === "succeeded") {
     return "DevRev context loaded for this execution.";
   }
-  return "This execution did not pass the authorized DevRev hydration boundary.";
+  const reason = errorCode ? ` Recorded reason: ${errorCode}.` : "";
+  return `This execution did not pass the authorized DevRev hydration boundary.${reason}`;
+}
+
+function summaryRow(term, value, { identifier = false, time = false } = {}) {
+  const row = render.definitionRow(term, value);
+  row.classList.add("meta-row");
+  const recorded = row.querySelector("dd");
+  if (recorded !== null && identifier && !recorded.hasAttribute("data-absent")) {
+    recorded.classList.add("identifier-value");
+    recorded.setAttribute("translate", "no");
+    recorded.setAttribute("data-audit-value", "");
+  }
+  if (recorded !== null && time && value) {
+    render.replaceChildren(recorded, [render.timeElement(value)]);
+    recorded.setAttribute("data-audit-value", "");
+    recorded.setAttribute("translate", "no");
+  }
+  return row;
+}
+
+function answerChannelLabel(source) {
+  if (source === "structured_response.guided") return "Guided structured response";
+  if (source === "structured_response.response_to_participant") {
+    return "Response to participant channel";
+  }
+  if (source === "structured_response.answer") return "Answer channel";
+  if (source === "structured_response.response") return "Response channel";
+  return "Additional recorded answer channel";
+}
+
+function renderSecondaryAnswer(channel) {
+  const section = el("section", { className: "answer-channel-record" });
+  const heading = el("h4", { text: answerChannelLabel(channel.source) });
+  heading.appendChild(
+    el("code", {
+      className: "structured-key",
+      text: channel.path,
+      attrs: { "data-field-key": "", translate: "no" },
+    })
+  );
+  section.appendChild(heading);
+  section.appendChild(
+    el("p", {
+      className: "panel-note",
+      text: "This recorded channel differs from the final answer, so it remains available separately.",
+    })
+  );
+  section.appendChild(
+    renderGeneratedAnswer(channel.value, {
+      path: channel.path,
+      absent: "This answer channel explicitly recorded no value.",
+    })
+  );
+  return section;
+}
+
+function renderAnswerChannelReferences(references) {
+  if (references.length === 0) return null;
+  const details = el("details", { className: "answer-channel-map" });
+  details.appendChild(el("summary", { text: "Recorded answer channels" }));
+  const list = el("dl", { className: "field-grid" });
+  const rows = references.map((reference) => {
+    const row = el("div");
+    row.appendChild(
+      el("dt", {
+        children: [
+          el("code", {
+            text: reference.path,
+            attrs: { "data-field-key": "", translate: "no" },
+          }),
+        ],
+      })
+    );
+    const same = reference.sameAs !== reference.path;
+    row.appendChild(
+      el("dd", {
+        children: [
+          el("span", {
+            text: same
+              ? "Same recorded content as "
+              : "Distinct recorded content shown separately at ",
+          }),
+          el("code", {
+            text: reference.sameAs,
+            attrs: { "data-field-key": "", translate: "no" },
+          }),
+        ],
+      })
+    );
+    return row;
+  });
+  render.replaceChildren(list, rows);
+  details.appendChild(list);
+  return details;
 }
 
 /** Render immutable, bounded fields captured when this RAG route ran. */
 function renderRun(current) {
   const execution = current.execution ?? {};
   const summary = [
-    render.definitionRow("Execution ID", execution.executionId ?? current.ref),
-    render.definitionRow("Invocation ID", execution.invocationId ?? execution.executionId ?? current.ref),
-    render.definitionRow("Job ID", execution.jobId),
-    render.definitionRow("Inquiry", execution.inquiryIndex),
-    render.definitionRow("Attempt", execution.attempt),
-    render.definitionRow("Lease epoch", execution.leaseEpoch),
-    render.definitionRow("Route", execution.route),
-    render.definitionRow("Run status", execution.runStatus),
-    render.definitionRow("Started", execution.occurredAt),
+    summaryRow("Execution ID", execution.executionId ?? current.ref, { identifier: true }),
+    summaryRow("Invocation ID", execution.invocationId ?? execution.executionId ?? current.ref, {
+      identifier: true,
+    }),
+    summaryRow("Job ID", execution.jobId, { identifier: true }),
+    summaryRow("Inquiry number", execution.inquiryIndex),
+    summaryRow("Attempt", execution.attempt),
+    summaryRow("Lease epoch", execution.leaseEpoch),
+    summaryRow("Route", execution.route),
+    summaryRow("Run status", execution.runStatus),
+    summaryRow("Started", execution.occurredAt, { time: true }),
+    summaryRow("Event digest", execution.eventDigest, { identifier: true }),
   ];
   render.replaceChildren(dom.runSummary, summary);
 
-  const generatedAnswer =
-    execution.generatedAnswer ??
-    execution.structuredResponse?.answer ??
-    execution.structuredResponse?.response;
-  dom.runAnswer.textContent = readable(generatedAnswer, "No generated answer was recorded.");
+  const answerPlan = planAnswerPresentation(execution);
+  const answerNodes = [
+    renderGeneratedAnswer(answerPlan.primary.value, {
+      path: answerPlan.primary.path,
+    }),
+    ...answerPlan.secondaries.map(renderSecondaryAnswer),
+  ];
+  if (answerPlan.residual !== null) {
+    answerNodes.push(
+      renderStructuredData(answerPlan.residual.value, {
+        label: answerPlan.residual.label,
+        path: answerPlan.residual.path,
+        open: false,
+      })
+    );
+  }
+  answerNodes.push(renderAnswerChannelReferences(answerPlan.references));
+  render.replaceChildren(dom.runAnswer, answerNodes);
 
-  const classificationReasoning = execution.classificationReasoning;
-  const outcomeReason = execution.outcomeReason ?? execution.structuredResponse?.outcome_reason;
+  const rationaleEntries = [
+    ["detected_inquiry", execution.inquiry],
+    ["detected_topic", execution.topic],
+    ["classification_confidence", execution.classificationConfidence],
+    ["classification_rationale", execution.classificationReasoning],
+    ["outcome_reason", answerPlan.outcome.primary?.value ?? null],
+  ];
+  if (answerPlan.outcome.secondary !== null) {
+    rationaleEntries.push([
+      "structured_outcome_reason",
+      answerPlan.outcome.secondary.value,
+    ]);
+  }
   render.replaceChildren(dom.runRationale, [
-    render.definitionRow("Classification rationale", classificationReasoning),
-    render.definitionRow("Outcome rationale", outcomeReason),
+    renderStructuredData(Object.fromEntries(rationaleEntries), {
+      label: "Recorded decision rationale",
+      path: "$/decision",
+      open: true,
+    }),
   ]);
 
   const diagnostics = execution.diagnostics;
   const gaps = execution.gaps;
-  renderRunList(dom.runDiagnostics, diagnostics, "No diagnostics were recorded.");
-  renderRunList(dom.runGaps, gaps, "No coverage gaps were recorded.");
-
-  const sourceArticles = execution.sourceArticles ?? [];
-  const chunkEvidence = execution.chunkEvidence ?? [];
-  renderExecutionEvidence(dom.runSources, dom.runChunks, {
-    sourceArticles,
-    chunkEvidence,
-  });
+  render.replaceChildren(dom.runDiagnostics, [
+    renderStructuredData(diagnostics, {
+      label: "Pipeline diagnostics",
+      path: "$/diagnostics",
+      open: true,
+    }),
+  ]);
+  render.replaceChildren(dom.runGaps, [
+    renderStructuredData(gaps, {
+      label: "Recorded coverage gaps",
+      path: "$/gaps",
+      open: false,
+    }),
+  ]);
 
   render.replaceChildren(dom.runMetadata, [
-    render.definitionRow("Model", readable(execution.modelMetadata)),
-    render.definitionRow("Timing", readable(execution.timingMetadata)),
-    render.definitionRow("Retrieval", readable(execution.retrievalMetadata)),
+    renderStructuredData(
+      {
+        model: execution.modelMetadata,
+        timing: execution.timingMetadata,
+        retrieval: execution.retrievalMetadata,
+        classification: execution.classificationMetadata,
+        correlation: execution.correlationMetadata,
+        execution_error: execution.executionError,
+        hydration_error_code: execution.hydrationErrorCode,
+      },
+      {
+        label: "Recorded runtime data",
+        path: "$/runtime",
+        open: true,
+      }
+    ),
+    renderStructuredData(execution.recordedRun, {
+      label: "Complete recorded run",
+      path: "$/execution",
+      open: false,
+    }),
   ]);
 
   const hydrationStatus = execution.hydrationStatus ?? "unavailable";
-  dom.hydrationStatus.textContent = hydrationText(hydrationStatus);
+  dom.hydrationStatus.textContent = hydrationText(
+    hydrationStatus,
+    execution.hydrationErrorCode ?? ""
+  );
   dom.hydrationStatus.dataset.tone = hydrationStatus === "succeeded" ? "info" : "warning";
 }
 
@@ -892,12 +1033,27 @@ function renderMeta(current) {
   text(dom.meta.reporter, ticket.reporter?.display_name ?? "", "Not recorded");
   timeInto(dom.meta.created, ticket.created_at);
   timeInto(dom.meta.updated, ticket.modified_at);
-  text(
-    dom.meta.reviewState,
-    review === null
-      ? "Linked review unavailable"
-      : `Version ${review.version}, ${review.status ?? "unreviewed"}`
-  );
+  if (review === null) {
+    text(dom.meta.reviewState, "", "Linked review unavailable");
+  } else {
+    dom.meta.reviewState.dataset.absent = "false";
+    dom.meta.reviewState.removeAttribute("data-audit-value");
+    dom.meta.reviewState.removeAttribute("translate");
+    render.replaceChildren(dom.meta.reviewState, [
+      el("span", { text: "Version" }),
+      el("span", {
+        text: String(review.version),
+        attrs: {
+          "data-audit-number": "",
+          "data-raw-value": String(review.version),
+        },
+      }),
+      el("span", { text: "," }),
+      el("span", {
+        text: render.STATUS_LABELS.get(review.status ?? "unreviewed") ?? "Unreviewed",
+      }),
+    ]);
+  }
 
   const link = resolveUpstreamLink(current.ticket);
   if (link === null) {
@@ -1070,81 +1226,60 @@ function renderConversationPanel(current) {
 }
 
 function executionEvidenceSummary(current) {
-  const execution = current.execution ?? {};
-  const sourceCount = Array.isArray(execution.sourceArticles)
-    ? execution.sourceArticles.length
-    : 0;
-  const chunkCount = Array.isArray(execution.chunkEvidence)
-    ? execution.chunkEvidence.length
-    : 0;
-  return {
-    sourceCount,
-    chunkCount,
-    available: sourceCount > 0 || chunkCount > 0,
-  };
+  return executionEvidenceCounts(current.execution ?? {});
 }
 
 function renderPersistedExecutionEvidence(current) {
-  const sourceHeading = el("h5", {
-    text: "Source articles captured by this execution",
-    attrs: { id: "rag-run-evidence-sources-heading" },
-  });
-  const sourceList = el("ul", {
-    className: "evidence-links",
-    attrs: { "aria-labelledby": "rag-run-evidence-sources-heading" },
-  });
-  const chunkHeading = el("h5", {
-    text: "Bounded chunks captured by this execution",
-    attrs: { id: "rag-run-evidence-chunks-heading" },
-  });
-  const chunkList = el("ul", {
-    className: "evidence-links",
-    attrs: { "aria-labelledby": "rag-run-evidence-chunks-heading" },
-  });
-  renderExecutionEvidence(sourceList, chunkList, current.execution);
-  render.replaceChildren(dom.evidenceBody, [
-    sourceHeading,
-    sourceList,
-    chunkHeading,
-    chunkList,
-  ]);
+  const summary = executionEvidenceSummary(current);
+  dom.evidencePersisted.hidden = false;
+  renderExecutionEvidence(dom.runSources, dom.runChunks, current.execution);
+  return summary;
 }
 
 function renderEvidencePanel(current) {
-  const executionEvidence = executionEvidenceSummary(current);
+  const executionEvidence = renderPersistedExecutionEvidence(current);
+  const correlationStatus = evidenceStatusText(current);
+  const persistedStatus = executionEvidence.available
+    ? `This persisted RAG execution recorded ${executionEvidence.sourceCount} source ` +
+      `article${executionEvidence.sourceCount === 1 ? "" : "s"} and ` +
+      `${executionEvidence.chunkCount} bounded chunk` +
+      `${executionEvidence.chunkCount === 1 ? "" : "s"}.`
+    : "This persisted RAG execution recorded no source articles or bounded chunks.";
   render.setPanelStatus(
     dom.evidenceStatus,
-    executionEvidence.available
-      ? {
-          text:
-            `This persisted RAG execution recorded ${executionEvidence.sourceCount} source ` +
-            `article${executionEvidence.sourceCount === 1 ? "" : "s"} and ` +
-            `${executionEvidence.chunkCount} bounded chunk` +
-            `${executionEvidence.chunkCount === 1 ? "" : "s"}.`,
-          tone: "info",
-        }
-      : evidenceStatusText(current)
+    {
+      text: [persistedStatus, correlationStatus.text].filter(Boolean).join(" "),
+      tone: correlationStatus.tone,
+    }
   );
   const evidence = current.evidence;
   const unavailable =
     evidence === null ||
     evidence === undefined ||
     (evidence.correlation_status ?? "unavailable") === "unavailable";
-  dom.evidenceExplanation.textContent = executionEvidence.available
-    ? "This bounded evidence was stored with the RAG run; reviewer-confirmed links are listed separately below."
-    : unavailable
-      ? render.evidenceGapText(evidence?.unavailable_reason ?? "")
-      : "";
-  dom.evidenceExplanation.dataset.tone =
-    executionEvidence.available || !unavailable ? "info" : "warning";
+  const explanation = [];
   if (executionEvidence.available) {
-    renderPersistedExecutionEvidence(current);
-  } else {
-    renderEvidence(dom.evidenceBody, evidence, {
-      canConfirm: evaluation.canEdit(role()) && current.review !== null,
-      now: Date.now(),
-    });
+    explanation.push(
+      "This bounded evidence was stored with the RAG run; correlation and candidate " +
+      "records are shown separately below."
+    );
   }
+  if (unavailable) {
+    explanation.push(render.evidenceGapText(evidence?.unavailable_reason ?? ""));
+  }
+  render.replaceChildren(
+    dom.evidenceExplanation,
+    explanation.map((value, index) =>
+      el("span", { text: `${index === 0 ? "" : " "}${value}` })
+    )
+  );
+  dom.evidenceExplanation.dataset.tone = unavailable ? "warning" : "info";
+
+  dom.evidenceCorrelation.hidden = false;
+  renderEvidence(dom.evidenceCorrelationBody, evidence, {
+    canConfirm: evaluation.canEdit(role()) && current.review !== null,
+    now: Date.now(),
+  });
 
   const feed = current.evidenceLinks;
   renderEvidenceLinks(dom.evidenceLinks, feed.items, {

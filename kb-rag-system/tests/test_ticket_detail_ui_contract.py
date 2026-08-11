@@ -64,7 +64,15 @@ from tests.test_tickets_ui_contract import (  # noqa: F401 - fixtures are used b
 )
 
 #: The modules Stage 7 adds. Every one is served to the browser.
-NEW_MODULES = ("detail.js", "evaluation.js", "conversation.js", "evidence.js", "remediation.js")
+NEW_MODULES = (
+    "detail.js",
+    "evaluation.js",
+    "conversation.js",
+    "evidence.js",
+    "remediation.js",
+    "structured.js",
+    "answer-presentation.js",
+)
 
 #: The four workspace panels, and the tab that controls each.
 WORKSPACE_PANELS = {
@@ -1042,6 +1050,324 @@ class TestConcurrency:
         assert "draft: {}" in body
         assert "dirty: false" in body
         assert "version:" in body
+
+
+# =====================================================================
+# 11 — structured technical data is complete, safe, and readable
+# =====================================================================
+
+
+class TestReadableTechnicalAudit:
+
+    def test_a_shared_presenter_owns_every_structured_value(self, scripts):
+        presenter_path = UI_ASSETS_DIRECTORY / "structured.js"
+        assert presenter_path.is_file(), "the structured-data presenter is not shipped"
+        presenter = presenter_path.read_text(encoding="utf-8")
+        for export in (
+            "export function parseStructuredText",
+            "export function renderStructuredData",
+            "export function renderGeneratedAnswer",
+        ):
+            assert export in presenter
+        assert "JSON.parse" in presenter
+        assert "data-field-path" in presenter
+        assert "data-audit-value" in presenter
+        assert 'translate: "no"' in presenter or '"translate": "no"' in presenter
+        for tag in ('el("dl"', 'el("ul"', 'el("ol"', 'el("details"', 'el("summary"'):
+            assert tag in presenter, tag
+        for field in ("opening", "key_points", "steps", "warnings"):
+            assert field in presenter
+        assert "Additional answer details" in presenter
+        for forbidden in FORBIDDEN_SINKS:
+            assert forbidden not in presenter
+
+    def test_execution_and_conversation_share_the_safe_presenter(self, scripts):
+        detail = scripts["detail.js"]
+        conversation = scripts["conversation.js"]
+        assert 'from "./structured.js"' in detail
+        assert 'from "./structured.js"' in conversation
+        assert "renderGeneratedAnswer" in detail
+        assert detail.count("renderStructuredData") >= 3
+        assert "parseStructuredText" in conversation
+        assert "renderStructuredData" in conversation
+        assert "JSON.stringify" not in detail
+        assert "JSON.stringify" not in conversation
+
+    def test_safe_execution_dimensions_are_not_silently_dropped(self, scripts):
+        adapter = scripts["api.js"]
+        detail = scripts["detail.js"]
+        planner = (UI_ASSETS_DIRECTORY / "answer-presentation.js").read_text(encoding="utf-8")
+        for field in (
+            "inquiry",
+            "topic",
+            "classificationConfidence",
+            "classificationMetadata",
+            "correlationMetadata",
+            "executionError",
+            "hydrationErrorCode",
+            "eventDigest",
+        ):
+            assert field in adapter
+            assert field in detail
+        assert "answerPlan.residual" in detail
+        assert "Additional response record" in planner
+
+    def test_the_audit_uses_progressive_semantic_sections(self, dom):
+        audit = _by_id(_detail(dom), "technical-audit")
+        sections = [node for node in audit.walk() if "audit-section" in (node.get("class") or "")]
+        assert len(sections) >= 4
+        visible = audit.all_text()
+        for label in (
+            "Answer and decision",
+            "Evidence used",
+            "Data coverage and diagnostics",
+            "Runtime and exact identifiers",
+            "Ticket snapshot at execution",
+        ):
+            assert label in visible
+        nested = [node for node in audit.find_all("details") if node is not audit]
+        assert nested, "long technical groups have no progressive disclosure"
+        assert any(node.get("open") is not None for node in nested)
+        assert any(node.get("open") is None for node in nested)
+
+    def test_recorded_audit_values_are_protected_from_translation(self, scripts):
+        presenter = (UI_ASSETS_DIRECTORY / "structured.js").read_text(encoding="utf-8")
+        preferences = scripts["preferences.js"]
+        assert "data-audit-value" in presenter
+        assert "data-recorded-value" in presenter
+        assert "data-audit-number" in presenter
+        assert "renderAuditNumbers" in preferences
+        assert '[data-audit-value]' in preferences
+        assert '[data-field-key]' in preferences
+
+    def test_all_authorized_evidence_is_available_without_silent_slicing(self, scripts):
+        evidence = scripts["evidence.js"]
+        assert ".slice(0, CHUNK_LIST_LIMIT)" not in evidence
+        assert "further observed vectors are not listed" not in evidence
+        for field in (
+            "sourceId",
+            "articleTitle",
+            "url",
+            "chunkTypesUsed",
+            "usedInfo",
+            "maxScore",
+            "chunkType",
+            "chunkTier",
+            "score",
+            "preview",
+        ):
+            assert field in evidence, field
+
+    def test_the_visual_layer_has_a_complete_structured_audit_vocabulary(self, css_source):
+        for selector in (
+            ".audit-section",
+            ".audit-section-summary",
+            ".structured-answer",
+            ".answer-key-points",
+            ".answer-steps",
+            ".answer-warnings",
+            ".structured-group",
+            ".data-row",
+            ".data-label",
+            ".data-value",
+            ".identifier-value",
+            ".structured-group--lazy",
+            ".structured-chunks",
+            ".structured-chunks--array",
+            ".structured-chunks--object",
+            ".answer-wrapper-context",
+            ".answer-wrapper-label",
+            ".answer-step-number",
+            ".entry-body--structured",
+            ".evidence-collection",
+        ):
+            assert selector in css_source, selector
+        assert ".audit-section-summary:focus-visible" in css_source
+
+    def test_spanish_covers_the_guided_audit_labels(self, scripts):
+        preferences = scripts["preferences.js"]
+        for english, spanish in (
+            ("Evidence and audit details", "Evidencia y detalles de auditoría"),
+            ("Answer and decision", "Respuesta y decisión"),
+            ("Evidence used", "Evidencia utilizada"),
+            ("Data coverage and diagnostics", "Cobertura de datos y diagnósticos"),
+            ("Runtime and exact identifiers", "Ejecución e identificadores exactos"),
+            ("Ticket snapshot at execution", "Instantánea del ticket durante la ejecución"),
+            ("Key points", "Puntos clave"),
+            ("Recommended steps", "Pasos recomendados"),
+            ("Warnings", "Advertencias"),
+            ("Not recorded", "No registrado"),
+        ):
+            assert english in preferences
+            assert spanish in preferences
+
+    def test_the_browser_fixture_reproduces_nested_real_world_data(self):
+        fixture = (
+            UI_ASSETS_DIRECTORY.parents[2]
+            / "tests"
+            / "support"
+            / "tickets_console_fixture_app.py"
+        ).read_text(encoding="utf-8")
+        for marker in (
+            '"opening"',
+            '"key_points"',
+            '"steps"',
+            '"warnings"',
+            '"field_mapping"',
+            '"unmapped_fields"',
+            '"participant_reply_safe"',
+        ):
+            assert marker in fixture
+
+    def test_persisted_and_correlation_evidence_are_separate_complete_sections(
+        self, dom, scripts
+    ):
+        detail_dom = _detail(dom)
+        detail = scripts["detail.js"]
+        evidence = scripts["evidence.js"]
+        sources = {
+            node.get("data-evidence-source")
+            for node in detail_dom.walk()
+            if node.get("data-evidence-source")
+        }
+        assert {"persisted", "correlation"} <= sources
+        assert "renderPersistedExecutionEvidence(current)" in detail
+        assert "renderEvidence(dom.evidenceCorrelationBody, evidence" in detail
+        assert detail.count("renderExecutionEvidence(") == 1
+        assert "executionEvidenceCounts" in evidence
+        assert "executionEvidenceCounts" in detail
+        for stable_id in ("run-sources", "run-chunks"):
+            assert sum(node.get("id") == stable_id for node in detail_dom.walk()) == 1
+        assert "recordedRecords" in evidence
+        assert "uniqueExactRecords" not in evidence
+        assert ".slice(" not in evidence
+
+    def test_every_evidence_collection_has_a_counted_disclosure(self, scripts):
+        evidence = scripts["evidence.js"]
+        assert "function evidenceDisclosure" in evidence
+        assert 'el("details"' in evidence
+        assert '"data-evidence-count"' in evidence
+        for collection in (
+            "sourceArticles",
+            "chunkEvidence",
+            "provenance.observed_chunks",
+            "evidence.executions",
+            "evidence.candidate_links",
+        ):
+            assert collection in evidence
+        assert ".map(" in evidence
+        assert ".slice(" not in evidence
+
+    def test_source_and_article_titles_remain_independently_auditable(self, scripts):
+        evidence = scripts["evidence.js"]
+        assert 'definitionRow("Article title", value.articleTitle)' in evidence
+        assert 'definitionRow("Source title", value.title)' in evidence
+        assert "value.title !== value.articleTitle" in evidence
+
+    def test_operational_controls_are_available_in_their_workflows(self, dom):
+        detail = _detail(dom)
+        reload_control = _by_id(detail, "detail-reload")
+        assert any(
+            "detail-topbar-actions" in (ancestor.get("class") or "")
+            for ancestor in reload_control.ancestors()
+        )
+        assert not any(
+            ancestor.get("id") == "technical-audit"
+            for ancestor in reload_control.ancestors()
+        )
+
+        add_batch = _by_id(detail, "detail-add-batch")
+        assert any(
+            ancestor.get("id") == "panel-remediation"
+            for ancestor in add_batch.ancestors()
+        )
+        for control_id in ("detail-reload", "detail-add-batch", "detail-copy-id"):
+            assert sum(node.get("id") == control_id for node in detail.walk()) == 1
+
+    def test_remote_change_summaries_and_exact_keys_are_legible_and_protected(
+        self, scripts, css_source
+    ):
+        preferences = scripts["preferences.js"]
+        conversation = scripts["conversation.js"]
+        assert '"[data-user-content]"' in preferences
+        assert "message.change_summary" in conversation
+        assert '"data-user-content"' in conversation
+        assert '"[data-kind=\'change_event\'] .entry-body"' not in preferences
+
+        key_rule = re.search(r"\.structured-key\s*\{([^}]*)\}", css_source)
+        assert key_rule is not None
+        assert "font-size: 0.6875rem" in key_rule.group(1)
+        assert "color: var(--text-muted)" in key_rule.group(1)
+
+        nested_key_rule = re.search(
+            r"\[data-field-key\]\.data-label\s*\{([^}]*)\}", css_source
+        )
+        assert nested_key_rule is not None
+        assert "font-size: 0.6875rem" in nested_key_rule.group(1)
+        assert "color: var(--text-muted)" in nested_key_rule.group(1)
+        assert ".answer-section-heading .structured-key" not in css_source or re.search(
+            r"\.answer-section-heading \.structured-key\s*\{[^}]*font-size: 0\.6875rem",
+            css_source,
+        )
+
+        def luminance(color: str) -> float:
+            channels = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [
+                channel / 12.92
+                if channel <= 0.04045
+                else ((channel + 0.055) / 1.055) ** 2.4
+                for channel in channels
+            ]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        def contrast(foreground: str, background: str) -> float:
+            lighter, darker = sorted(
+                (luminance(foreground), luminance(background)), reverse=True
+            )
+            return (lighter + 0.05) / (darker + 0.05)
+
+        for foreground, background in (
+            ("#5d6673", "#fffefa"),
+            ("#a9b6c8", "#111f34"),
+        ):
+            assert foreground in css_source
+            assert background in css_source
+            assert contrast(foreground, background) >= 4.5
+
+    def test_mobile_audit_summaries_keep_a_two_level_grid(self, css_source):
+        mobile = re.search(
+            r"@media \(max-width: 600px\) \{(.*?)\n\}", css_source, re.DOTALL
+        )
+        assert mobile is not None
+        source = mobile.group(1)
+        summary = re.search(r"\.audit-section-summary\s*\{([^}]*)\}", source)
+        assert summary is not None
+        assert "display: grid" in summary.group(1)
+        assert "grid-template-columns" in summary.group(1)
+        assert ".audit-summary-line" in source
+
+    def test_spanish_covers_every_new_evidence_label_and_dynamic_state(self, scripts):
+        preferences = scripts["preferences.js"]
+        for english, spanish in (
+            ("Article title", "Título del artículo"),
+            ("Source title", "Título de la fuente"),
+            ("Recorded URL", "URL registrada"),
+            ("Chunk types used", "Tipos de fragmento utilizados"),
+            ("Used in answer", "Utilizado en la respuesta"),
+            ("Maximum score", "Puntuación máxima"),
+            ("Source id", "ID de fuente"),
+            ("Chunk id", "ID de fragmento"),
+            ("Chunk type", "Tipo de fragmento"),
+            ("Chunk tier", "Nivel del fragmento"),
+            ("Bounded preview", "Vista previa acotada"),
+            ("Correlation and candidate evidence", "Evidencia de correlación y candidatos"),
+            ("Recorded reason", "Motivo registrado"),
+            ("Continue into", "Continuar en"),
+            ("Items", "Elementos"),
+            ("Fields", "Campos"),
+        ):
+            assert english in preferences
+            assert spanish in preferences
 
 
 # =====================================================================

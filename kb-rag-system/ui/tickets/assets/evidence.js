@@ -41,13 +41,59 @@ const SOURCE_COLLECTION_LABELS = new Map([
   ["ticket_jobs", "Ticket job"],
 ]);
 
-/** How many observed vectors are listed before the rest are counted instead. */
-const CHUNK_LIST_LIMIT = 10;
-
 function grid(rows) {
   const node = el("dl", { className: "field-grid" });
   replaceChildren(node, rows);
   return node;
+}
+
+/** A label derived by this UI, never a verbatim upstream value. */
+function interfaceRow(term, value, options = {}) {
+  return definitionRow(term, value, { ...options, recorded: false });
+}
+
+/** Preserve source order and multiplicity; repeated records are audit evidence. */
+function recordedRecords(records) {
+  return Array.isArray(records) ? records : [];
+}
+
+function countLabel(count, singular, plural) {
+  return `${count.toLocaleString(document.documentElement.lang || "en")} ` +
+    `${count === 1 ? singular : plural}`;
+}
+
+/** A counted disclosure whose body still contains every recorded record. */
+function evidenceDisclosure({
+  title,
+  records,
+  singular,
+  plural,
+  renderRecord,
+  list = true,
+  open = false,
+}) {
+  const details = el("details", {
+    className: "evidence-collection",
+    attrs: {
+      "data-evidence-count": String(records.length),
+      open,
+    },
+  });
+  const summary = el("summary", { className: "evidence-collection-summary" });
+  summary.appendChild(el("span", { text: title }));
+  summary.appendChild(
+    el("span", {
+      className: "evidence-count",
+      text: countLabel(records.length, singular, plural),
+    })
+  );
+  details.appendChild(summary);
+  const body = el(list ? "ul" : "div", {
+    className: list ? "evidence-links evidence-collection-list" : "evidence-record-list",
+  });
+  replaceChildren(body, records.map(renderRecord));
+  details.appendChild(body);
+  return details;
 }
 
 function timeRow(term, iso) {
@@ -56,6 +102,18 @@ function timeRow(term, iso) {
   const value = el("dd");
   if (iso) {
     value.appendChild(timeElement(iso));
+    value.appendChild(
+      el("span", {
+        className: "evidence-exact-time",
+        children: [
+          el("span", { text: "Exact timestamp" }),
+          el("code", {
+            text: iso,
+            attrs: { "data-audit-value": "", translate: "no" },
+          }),
+        ],
+      })
+    );
   } else {
     value.textContent = "Not recorded";
     value.setAttribute("data-absent", "true");
@@ -97,7 +155,7 @@ function observedChunk(chunk, index) {
       definitionRow("Namespace", chunk.namespace),
       definitionRow(
         "Score",
-        typeof chunk.score === "number" ? chunk.score.toFixed(4) : ""
+        typeof chunk.score === "number" ? String(chunk.score) : ""
       ),
     ])
   );
@@ -106,8 +164,9 @@ function observedChunk(chunk, index) {
 
 function observedChunks(chunks) {
   const wrap = el("div");
-  wrap.appendChild(el("h5", { text: "Vectors observed at query time" }));
-  if (!Array.isArray(chunks) || chunks.length === 0) {
+  const records = recordedRecords(chunks);
+  if (records.length === 0) {
+    wrap.appendChild(el("h5", { text: "Vectors observed at query time" }));
     wrap.appendChild(
       el("p", {
         className: "panel-note",
@@ -124,23 +183,55 @@ function observedChunks(chunks) {
       text:
         "These identifiers are what the retrieval step returned at the time. " +
         "They are not stable across a reindex, so treat them as a trace of that " +
-        "one query rather than as addresses to look up later.",
+      "one query rather than as addresses to look up later.",
     })
   );
-  const list = el("ul", { className: "evidence-links" });
-  replaceChildren(
-    list,
-    chunks.slice(0, CHUNK_LIST_LIMIT).map((chunk, index) => observedChunk(chunk, index))
+  wrap.appendChild(
+    evidenceDisclosure({
+      title: "Vectors observed at query time",
+      records,
+      singular: "observed vector",
+      plural: "observed vectors",
+      renderRecord: (chunk, index) => observedChunk(chunk, index),
+    })
   );
-  wrap.appendChild(list);
-  if (chunks.length > CHUNK_LIST_LIMIT) {
-    wrap.appendChild(
-      el("p", {
-        className: "panel-note",
-        text: `${chunks.length - CHUNK_LIST_LIMIT} further observed vectors are not listed.`,
-      })
-    );
-  }
+  return wrap;
+}
+
+function provenanceRecord(provenance, index) {
+  const record = provenance ?? {};
+  const wrap = el("div", {
+    className: "evidence-record",
+    attrs: { "data-kind": "provenance", "data-index": String(index) },
+  });
+  wrap.appendChild(el("p", { className: "audit-type", text: `Retrieval record ${index + 1}` }));
+  wrap.appendChild(
+    grid([
+      interfaceRow("Retrieval correlation", correlationStatusLabel(record.correlation_status)),
+      interfaceRow("Retrieval trust", correlationTrustLabel(record.correlation_trust)),
+      definitionRow("Retrieval correlation source", record.correlation_source),
+      interfaceRow(
+        "Missing retrieval provenance",
+        record.missing_provenance === true
+          ? "Yes"
+          : record.missing_provenance === false
+            ? "No"
+            : ""
+      ),
+      definitionRow("Index", record.index_name),
+      definitionRow("Index version", record.index_version),
+      definitionRow("Namespace", record.namespace),
+      definitionRow("Deployed revision", record.deployed_revision),
+      definitionRow("Prompt template id", record.prompt_template_id),
+      definitionRow("Prompt template hash", digest(record.prompt_template_sha256), {
+        full: record.prompt_template_sha256 ?? "",
+      }),
+      definitionRow("Response hash", digest(record.response_sha256), {
+        full: record.response_sha256 ?? "",
+      }),
+    ])
+  );
+  wrap.appendChild(observedChunks(record.observed_chunks));
   return wrap;
 }
 
@@ -148,13 +239,26 @@ function executionSource(source, index) {
   const value = typeof source === "string" ? { articleId: source } : source ?? {};
   const item = el("li", { className: "evidence-record", attrs: { "data-kind": "source" } });
   item.appendChild(el("p", { className: "audit-type", text: `Source article ${index + 1}` }));
+  const rows = [definitionRow("Article id", value.articleId ?? value.id)];
+  if (value.articleTitle) {
+    rows.push(definitionRow("Article title", value.articleTitle));
+  }
+  if (value.title && value.title !== value.articleTitle) {
+    rows.push(definitionRow("Source title", value.title));
+  }
+  rows.push(
+    definitionRow("Recorded URL", value.url),
+    definitionRow("Chunk types used", value.chunkTypesUsed),
+    definitionRow("Relevance", value.relevance),
+    definitionRow(
+      "Used in answer",
+      typeof value.usedInfo === "boolean" ? (value.usedInfo ? "Yes" : "No") : "",
+      { recorded: false }
+    ),
+    definitionRow("Maximum score", value.maxScore)
+  );
   item.appendChild(
-    grid([
-      definitionRow("Article id", value.articleId ?? value.id),
-      definitionRow("Title", value.title),
-      definitionRow("Section", value.section),
-      definitionRow("Relevance", value.relevance ?? value.maxScore),
-    ])
+    grid(rows)
   );
   return item;
 }
@@ -167,8 +271,12 @@ function executionChunk(chunk, index) {
   item.appendChild(el("p", { className: "audit-type", text: `Retrieved chunk ${index + 1}` }));
   item.appendChild(
     grid([
+      definitionRow("Source id", value.sourceId),
       definitionRow("Article id", value.articleId),
+      definitionRow("Article title", value.articleTitle),
       definitionRow("Chunk id", value.chunkId),
+      definitionRow("Chunk type", value.chunkType),
+      definitionRow("Chunk tier", value.chunkTier),
       definitionRow("Score", value.score),
       definitionRow("Content hash", digest(contentHash), { full: contentHash ?? "" }),
       definitionRow("Bounded preview", preview),
@@ -177,25 +285,53 @@ function executionChunk(chunk, index) {
   return item;
 }
 
+function executionEvidenceRecords(execution) {
+  return {
+    sourceArticles: recordedRecords(execution?.sourceArticles),
+    chunkEvidence: recordedRecords(execution?.chunkEvidence),
+  };
+}
+
+/** Counts preserve the same source order and multiplicity as the rendered lists. */
+export function executionEvidenceCounts(execution) {
+  const records = executionEvidenceRecords(execution);
+  return {
+    sourceCount: records.sourceArticles.length,
+    chunkCount: records.chunkEvidence.length,
+    available: records.sourceArticles.length > 0 || records.chunkEvidence.length > 0,
+  };
+}
+
 /** Render the bounded sourceArticles and chunkEvidence captured with a run. */
 export function renderExecutionEvidence(sourceList, chunkList, execution) {
-  const sourceArticles = Array.isArray(execution?.sourceArticles)
-    ? execution.sourceArticles
-    : [];
-  const chunkEvidence = Array.isArray(execution?.chunkEvidence)
-    ? execution.chunkEvidence
-    : [];
+  const { sourceArticles, chunkEvidence } = executionEvidenceRecords(execution);
   replaceChildren(
     sourceList,
     sourceArticles.length === 0
-      ? [el("li", { text: "No source articles were recorded." })]
-      : sourceArticles.slice(0, CHUNK_LIST_LIMIT).map(executionSource)
+      ? [el("p", { className: "panel-note", text: "No source articles were recorded." })]
+      : [
+          evidenceDisclosure({
+            title: "Source articles",
+            records: sourceArticles,
+            singular: "source article",
+            plural: "source articles",
+            renderRecord: executionSource,
+          }),
+        ]
   );
   replaceChildren(
     chunkList,
     chunkEvidence.length === 0
-      ? [el("li", { text: "No bounded chunk evidence was recorded." })]
-      : chunkEvidence.slice(0, CHUNK_LIST_LIMIT).map(executionChunk)
+      ? [el("p", { className: "panel-note", text: "No bounded chunk evidence was recorded." })]
+      : [
+          evidenceDisclosure({
+            title: "Bounded chunks",
+            records: chunkEvidence,
+            singular: "bounded chunk",
+            plural: "bounded chunks",
+            renderRecord: executionChunk,
+          }),
+        ]
   );
 }
 
@@ -205,8 +341,7 @@ export function renderExecutionEvidence(sourceList, chunkList, execution) {
  * The record is the broker's allowlisted shape: prompts, responses, chunk text,
  * participant data and raw upstream identifiers are absent from it by
  * construction, which is why the whole record can be rendered without filtering
- * here. The actor-principal hash is the one field deliberately left out — it
- * identifies nothing a reviewer can act on.
+ * here. Every field in that allowlisted shape remains available to an auditor.
  */
 export function executionRecord(record, index) {
   const provenance = record.provenance ?? {};
@@ -231,8 +366,8 @@ export function executionRecord(record, index) {
   wrap.appendChild(el("h5", { text: "Execution" }));
   wrap.appendChild(
     grid([
-      definitionRow("Source record", SOURCE_COLLECTION_LABELS.get(record.source_collection) ?? ""),
-      definitionRow(
+      interfaceRow("Source record", SOURCE_COLLECTION_LABELS.get(record.source_collection) ?? ""),
+      interfaceRow(
         "Record schema",
         typeof record.schema_version === "number"
           ? record.schema_version === 0
@@ -241,11 +376,11 @@ export function executionRecord(record, index) {
           : ""
       ),
       timeRow("Occurred at", record.occurred_at),
-      definitionRow(
+      interfaceRow(
         "Latency",
-        typeof record.duration_ms === "number" ? `${Math.round(record.duration_ms)} ms` : ""
+        typeof record.duration_ms === "number" ? `${String(record.duration_ms)} ms` : ""
       ),
-      definitionRow(
+      interfaceRow(
         "Outcome",
         record.failed === null || record.failed === undefined
           ? ""
@@ -256,7 +391,7 @@ export function executionRecord(record, index) {
       definitionRow("Endpoint", record.endpoint),
       definitionRow("Route", record.route),
       definitionRow("Correlation source", record.correlation_source),
-      definitionRow("Correlation trust", correlationTrustLabel(record.correlation_trust)),
+      interfaceRow("Correlation trust", correlationTrustLabel(record.correlation_trust)),
     ])
   );
 
@@ -264,8 +399,13 @@ export function executionRecord(record, index) {
   wrap.appendChild(
     grid([
       definitionRow("Internal ticket job", record.internal_job_id),
+      definitionRow("Lookup key version", record.lookup_key_version),
+      definitionRow("Ingress key version", record.ingress_key_version),
       definitionRow("Request id hash", digest(record.request_id_hash), {
         full: record.request_id_hash ?? "",
+      }),
+      definitionRow("Actor principal hash", digest(record.principal_hash), {
+        full: record.principal_hash ?? "",
       }),
       definitionRow("Evidence reference", digest(record.evidence_reference), {
         full: record.evidence_reference ?? "",
@@ -309,6 +449,23 @@ export function executionRecord(record, index) {
   wrap.appendChild(el("h5", { text: "Index and deployment" }));
   wrap.appendChild(
     grid([
+      interfaceRow(
+        "Retrieval correlation",
+        correlationStatusLabel(provenance.correlation_status)
+      ),
+      interfaceRow(
+        "Retrieval trust",
+        correlationTrustLabel(provenance.correlation_trust)
+      ),
+      definitionRow("Retrieval correlation source", provenance.correlation_source),
+      interfaceRow(
+        "Missing retrieval provenance",
+        provenance.missing_provenance === true
+          ? "Yes"
+          : provenance.missing_provenance === false
+            ? "No"
+            : ""
+      ),
       definitionRow("Index", provenance.index_name),
       definitionRow("Index version", provenance.index_version, {
         absentNote: "Unknown — this execution did not record an index version",
@@ -324,7 +481,7 @@ export function executionRecord(record, index) {
     ])
   );
 
-  const articles = Array.isArray(record.source_article_ids) ? record.source_article_ids : [];
+  const articles = recordedRecords(record.source_article_ids);
   wrap.appendChild(el("h5", { text: "Source articles" }));
   if (articles.length === 0) {
     wrap.appendChild(
@@ -337,7 +494,11 @@ export function executionRecord(record, index) {
     const list = el("ul", { className: "checks" });
     replaceChildren(
       list,
-      articles.map((id) => el("li", { className: "mono", text: id }))
+      articles.map((id) => el("li", {
+        className: "mono",
+        text: id,
+        attrs: { "data-audit-value": "", translate: "no" },
+      }))
     );
     wrap.appendChild(list);
     wrap.appendChild(
@@ -391,7 +552,7 @@ export function candidateLink(candidate, index, { canConfirm, expired }) {
         full: candidate.broker_result_digest ?? "",
       }),
       definitionRow("Why it was suggested", candidate.rationale),
-      definitionRow("Trust", correlationTrustLabel(candidate.correlation_trust)),
+      interfaceRow("Trust", correlationTrustLabel(candidate.correlation_trust)),
     ])
   );
   wrap.appendChild(timeRow("Suggestion expires", candidate.expires_at));
@@ -467,6 +628,8 @@ export function confirmedLink(link, { canUnlink }) {
         full: link.evidence_digest ?? "",
       }),
       definitionRow("Reason given", link.reason),
+      definitionRow("Reviewer subject", link.linked_by?.subject),
+      definitionRow("Reviewer display name", link.linked_by?.display_name),
       definitionRow("Linked by", link.linked_by?.email ?? ""),
       definitionRow(
         "Link version",
@@ -475,6 +638,14 @@ export function confirmedLink(link, { canUnlink }) {
     ])
   );
   item.appendChild(timeRow("Linked at", link.linked_at));
+  item.appendChild(el("h5", { text: "Exact link identifiers" }));
+  item.appendChild(
+    grid([
+      definitionRow("Review id", digest(link.review_id), { full: link.review_id ?? "" }),
+      definitionRow("Link id", link.link_id),
+      definitionRow("Source URL", link.source_url),
+    ])
+  );
 
   const form = el("div", { className: "confirm-form" });
   const field = el("div", { className: "field" });
@@ -530,31 +701,82 @@ export function renderEvidence(container, evidence, { canConfirm, now }) {
   const blocks = [];
   blocks.push(
     grid([
-      definitionRow("Correlation", correlationStatusLabel(evidence.correlation_status)),
-      definitionRow("Trust", correlationTrustLabel(evidence.correlation_trust)),
+      interfaceRow("Correlation", correlationStatusLabel(evidence.correlation_status)),
+      interfaceRow("Trust", correlationTrustLabel(evidence.correlation_trust)),
       definitionRow("Correlation source", evidence.correlation_source),
       definitionRow(
         "Confirmed links",
         typeof evidence.linked_count === "number" ? String(evidence.linked_count) : ""
       ),
+      definitionRow("Unavailable reason", evidence.unavailable_reason),
+      definitionRow("Lookup result digest", digest(evidence.result_digest), {
+        full: evidence.result_digest ?? "",
+      }),
       definitionRow(
+        "Key versions queried",
+        recordedRecords(evidence.key_versions_queried).map(String).join(", ")
+      ),
+      interfaceRow("Lookup truncated", evidence.truncated === true ? "Yes" : "No"),
+      interfaceRow(
         "Evidence service",
         evidence.broker_available === true ? "Answered" : "Did not answer"
       ),
     ])
   );
 
-  const executions = Array.isArray(evidence.executions) ? evidence.executions : [];
-  if (executions.length > 0) {
-    blocks.push(el("h5", { text: "Executions found for this ticket" }));
-    for (const [index, record] of executions.entries()) {
-      blocks.push(executionRecord(record, index));
-    }
+  const warnings = recordedRecords(evidence.warnings);
+  if (warnings.length > 0) {
+    blocks.push(
+      evidenceDisclosure({
+        title: "Recorded evidence warnings",
+        records: warnings,
+        singular: "warning",
+        plural: "warnings",
+        renderRecord: (warning, index) =>
+          el("li", {
+            className: "evidence-record evidence-warning",
+            attrs: { "data-kind": "warning", "data-index": String(index) },
+            children: [
+              el("p", {
+                className: "panel-note",
+                text: warning,
+                attrs: { "data-audit-value": "", translate: "no" },
+              }),
+            ],
+          }),
+      })
+    );
   }
 
-  const candidates = Array.isArray(evidence.candidate_links) ? evidence.candidate_links : [];
+  const executions = recordedRecords(evidence.executions);
+  const provenance = recordedRecords(evidence.provenance);
+  if (provenance.length > 0) {
+    blocks.push(
+      evidenceDisclosure({
+        title: "Recorded retrieval provenance",
+        records: provenance,
+        singular: "retrieval record",
+        plural: "retrieval records",
+        renderRecord: (record, index) => provenanceRecord(record, index),
+        list: false,
+      })
+    );
+  }
+  if (executions.length > 0) {
+    blocks.push(
+      evidenceDisclosure({
+        title: "Executions found for this ticket",
+        records: executions,
+        singular: "execution",
+        plural: "executions",
+        renderRecord: (record, index) => executionRecord(record, index),
+        list: false,
+      })
+    );
+  }
+
+  const candidates = recordedRecords(evidence.candidate_links);
   if (candidates.length > 0) {
-    blocks.push(el("h5", { text: "Suggested correlations awaiting confirmation" }));
     blocks.push(
       el("p", {
         className: "panel-note",
@@ -564,15 +786,22 @@ export function renderEvidence(container, evidence, { canConfirm, now }) {
           "they belong and why.",
       })
     );
-    for (const [index, candidate] of candidates.entries()) {
-      const expiresAt = Date.parse(candidate.expires_at);
-      blocks.push(
-        candidateLink(candidate, index, {
-          canConfirm,
-          expired: Number.isFinite(expiresAt) && expiresAt <= now,
-        })
-      );
-    }
+    blocks.push(
+      evidenceDisclosure({
+        title: "Suggested correlations awaiting confirmation",
+        records: candidates,
+        singular: "suggestion",
+        plural: "suggestions",
+        renderRecord: (candidate, index) => {
+          const expiresAt = Date.parse(candidate.expires_at);
+          return candidateLink(candidate, index, {
+            canConfirm,
+            expired: Number.isFinite(expiresAt) && expiresAt <= now,
+          });
+        },
+        list: false,
+      })
+    );
   }
 
   if (executions.length === 0 && candidates.length === 0) {
@@ -590,7 +819,8 @@ export function renderEvidence(container, evidence, { canConfirm, now }) {
 
 /** The confirmed-link list, or an honest empty state. */
 export function renderEvidenceLinks(list, links, { canUnlink }) {
-  if (links.length === 0) {
+  const records = recordedRecords(links);
+  if (records.length === 0) {
     const item = el("li", { className: "evidence-link" });
     item.appendChild(
       el("p", {
@@ -603,7 +833,7 @@ export function renderEvidenceLinks(list, links, { canUnlink }) {
   }
   replaceChildren(
     list,
-    links.map((link) => confirmedLink(link, { canUnlink }))
+    records.map((link) => confirmedLink(link, { canUnlink }))
   );
 }
 
@@ -623,12 +853,13 @@ export function evidenceStatusText(detail) {
   if (status === "unavailable") {
     return { text: "No defensible correlation for this ticket.", tone: "warning" };
   }
-  const executions = Array.isArray(evidence.executions) ? evidence.executions.length : 0;
-  const suffix = evidence.warnings?.length > 0 ? " Some evidence may be incomplete." : "";
+  const executions = recordedRecords(evidence.executions).length;
+  const incomplete = evidence.truncated === true || evidence.warnings?.length > 0;
+  const suffix = incomplete ? " Some evidence may be incomplete." : "";
   return {
     text:
       `${correlationStatusLabel(status)}: ${executions} execution` +
       `${executions === 1 ? "" : "s"} available.${suffix}`,
-    tone: evidence.warnings?.length > 0 ? "warning" : "info",
+    tone: incomplete ? "warning" : "info",
   };
 }

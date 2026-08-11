@@ -38,6 +38,7 @@ the exercise worth anything.
 from __future__ import annotations
 
 import ipaddress
+import json
 import os
 import socket
 from contextlib import asynccontextmanager
@@ -347,6 +348,39 @@ def fixture_detail(index: int) -> DevRevTicketDetail:
 
 
 def fixture_timeline_entry(index: int) -> DevRevTimelineEntry:
+    if index == 28:
+        body = "```json\n" + json.dumps(
+            {
+                "response_source": "grounded_knowledge",
+                "inquiries": [
+                    {
+                        "topic": "rollovers",
+                        "outcome": "can_proceed",
+                        "requires_escalation": False,
+                    }
+                ],
+                "response_to_participant": {
+                    "opening": "A direct rollover can generally move these assets without a current taxable distribution.",
+                    "key_points": [
+                        "Confirm the receiving IRA registration.",
+                        "Request trustee-to-trustee payment when available.",
+                    ],
+                },
+                "set_stage_solved": True,
+                "stage_reason": "A grounded response and next steps were recorded.",
+            },
+            sort_keys=True,
+        ) + "\n```"
+        return DevRevTimelineEntry(
+            entry_id=f"fixture-entry-{index}",
+            object_id=_work_id(index),
+            kind=TimelineEntryKind.COMMENT,
+            visibility=TimelineVisibility.PRIVATE,
+            body=body,
+            body_type="text/plain",
+            author=DevRevActor(actor_id=SYSTEM_ACTOR, actor_type=DevRevActorType.SYS_USER),
+            created_at=T0 - timedelta(hours=index),
+        )
     return DevRevTimelineEntry(
         entry_id=f"fixture-entry-{index}",
         object_id=_work_id(index),
@@ -586,6 +620,8 @@ class FixtureDevRev:
         """
         self.timeline_calls.append((work_id, cursor, limit))
         size = max(1, min(int(limit or 25), 100))
+        if work_id in {_work_id(28), _display_id(28)}:
+            return TimelinePage(items=[fixture_timeline_entry(28)], page_size=size)
         if work_id not in {_work_id(0), _display_id(0)}:
             return TimelinePage(items=[fixture_timeline_entry(0)], page_size=size)
         pages = fixture_conversation_pages()
@@ -938,6 +974,107 @@ def fixture_evaluation_event(index: int) -> TicketEvaluationEvent:
     )
     route = "knowledge_question" if index % 4 else "generate_response"
     status = "partial" if index % 10 == 0 else "succeeded"
+    answer: str = f"Synthetic grounded RAG answer {index}."
+    structured_response: dict[str, Any] = {
+        "answer": answer,
+        "outcome_reason": "The retrieved fixture source directly answered the inquiry.",
+    }
+    diagnostics: dict[str, Any] = {
+        "retrieval": {"matches": 1, "fixture": True}
+    }
+    retrieval_metadata: dict[str, Any] = {
+        "namespace": "fixture-articles",
+        "model": "fixture-model",
+        "duration_ms": 125,
+    }
+
+    # Ticket 28 mirrors the nested, JSON-string payloads found in real
+    # generate-response runs. Keeping the richer document on one deterministic
+    # fixture preserves the concise queue elsewhere while giving browser tests a
+    # stable audit record that exercises every structured presentation branch.
+    if index == 28:
+        guided_answer: dict[str, Any] = {
+            "opening": (
+                "A rollover from a previous employer plan can generally be "
+                "deposited into a Vanguard IRA without creating a taxable event."
+            ),
+            "key_points": [
+                "Use a direct trustee-to-trustee rollover when available.",
+                "Confirm that the receiving IRA is open before initiating the transfer.",
+            ],
+            "steps": [
+                {
+                    "step_number": 1,
+                    "action": "Open or confirm the receiving IRA",
+                    "detail": "Verify the account type and registration with Vanguard.",
+                },
+                {
+                    "step_number": 2,
+                    "action": "Request a direct rollover",
+                    "detail": (
+                        "Ask the current provider to make the funds payable to "
+                        "the receiving custodian."
+                    ),
+                },
+                {
+                    "step_number": 3,
+                    "action": "Keep the confirmation",
+                    "detail": "Retain the transfer and deposit records for tax reporting.",
+                },
+            ],
+            "warnings": [
+                "A check payable directly to the participant may trigger "
+                "withholding and a 60-day deadline."
+            ],
+        }
+        answer = json.dumps(
+            guided_answer,
+            ensure_ascii=False,
+            separators=(",", ":"),
+        )
+        structured_response = {
+            **guided_answer,
+            "outcome_reason": (
+                "The retrieved rollover guidance covered the requested transfer "
+                "path and its principal tax caution."
+            ),
+        }
+        diagnostics = {
+            "field_mapping": {
+                "deterministic_mapped": {
+                    "source_plan": "Previous employer plan",
+                    "destination_account": "Vanguard IRA",
+                },
+                "llm_called": False,
+                "rejected": [],
+            },
+            "unmapped_fields": [
+                {
+                    "field": "distribution_check_payee",
+                    "reason": "not_present_in_ticket",
+                    "required": False,
+                }
+            ],
+            "participant_reply_safe": True,
+            "manual_reconciliation_required": False,
+            "retrieval": {
+                "matches": 2,
+                "minimum_score_met": True,
+                "empty_filters": {},
+            },
+            "checkpoint": None,
+        }
+        retrieval_metadata = {
+            "namespace": "fixture-articles",
+            "model": "fixture-embedding-v2",
+            "duration_ms": 125,
+            "match_count": 2,
+            "filters": {
+                "topic": "rollovers",
+                "audience": ["participants", "agents"],
+            },
+            "fallbacks_used": [],
+        }
     return TicketEvaluationEvent.model_validate(
         {
             "execution_id": execution_id,
@@ -958,12 +1095,9 @@ def fixture_evaluation_event(index: int) -> TicketEvaluationEvent:
                 "confidence": 0.91,
                 "reasoning": "The persisted fixture invocation required a grounded answer.",
             },
-            "answer": f"Synthetic grounded RAG answer {index}.",
-            "structured_response": {
-                "answer": f"Synthetic grounded RAG answer {index}.",
-                "outcome_reason": "The retrieved fixture source directly answered the inquiry.",
-            },
-            "diagnostics": {"retrieval": {"matches": 1, "fixture": True}},
+            "answer": answer,
+            "structured_response": structured_response,
+            "diagnostics": diagnostics,
             "sources": [
                 {
                     "article_id": f"fixture-article-{200 + index}",
@@ -979,11 +1113,7 @@ def fixture_evaluation_event(index: int) -> TicketEvaluationEvent:
                     "score": 0.91,
                 }
             ],
-            "retrieval_metadata": {
-                "namespace": "fixture-articles",
-                "model": "fixture-model",
-                "duration_ms": 125,
-            },
+            "retrieval_metadata": retrieval_metadata,
             "correlation": {"trace_id": f"fixture-trace-{index}"},
         }
     )

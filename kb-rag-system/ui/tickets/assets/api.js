@@ -583,7 +583,8 @@ function normalizeSource(source) {
   const value = source ?? {};
   return {
     articleId: value.article_id ?? null,
-    title: value.article_title ?? value.title ?? null,
+    articleTitle: value.article_title ?? null,
+    title: value.title ?? null,
     url: value.url ?? null,
     chunkTypesUsed: value.chunk_types_used ?? null,
     relevance: value.relevance ?? null,
@@ -629,6 +630,8 @@ export function normalizeExecutionDetail(envelope) {
       generatedAnswer: value.generated_answer ?? event.answer ?? null,
       structuredResponse: event.structured_response ?? {},
       classificationReasoning: value.classification_reasoning ?? event.classification?.reasoning ?? "",
+      classificationConfidence: event.classification?.confidence ?? null,
+      classificationMetadata: event.classification ?? {},
       outcomeReason: value.outcome_reason ?? null,
       diagnostics: value.diagnostics ?? event.diagnostics ?? {},
       gaps: Array.isArray(value.gaps) ? value.gaps : [],
@@ -641,12 +644,19 @@ export function normalizeExecutionDetail(envelope) {
       modelMetadata: value.model_metadata ?? {},
       timingMetadata: value.timing_metadata ?? {},
       retrievalMetadata: event.retrieval_metadata ?? {},
+      correlationMetadata: event.correlation ?? {},
+      executionError: event.error ?? null,
       hydrationStatus: value.hydration_status ?? run.hydration_status ?? "unavailable",
       hydrationErrorCode: run.hydration_error_code ?? null,
       eventDigest: run.event_digest ?? "",
+      // The API has already validated and allowlisted this strict run model.
+      // Keep the complete record for the closed, lossless audit disclosure so
+      // future model fields cannot silently disappear at the browser boundary.
+      recordedRun: run,
     },
     review: value.review ?? null,
     ticket: value.ticket ?? null,
+    evidence: value.evidence ?? null,
     partial: Boolean(value.partial),
     warnings: Array.isArray(value.warnings) ? value.warnings : [],
   };

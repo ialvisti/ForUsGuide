@@ -641,9 +641,25 @@ class TicketReviewService:
         )
 
     async def get_evaluation_detail(
-        self, execution_id: str
+        self,
+        execution_id: str,
+        actor: Optional[ReviewerIdentity] = None,
+        *,
+        include_evidence: bool = False,
     ) -> TicketEvaluationDetailEnvelope:
-        return await self._evaluation_service.get_detail(execution_id)
+        detail = await self._evaluation_service.get_detail(execution_id)
+        if not include_evidence:
+            return detail
+        if actor is None:
+            raise ValueError("actor is required when evaluation evidence is requested")
+        warnings = list(detail.warnings)
+        evidence = await self._evidence_for(detail.ticket, detail.review, actor, warnings)
+        return detail.model_copy(
+            update={
+                "evidence": evidence,
+                "warnings": _bounded_warnings(warnings),
+            }
+        )
 
 
     async def _review_or_none(self, review_id: str) -> Optional[TicketReview]:
@@ -1086,6 +1102,9 @@ class TicketReviewService:
             executions=list(envelope.records),
             linked_count=len(verified),
             candidate_links=candidates,
+            result_digest=envelope.result_digest,
+            key_versions_queried=list(envelope.key_versions_queried),
+            truncated=envelope.truncated,
             broker_available=True,
             warnings=_bounded_warnings(list(envelope.warnings)),
         )

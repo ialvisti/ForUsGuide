@@ -315,6 +315,31 @@ class TestSeededData:
         assert visible == expected
         assert len(visible) < fixture.FIXTURE_TICKET_COUNT
 
+    def test_execution_detail_reaches_the_isolated_in_process_evidence_broker(self, client):
+        rows = client.get(f"{API_PREFIX}/tickets?page_size=100").json()["items"]
+        selected = next(row for row in rows if row["devrev_display_id"] == "FIX-128")
+
+        detail = client.get(
+            f"{API_PREFIX}/tickets/{selected['execution_id']}"
+        ).json()
+
+        assert detail["evidence"]["broker_available"] is True
+        assert set(detail["evidence"]) == {
+            "correlation_status",
+            "correlation_trust",
+            "correlation_source",
+            "unavailable_reason",
+            "provenance",
+            "executions",
+            "linked_count",
+            "candidate_links",
+            "result_digest",
+            "key_versions_queried",
+            "truncated",
+            "broker_available",
+            "warnings",
+        }
+
     def test_no_seeded_string_looks_like_a_real_participant(self, client):
         text = client.get(f"{API_PREFIX}/tickets?page_size=100").text
         assert "forusall" not in text.lower()

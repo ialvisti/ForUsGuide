@@ -1037,8 +1037,24 @@ class TestCorrelationHonesty:
         assert envelope.evidence.correlation_status is CorrelationStatus.LINKED
         assert envelope.evidence.correlation_trust is CorrelationTrust.VERIFIED_WORKLOAD
         assert envelope.evidence.linked_count == 1
+        assert envelope.evidence.result_digest == prov.envelope_result_digest(
+            ["synthetic-evidence-1"]
+        )
+        assert envelope.evidence.key_versions_queried == [7]
+        assert envelope.evidence.truncated is False
         # A link and a suggestion are mutually exclusive.
         assert envelope.evidence.candidate_links == []
+
+    async def test_broker_envelope_metadata_is_not_discarded(self, repo, clock):
+        broker = _FakeBroker(
+            _envelope(_record(), key_versions_queried=[7, 8], truncated=True)
+        )
+        service = _service(_FakeDevRev(), repo, clock, broker=broker)
+
+        envelope = await service.get_ticket_detail(SYNTHETIC_DON, ACTOR)
+
+        assert envelope.evidence.key_versions_queried == [7, 8]
+        assert envelope.evidence.truncated is True
 
     async def test_an_unverified_record_becomes_a_candidate_and_never_linked(
         self, repo, clock

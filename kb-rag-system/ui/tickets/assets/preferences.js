@@ -238,6 +238,40 @@ const ENGLISH_TO_SPANISH = new Map([
   // Detail shell and captured execution.
   ["Technical audit details", "Detalles de auditoría técnica"],
   ["Execution diagnostics, evidence, conversation, history, and remediation tools for technical audits.", "Diagnósticos de ejecución, evidencia, conversación, historial y herramientas de remediación para auditorías técnicas."],
+  ["Evidence and audit details", "Evidencia y detalles de auditoría"],
+  ["Evidence and audit details.", "Evidencia y detalles de auditoría."],
+  ["Review the answer first, then open only the evidence and technical detail you need.", "Revisa primero la respuesta y después abre solo la evidencia y el detalle técnico que necesites."],
+  ["Start with the recorded answer and decision, then open the evidence, diagnostics, or exact runtime data only when you need it.", "Comienza por la respuesta y la decisión registradas; abre la evidencia, los diagnósticos o los datos exactos de ejecución solo cuando los necesites."],
+  ["Every safe recorded field remains available; technical keys are shown beside plain-language labels.", "Todos los campos seguros registrados permanecen disponibles; las claves técnicas aparecen junto a etiquetas en lenguaje claro."],
+  ["Answer and decision", "Respuesta y decisión"],
+  ["The participant-facing answer and the decision context recorded by the application.", "La respuesta visible para el participante y el contexto de decisión registrado por la aplicación."],
+  ["What the system answered and why it chose this route.", "Qué respondió el sistema y por qué eligió esta ruta."],
+  ["This is the answer recorded by the execution. It does not by itself prove what the participant saw; use the conversation visibility labels for that distinction.", "Esta es la respuesta registrada por la ejecución. Por sí sola no demuestra qué vio el participante; usa las etiquetas de visibilidad de la conversación para distinguirlo."],
+  ["Recorded decision rationale", "Justificación registrada de la decisión"],
+  ["These are the explicit classification and outcome explanations recorded by the application. Provider hidden chain-of-thought is not collected or shown.", "Estas son las explicaciones explícitas de clasificación y resultado registradas por la aplicación. No se recopila ni muestra el razonamiento interno del proveedor."],
+  ["Evidence used", "Evidencia utilizada"],
+  ["Every source and bounded excerpt captured for this execution.", "Todas las fuentes y los fragmentos acotados capturados para esta ejecución."],
+  ["The final sources and bounded excerpts recorded with this answer.", "Las fuentes finales y los fragmentos acotados registrados con esta respuesta."],
+  ["Final source articles", "Artículos fuente finales"],
+  ["Sources attached to the persisted answer. Candidate retrieval records remain in the RAG evidence workspace above, so final sources and candidates are not conflated.", "Fuentes adjuntas a la respuesta persistida. Los registros candidatos de recuperación permanecen en el espacio de evidencia RAG anterior para no confundirlos con las fuentes finales."],
+  ["Safe previews captured with the execution. Full knowledge-base chunks remain outside the browser privacy boundary.", "Vistas previas seguras capturadas con la ejecución. Los fragmentos completos de la base de conocimiento permanecen fuera del límite de privacidad del navegador."],
+  ["Data coverage and diagnostics", "Cobertura de datos y diagnósticos"],
+  ["Mapping, retrieval, and safety signals. Expand a group to inspect every recorded field.", "Señales de mapeo, recuperación y seguridad. Expande un grupo para consultar todos los campos registrados."],
+  ["What the pipeline found, mapped, missed, or flagged.", "Lo que el flujo encontró, mapeó, omitió o marcó."],
+  ["How to read this section.", "Cómo leer esta sección."],
+  ["A missing field is a recorded coverage signal, not automatically a blocker. Compare it with the final outcome and rationale before deciding whether the answer is valid.", "Un campo faltante es una señal de cobertura registrada, no un bloqueo automático. Compáralo con el resultado final y la justificación antes de decidir si la respuesta es válida."],
+  ["Ticket context loading", "Carga del contexto del ticket"],
+  ["Recorded diagnostics", "Diagnósticos registrados"],
+  ["Runtime and exact identifiers", "Ejecución e identificadores exactos"],
+  ["Model, timing, retrieval metadata, and immutable execution identifiers.", "Modelo, tiempos, metadatos de recuperación e identificadores inmutables de la ejecución."],
+  ["Execution identity, timing, model, and retrieval trace.", "Identidad, tiempos, modelo y traza de recuperación de la ejecución."],
+  ["Execution overview", "Resumen de la ejecución"],
+  ["Model, timing, and retrieval", "Modelo, tiempos y recuperación"],
+  ["Ticket snapshot at execution", "Instantánea del ticket durante la ejecución"],
+  ["The authorized ticket context attached after the RAG run was recorded.", "El contexto autorizado del ticket adjuntado después de registrar la ejecución RAG."],
+  ["The CRM fields visible at the time of this review.", "Los campos del CRM visibles al momento de esta revisión."],
+  ["Recorded ticket context", "Contexto registrado del ticket"],
+  ["Internal owner identifier", "Identificador interno del responsable"],
   ["Back to the ticket list", "Volver a la lista de tickets"],
   ["Focused review", "Revisión enfocada"],
   ["Breadcrumb", "Ruta de navegación"],
@@ -249,6 +283,123 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Lease epoch", "Época del arrendamiento"],
   ["Generated answer", "Respuesta generada"],
   ["No generated answer was recorded.", "No se registró una respuesta generada."],
+  ["An empty generated answer was recorded.", "Se registró una respuesta generada vacía."],
+  ["Opening", "Introducción"],
+  ["Key points", "Puntos clave"],
+  ["Recommended steps", "Pasos recomendados"],
+  ["Warnings", "Advertencias"],
+  ["Action", "Acción"],
+  ["Details", "Detalles"],
+  ["Step", "Paso"],
+  ["Answer", "Respuesta"],
+  ["Response", "Respuesta"],
+  ["Response to participant", "Respuesta para el participante"],
+  ["Response source", "Origen de la respuesta"],
+  ["Inquiries", "Consultas"],
+  ["Final outcome", "Resultado final"],
+  ["Classification", "Clasificación"],
+  ["Classifier", "Clasificador"],
+  ["Confidence", "Confianza"],
+  ["Recorded rationale", "Justificación registrada"],
+  ["Checkpoint", "Punto de control"],
+  ["Retrieval metadata", "Metadatos de recuperación"],
+  ["Minimum score met", "Cumple la puntuación mínima"],
+  ["Match count", "Cantidad de coincidencias"],
+  ["Audience", "Audiencia"],
+  ["Fallbacks used", "Alternativas utilizadas"],
+  ["Field mapping", "Mapeo de campos"],
+  ["Source plan", "Plan de origen"],
+  ["Destination account", "Cuenta de destino"],
+  ["LLM invoked", "LLM invocado"],
+  ["Field", "Campo"],
+  ["Required", "Obligatorio"],
+  ["Fields not mapped", "Campos sin mapear"],
+  ["Unmapped fields", "Campos sin mapear"],
+  ["Mapped modules", "Módulos mapeados"],
+  ["Data collection", "Recopilación de datos"],
+  ["Safe for participant reply", "Respuesta segura para el participante"],
+  ["Participant reply safe", "Respuesta segura para el participante"],
+  ["Core eligibility supported", "Elegibilidad principal respaldada"],
+  ["Primary decision signal", "Señal principal de decisión"],
+  ["Mark ticket solved", "Marcar ticket como resuelto"],
+  ["Stage reason", "Motivo de la etapa"],
+  ["Escalation", "Escalamiento"],
+  ["Requires escalation", "Requiere escalamiento"],
+  ["Duration", "Duración"],
+  ["Latency", "Latencia"],
+  ["Input tokens", "Tokens de entrada"],
+  ["Output tokens", "Tokens de salida"],
+  ["Total tokens", "Tokens totales"],
+  ["Metadata", "Metadatos"],
+  ["Correlation", "Correlación"],
+  ["Trace ID", "ID de trazabilidad"],
+  ["Namespace", "Espacio de nombres"],
+  ["Matches", "Coincidencias"],
+  ["Fixture record", "Registro de prueba"],
+  ["Unnamed field", "Campo sin nombre"],
+  ["Empty text", "Texto vacío"],
+  ["Yes", "Sí"],
+  ["No", "No"],
+  ["None recorded", "Ninguno registrado"],
+  ["No fields recorded", "No se registraron campos"],
+  ["Recorded details", "Detalles registrados"],
+  ["Recorded answer details", "Detalles registrados de la respuesta"],
+  ["Additional step details", "Detalles adicionales del paso"],
+  ["Additional answer details", "Detalles adicionales de la respuesta"],
+  ["Additional response record", "Registro adicional de la respuesta"],
+  ["Additional generated answer record", "Registro adicional de la respuesta generada"],
+  ["Guided structured response", "Respuesta estructurada guiada"],
+  ["Response to participant channel", "Canal de respuesta para el participante"],
+  ["Answer channel", "Canal de respuesta"],
+  ["Response channel", "Canal de respuesta alternativa"],
+  ["Additional recorded answer channel", "Canal adicional de respuesta registrado"],
+  ["Recorded answer channels", "Canales de respuesta registrados"],
+  ["Same recorded content as", "Mismo contenido registrado que"],
+  ["Distinct recorded content shown separately at", "Contenido registrado distinto mostrado por separado en"],
+  ["This recorded channel differs from the final answer, so it remains available separately.", "Este canal registrado difiere de la respuesta final, por lo que permanece disponible por separado."],
+  ["This answer channel explicitly recorded no value.", "Este canal de respuesta registró explícitamente que no había valor."],
+  ["Structured outcome rationale", "Justificación estructurada del resultado"],
+  ["Identifiers", "Identificadores"],
+  ["Model and prompt", "Modelo y prompt"],
+  ["Index and deployment", "Índice y despliegue"],
+  ["Score", "Puntuación"],
+  ["Relevance", "Relevancia"],
+  ["Lookup key version", "Versión de clave de búsqueda"],
+  ["Ingress key version", "Versión de clave de ingreso"],
+  ["Actor principal hash", "Hash del principal actor"],
+  ["Retrieval correlation", "Correlación de recuperación"],
+  ["Retrieval trust", "Confianza de recuperación"],
+  ["Retrieval correlation source", "Origen de correlación de recuperación"],
+  ["Missing retrieval provenance", "Falta procedencia de recuperación"],
+  ["Exact link identifiers", "Identificadores exactos del enlace"],
+  ["Review id", "ID de revisión"],
+  ["Link id", "ID del enlace"],
+  ["Source URL", "URL de origen"],
+  ["Recorded evidence warnings", "Advertencias registradas de evidencia"],
+  ["Recorded retrieval provenance", "Procedencia de recuperación registrada"],
+  ["Retrieval record", "Registro de recuperación"],
+  ["Retrieval records", "Registros de recuperación"],
+  ["Complete recorded run", "Registro completo de la ejecución"],
+  ["Reviewer subject", "Identificador de sujeto del revisor"],
+  ["Reviewer display name", "Nombre visible del revisor"],
+  ["Unavailable reason", "Motivo de indisponibilidad"],
+  ["Exact timestamp", "Marca de tiempo exacta"],
+  ["This persisted RAG execution recorded no source articles or bounded chunks.", "Esta ejecución RAG persistida no registró artículos fuente ni fragmentos acotados."],
+  ["Detected inquiry", "Consulta detectada"],
+  ["Detected topic", "Tema detectado"],
+  ["Classification confidence", "Confianza de la clasificación"],
+  ["Pipeline diagnostics", "Diagnósticos del flujo"],
+  ["Recorded coverage gaps", "Vacíos de cobertura registrados"],
+  ["Recorded runtime data", "Datos de ejecución registrados"],
+  ["Structured message", "Mensaje estructurado"],
+  ["Inquiry number", "Número de consulta"],
+  ["Event digest", "Resumen criptográfico del evento"],
+  ["Execution error", "Error de ejecución"],
+  ["Hydration error code", "Código de error de carga de contexto"],
+  ["Manual reconciliation required", "Requiere conciliación manual"],
+  ["Deterministic mapped", "Mapeo determinista"],
+  ["Rejected", "Rechazados"],
+  ["Empty filters", "Filtros vacíos"],
   ["Structured rationale", "Justificación estructurada"],
   ["Classification rationale", "Justificación de la clasificación"],
   ["Outcome rationale", "Justificación del resultado"],
@@ -320,6 +471,11 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Author not recorded", "Autor no registrado"],
   ["Show less", "Mostrar menos"],
   ["Show the whole message", "Mostrar el mensaje completo"],
+  ["In reply to entry", "En respuesta a la entrada"],
+  ["Upstream entry type:", "Tipo de entrada de origen:"],
+  ["Entry", "Entrada"],
+  ["Entry unknown", "Entrada desconocida"],
+  ["A change was recorded with no summary.", "Se registró un cambio sin resumen."],
   ["No body is shown here.", "No se muestra contenido aquí."],
   ["No conversation entries have loaded for this ticket.", "No se han cargado entradas de conversación para este ticket."],
   ["No entries on the pages loaded so far match this filter.", "Ninguna entrada de las páginas cargadas coincide con este filtro."],
@@ -334,17 +490,111 @@ const ENGLISH_TO_SPANISH = new Map([
 
   // Evidence and history.
   ["Retrieval and prompt evidence", "Evidencia de recuperación y prompt"],
+  ["Persisted execution evidence", "Evidencia persistida de la ejecución"],
+  ["Correlation and candidate evidence", "Evidencia de correlación y candidatos"],
   ["Confirmed evidence links", "Enlaces de evidencia confirmados"],
   ["Load more evidence links", "Cargar más enlaces de evidencia"],
   ["Source articles captured by this execution", "Artículos fuente capturados por esta ejecución"],
   ["Bounded chunks captured by this execution", "Fragmentos acotados capturados por esta ejecución"],
   ["This bounded evidence was stored with the RAG run; reviewer-confirmed links are listed separately below.", "Esta evidencia acotada se guardó con la ejecución RAG; los enlaces confirmados por revisores aparecen por separado abajo."],
+  ["This bounded evidence was stored with the RAG run; correlation and candidate records are shown separately below.", "Esta evidencia acotada se guardó con la ejecución RAG; los registros de correlación y candidatos aparecen por separado abajo."],
+  ["Sources attached to the persisted answer. Candidate retrieval records remain in the correlation section below, so final sources and candidates are not conflated.", "Fuentes adjuntas a la respuesta persistida. Los registros candidatos de recuperación permanecen en la sección de correlación de abajo para no confundirlos con las fuentes finales."],
+  ["Article id", "ID del artículo"],
+  ["Article title", "Título del artículo"],
+  ["Source title", "Título de la fuente"],
+  ["Recorded URL", "URL registrada"],
+  ["Chunk types used", "Tipos de fragmento utilizados"],
+  ["Used in answer", "Utilizado en la respuesta"],
+  ["Maximum score", "Puntuación máxima"],
+  ["Source id", "ID de fuente"],
+  ["Chunk id", "ID de fragmento"],
+  ["Chunk type", "Tipo de fragmento"],
+  ["Chunk tier", "Nivel del fragmento"],
+  ["Bounded preview", "Vista previa acotada"],
+  ["Bounded chunks", "Fragmentos acotados"],
+  ["Content hash", "Hash del contenido"],
+  ["Observed vector id", "ID del vector observado"],
+  ["Chunk ordinal", "Posición del fragmento"],
+  ["Vectors observed at query time", "Vectores observados al consultar"],
+  ["Executions found for this ticket", "Ejecuciones encontradas para este ticket"],
+  ["Suggested correlations awaiting confirmation", "Correlaciones sugeridas pendientes de confirmación"],
+  ["Source record", "Registro de origen"],
+  ["Record schema", "Esquema del registro"],
+  ["Occurred at", "Ocurrió el"],
+  ["Endpoint", "Punto de conexión"],
+  ["Correlation source", "Origen de la correlación"],
+  ["Correlation trust", "Confianza de la correlación"],
+  ["Internal ticket job", "Trabajo interno del ticket"],
+  ["Request id hash", "Hash del ID de solicitud"],
+  ["Evidence reference", "Referencia de evidencia"],
+  ["Evidence digest", "Resumen criptográfico de evidencia"],
+  ["Provider", "Proveedor"],
+  ["Prompt template id", "ID de plantilla de prompt"],
+  ["Prompt template hash", "Hash de plantilla de prompt"],
+  ["Prompt configuration version", "Versión de configuración del prompt"],
+  ["Rendered prompt trace hash", "Hash de trazabilidad del prompt renderizado"],
+  ["Response hash", "Hash de respuesta"],
+  ["Index", "Índice"],
+  ["Index version", "Versión del índice"],
+  ["Deployed revision", "Revisión desplegada"],
+  ["Deployed commit", "Commit desplegado"],
+  ["Deployed image digest", "Resumen de imagen desplegada"],
+  ["Lookup result digest", "Resumen del resultado de consulta"],
+  ["Key versions queried", "Versiones de clave consultadas"],
+  ["Lookup truncated", "Consulta truncada"],
+  ["Why it was suggested", "Motivo de la sugerencia"],
+  ["Trust", "Confianza"],
+  ["Suggestion expires", "La sugerencia vence"],
+  ["Reason given", "Motivo indicado"],
+  ["Linked by", "Vinculado por"],
+  ["Link version", "Versión del enlace"],
+  ["Linked at", "Vinculado el"],
+  ["Confirmed links", "Enlaces confirmados"],
+  ["Evidence service", "Servicio de evidencia"],
+  ["Execution log", "Registro de ejecución"],
+  ["Ticket execution", "Ejecución del ticket"],
+  ["Ticket job", "Trabajo del ticket"],
+  ["No correlation", "Sin correlación"],
+  ["Suggested, unconfirmed", "Sugerida, sin confirmar"],
+  ["Verified by the producing workload", "Verificada por la carga de trabajo productora"],
+  ["Confirmed by a reviewer", "Confirmada por un revisor"],
+  ["Answered", "Respondió"],
+  ["Did not answer", "No respondió"],
+  ["0 (pre-provenance legacy shape)", "0 (formato heredado anterior a procedencia)"],
+  ["This execution failed", "Esta ejecución falló"],
+  ["Suggested, not linked", "Sugerida, sin vincular"],
+  ["No observed vectors were recorded for this execution. That is a gap in what was logged, not proof that nothing was retrieved.", "No se registraron vectores observados para esta ejecución. Es un vacío en lo registrado, no una prueba de que no se recuperó nada."],
+  ["These identifiers are what the retrieval step returned at the time. They are not stable across a reindex, so treat them as a trace of that one query rather than as addresses to look up later.", "Estos identificadores son los que devolvió el paso de recuperación en ese momento. No son estables después de una reindexación; considéralos una traza de esa consulta, no direcciones para consultar más adelante."],
+  ["The rendered prompt hash identifies this one execution's prompt text. The template id and template hash are what identify the version of the prompt; the trace hash changes whenever the inputs do.", "El hash del prompt renderizado identifica el texto del prompt de esta ejecución. El ID y el hash de la plantilla identifican la versión del prompt; el hash de trazabilidad cambia cuando cambian las entradas."],
+  ["Unknown — this execution did not record an index version", "Desconocida — esta ejecución no registró una versión del índice"],
+  ["No source article identifiers were recorded for this execution.", "No se registraron identificadores de artículos fuente para esta ejecución."],
+  ["Article identifiers only. Article text is not read through this console, so what is shown here cannot drift from what was indexed.", "Solo se muestran identificadores de artículos. El texto de los artículos no se consulta desde esta consola, así que lo mostrado aquí no puede diferir de lo indexado."],
+  ["These were not produced by the workload that answered the ticket, so the console will not treat them as evidence until a reviewer says they belong and why.", "Estos registros no fueron producidos por la carga de trabajo que respondió el ticket, por lo que la consola no los tratará como evidencia hasta que un revisor indique que corresponden y por qué."],
+  ["This suggestion has expired. Reload the ticket to get a current one.", "Esta sugerencia venció. Recarga el ticket para obtener una vigente."],
+  ["Why this evidence belongs to this ticket", "Por qué esta evidencia corresponde a este ticket"],
+  ["Required. It is written to the audit ledger and cannot be edited later.", "Obligatorio. Se registra en el libro de auditoría y no se puede editar después."],
+  ["Confirm this link", "Confirmar este enlace"],
+  ["Why this link is wrong", "Por qué este enlace es incorrecto"],
+  ["Required. An unexplained unlink is indistinguishable from tampering when the record is read back years later.", "Obligatorio. Un enlace desvinculado sin explicación no se puede distinguir de una manipulación cuando el registro se consulte años después."],
+  ["Unlink", "Desvincular"],
+  ["Recorded reason", "Motivo registrado"],
+  ["Loading evidence…", "Cargando evidencia…"],
+  ["Evidence has not been loaded yet.", "La evidencia aún no se ha cargado."],
+  ["Evidence could not be loaded.", "No se pudo cargar la evidencia."],
+  ["No defensible correlation for this ticket.", "No hay una correlación justificable para este ticket."],
+  ["Some evidence may be incomplete.", "Parte de la evidencia puede estar incompleta."],
+  ["Linked", "Vinculado"],
+  ["Manually linked", "Vinculado manualmente"],
   ["Loading evidence links…", "Cargando enlaces de evidencia…"],
   ["Evidence links could not be loaded.", "No se pudieron cargar los enlaces de evidencia."],
   ["Showing the links already loaded; the newest request failed.", "Se muestran los enlaces ya cargados; la solicitud más reciente falló."],
   ["A ticket has evidence links only once it has a durable review.", "Un ticket tiene enlaces de evidencia solo cuando cuenta con una revisión durable."],
   ["Every evidence link is loaded.", "Se cargaron todos los enlaces de evidencia."],
   ["No retrieval or prompt provenance is available for this ticket.", "No hay procedencia de recuperación o prompt disponible para este ticket."],
+  ["No reviewer has confirmed an evidence link for this ticket.", "Ningún revisor ha confirmado un enlace de evidencia para este ticket."],
+  ["This ticket predates reliable ticket-to-RAG correlation, or its legacy execution did not include a ticket-system identifier. The conversation is available; retrieval and prompt provenance cannot be reconstructed reliably.", "Este ticket es anterior a una correlación confiable entre ticket y RAG, o su ejecución heredada no incluyó un identificador del sistema de tickets. La conversación está disponible; la procedencia de recuperación y prompt no puede reconstruirse de forma confiable."],
+  ["The evidence service is not configured for this deployment, so no retrieval or prompt provenance can be read. Reviews and conversation are unaffected.", "El servicio de evidencia no está configurado para este despliegue, por lo que no se puede consultar la procedencia de recuperación o prompt. Las revisiones y la conversación no se ven afectadas."],
+  ["The evidence service did not answer. This is a gap in the lookup, not proof that the ticket has no retrieval history.", "El servicio de evidencia no respondió. Es una brecha en la consulta, no una prueba de que el ticket carezca de historial de recuperación."],
   ["Review history could not be loaded.", "No se pudo cargar el historial de revisión."],
   ["A ticket has review history only once it has a durable review.", "Un ticket tiene historial de revisión solo cuando cuenta con una revisión durable."],
   ["Loading review history…", "Cargando el historial de revisión…"],
@@ -462,6 +712,21 @@ const SPANISH_TO_ENGLISH = new Map(
   Array.from(ENGLISH_TO_SPANISH, ([english, spanish]) => [spanish, english])
 );
 
+const MISSING_PROVENANCE_TO_SPANISH = new Map([
+  ["index version", "versión del índice"],
+  ["deployed revision", "revisión desplegada"],
+  ["prompt template", "plantilla de prompt"],
+  ["model", "modelo"],
+  ["observed vectors", "vectores observados"],
+  ["response hash", "hash de respuesta"],
+  ["source articles", "artículos fuente"],
+  ["a pre-Stage-4 record shape", "un formato de registro anterior a la Etapa 4"],
+]);
+
+const MISSING_PROVENANCE_TO_ENGLISH = new Map(
+  Array.from(MISSING_PROVENANCE_TO_SPANISH, ([english, spanish]) => [spanish, english])
+);
+
 const PROTECTED_CONTENT = [
   "script",
   "style",
@@ -472,9 +737,9 @@ const PROTECTED_CONTENT = [
   "[contenteditable='true']",
   "[data-ticket-content]",
   "[data-user-content]",
-  ".entry-author",
+  "[data-audit-value]",
+  "[data-field-key]",
   ".entry-paragraph",
-  ".entry[data-entry='conversation'] .entry-body",
   ".cell-id-value",
   ".cell-title:not(.cell-attempt)",
   ".cell-comments",
@@ -482,10 +747,6 @@ const PROTECTED_CONTENT = [
   "[data-row='ticket'] td[data-label='Route']",
   "#detail-target",
   "#detail-crumb",
-  "#run-answer",
-  "#detail-meta dd",
-  "dd:not([data-absent])",
-  ".mono",
   "#session-email",
 ].join(",");
 
@@ -515,9 +776,171 @@ function normalizeCountNumber(value, language) {
   return Number(digits).toLocaleString(language);
 }
 
+function translateMissingProvenanceList(value, labels) {
+  return String(value ?? "")
+    .split(", ")
+    .map((name) => labels.get(name) ?? name)
+    .join(", ");
+}
+
+function spanishUiLabel(value) {
+  return ENGLISH_TO_SPANISH.get(value) ?? spanishPattern(value);
+}
+
+function englishUiLabel(value) {
+  return SPANISH_TO_ENGLISH.get(value) ?? englishPattern(value);
+}
+
 function spanishPattern(core) {
   let match = core.match(/^(\d+) on this page$/);
   if (match !== null) return `${match[1]} en esta página`;
+
+  match = core.match(/^(\d+) fields?$/);
+  if (match !== null) {
+    return `${match[1]} campo${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) items?$/);
+  if (match !== null) {
+    return `${match[1]} elemento${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) source articles?$/);
+  if (match !== null) {
+    return `${match[1]} artículo${match[1] === "1" ? "" : "s"} fuente`;
+  }
+
+  match = core.match(/^(\d+) bounded chunks?$/);
+  if (match !== null) {
+    return `${match[1]} fragmento${match[1] === "1" ? "" : "s"} acotado${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) observed vectors?$/);
+  if (match !== null) {
+    return `${match[1]} vector${match[1] === "1" ? "" : "es"} observado${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) executions?$/);
+  if (match !== null) {
+    return `${match[1]} ejecución${match[1] === "1" ? "" : "es"}`;
+  }
+
+  match = core.match(/^([\d,.\s]+) warnings?$/);
+  if (match !== null) {
+    const count = normalizeCountNumber(match[1], "es");
+    const singular = String(match[1]).replace(/\D/g, "") === "1";
+    return `${count} advertencia${singular ? "" : "s"}`;
+  }
+
+  match = core.match(/^([\d,.\s]+) retrieval records?$/);
+  if (match !== null) {
+    const count = normalizeCountNumber(match[1], "es");
+    const singular = String(match[1]).replace(/\D/g, "") === "1";
+    return `${count} registro${singular ? "" : "s"} de recuperación`;
+  }
+
+  match = core.match(/^(\d+) suggestions?$/);
+  if (match !== null) {
+    return `${match[1]} sugerencia${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^Show (\d+) fields?$/);
+  if (match !== null) {
+    return `Mostrar ${match[1]} campo${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^Show (\d+) items?$/);
+  if (match !== null) {
+    return `Mostrar ${match[1]} elemento${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^Item (\d+)$/);
+  if (match !== null) return `Elemento ${match[1]}`;
+
+  match = core.match(/^Step (\d+)$/);
+  if (match !== null) return `Paso ${match[1]}`;
+
+  match = core.match(/^Retrieval record (\d+)$/);
+  if (match !== null) return `Registro de recuperación ${match[1]}`;
+
+  match = core.match(/^Suggestion (\d+)$/);
+  if (match !== null) return `Sugerencia ${match[1]}`;
+
+  match = core.match(/^(.+) — show ([\d,.\s]+) (items?|fields?)$/);
+  if (match !== null) {
+    const label = spanishUiLabel(match[1]);
+    const count = normalizeCountNumber(match[2], "es");
+    const singular = String(match[2]).replace(/\D/g, "") === "1";
+    const noun = match[3].startsWith("item")
+      ? `elemento${singular ? "" : "s"}`
+      : `campo${singular ? "" : "s"}`;
+    return `${label} — mostrar ${count} ${noun}`;
+  }
+
+  match = core.match(/^Continue into (.+) — ([\d,.\s]+) (items?|fields?)$/);
+  if (match !== null) {
+    const label = spanishUiLabel(match[1]);
+    const count = normalizeCountNumber(match[2], "es");
+    const singular = String(match[2]).replace(/\D/g, "") === "1";
+    const noun = match[3].startsWith("item")
+      ? `elemento${singular ? "" : "s"}`
+      : `campo${singular ? "" : "s"}`;
+    return `Continuar en ${label} — ${count} ${noun}`;
+  }
+
+  match = core.match(/^(Items|Fields) ([\d,.\s]+)–([\d,.\s]+) of ([\d,.\s]+) in (.+)$/);
+  if (match !== null) {
+    const kind = match[1] === "Items" ? "Elementos" : "Campos";
+    const start = normalizeCountNumber(match[2], "es");
+    const end = normalizeCountNumber(match[3], "es");
+    const total = normalizeCountNumber(match[4], "es");
+    return `${kind} ${start}–${end} de ${total} en ${spanishUiLabel(match[5])}`;
+  }
+
+  match = core.match(/^(.+) — ([\d,.\s]+) (items?|fields?)$/);
+  if (match !== null) {
+    const label = spanishUiLabel(match[1]);
+    const count = normalizeCountNumber(match[2], "es");
+    const singular = String(match[2]).replace(/\D/g, "") === "1";
+    const noun = match[3].startsWith("item")
+      ? `elemento${singular ? "" : "s"}`
+      : `campo${singular ? "" : "s"}`;
+    return `${label} — ${count} ${noun}`;
+  }
+
+  match = core.match(/^This execution did not pass the authorized DevRev hydration boundary\. Recorded reason: (.+)\.$/);
+  if (match !== null) {
+    return `Esta ejecución no superó el límite autorizado de hidratación de DevRev. Motivo registrado: ${match[1]}.`;
+  }
+
+  match = core.match(/^Not recorded for this execution: (.+)\.$/);
+  if (match !== null) {
+    const missing = translateMissingProvenanceList(
+      match[1],
+      MISSING_PROVENANCE_TO_SPANISH
+    );
+    return `No se registró para esta ejecución: ${missing}.`;
+  }
+
+  match = core.match(/^No retrieval or prompt provenance is available\. Reported reason: (.+)\.$/);
+  if (match !== null) {
+    return `No hay procedencia de recuperación o prompt disponible. Motivo reportado: ${match[1]}.`;
+  }
+
+  match = core.match(/^(Linked|Manually linked|Unavailable): (\d+) executions? available\.(?: (Some evidence may be incomplete\.))?$/);
+  if (match !== null) {
+    const status = ENGLISH_TO_SPANISH.get(match[1]) ?? match[1];
+    const warning = match[3] ? ` ${ENGLISH_TO_SPANISH.get(match[3]) ?? match[3]}` : "";
+    return `${status}: ${match[2]} ejecución${match[2] === "1" ? "" : "es"} disponible${match[2] === "1" ? "" : "s"}.${warning}`;
+  }
+
+  match = core.match(/^This persisted RAG execution recorded (\d+) source articles? and (\d+) bounded chunks?\.(?: (.+))?$/);
+  if (match !== null) {
+    const sources = `${match[1]} artículo${match[1] === "1" ? "" : "s"} fuente`;
+    const chunks = `${match[2]} fragmento${match[2] === "1" ? "" : "s"} acotado${match[2] === "1" ? "" : "s"}`;
+    const trailing = match[3] ? ` ${translateUiText(match[3], "es")}` : "";
+    return `Esta ejecución RAG persistida registró ${sources} y ${chunks}.${trailing}`;
+  }
 
   match = core.match(/^Page (\d+)$/);
   if (match !== null) return `Página ${match[1]}`;
@@ -624,10 +1047,10 @@ function spanishPattern(core) {
   match = core.match(/^(\d+) events?; earlier events are not on this page\.$/);
   if (match !== null) return `${match[1]} evento${match[1] === "1" ? "" : "s"}; los anteriores no están en esta página.`;
 
-  match = core.match(/^(\d+) entries loaded; more remain\.$/);
+  match = core.match(/^(\d+) entr(?:y|ies) loaded; more remain\.$/);
   if (match !== null) return `${match[1]} entrada${match[1] === "1" ? "" : "s"} cargada${match[1] === "1" ? "" : "s"}; quedan más.`;
 
-  match = core.match(/^(\d+) entries loaded; that is the whole conversation\.$/);
+  match = core.match(/^(\d+) entr(?:y|ies) loaded; that is the whole conversation\.$/);
   if (match !== null) return `${match[1]} entrada${match[1] === "1" ? "" : "s"} cargada${match[1] === "1" ? "" : "s"}; es toda la conversación.`;
 
   match = core.match(/^(\d+) shown by this filter\.$/);
@@ -654,6 +1077,163 @@ function spanishPattern(core) {
 function englishPattern(core) {
   let match = core.match(/^(\d+) en esta página$/);
   if (match !== null) return `${match[1]} on this page`;
+
+  match = core.match(/^(\d+) entradas? cargadas?; quedan más\.$/);
+  if (match !== null) {
+    return `${match[1]} entr${match[1] === "1" ? "y" : "ies"} loaded; more remain.`;
+  }
+
+  match = core.match(/^(\d+) entradas? cargadas?; es toda la conversación\.$/);
+  if (match !== null) {
+    return `${match[1]} entr${match[1] === "1" ? "y" : "ies"} loaded; that is the whole conversation.`;
+  }
+
+  match = core.match(/^(\d+) campos?$/);
+  if (match !== null) {
+    return `${match[1]} field${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) elementos?$/);
+  if (match !== null) {
+    return `${match[1]} item${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) artículos? fuente$/);
+  if (match !== null) {
+    return `${match[1]} source article${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) fragmentos? acotados?$/);
+  if (match !== null) {
+    return `${match[1]} bounded chunk${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) (?:vector|vectores) observados?$/);
+  if (match !== null) {
+    return `${match[1]} observed vector${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) (?:ejecución|ejecuciones)$/);
+  if (match !== null) {
+    return `${match[1]} execution${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^([\d,.\s]+) advertencias?$/);
+  if (match !== null) {
+    const count = normalizeCountNumber(match[1], "en");
+    const singular = String(match[1]).replace(/\D/g, "") === "1";
+    return `${count} warning${singular ? "" : "s"}`;
+  }
+
+  match = core.match(/^([\d,.\s]+) registros? de recuperación$/);
+  if (match !== null) {
+    const count = normalizeCountNumber(match[1], "en");
+    const singular = String(match[1]).replace(/\D/g, "") === "1";
+    return `${count} retrieval record${singular ? "" : "s"}`;
+  }
+
+  match = core.match(/^(\d+) sugerencias?$/);
+  if (match !== null) {
+    return `${match[1]} suggestion${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^Mostrar (\d+) campos?$/);
+  if (match !== null) {
+    return `Show ${match[1]} field${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^Mostrar (\d+) elementos?$/);
+  if (match !== null) {
+    return `Show ${match[1]} item${match[1] === "1" ? "" : "s"}`;
+  }
+
+  match = core.match(/^Elemento (\d+)$/);
+  if (match !== null) return `Item ${match[1]}`;
+
+  match = core.match(/^Paso (\d+)$/);
+  if (match !== null) return `Step ${match[1]}`;
+
+  match = core.match(/^Registro de recuperación (\d+)$/);
+  if (match !== null) return `Retrieval record ${match[1]}`;
+
+  match = core.match(/^Sugerencia (\d+)$/);
+  if (match !== null) return `Suggestion ${match[1]}`;
+
+  match = core.match(/^(.+) — mostrar ([\d,.\s]+) (elementos?|campos?)$/);
+  if (match !== null) {
+    const label = englishUiLabel(match[1]);
+    const count = normalizeCountNumber(match[2], "en");
+    const singular = String(match[2]).replace(/\D/g, "") === "1";
+    const noun = match[3].startsWith("elemento")
+      ? `item${singular ? "" : "s"}`
+      : `field${singular ? "" : "s"}`;
+    return `${label} — show ${count} ${noun}`;
+  }
+
+  match = core.match(/^Continuar en (.+) — ([\d,.\s]+) (elementos?|campos?)$/);
+  if (match !== null) {
+    const label = englishUiLabel(match[1]);
+    const count = normalizeCountNumber(match[2], "en");
+    const singular = String(match[2]).replace(/\D/g, "") === "1";
+    const noun = match[3].startsWith("elemento")
+      ? `item${singular ? "" : "s"}`
+      : `field${singular ? "" : "s"}`;
+    return `Continue into ${label} — ${count} ${noun}`;
+  }
+
+  match = core.match(/^(Elementos|Campos) ([\d,.\s]+)–([\d,.\s]+) de ([\d,.\s]+) en (.+)$/);
+  if (match !== null) {
+    const kind = match[1] === "Elementos" ? "Items" : "Fields";
+    const start = normalizeCountNumber(match[2], "en");
+    const end = normalizeCountNumber(match[3], "en");
+    const total = normalizeCountNumber(match[4], "en");
+    return `${kind} ${start}–${end} of ${total} in ${englishUiLabel(match[5])}`;
+  }
+
+  match = core.match(/^(.+) — ([\d,.\s]+) (elementos?|campos?)$/);
+  if (match !== null) {
+    const label = englishUiLabel(match[1]);
+    const count = normalizeCountNumber(match[2], "en");
+    const singular = String(match[2]).replace(/\D/g, "") === "1";
+    const noun = match[3].startsWith("elemento")
+      ? `item${singular ? "" : "s"}`
+      : `field${singular ? "" : "s"}`;
+    return `${label} — ${count} ${noun}`;
+  }
+
+  match = core.match(/^Esta ejecución no superó el límite autorizado de hidratación de DevRev\. Motivo registrado: (.+)\.$/);
+  if (match !== null) {
+    return `This execution did not pass the authorized DevRev hydration boundary. Recorded reason: ${match[1]}.`;
+  }
+
+  match = core.match(/^No se registró para esta ejecución: (.+)\.$/);
+  if (match !== null) {
+    const missing = translateMissingProvenanceList(
+      match[1],
+      MISSING_PROVENANCE_TO_ENGLISH
+    );
+    return `Not recorded for this execution: ${missing}.`;
+  }
+
+  match = core.match(/^No hay procedencia de recuperación o prompt disponible\. Motivo reportado: (.+)\.$/);
+  if (match !== null) {
+    return `No retrieval or prompt provenance is available. Reported reason: ${match[1]}.`;
+  }
+
+  match = core.match(/^(Vinculado|Vinculado manualmente|No disponible): (\d+) (?:ejecución|ejecuciones) (?:disponible|disponibles)\.(?: (Parte de la evidencia puede estar incompleta\.))?$/);
+  if (match !== null) {
+    const status = SPANISH_TO_ENGLISH.get(match[1]) ?? match[1];
+    const warning = match[3] ? ` ${SPANISH_TO_ENGLISH.get(match[3]) ?? match[3]}` : "";
+    return `${status}: ${match[2]} execution${match[2] === "1" ? "" : "s"} available.${warning}`;
+  }
+
+  match = core.match(/^Esta ejecución RAG persistida registró (\d+) artículos? fuente y (\d+) fragmentos? acotados?\.(?: (.+))?$/);
+  if (match !== null) {
+    const sources = `${match[1]} source article${match[1] === "1" ? "" : "s"}`;
+    const chunks = `${match[2]} bounded chunk${match[2] === "1" ? "" : "s"}`;
+    const trailing = match[3] ? ` ${translateUiText(match[3], "en")}` : "";
+    return `This persisted RAG execution recorded ${sources} and ${chunks}.${trailing}`;
+  }
 
   match = core.match(/^Página (\d+)$/);
   if (match !== null) return `Page ${match[1]}`;
@@ -840,6 +1420,17 @@ function renderTimes(language) {
   }
 }
 
+function renderAuditNumbers(language) {
+  for (const node of Array.from(document.querySelectorAll("[data-audit-number]"))) {
+    const raw = Number(node.getAttribute("data-raw-value"));
+    if (!Number.isFinite(raw)) continue;
+    node.textContent = raw.toLocaleString(language, {
+      maximumFractionDigits: 20,
+      useGrouping: true,
+    });
+  }
+}
+
 function preferenceEvent(detail) {
   const EventType = document.defaultView?.CustomEvent ?? globalThis.CustomEvent;
   if (typeof EventType === "function") {
@@ -921,6 +1512,7 @@ export function initPreferences({
     if (languageSelect !== null) languageSelect.value = language;
     renderTree(root, language);
     renderTimes(language);
+    renderAuditNumbers(language);
     syncThemeControl();
     if (notify) emitChange();
     return language;

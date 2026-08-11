@@ -87,6 +87,8 @@ class TestDeepLink:
             "api.js",
             "state.js",
             "render.js",
+            "structured.js",
+            "answer-presentation.js",
             "detail.js",
             "evaluation.js",
             "conversation.js",

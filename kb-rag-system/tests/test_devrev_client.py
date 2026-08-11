@@ -53,6 +53,8 @@ from api.ticket_review_models import (
     DevRevTicketFilters,
     DevRevTicketSummary,
     DevRevTimelineEntry,
+    MessageActorClass,
+    MessageRendering,
     TimelineEntryKind,
     TimelinePage,
     TimelineVisibility,
@@ -92,6 +94,7 @@ from data_pipeline.devrev_client import (
     cursor_digest,
     sort_timeline_entries,
 )
+from data_pipeline.ticket_review_service import MessageClassifier
 
 # =====================================================================
 # Constants, fixtures, and helpers
@@ -135,6 +138,7 @@ WORKS_PAGE_2 = _load_fixture("works_list_page_2")
 WORK_GET = _load_fixture("work_get_ticket")
 TIMELINE_EMPTY_WITH_CURSOR = _load_fixture("timeline_page_empty_with_cursor")
 TIMELINE_FINAL = _load_fixture("timeline_page_final")
+TIMELINE_CHAT = _load_fixture("timeline_page_chat")
 
 
 class _Recorder:
@@ -918,6 +922,50 @@ class TestTimelinePage:
         assert first.author.actor_id == SYNTHETIC_REV_USER
         assert first.author.actor_type is DevRevActorType.REV_USER
         assert first.created_at == datetime(2026, 5, 4, 14, 12, 7, tzinfo=timezone.utc)
+
+    async def test_preserves_the_documented_snap_widget_comment_body_as_text(self) -> None:
+        recorder = _Recorder(_json_response(TIMELINE_CHAT))
+        client = _client(recorder)
+        try:
+            page = await client.list_timeline_page(SYNTHETIC_TICKET_DON)
+        finally:
+            await client.aclose()
+
+        participant = page.items[0]
+        assert participant.kind is TimelineEntryKind.COMMENT
+        assert participant.body == "Synthetic participant question.\n\nSecond paragraph."
+        assert participant.body_type == "snap_widget"
+        assert participant.visibility is TimelineVisibility.EXTERNAL
+        assert participant.author is not None
+        assert participant.author.actor_type is DevRevActorType.REV_USER
+        assert participant.author.display_name == "Synthetic Participant"
+
+    async def test_sanitized_chat_fixture_flows_from_adapter_into_stable_roles(self) -> None:
+        recorder = _Recorder(_json_response(TIMELINE_CHAT))
+        client = _client(recorder)
+        try:
+            page = await client.list_timeline_page(SYNTHETIC_TICKET_DON)
+        finally:
+            await client.aclose()
+
+        classifier = MessageClassifier(
+            ai_author_ids=["don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/ai-1"],
+            system_author_ids=["don:identity:dvrv-us-1:devo/SYNTHETIC00:sysu/1"],
+            human_author_ids=["don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/human-1"],
+        )
+        messages = [classifier.normalize(entry) for entry in page.items]
+
+        assert [message.actor_class for message in messages] == [
+            MessageActorClass.PARTICIPANT,
+            MessageActorClass.EVENT,
+            MessageActorClass.AI_OR_SYSTEM,
+            MessageActorClass.HUMAN_AGENT,
+        ]
+        assert messages[0].rendering is MessageRendering.TEXT
+        assert messages[0].body == "Synthetic participant question.\n\nSecond paragraph."
+        assert messages[2].actor is not None
+        assert messages[2].actor.display_name == "N8N Workflow"
+        assert messages[3].rendering is MessageRendering.TEXT
 
     async def test_a_change_event_is_never_an_authored_reply(self) -> None:
         recorder = _Recorder(_json_response(TIMELINE_FINAL))

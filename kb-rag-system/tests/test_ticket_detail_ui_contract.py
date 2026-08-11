@@ -593,8 +593,8 @@ class TestConversationRendering:
     def test_an_internal_entry_is_never_labelled_participant_facing(self, new_scripts):
         source = new_scripts["conversation.js"]
         assert "participant_facing" in source
-        assert "Not shown to the participant" in source
-        assert "Participant saw this" in source
+        assert "Internal · not shown to participant" in source
+        assert "Participant-visible" in source
         # The two badges are mutually exclusive in the source, so an entry cannot
         # carry both.
         assert re.search(r"if \(internal\) \{", source)
@@ -605,7 +605,7 @@ class TestConversationRendering:
         assert "data-visibility" in source
         assert "visibilityLabel" in source
         for visibility in ("public", "external", "internal", "private"):
-            assert f'.pill[data-visibility="{visibility}"]' in css_source, visibility
+            assert f'.message-audience[data-visibility="{visibility}"]' in css_source, visibility
 
     def test_an_entry_exposes_author_timestamp_body_and_reply_relation(self, new_scripts):
         source = new_scripts["conversation.js"]
@@ -645,7 +645,9 @@ class TestConversationRendering:
         assert "Show the whole message" in source
         assert '.entry-body[data-collapsed="true"]' in css_source
 
-    def test_the_six_named_filters_are_offered(self, dom, scripts):
+    def test_the_seven_named_filters_are_offered_with_messages_as_the_default(
+        self, dom, scripts
+    ):
         group = _by_id(dom, "conversation-filter-group")
         radios = [
             node
@@ -653,20 +655,86 @@ class TestConversationRendering:
             if (node.get("type") or "").lower() == "radio"
         ]
         assert {node.get("value") for node in radios} == {
-            "all",
+            "messages",
             "participant",
             "internal",
             "ai_or_system",
             "human_agent",
             "event",
+            "unclassified",
         }
         assert {node.get("name") for node in radios} == {"conversation-filter"}
         labels = {node.get("for") for node in group.find_all("label")}
         for node in radios:
             assert node.get("id") in labels
+        checked = [node.get("value") for node in radios if "checked" in node.attrs]
+        assert checked == ["messages"]
         assert set(_js_string_list(scripts["state.js"], "CONVERSATION_FILTERS")) == {
             node.get("value") for node in radios
         }
+        assert 'conversationFilter: "messages"' in scripts["state.js"]
+
+    def test_the_conversation_is_explicitly_read_only_and_has_no_composer(self, dom):
+        panel = _by_id(dom, "panel-conversation")
+        assert "Read-only conversation" in panel.all_text()
+        lock = next(
+            node
+            for node in panel.find_all("span")
+            if "conversation-readonly-icon" in (node.get("class") or "").split()
+        )
+        assert lock.get("aria-hidden") == "true"
+        assert panel.find_all("textarea") == []
+        assert not any(
+            (node.get("type") or "").lower() in {"text", "search"}
+            for node in panel.find_all("input")
+        )
+        assert not any("send" in node.all_text().lower() for node in panel.find_all("button"))
+
+    def test_chat_alignment_and_roles_are_not_conveyed_by_color_alone(
+        self, new_scripts, css_source
+    ):
+        source = new_scripts["conversation.js"]
+        assert '"data-side": side' in source
+        assert "message-role" in source
+        assert "message-audience" in source
+        assert '.chat-message[data-side="outgoing"]' in css_source
+        assert '.message-role[data-actor-class="ai_or_system"]' in css_source
+        assert '.message-role[data-actor-class="human_agent"]' in css_source
+        assert '.message-role[data-actor-class="participant"]' in css_source
+        assert "max-width" in css_source
+
+    def test_a_long_recorded_author_cannot_overflow_a_chat_bubble(self, css_source):
+        author_rule = re.search(r"\.entry-author\s*\{([^}]*)\}", css_source)
+        assert author_rule is not None
+        assert "min-width: 0" in author_rule.group(1)
+        assert "overflow-wrap: anywhere" in author_rule.group(1)
+
+    def test_private_audience_badge_meets_text_contrast_in_light_theme(
+        self, css_source
+    ):
+        final_layer = css_source.split("2026 visual system", 1)[1]
+        light_tokens = final_layer.split("@media (prefers-color-scheme: dark)", 1)[0]
+
+        def token(name: str) -> str:
+            match = re.search(rf"--{name}:\s*(#[0-9a-fA-F]{{6}})", light_tokens)
+            assert match is not None
+            return match.group(1)
+
+        def luminance(color: str) -> float:
+            channels = [int(color[index:index + 2], 16) / 255 for index in (1, 3, 5)]
+            linear = [
+                channel / 12.92
+                if channel <= 0.04045
+                else ((channel + 0.055) / 1.055) ** 2.4
+                for channel in channels
+            ]
+            return 0.2126 * linear[0] + 0.7152 * linear[1] + 0.0722 * linear[2]
+
+        foreground, background = token("red-600"), token("red-100")
+        lighter, darker = sorted(
+            (luminance(foreground), luminance(background)), reverse=True
+        )
+        assert (lighter + 0.05) / (darker + 0.05) >= 4.5
 
     def test_a_filter_never_claims_to_have_searched_unloaded_pages(self, new_scripts):
         source = new_scripts["conversation.js"]
@@ -1646,7 +1714,10 @@ class TestNoRegressions:
         this redundancy exists for, and it has to survive a monochrome screenshot
         pasted into a chat.
         """
-        assert '.pill[data-visibility="internal"]' in css_source
-        assert '.entry[data-internal="true"]' in css_source
-        assert "repeating-linear-gradient" in css_source
-        assert "Not shown to the participant" in new_scripts["conversation.js"]
+        assert '.message-audience[data-visibility="internal"]' in css_source
+        assert '.chat-message[data-internal="true"]' in css_source
+        assert (
+            '.message-role[data-actor-class="ai_or_system"] '
+            '.message-role-glyph::before' in css_source
+        )
+        assert "Internal · not shown to participant" in new_scripts["conversation.js"]

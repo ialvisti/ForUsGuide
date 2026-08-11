@@ -116,6 +116,7 @@ function serialized(node) {
 const request = JSON.parse(fs.readFileSync(0, "utf8"));
 const structured = await import(request.structuredUrl);
 const conversation = await import(request.conversationUrl);
+const state = await import(request.stateUrl);
 let root;
 let extra = {};
 
@@ -137,6 +138,15 @@ if (request.scenario === "schema-drift") {
   const before = serialized(root);
   openAll(root);
   extra = { before, after: serialized(root) };
+} else if (request.scenario === "conversation-filter") {
+  const filtered = state.filterConversation(
+    request.value,
+    request.options?.filter ?? "messages",
+  );
+  extra = {
+    entry_ids: filtered.map((entry) => entry.entry_id),
+    actor_classes: filtered.map((entry) => entry.actor_class),
+  };
 } else if (request.scenario === "tokens") {
   const tokens = structured.tokenizeStructuredText(request.value);
   extra = { tokens };
@@ -163,6 +173,7 @@ def _run(scenario: str, *, value: Any = None, options: dict[str, Any] | None = N
         "options": options or {},
         "structuredUrl": (UI_ASSETS_DIRECTORY / "structured.js").as_uri(),
         "conversationUrl": (UI_ASSETS_DIRECTORY / "conversation.js").as_uri(),
+        "stateUrl": (UI_ASSETS_DIRECTORY / "state.js").as_uri(),
     }
     completed = subprocess.run(
         ["node", "--input-type=module", "-e", _NODE_HARNESS],
@@ -553,6 +564,194 @@ class TestBoundedProgressivePresentation:
 
 class TestConversationDisclosureAccessibility:
 
+    def test_messages_filter_keeps_comments_and_excludes_ticket_activity(self):
+        comments = [
+            {
+                "entry_id": f"message-{index}",
+                "kind": "comment",
+                "actor_class": actor_class,
+            }
+            for index, actor_class in enumerate(
+                ["participant", "ai_or_system", "ai_or_system", "human_agent", "unknown"]
+            )
+        ]
+        events = [
+            {
+                "entry_id": f"event-{index}",
+                "kind": "change_event",
+                "actor_class": "event",
+            }
+            for index in range(13)
+        ]
+        unsupported = {
+            "entry_id": "unsupported-external",
+            "kind": "unsupported",
+            "actor_class": "unknown",
+        }
+
+        messages = _run(
+            "conversation-filter",
+            value=[*comments, *events, unsupported],
+            options={"filter": "messages"},
+        )
+        activity = _run(
+            "conversation-filter",
+            value=[*comments, *events, unsupported],
+            options={"filter": "event"},
+        )
+        unclassified = _run(
+            "conversation-filter",
+            value=[*comments, *events, unsupported],
+            options={"filter": "unclassified"},
+        )
+
+        assert messages["entry_ids"] == [entry["entry_id"] for entry in comments]
+        assert activity["entry_ids"] == [entry["entry_id"] for entry in events]
+        assert unclassified["entry_ids"] == ["message-4", "unsupported-external"]
+
+    def test_participant_message_is_an_outgoing_chat_bubble(self):
+        result = _run(
+            "conversation",
+            value={
+                "entry_id": "participant-message",
+                "kind": "comment",
+                "actor_class": "participant",
+                "visibility": "external",
+                "participant_facing": True,
+                "rendering": "text",
+                "body": "Synthetic participant question.",
+                "actor": {"display_name": "Synthetic Participant"},
+                "created_at": "2026-08-10T14:12:07Z",
+            },
+        )["before"]
+        nodes = list(_walk(result))
+
+        assert "chat-message" in result["className"].split()
+        assert result["attrs"].get("data-side") == "outgoing"
+        assert any("chat-avatar" in node["className"].split() for node in nodes)
+        assert any("chat-bubble" in node["className"].split() for node in nodes)
+        role = next(node for node in nodes if "message-role" in node["className"].split())
+        assert role["attrs"].get("data-actor-class") == "participant"
+        role_glyph = next(
+            node for node in nodes if "message-role-glyph" in node["className"].split()
+        )
+        assert role_glyph["attrs"].get("aria-hidden") == "true"
+        assert role["text"] == "Participant"
+        audience_glyph = next(
+            node for node in nodes if "message-audience-glyph" in node["className"].split()
+        )
+        assert audience_glyph["attrs"].get("aria-hidden") == "true"
+        assert "Synthetic participant question." in result["text"]
+
+    def test_ai_and_human_agents_are_distinct_incoming_chat_roles(self):
+        def rendered(actor_class: str, author: str):
+            return _run(
+                "conversation",
+                value={
+                    "entry_id": f"{actor_class}-message",
+                    "kind": "comment",
+                    "actor_class": actor_class,
+                    "visibility": "internal",
+                    "internal": True,
+                    "rendering": "text",
+                    "body": "Synthetic response.",
+                    "actor": {"display_name": author},
+                },
+            )["before"]
+
+        ai = rendered("ai_or_system", "N8N Workflow")
+        agent = rendered("human_agent", "Synthetic Agent")
+
+        assert ai["attrs"].get("data-side") == "incoming"
+        assert agent["attrs"].get("data-side") == "incoming"
+        ai_role = next(
+            node for node in _walk(ai) if "message-role" in node["className"].split()
+        )
+        agent_role = next(
+            node for node in _walk(agent) if "message-role" in node["className"].split()
+        )
+        assert ai_role["attrs"].get("data-actor-class") == "ai_or_system"
+        assert agent_role["attrs"].get("data-actor-class") == "human_agent"
+        assert ai_role["text"] == "AI or system"
+        assert agent_role["text"] == "Human agent"
+
+    def test_ticket_event_is_a_compact_activity_row_not_a_message_bubble(self):
+        result = _run(
+            "conversation",
+            value={
+                "entry_id": "event-recorded",
+                "kind": "change_event",
+                "actor_class": "event",
+                "visibility": "internal",
+                "change_summary": "stage: queued -> in_progress",
+                "created_at": "2026-08-10T14:13:00Z",
+            },
+        )["before"]
+
+        assert "chat-event" in result["className"].split()
+        assert any(
+            "activity-row" in node["className"].split() for node in _walk(result)
+        )
+        assert not any(
+            "chat-bubble" in node["className"].split() for node in _walk(result)
+        )
+        assert "stage: queued -> in_progress" in result["text"]
+
+    def test_an_external_event_is_not_falsely_labelled_internal(self):
+        result = _run(
+            "conversation",
+            value={
+                "entry_id": "external-event",
+                "kind": "change_event",
+                "actor_class": "event",
+                "visibility": "external",
+                "internal": False,
+                "participant_facing": True,
+                "change_summary": "Synthetic external activity.",
+            },
+        )["before"]
+
+        assert "Participant-visible" in result["text"]
+        assert "not shown to participant" not in result["text"]
+
+    def test_an_ordinary_message_does_not_print_its_upstream_entry_id(self):
+        result = _run(
+            "conversation",
+            value={
+                "entry_id": "upstream-entry-must-not-be-visible",
+                "kind": "comment",
+                "actor_class": "human_agent",
+                "visibility": "external",
+                "participant_facing": True,
+                "rendering": "text",
+                "body": "Synthetic agent reply.",
+                "actor": {"display_name": "Synthetic Agent"},
+            },
+        )["before"]
+
+        assert "upstream-entry-must-not-be-visible" not in result["text"]
+        assert not any("entry-meta" in node["className"].split() for node in _walk(result))
+
+    def test_a_reply_keeps_its_relation_without_printing_the_upstream_id(self):
+        reply_id = "upstream-reply-id-must-not-be-visible"
+        result = _run(
+            "conversation",
+            value={
+                "entry_id": "reply-message",
+                "in_reply_to": reply_id,
+                "actor_class": "ai_or_system",
+                "visibility": "external",
+                "participant_facing": True,
+                "rendering": "text",
+                "body": "Synthetic reply.",
+                "actor": {"display_name": "N8N Workflow"},
+            },
+        )["before"]
+
+        assert reply_id not in result["text"]
+        assert "Replying to an earlier message" in result["text"]
+        assert result["attrs"].get("data-reply-entry-id") == reply_id
+
     def test_valid_unclosed_fenced_json_is_structured_without_markup_or_raw_fence(self):
         body = (
             '```{"responseSource":"<img src=x onerror=alert(1)>",'
@@ -676,16 +875,13 @@ class TestConversationDisclosureAccessibility:
             if node["attrs"].get("data-user-content") == ""
         ]
         assert {node["text"] for node in protected} == {
-            "reply-Ready",
             "type-Ready",
             "entry-Ready",
         }
         assert all(node["attrs"].get("translate") == "no" for node in protected)
         meta = [node for node in _walk(result) if "entry-meta" in node["className"].split()]
-        assert any(
-            node["children"] and node["children"][0]["text"] == "In reply to entry "
-            for node in meta
-        )
+        assert result["attrs"].get("data-reply-entry-id") == "reply-Ready"
+        assert any("reply-context" in node["className"].split() for node in _walk(result))
         assert any(
             node["children"] and node["children"][0]["text"] == "Upstream entry type: "
             for node in meta

@@ -343,6 +343,7 @@ export async function loadSession({ force = false } = {}) {
     sessionPromise = requestJson(`${API_ROOT}/session`, { channel: "session" })
       .then((body) => {
         sessionState = {
+          subject: body?.identity?.subject ?? "",
           email: body?.identity?.email ?? "",
           displayName: body?.identity?.display_name ?? "",
           role: body?.role ?? "viewer",

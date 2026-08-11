@@ -77,10 +77,6 @@ function authorPresentation(message) {
     : { text: name, recorded: true };
 }
 
-function pill(text, attrs) {
-  return el("span", { className: "pill", text, attrs });
-}
-
 function protectedRemoteText(value) {
   return el("span", {
     text: value,
@@ -132,6 +128,118 @@ function messageBodyNodes(tokens, entryId) {
   return nodes;
 }
 
+function messageSide(actorClass) {
+  return actorClass === "participant" ? "outgoing" : "incoming";
+}
+
+function avatarText(author, actorClass) {
+  if (author.recorded) {
+    const words = author.text.trim().split(/\s+/u).filter(Boolean);
+    const initials = words.slice(0, 2).map((word) => Array.from(word)[0] ?? "").join("");
+    if (initials !== "") {
+      return initials.toUpperCase();
+    }
+  }
+  return new Map([
+    ["participant", "P"],
+    ["human_agent", "A"],
+    ["ai_or_system", "AI"],
+    ["unknown", "?"],
+  ]).get(actorClass) ?? "?";
+}
+
+function audiencePresentation(message, internal) {
+  if (internal) {
+    return {
+      text: "Internal · not shown to participant",
+      attrs: { "data-internal": "true" },
+    };
+  } else if (message.participant_facing === true) {
+    return {
+      text: "Participant-visible",
+      attrs: { "data-participant": "true" },
+    };
+  }
+  return { text: visibilityLabel(message.visibility ?? "private"), attrs: {} };
+}
+
+function labelledBadge(className, text, attrs, glyphClass) {
+  const badge = el("span", { className, attrs });
+  badge.appendChild(el("span", {
+    className: glyphClass,
+    attrs: { "aria-hidden": "true" },
+  }));
+  badge.appendChild(el("span", { text }));
+  return badge;
+}
+
+function audienceNode(message, internal) {
+  const audience = audiencePresentation(message, internal);
+  return labelledBadge(
+    "message-audience",
+    audience.text,
+    {
+      "data-visibility": message.visibility ?? "private",
+      ...audience.attrs,
+    },
+    "message-audience-glyph",
+  );
+}
+
+function eventEntry(message, item) {
+  const internal = message.internal === true;
+  item.className = "chat-event";
+  const row = el("div", { className: "activity-row" });
+  row.appendChild(labelledBadge(
+    "message-role",
+    actorClassLabel("event"),
+    { "data-actor-class": "event" },
+    "message-role-glyph",
+  ));
+  const hasRecordedSummary = Boolean(message.change_summary);
+  row.appendChild(el("span", {
+    className: "entry-body",
+    text: hasRecordedSummary
+      ? message.change_summary
+      : "A change was recorded with no summary.",
+    attrs: hasRecordedSummary
+      ? { "data-user-content": "", translate: "no" }
+      : {},
+  }));
+  if (message.created_at) {
+    const time = el("span", { className: "entry-time" });
+    time.appendChild(timeElement(message.created_at));
+    row.appendChild(time);
+  }
+  row.appendChild(audienceNode(message, internal));
+  item.appendChild(row);
+  return item;
+}
+
+function technicalDetails(message) {
+  const details = el("details", { className: "message-technical" });
+  details.appendChild(el("summary", { text: "Technical details" }));
+  if (message.unsupported_type) {
+    details.appendChild(
+      metadataWithRemoteValue("Upstream entry type: ", message.unsupported_type)
+    );
+  }
+  if (message.entry_id === null || message.entry_id === undefined) {
+    details.appendChild(el("p", { className: "entry-meta", text: "Entry unknown" }));
+  } else {
+    details.appendChild(metadataWithRemoteValue("Entry ", message.entry_id));
+  }
+  if (message.body_length > 0) {
+    details.appendChild(
+      el("p", {
+        className: "entry-meta",
+        text: `The upstream body was ${message.body_length} characters.`,
+      })
+    );
+  }
+  return details;
+}
+
 /**
  * One conversation entry.
  *
@@ -141,67 +249,62 @@ function messageBodyNodes(tokens, entryId) {
 export function conversationEntry(message, { expanded = false } = {}) {
   const actorClass = message.actor_class ?? "unknown";
   const internal = message.internal === true;
+  const side = messageSide(actorClass);
   const item = el("li", {
-    className: "entry",
+    className: "chat-message",
     attrs: {
       "data-entry": "conversation",
       "data-entry-id": message.entry_id ?? "",
       "data-actor": actorClass,
       "data-internal": internal ? "true" : "false",
       "data-kind": message.kind ?? "unsupported",
+      "data-side": side,
+      ...(message.in_reply_to
+        ? { "data-reply-entry-id": message.in_reply_to }
+        : {}),
     },
   });
 
-  const head = el("div", { className: "entry-head" });
+  if (actorClass === "event" || message.kind === "change_event") {
+    return eventEntry(message, item);
+  }
+
   const author = authorPresentation(message);
+  const avatar = el("span", {
+    className: "chat-avatar",
+    text: avatarText(author, actorClass),
+    attrs: {
+      "aria-hidden": "true",
+      ...(author.recorded ? { "data-user-content": "", translate: "no" } : {}),
+    },
+  });
+  item.appendChild(avatar);
+
+  const bubble = el("article", { className: "chat-bubble" });
+  const head = el("header", { className: "entry-head" });
   head.appendChild(el("span", {
     className: "entry-author",
     text: author.text,
     attrs: author.recorded ? { "data-user-content": "", translate: "no" } : {},
   }));
-  head.appendChild(
-    pill(actorClassLabel(actorClass), { "data-actor-class": actorClass })
-  );
-  // Every entry carries a visibility badge, including the ones where it is
-  // obvious: "obvious" is exactly the case a reviewer stops checking.
-  head.appendChild(
-    pill(visibilityLabel(message.visibility ?? "private"), {
-      "data-visibility": message.visibility ?? "private",
-    })
-  );
-  if (internal) {
-    // Said in words, not only by the hatched background, and never phrased as
-    // anything a participant saw.
-    head.appendChild(pill("Not shown to the participant", { "data-internal": "true" }));
-  } else if (message.participant_facing === true) {
-    head.appendChild(pill("Participant saw this", { "data-participant": "true" }));
-  }
+  head.appendChild(labelledBadge(
+    "message-role",
+    actorClassLabel(actorClass),
+    { "data-actor-class": actorClass },
+    "message-role-glyph",
+  ));
   if (message.created_at) {
     const time = el("span", { className: "entry-time" });
     time.appendChild(timeElement(message.created_at));
     head.appendChild(time);
   }
-  item.appendChild(head);
+  bubble.appendChild(head);
 
   if (message.in_reply_to) {
-    item.appendChild(metadataWithRemoteValue("In reply to entry ", message.in_reply_to));
-  }
-
-  if (actorClass === "event" || message.kind === "change_event") {
-    // A change event is summarized and kept visually apart from messages. It has
-    // no body and no author by construction, so rendering it in the same shape as
-    // a reply would invent both.
-    const hasRecordedSummary = Boolean(message.change_summary);
-    item.appendChild(el("p", {
-      className: "entry-body",
-      text: hasRecordedSummary
-        ? message.change_summary
-        : "A change was recorded with no summary.",
-      attrs: hasRecordedSummary
-        ? { "data-user-content": "", translate: "no" }
-        : {},
+    bubble.appendChild(el("p", {
+      className: "reply-context",
+      text: "Replying to an earlier message",
     }));
-    return item;
   }
 
   if (message.rendering === "text" && message.body) {
@@ -220,7 +323,7 @@ export function conversationEntry(message, { expanded = false } = {}) {
       },
     });
     replaceChildren(body, messageBodyNodes(tokens, message.entry_id));
-    item.appendChild(body);
+    bubble.appendChild(body);
     if (long) {
       const control = button({
         text: expanded ? "Show less" : "Show the whole message",
@@ -229,44 +332,29 @@ export function conversationEntry(message, { expanded = false } = {}) {
       });
       control.setAttribute("aria-expanded", expanded ? "true" : "false");
       control.setAttribute("aria-controls", controlledBodyId);
-      item.appendChild(control);
+      bubble.appendChild(control);
     }
   } else {
     const body = el("p", { className: "entry-body", text: placeholderText(message) });
-    item.appendChild(body);
-    if (message.unsupported_type) {
-      item.appendChild(metadataWithRemoteValue("Upstream entry type: ", message.unsupported_type));
-    }
-    // The identifier, not the payload. It is what a support request can be
-    // filed against; the raw object is not the reviewer's problem to read.
-    if (message.entry_id === null || message.entry_id === undefined) {
-      item.appendChild(el("p", { className: "entry-meta", text: "Entry unknown" }));
-    } else {
-      item.appendChild(metadataWithRemoteValue("Entry ", message.entry_id));
-    }
+    bubble.appendChild(body);
+    bubble.appendChild(technicalDetails(message));
   }
 
-  if (message.body_length > 0 && message.rendering !== "text") {
-    item.appendChild(
-      el("p", {
-        className: "entry-meta",
-        text: `The upstream body was ${message.body_length} characters.`,
-      })
-    );
-  }
+  bubble.appendChild(audienceNode(message, internal));
+  item.appendChild(bubble);
   return item;
 }
 
 /** The whole visible conversation, or the state that stands in for it. */
 export function renderConversation(list, messages, { expanded = new Set(), filter = "all" } = {}) {
   if (messages.length === 0) {
-    const item = el("li", { className: "entry", attrs: { "data-entry": "empty" } });
+    const item = el("li", { className: "chat-empty", attrs: { "data-entry": "empty" } });
     item.appendChild(
       el("p", {
         className: "entry-body",
         text:
-          filter === "all"
-            ? "No conversation entries have loaded for this ticket."
+          filter === "messages"
+            ? "No messages have loaded for this ticket."
             : "No entries on the pages loaded so far match this filter.",
       })
     );

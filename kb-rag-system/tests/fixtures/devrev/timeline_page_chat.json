@@ -1,0 +1,67 @@
+{
+  "_meta": {
+    "provenance": "SYNTHETIC. Hand-authored from the documented DevRev timeline comment shape and the bounded structural observations made during the 2026-08-11 production incident. This is not a capture of message content.",
+    "sanitization": "All identifiers, names, timestamps, and bodies are invented. No participant, employee, tenant, email, ticket body, PAT, or production DON is present.",
+    "endpoint": "timeline-entries.list",
+    "devrev_version": "2022-10-20"
+  },
+  "response": {
+    "timeline_entries": [
+      {
+        "type": "timeline_comment",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:comment/chat-participant",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "visibility": "external",
+        "body": "Synthetic participant question.\n\nSecond paragraph.",
+        "body_type": "snap_widget",
+        "created_by": {
+          "type": "rev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:revu/21",
+          "display_name": "Synthetic Participant"
+        },
+        "created_date": "2026-08-10T14:12:07.000Z"
+      },
+      {
+        "type": "timeline_change_event",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:timeline_event/chat-event",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "visibility": "internal",
+        "change": {
+          "field": "stage",
+          "old": "queued",
+          "new": "in_progress"
+        },
+        "created_date": "2026-08-10T14:13:00.000Z"
+      },
+      {
+        "type": "timeline_comment",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:comment/chat-ai",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "visibility": "internal",
+        "body": "```json\n{\"answer\":\"Synthetic workflow result\"}\n```",
+        "body_type": "text",
+        "created_by": {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/ai-1",
+          "display_name": "N8N Workflow"
+        },
+        "created_date": "2026-08-10T14:14:00.000Z"
+      },
+      {
+        "type": "timeline_comment",
+        "id": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234:comment/chat-agent",
+        "object": "don:core:dvrv-us-1:devo/SYNTHETIC00:ticket/1234",
+        "visibility": "external",
+        "body": "Synthetic human-agent reply.",
+        "body_type": "snap_widget",
+        "created_by": {
+          "type": "dev_user",
+          "id": "don:identity:dvrv-us-1:devo/SYNTHETIC00:devu/human-1",
+          "display_name": "Synthetic Agent"
+        },
+        "created_date": "2026-08-10T14:15:00.000Z"
+      }
+    ],
+    "next_cursor": null
+  }
+}

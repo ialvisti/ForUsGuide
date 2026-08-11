@@ -556,15 +556,23 @@
     <!-- ------------------------------------------------------ conversation -->
     <section class="workspace-panel" id="panel-conversation" role="tabpanel"
              aria-labelledby="tab-conversation" tabindex="0">
-      <h4 id="conversation-heading">Conversation</h4>
+      <div class="conversation-heading-row">
+        <div>
+          <h4 id="conversation-heading">Conversation</h4>
+          <p class="conversation-readonly">
+            <span class="conversation-readonly-icon" aria-hidden="true"></span>
+            Read-only conversation
+          </p>
+        </div>
+      </div>
 
       <fieldset class="conversation-filters">
         <legend>Show</legend>
         <div class="checks" id="conversation-filter-group">
           <span class="check">
-            <input type="radio" name="conversation-filter" id="conversation-filter-all"
-                   value="all" checked>
-            <label for="conversation-filter-all">All</label>
+            <input type="radio" name="conversation-filter" id="conversation-filter-messages"
+                   value="messages" checked>
+            <label for="conversation-filter-messages">Messages</label>
           </span>
           <span class="check">
             <input type="radio" name="conversation-filter" id="conversation-filter-participant"
@@ -590,6 +598,11 @@
             <input type="radio" name="conversation-filter" id="conversation-filter-events"
                    value="event">
             <label for="conversation-filter-events">Events</label>
+          </span>
+          <span class="check">
+            <input type="radio" name="conversation-filter" id="conversation-filter-unclassified"
+                   value="unclassified">
+            <label for="conversation-filter-unclassified">Unclassified</label>
           </span>
         </div>
       </fieldset>

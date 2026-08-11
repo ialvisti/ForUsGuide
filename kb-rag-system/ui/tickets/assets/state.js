@@ -153,12 +153,13 @@ export const ACTOR_CLASSES = Object.freeze([
 
 /** The conversation filters, in the order they are offered. */
 export const CONVERSATION_FILTERS = Object.freeze([
-  "all",
+  "messages",
   "participant",
   "internal",
   "ai_or_system",
   "human_agent",
   "event",
+  "unclassified",
 ]);
 
 /** The four workspace panels of the detail view. */
@@ -262,7 +263,7 @@ function initialDetail() {
     warnings: [],
     diagnostics: [],
     panel: "conversation",
-    conversationFilter: "all",
+    conversationFilter: "messages",
     conversation: emptyFeed(),
     audit: emptyFeed(),
     evidenceLinks: emptyFeed(),
@@ -854,8 +855,8 @@ export function statusNeedsResolution(status) {
  * the customer saw.
  */
 export function filterConversation(messages, filter) {
-  if (filter === "all") {
-    return [...messages];
+  if (filter === "messages") {
+    return messages.filter((message) => message.kind === "comment");
   }
   if (filter === "participant") {
     return messages.filter((message) => message.participant_facing === true);
@@ -864,6 +865,9 @@ export function filterConversation(messages, filter) {
     return messages.filter(
       (message) => message.internal === true && message.actor_class !== "event"
     );
+  }
+  if (filter === "unclassified") {
+    return messages.filter((message) => message.actor_class === "unknown");
   }
   return messages.filter((message) => message.actor_class === filter);
 }

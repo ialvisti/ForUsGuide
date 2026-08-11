@@ -1,0 +1,81 @@
+"""Browser regression for the verified identity used by review self-assignment.
+
+The HTTP route already proves that a complete ``ReviewerIdentity`` can take an
+unassigned review.  This test covers the missing browser seam: the exact session
+normalizer that reads ``GET /session`` must preserve the IAP subject consumed by
+the exact save-body builder.
+"""
+
+from __future__ import annotations
+
+import json
+import subprocess
+
+from api.tickets_console_main import UI_ASSETS_DIRECTORY
+
+
+_NODE_HARNESS = r"""
+import fs from "node:fs";
+
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
+
+globalThis.fetch = async (url, options = {}) => {
+  if (String(url) !== "/api/admin/v1/session" || (options.method ?? "GET") !== "GET") {
+    throw new Error(`unexpected request: ${String(url)}`);
+  }
+  return new Response(JSON.stringify({
+    identity: {
+      subject: "accounts.google.com:synthetic-reviewer",
+      email: "reviewer@example.invalid",
+      display_name: "Synthetic Reviewer",
+    },
+    role: "reviewer",
+    csrf_token: "synthetic-csrf-token",
+    csrf_expires_at: "2099-01-01T00:00:00Z",
+    feature_flags: {},
+  }), {
+    status: 200,
+    headers: { "Content-Type": "application/json" },
+  });
+};
+
+// Imported render helpers refer to `document` only when a DOM-producing
+// function is called.  The save-body path needs only the locale marker.
+globalThis.document = { documentElement: { lang: "en" } };
+
+const api = await import(request.apiUrl);
+const evaluation = await import(request.evaluationUrl);
+const session = await api.loadSession();
+const plan = evaluation.buildSave({
+  review: { assigned_reviewer: null },
+  draft: { assigned_reviewer: "self" },
+  session,
+});
+
+process.stdout.write(JSON.stringify({
+  session_subject: session.subject,
+  assigned_reviewer: plan.patch.assigned_reviewer,
+}));
+"""
+
+
+def test_verified_session_subject_reaches_the_self_assignment_patch() -> None:
+    request = {
+        "apiUrl": (UI_ASSETS_DIRECTORY / "api.js").as_uri(),
+        "evaluationUrl": (UI_ASSETS_DIRECTORY / "evaluation.js").as_uri(),
+    }
+    completed = subprocess.run(
+        ["node", "--input-type=module", "-e", _NODE_HARNESS],
+        check=True,
+        capture_output=True,
+        input=json.dumps(request),
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+
+    assert result["session_subject"] == "accounts.google.com:synthetic-reviewer"
+    assert result["assigned_reviewer"] == {
+        "subject": "accounts.google.com:synthetic-reviewer",
+        "email": "reviewer@example.invalid",
+        "display_name": "Synthetic Reviewer",
+    }

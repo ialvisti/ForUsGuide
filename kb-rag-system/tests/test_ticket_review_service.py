@@ -791,6 +791,21 @@ class TestRenderingSafety:
         assert message.body == "Plain reply."
         assert message.placeholder_reason is None
 
+    @pytest.mark.parametrize("body_type", ["data", "snap_kit", "snap_widget"])
+    def test_a_documented_devrev_comment_body_renders_as_inert_text(self, body_type):
+        message = _classifier().normalize(
+            _entry(
+                "e1",
+                body="Synthetic participant question.\n\nSecond paragraph.",
+                body_type=body_type,
+            )
+        )
+
+        assert message.rendering is MessageRendering.TEXT
+        assert message.body == "Synthetic participant question.\n\nSecond paragraph."
+        assert message.body_type == body_type
+        assert message.placeholder_reason is None
+
     def test_an_unsupported_entry_type_is_preserved_as_a_placeholder(self):
         message = _classifier().normalize(
             _entry(

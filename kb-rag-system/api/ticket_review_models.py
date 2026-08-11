@@ -171,10 +171,14 @@ CORRELATION_HMAC_VERSION = 1
 # Replay window for the n8n ingress signature, per the master plan.
 INGRESS_SIGNATURE_MAX_SKEW_S = 5 * 60
 
-# The only body types the console renders as text. Everything else — HTML,
-# Markdown, an unknown remote value — becomes a bounded placeholder, so no
-# remote markup can reach the browser.
-PLAIN_TEXT_BODY_TYPES = frozenset({"text", "text/plain", "plain", "plaintext"})
+# DevRev's documented comment body types all carry a string ``body`` containing
+# the comment text.  The snap/data-specific structure, when present, travels in
+# separate fields that this adapter never forwards.  Rendering this bounded
+# string through the browser's textContent-only primitives is therefore safe;
+# HTML, Markdown MIME types, and unknown remote values remain placeholders.
+PLAIN_TEXT_BODY_TYPES = frozenset(
+    {"data", "snap_kit", "snap_widget", "text", "text/plain", "plain", "plaintext"}
+)
 
 
 # =====================================================================

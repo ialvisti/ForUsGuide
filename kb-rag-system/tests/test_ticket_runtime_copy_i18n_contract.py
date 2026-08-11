@@ -148,6 +148,29 @@ def test_dynamic_body_length_round_trips() -> None:
     )
 
 
+def test_read_only_chat_copy_round_trips() -> None:
+    _round_trip(
+        [
+            ("Messages", "Mensajes"),
+            ("Unclassified", "Sin clasificar"),
+            ("Read-only conversation", "Conversación de solo lectura"),
+            (
+                "Internal · not shown to participant",
+                "Interno · no visible para el participante",
+            ),
+            ("Technical details", "Detalles técnicos"),
+            (
+                "Replying to an earlier message",
+                "En respuesta a un mensaje anterior",
+            ),
+            (
+                "No messages have loaded for this ticket.",
+                "No se han cargado mensajes para este ticket.",
+            ),
+        ]
+    )
+
+
 def test_every_emitted_closing_requirement_combination_round_trips() -> None:
     english_parts = [
         "an outcome",

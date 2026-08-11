@@ -135,6 +135,7 @@ globalThis.document = {
   documentElement: html,
   defaultView: view,
   createElement(tag) { return new FakeElement(tag); },
+  createTextNode(value) { return new FakeText(value); },
   getElementById() { return null; },
   querySelectorAll(selector) {
     return walk(html).filter((node) => node.nodeType === 1 && simpleMatch(node, selector));
@@ -145,11 +146,17 @@ globalThis.document = {
 const request = JSON.parse(fs.readFileSync(0, "utf8"));
 const structured = await import(request.structuredUrl);
 const preferences = await import(request.preferencesUrl);
+const render = await import(request.renderUrl);
 const audit = structured.renderStructuredData(request.value, {
   label: "",
   path: "$/recorded_run",
 });
 html.appendChild(audit);
+const chips = new FakeElement("div");
+render.renderChips(chips, [
+  { label: "Outcome", value: "generate_response", field: "route" },
+]);
+html.appendChild(chips);
 
 function snapshot() {
   const rows = {};
@@ -168,7 +175,19 @@ function snapshot() {
       .filter((node) => node.nodeType === 1 && node.hasAttribute("data-field-path"))
       .map((node) => [node.getAttribute("data-field-path"), node.textContent])
   );
-  return { language: html.lang, rows, values };
+  const chipName = walk(chips).find((node) =>
+    node.nodeType === 1 && node.className.split(/\s+/).includes("chip-name")
+  );
+  const removeButton = walk(chips).find((node) =>
+    node.nodeType === 1 && node.tagName === "BUTTON" && node.hasAttribute("aria-label")
+  );
+  return {
+    language: html.lang,
+    rows,
+    values,
+    chipName: chipName?.textContent ?? "",
+    removeLabel: removeButton?.getAttribute("aria-label") ?? "",
+  };
 }
 
 const controller = preferences.initPreferences({ themeToggle: null, languageSelect: null });
@@ -224,6 +243,7 @@ def _switch_languages() -> dict[str, Any]:
                 "value": _VALUES,
                 "structuredUrl": (UI_ASSETS_DIRECTORY / "structured.js").as_uri(),
                 "preferencesUrl": (UI_ASSETS_DIRECTORY / "preferences.js").as_uri(),
+                "renderUrl": (UI_ASSETS_DIRECTORY / "render.js").as_uri(),
             }
         ),
         text=True,
@@ -249,3 +269,14 @@ def test_language_switch_never_translates_exact_remote_keys_or_values() -> None:
     for snapshot in result.values():
         assert set(snapshot["rows"]) == set(_VALUES)
         assert snapshot["values"] == expected_values
+
+
+def test_active_outcome_chip_switches_language_and_keeps_its_punctuation() -> None:
+    result = _switch_languages()
+
+    assert result["englishBefore"]["chipName"] == "Outcome:"
+    assert result["englishBefore"]["removeLabel"] == "Remove the Outcome filter"
+    assert result["spanish"]["chipName"] == "Resultado:"
+    assert result["spanish"]["removeLabel"] == "Quitar el filtro Resultado"
+    assert result["englishAfter"]["chipName"] == "Outcome:"
+    assert result["englishAfter"]["removeLabel"] == "Remove the Outcome filter"

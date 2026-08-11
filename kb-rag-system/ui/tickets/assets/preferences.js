@@ -843,6 +843,9 @@ function spanishPattern(core) {
   let match = core.match(/^(\d+) on this page$/);
   if (match !== null) return `${match[1]} en esta página`;
 
+  match = core.match(/^Remove the (.+) filter$/);
+  if (match !== null) return `Quitar el filtro ${spanishUiLabel(match[1])}`;
+
   match = core.match(/^(\d+) fields?$/);
   if (match !== null) {
     return `${match[1]} campo${match[1] === "1" ? "" : "s"}`;
@@ -1162,6 +1165,9 @@ function spanishPattern(core) {
 function englishPattern(core) {
   let match = core.match(/^(\d+) en esta página$/);
   if (match !== null) return `${match[1]} on this page`;
+
+  match = core.match(/^Quitar el filtro (.+)$/);
+  if (match !== null) return `Remove the ${englishUiLabel(match[1])} filter`;
 
   match = core.match(
     /^(\d+) entradas? cargadas?; (quedan más|es toda la conversación)\. (\d+) mostradas? por este filtro\.$/

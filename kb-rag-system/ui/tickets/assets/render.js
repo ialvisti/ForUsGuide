@@ -506,7 +506,10 @@ export function renderChips(container, chips) {
   }
   for (const chip of chips) {
     const node = el("span", { className: "chip" });
-    node.appendChild(el("span", { className: "chip-name", text: `${chip.label}:` }));
+    const name = el("span", { className: "chip-name" });
+    name.appendChild(document.createTextNode(chip.label));
+    name.appendChild(document.createTextNode(":"));
+    node.appendChild(name);
     node.appendChild(el("span", { text: chip.value }));
     node.appendChild(
       button({

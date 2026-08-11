@@ -303,6 +303,7 @@ const ENGLISH_TO_SPANISH = new Map([
   ["ForUsBots job ID", "ID de tarea de ForUsBots"],
   ["ForUsBots participant elapsed time (seconds)", "Tiempo del participante en ForUsBots (s)"],
   ["ForUsBots participant job ID", "ID de tarea del participante en ForUsBots"],
+  ["Used chunks", "Fragmentos utilizados"],
   ["Final outcome", "Resultado final"],
   ["Classification", "Clasificación"],
   ["Classifier", "Clasificador"],

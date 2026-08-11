@@ -190,6 +190,7 @@ _VALUES = {
     "forusbots_job_id": "REMOTE job-main",
     "forusbots_participant_elapsed_s": "REMOTE 9.25 s",
     "forusbots_participant_job_id": "REMOTE job-participant",
+    "used_chunks": "REMOTE used_chunks",
 }
 
 _ENGLISH = {
@@ -199,6 +200,7 @@ _ENGLISH = {
     "forusbots_job_id": "ForUsBots job ID",
     "forusbots_participant_elapsed_s": "ForUsBots participant elapsed time (seconds)",
     "forusbots_participant_job_id": "ForUsBots participant job ID",
+    "used_chunks": "Used chunks",
 }
 
 _SPANISH = {
@@ -208,6 +210,7 @@ _SPANISH = {
     "forusbots_job_id": "ID de tarea de ForUsBots",
     "forusbots_participant_elapsed_s": "Tiempo del participante en ForUsBots (s)",
     "forusbots_participant_job_id": "ID de tarea del participante en ForUsBots",
+    "used_chunks": "Fragmentos utilizados",
 }
 
 

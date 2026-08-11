@@ -11,15 +11,16 @@ from api.tickets_console_main import UI_ASSETS_DIRECTORY
 def _plan(execution: dict) -> dict:
     module = (UI_ASSETS_DIRECTORY / "answer-presentation.js").resolve().as_uri()
     script = """
-const execution = JSON.parse(process.argv[1]);
-const moduleUrl = process.argv[2];
-const { planAnswerPresentation } = await import(moduleUrl);
-process.stdout.write(JSON.stringify(planAnswerPresentation(execution)));
+import fs from "node:fs";
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
+const { planAnswerPresentation } = await import(request.moduleUrl);
+process.stdout.write(JSON.stringify(planAnswerPresentation(request.execution)));
 """
     completed = subprocess.run(
-        ["node", "--input-type=module", "-e", script, json.dumps(execution), module],
+        ["node", "--input-type=module", "-e", script],
         check=True,
         capture_output=True,
+        input=json.dumps({"execution": execution, "moduleUrl": module}),
         text=True,
     )
     return json.loads(completed.stdout)

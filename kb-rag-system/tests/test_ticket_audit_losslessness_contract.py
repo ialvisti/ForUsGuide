@@ -8,10 +8,10 @@ ASSETS = Path(__file__).resolve().parents[1] / "ui" / "tickets" / "assets"
 
 def _normalize_execution_detail(envelope: dict) -> dict:
     script = """
-const apiUrl = process.argv[1];
-const envelope = JSON.parse(process.argv[2]);
-const { normalizeExecutionDetail } = await import(apiUrl);
-process.stdout.write(JSON.stringify(normalizeExecutionDetail(envelope)));
+import fs from "node:fs";
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
+const { normalizeExecutionDetail } = await import(request.apiUrl);
+process.stdout.write(JSON.stringify(normalizeExecutionDetail(request.envelope)));
 """
     completed = subprocess.run(
         [
@@ -19,11 +19,15 @@ process.stdout.write(JSON.stringify(normalizeExecutionDetail(envelope)));
             "--input-type=module",
             "-e",
             script,
-            (ASSETS / "api.js").resolve().as_uri(),
-            json.dumps(envelope),
         ],
         check=True,
         capture_output=True,
+        input=json.dumps(
+            {
+                "apiUrl": (ASSETS / "api.js").resolve().as_uri(),
+                "envelope": envelope,
+            }
+        ),
         text=True,
     )
     return json.loads(completed.stdout)

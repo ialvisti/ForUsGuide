@@ -17,6 +17,8 @@ from api.tickets_console_main import UI_ASSETS_DIRECTORY
 
 
 _NODE_HARNESS = r"""
+import fs from "node:fs";
+
 class FakeClassList {
   constructor(node) { this.node = node; }
   add(...names) {
@@ -111,7 +113,7 @@ function serialized(node) {
   };
 }
 
-const request = JSON.parse(process.argv[1]);
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
 const structured = await import(request.structuredUrl);
 const conversation = await import(request.conversationUrl);
 let root;
@@ -163,9 +165,10 @@ def _run(scenario: str, *, value: Any = None, options: dict[str, Any] | None = N
         "conversationUrl": (UI_ASSETS_DIRECTORY / "conversation.js").as_uri(),
     }
     completed = subprocess.run(
-        ["node", "--input-type=module", "-e", _NODE_HARNESS, json.dumps(request)],
+        ["node", "--input-type=module", "-e", _NODE_HARNESS],
         check=True,
         capture_output=True,
+        input=json.dumps(request),
         text=True,
     )
     return json.loads(completed.stdout)

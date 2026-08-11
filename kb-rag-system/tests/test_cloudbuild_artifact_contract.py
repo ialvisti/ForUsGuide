@@ -24,6 +24,16 @@ def test_runtime_build_uses_the_dedicated_scanner_identity() -> None:
     assert "900340137010-compute@" not in controller
 
 
+def test_runtime_python_gates_bootstrap_a_checksum_pinned_node_runtime() -> None:
+    controller = (KB_ROOT / "cloudbuild.yaml").read_text(encoding="utf-8")
+
+    assert "https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz" in controller
+    assert "69b09dba5c8dcb05c4e4273a4340db1005abeafe3927efda2bc5b249e80437ec" in controller  # pragma: allowlist secret
+    assert 'test "$$(node --version)" = "v22.14.0"' in controller
+    assert "node --check" in controller
+    assert "apt-get install" not in controller
+
+
 def test_image_tags_and_evidence_paths_use_the_full_commit_sha() -> None:
     for name in ("cloudbuild.yaml", "cloudbuild.e2e-image.yaml"):
         controller = (KB_ROOT / name).read_text(encoding="utf-8")

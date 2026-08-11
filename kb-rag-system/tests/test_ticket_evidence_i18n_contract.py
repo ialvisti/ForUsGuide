@@ -16,7 +16,8 @@ from api.tickets_console_main import UI_ASSETS_DIRECTORY
 
 
 _TRANSLATION_HARNESS = r"""
-const request = JSON.parse(process.argv[1]);
+import fs from "node:fs";
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
 const { translateUiText } = await import(request.moduleUrl);
 const rows = request.rows.map(([english, spanish]) => ({
   english,
@@ -34,9 +35,10 @@ def _translate(rows: list[tuple[str, str]]) -> list[dict[str, str]]:
         "rows": rows,
     }
     completed = subprocess.run(
-        ["node", "--input-type=module", "-e", _TRANSLATION_HARNESS, json.dumps(request)],
+        ["node", "--input-type=module", "-e", _TRANSLATION_HARNESS],
         check=True,
         capture_output=True,
+        input=json.dumps(request),
         text=True,
     )
     return json.loads(completed.stdout)

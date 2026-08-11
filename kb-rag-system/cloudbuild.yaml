@@ -49,6 +49,32 @@ steps:
         python scripts/verify_secrets_baseline.py \
           --candidate /workspace/external-input-secrets.json \
           --require-empty
+        # The Python gate image is deliberately minimal. Browser-contract tests
+        # execute the shipped ES modules, so bootstrap one immutable Node binary
+        # from the official distribution instead of installing a mutable apt
+        # package or silently skipping those tests when `node` is absent.
+        python - <<'PY'
+        from pathlib import Path
+        import hashlib
+        import shutil
+        import tarfile
+        from urllib.request import urlopen
+
+        url = "https://nodejs.org/dist/v22.14.0/node-v22.14.0-linux-x64.tar.xz"
+        expected = "69b09dba5c8dcb05c4e4273a4340db1005abeafe3927efda2bc5b249e80437ec"  # pragma: allowlist secret
+        archive = Path("/tmp/node-v22.14.0-linux-x64.tar.xz")
+        with urlopen(url, timeout=60) as source, archive.open("wb") as destination:
+            shutil.copyfileobj(source, destination)
+        with archive.open("rb") as handle:
+            actual = hashlib.file_digest(handle, "sha256").hexdigest()
+        if actual != expected:
+            raise SystemExit(f"Node archive checksum mismatch: {actual}")
+        with tarfile.open(archive, mode="r:xz") as bundle:
+            bundle.extractall("/opt", filter="data")
+        PY
+        export PATH="/opt/node-v22.14.0-linux-x64/bin:$$PATH"
+        test "$$(node --version)" = "v22.14.0"
+        find ui/tickets/assets -type f -name '*.js' -exec node --check '{}' \;
         python -m pytest -q -rs -m "not live_dependencies and not staging_e2e"
         python -m pytest --collect-only -q >/dev/null
         ruff check .

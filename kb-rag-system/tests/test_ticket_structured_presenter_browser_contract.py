@@ -356,6 +356,67 @@ class TestStructuredTextParsing:
         tokens = _run("tokens", value=body)["tokens"]
         assert tokens == [{"kind": "text", "value": body}]
 
+    def test_production_unclosed_leading_fence_with_complete_json_is_recovered(self):
+        prefix = '```{"responseSource":"knowledge-base","diagnosticPadding":"'
+        suffix = (
+            '","inquiries":[{"detectedInquiry":"How do I continue?","response":'
+            '{"opening":"Start here","steps":[{"action":"Open settings"}]}}]}'
+        )
+        padding = "x" * (4_524 - len(prefix) - len(suffix))
+        body = f"{prefix}{padding}{suffix}"
+        assert len(body) == 4_524
+        assert body.startswith('```{"responseSource"')
+        assert body.endswith("}]}")
+
+        tokens = _run("tokens", value=body)["tokens"]
+
+        assert tokens == [
+            {
+                "kind": "structured",
+                "value": {
+                    "responseSource": "knowledge-base",
+                    "diagnosticPadding": padding,
+                    "inquiries": [
+                        {
+                            "detectedInquiry": "How do I continue?",
+                            "response": {
+                                "opening": "Start here",
+                                "steps": [{"action": "Open settings"}],
+                            },
+                        }
+                    ],
+                },
+            }
+        ]
+
+    def test_unclosed_json_fence_marker_variants_are_recovered(self):
+        expected = {"responseSource": "knowledge-base", "records": [1, 2]}
+        encoded = json.dumps(expected, separators=(",", ":"))
+
+        for prefix in ("```json", "```json\n", "```JSON\r\n", "```", "```\n"):
+            tokens = _run("tokens", value=f"{prefix}{encoded}")["tokens"]
+            assert tokens == [{"kind": "structured", "value": expected}], prefix
+
+    def test_invalid_or_incomplete_unclosed_fences_remain_exact_literal_text(self):
+        bodies = (
+            '```{"responseSource":[}',
+            '```json\nnot-json',
+            '```{"responseSource":"knowledge-base"} trailing prose',
+            '```javascript\n{"responseSource":"knowledge-base"}',
+        )
+
+        for body in bodies:
+            tokens = _run("tokens", value=body)["tokens"]
+            assert tokens == [{"kind": "text", "value": body}], body
+
+    def test_unclosed_fenced_json_over_the_parse_bound_remains_literal(self):
+        limit = _run("limits")["limits"]["maxParseBytes"]
+        body = '```{"payload":"' + ("x" * limit) + '"}'
+
+        tokens = _run("tokens", value=body)["tokens"]
+
+        assert tokens == [{"kind": "text", "value": body}]
+
     def test_double_encoded_and_array_nested_json_strings_render_without_json_syntax(self):
         result = _run(
             "structured-data",
@@ -491,6 +552,33 @@ class TestBoundedProgressivePresentation:
 
 
 class TestConversationDisclosureAccessibility:
+
+    def test_valid_unclosed_fenced_json_is_structured_without_markup_or_raw_fence(self):
+        body = (
+            '```{"responseSource":"<img src=x onerror=alert(1)>",'
+            '"inquiries":[{"answer":"Safe recorded answer"}]}'
+        )
+        result = _run(
+            "conversation",
+            value={
+                "entry_id": "production-shaped-entry",
+                "actor_class": "ai_or_system",
+                "visibility": "private",
+                "rendering": "text",
+                "body": body,
+            },
+        )["after"]
+        nodes = list(_walk(result))
+        rendered_body = next(
+            node for node in nodes if "entry-body" in node["className"].split()
+        )
+
+        assert "entry-body--structured" in rendered_body["className"].split()
+        assert "```" not in rendered_body["text"]
+        assert '{"responseSource"' not in rendered_body["text"]
+        assert "<img src=x onerror=alert(1)>" in rendered_body["text"]
+        assert "Safe recorded answer" in rendered_body["text"]
+        assert not any(node["tag"] == "img" for node in nodes)
 
     def test_only_recorded_author_names_are_protected_from_translation(self):
         recorded = _run(

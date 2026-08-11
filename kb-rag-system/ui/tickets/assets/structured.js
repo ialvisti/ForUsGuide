@@ -166,7 +166,22 @@ function withinJsonShapeLimits(value) {
 
 function unfenced(value) {
   const match = value.match(COMPLETE_FENCE);
-  return match === null ? value : match[1].trim();
+  if (match !== null) return match[1].trim();
+
+  // Some upstream conversation records contain a Markdown opening marker but
+  // no closing marker (for example, ```{"responseSource": ...}). Recover that
+  // one production shape without turning general unfinished Markdown into a
+  // parser. The caller still applies the byte/shape bounds and JSON.parse, and
+  // this branch accepts only a remainder that begins as an object or array.
+  if (!value.startsWith("```")) return value;
+  let remainder = value.slice(3);
+  if (/^json(?=[ \t]*(?:\r?\n|[\[{]))/i.test(remainder)) {
+    remainder = remainder.slice(4);
+  }
+  remainder = remainder.trim();
+  return remainder.startsWith("{") || remainder.startsWith("[")
+    ? remainder
+    : value;
 }
 
 /** Parse only a complete, bounded JSON object/array, including encoded layers. */

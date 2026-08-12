@@ -156,8 +156,6 @@ TECHNICAL_AUDIT_IDS = (
 
 #: Each editable control, and the canonical bound its ``maxlength`` must equal.
 CANONICAL_LIMITS = {
-    "eval-topic": MAX_TOPIC_LENGTH,
-    "eval-legacy-type": MAX_LEGACY_TYPE_LENGTH,
     "eval-comments": MAX_COMMENTS_LENGTH,
     "eval-expected-behavior": MAX_EXPECTED_BEHAVIOR_LENGTH,
     "eval-verification-summary": MAX_SUMMARY_LENGTH,
@@ -347,14 +345,11 @@ class TestReviewerFirstWorkflow:
         audit = _by_id(detail, "technical-audit")
         assert audit in list(_by_id(detail, region_id).ancestors())
 
-    def test_advanced_classification_is_secondary(self, dom):
+    def test_remediation_target_is_primary_and_has_no_advanced_disclosure(self, dom):
         form = _by_id(dom, "evaluation-form")
-        advanced = _by_id(form, "advanced-review-fields")
-        assert advanced.tag == "details"
-        assert advanced.get("open") is None
-        assert _by_id(advanced, "advanced-review-summary").all_text() == "Advanced review fields"
-        for control in ("eval-topic", "eval-legacy-type", "eval-remediation-target"):
-            assert advanced in list(_by_id(form, control).ancestors())
+        target = _by_id(form, "eval-remediation-target")
+        assert target.get("name") == "remediation_target"
+        assert "advanced-review-fields" not in _ids(form)
 
 
 # =====================================================================
@@ -380,8 +375,6 @@ class TestEvaluationForm:
     @pytest.mark.parametrize(
         "control",
         [
-            "eval-topic",
-            "eval-legacy-type",
             "eval-observation-type",
             "eval-assignment",
             "eval-comments",
@@ -394,20 +387,16 @@ class TestEvaluationForm:
     def test_every_evaluation_field_is_present(self, dom, control):
         assert control in _ids(_by_id(dom, "evaluation-form"))
 
-    def test_legacy_type_and_observation_type_are_separate_controls(self, dom):
-        """The sheet's ``Type`` and the root-cause taxonomy are different facts.
-
-        One control holding both would make the migration lossy in the one
-        direction that cannot be undone: the legacy string is free text typed by a
-        person, and the observation type is a closed set this console reasons over.
-        """
+    def test_historical_classification_is_read_only_but_still_visible(self, dom, scripts):
         form = _by_id(dom, "evaluation-form")
-        legacy = _by_id(form, "eval-legacy-type")
         observation = _by_id(form, "eval-observation-type")
-        assert legacy.tag == "input"
         assert observation.tag == "select"
-        assert legacy.get("name") == "legacy_type"
         assert observation.get("name") == "observation_type"
+        assert "eval-topic" not in _ids(form)
+        assert "eval-legacy-type" not in _ids(form)
+        detail = scripts["detail.js"]
+        assert 'render.definitionRow("Topic", current.review?.topic' in detail
+        assert 'render.definitionRow("Legacy Type", current.review?.legacy_type' in detail
 
     def test_the_historical_reviewer_is_read_only_compatibility(self, dom, scripts):
         form = _by_id(dom, "evaluation-form")

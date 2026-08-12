@@ -968,6 +968,15 @@ function renderRun(current) {
       path: "$/decision",
       open: true,
     }),
+    el("dl", {
+      className: "field-grid",
+      children: [
+        render.definitionRow("Topic", current.review?.topic, { absentNote: "Not set" }),
+        render.definitionRow("Legacy Type", current.review?.legacy_type, {
+          absentNote: "Not set",
+        }),
+      ],
+    }),
   ]);
 
   const diagnostics = execution.diagnostics;

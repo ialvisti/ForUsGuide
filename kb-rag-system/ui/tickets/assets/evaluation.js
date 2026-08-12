@@ -58,8 +58,6 @@ const NEAR_LIMIT_FRACTION = 0.9;
 
 /** Every text control, with the limit its counter and `maxlength` must agree on. */
 export const COUNTED_FIELDS = Object.freeze([
-  ["eval-topic", "topic"],
-  ["eval-legacy-type", "legacy_type"],
   ["eval-comments", "comments"],
   ["eval-expected-behavior", "expected_behavior"],
   ["eval-verification-summary", "verification_summary"],
@@ -68,8 +66,6 @@ export const COUNTED_FIELDS = Object.freeze([
 
 /** The form control that carries each draft key. */
 const CONTROL_IDS = Object.freeze({
-  topic: "eval-topic",
-  legacy_type: "eval-legacy-type",
   observation_type: "eval-observation-type",
   comments: "eval-comments",
   expected_behavior: "eval-expected-behavior",
@@ -439,8 +435,6 @@ export function buildSave({ review, draft, session }) {
   const changed = dirtyFieldNames(draft, review);
   const patch = {};
   const NULLABLE_TEXT = new Set([
-    "topic",
-    "legacy_type",
     "comments",
     "expected_behavior",
   ]);

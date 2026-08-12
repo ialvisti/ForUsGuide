@@ -660,7 +660,6 @@ class TestThemeAndLanguagePreferences:
             "Focused review",
             "Evaluation",
             "Rate the final answer and document the correction, if any.",
-            "Advanced review fields",
             "Wrong route",
             "The root-cause taxonomy this console adds. Use “Wrong route” when the answer took the wrong path with the information it already had.",
             "Technical audit details",

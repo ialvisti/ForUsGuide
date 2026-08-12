@@ -374,6 +374,13 @@
         </div>
 
         <div class="field">
+          <label for="eval-remediation-target">Remediation target</label>
+          <select id="eval-remediation-target" name="remediation_target">
+            <option value="">Not set</option>
+          </select>
+        </div>
+
+        <div class="field">
           <label for="eval-assignment">Assigned reviewer</label>
           <select id="eval-assignment" name="assigned_reviewer"
                   aria-describedby="eval-assignment-help">
@@ -436,36 +443,6 @@
             <input type="text" id="eval-commit" name="commit_sha" autocomplete="off" maxlength="256">
           </div>
         </fieldset>
-
-        <details id="advanced-review-fields" class="reviewer-advanced-fields">
-          <summary id="advanced-review-summary">Advanced review fields</summary>
-          <div class="advanced-review-grid">
-            <div class="field">
-              <label for="eval-topic">Topic</label>
-              <input type="text" id="eval-topic" name="topic" autocomplete="off" maxlength="80"
-                     aria-describedby="eval-topic-count">
-              <p class="char-count" id="eval-topic-count"></p>
-            </div>
-
-            <div class="field">
-              <label for="eval-legacy-type">Legacy Type</label>
-              <input type="text" id="eval-legacy-type" name="legacy_type" autocomplete="off"
-                     maxlength="80" aria-describedby="eval-legacy-type-help eval-legacy-type-count">
-              <p class="field-help" id="eval-legacy-type-help">
-                Historical classification retained for continuity. It is not the
-                observation type above, and one is never derived from the other.
-              </p>
-              <p class="char-count" id="eval-legacy-type-count"></p>
-            </div>
-
-            <div class="field">
-              <label for="eval-remediation-target">Remediation target</label>
-              <select id="eval-remediation-target" name="remediation_target">
-                <option value="">Not set</option>
-              </select>
-            </div>
-          </div>
-        </details>
 
         <p class="form-errors" id="eval-errors" role="alert"></p>
 

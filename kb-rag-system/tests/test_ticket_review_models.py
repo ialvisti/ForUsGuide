@@ -346,6 +346,7 @@ class TestClosedEnums:
             "chunking_or_metadata",
             "prompt_instruction",
             "orchestration_logic",
+            "wrong_route",
             "source_data",
             "privacy_or_compliance",
             "other",

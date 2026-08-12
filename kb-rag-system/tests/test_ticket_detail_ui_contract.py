@@ -540,6 +540,9 @@ class TestClosedVocabularies:
         declared = _js_string_list(scripts["state.js"], name)
         assert set(declared) == {member.value for member in enum}
 
+    def test_wrong_route_has_a_reviewer_facing_label(self, scripts):
+        assert '["wrong_route", "Wrong route"]' in scripts["render.js"]
+
     def test_the_terminal_statuses_are_the_models(self, scripts):
         declared = set(_js_string_list(scripts["state.js"], "TERMINAL_REVIEW_STATUSES"))
         canonical = {

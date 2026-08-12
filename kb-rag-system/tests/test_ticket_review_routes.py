@@ -988,6 +988,41 @@ class TestPatchPreconditions:
         )
         assert response.status_code in (200, 422)
 
+    def test_wrong_route_is_a_persisted_observation_type(self, monkeypatch):
+        harness = _harness(monkeypatch)
+        created = _create_review(harness)
+
+        response = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client, idempotency="idem-patch-wrong-route", **{"If-Match": '"v1"'}
+            ),
+            json={"observation_type": "wrong_route"},
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["observation_type"] == "wrong_route"
+        persisted = harness.client.get(
+            f"{API_PREFIX}/reviews/{created['review_id']}", headers=_auth_headers()
+        )
+        assert persisted.json()["observation_type"] == "wrong_route"
+
+    def test_hyphenated_wrong_route_is_rejected(self, monkeypatch):
+        harness = _harness(monkeypatch)
+        created = _create_review(harness)
+
+        response = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client,
+                idempotency="idem-patch-wrong-route-invalid",
+                **{"If-Match": '"v1"'},
+            ),
+            json={"observation_type": "wrong-route"},
+        )
+
+        assert response.status_code == 422
+
     def test_a_reused_idempotency_key_for_a_different_request_is_409(self, monkeypatch):
         harness = _harness(monkeypatch)
         created = _create_review(harness)

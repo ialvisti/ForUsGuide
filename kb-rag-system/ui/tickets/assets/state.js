@@ -98,6 +98,7 @@ export const OBSERVATION_TYPES = Object.freeze([
   "chunking_or_metadata",
   "prompt_instruction",
   "orchestration_logic",
+  "wrong_route",
   "source_data",
   "privacy_or_compliance",
   "other",

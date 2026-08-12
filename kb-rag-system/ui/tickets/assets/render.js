@@ -61,6 +61,7 @@ const OBSERVATION_LABELS = new Map([
   ["chunking_or_metadata", "Chunking or metadata"],
   ["prompt_instruction", "Prompt instruction"],
   ["orchestration_logic", "Orchestration logic"],
+  ["wrong_route", "Wrong route"],
   ["source_data", "Source data"],
   ["privacy_or_compliance", "Privacy or compliance"],
   ["other", "Other"],

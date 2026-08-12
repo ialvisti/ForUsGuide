@@ -73,6 +73,14 @@ def test_static_runtime_guidance_round_trips_without_english_fragments() -> None
                 "Clasificación histórica conservada por continuidad. No corresponde "
                 "al tipo de observación anterior; ninguno se deriva del otro.",
             ),
+            ("Wrong route", "Ruta equivocada"),
+            (
+                "The root-cause taxonomy this console adds. Use “Wrong route” when the "
+                "answer took the wrong path with the information it already had.",
+                "Taxonomía de causa raíz que agrega esta consola. Usa “Ruta equivocada” "
+                "cuando la respuesta tomó el camino incorrecto con la información que "
+                "ya tenía.",
+            ),
             (
                 "No body is shown here because the upstream body was not plain text.",
                 "Aquí no se muestra contenido porque el contenido original no era "

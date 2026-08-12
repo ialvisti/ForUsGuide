@@ -407,6 +407,7 @@ class ObservationType(str, Enum):
     CHUNKING_OR_METADATA = "chunking_or_metadata"
     PROMPT_INSTRUCTION = "prompt_instruction"
     ORCHESTRATION_LOGIC = "orchestration_logic"
+    WRONG_ROUTE = "wrong_route"
     SOURCE_DATA = "source_data"
     PRIVACY_OR_COMPLIANCE = "privacy_or_compliance"
     OTHER = "other"

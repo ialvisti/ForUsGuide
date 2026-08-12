@@ -118,6 +118,14 @@ def test_static_runtime_guidance_round_trips_without_english_fragments() -> None
 
 
 def test_assignment_admin_guidance_preserves_the_exact_remote_email() -> None:
+    reviewer_suffix = (
+        "You may take an unassigned review or release your own. Reassigning "
+        "someone else's is an administrator action."
+    )
+    spanish_reviewer_suffix = (
+        "Puedes tomar una revisión sin asignar o liberar una asignada a ti. "
+        "Reasignar la revisión de otra persona requiere un administrador."
+    )
     suffix = (
         "As an administrator you may take it or clear it. Handing it to a third "
         "person needs their verified sign-in identity, which no route publishes, "
@@ -131,7 +139,17 @@ def test_assignment_admin_guidance_preserves_the_exact_remote_email() -> None:
     remote_email = "remote.reviewer+qa@example.invalid"
     results = _round_trip(
         [
-            (f"Unassigned. {suffix}", f"Sin asignar. {spanish_suffix}"),
+            (
+                f"Unassigned. Saving your evaluation assigns it to you. {suffix}",
+                "Sin asignar. Al guardar tu evaluación queda asignada a ti. "
+                f"{spanish_suffix}",
+            ),
+            (
+                "Unassigned. Saving your evaluation assigns it to you. "
+                f"{reviewer_suffix}",
+                "Sin asignar. Al guardar tu evaluación queda asignada a ti. "
+                f"{spanish_reviewer_suffix}",
+            ),
             (f"Assigned to you. {suffix}", f"Asignada a ti. {spanish_suffix}"),
             (
                 f"Assigned to {remote_email}. {suffix}",

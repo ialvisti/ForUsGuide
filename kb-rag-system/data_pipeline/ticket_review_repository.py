@@ -1392,6 +1392,18 @@ class FirestoreTicketReviewBackend:
 _REVIEW_MUTATORS = frozenset(
     {ReviewerRole.REVIEWER, ReviewerRole.REMEDIATOR, ReviewerRole.ADMIN}
 )
+_EVALUATION_FIELDS = frozenset(
+    {
+        "observation_type",
+        "rating",
+        "comments",
+        "expected_behavior",
+        "severity",
+        "remediation_target",
+        "topic",
+        "legacy_type",
+    }
+)
 _ALL_REVIEW_STATUS_VALUES = tuple(status.value for status in ReviewStatus)
 # Durable batch work that makes a release-to-ready unsafe.
 _BATCH_WORK_FIELDS = (
@@ -2354,6 +2366,33 @@ class TicketReviewRepository:
             # Work with the model's own objects, never a dumped dict: the closed
             # state machine needs a real ReviewResolution to check evidence.
             updates = {field: getattr(patch, field) for field in patch.model_fields_set}
+
+            # The person who reviews a ticket is its reviewer. Derived here rather than in
+            # the browser so the CLI inherits the rule, only when the review has no holder
+            # (`can_assign_reviewer` refuses to take someone else's, and a derivation that
+            # violated it would turn an ordinary save into a 403), and only for a patch that
+            # actually carries an evaluation: `create_remediation_batch` patches a bare
+            # status as a remediator, and freezing a batch must not make its curator the
+            # reviewer of every record in it.
+            if (
+                context.actor_role in _REVIEW_MUTATORS
+                and "assigned_reviewer" not in updates
+                and current.assigned_reviewer is None
+                and not _EVALUATION_FIELDS.isdisjoint(updates)
+            ):
+                updates["assigned_reviewer"] = context.actor
+
+            # A reviewer does not pick a status: recording an evaluation *is* the move out of
+            # `unreviewed`. Only from `unreviewed`, because a correction to a comment must
+            # never walk a triaged review backwards and the table has no edge back; and
+            # `reviewed` is the only non-`blocked` target it offers from there.
+            if (
+                context.actor_role in _REVIEW_MUTATORS
+                and "status" not in updates
+                and current.status is ReviewStatus.UNREVIEWED
+                and not _EVALUATION_FIELDS.isdisjoint(updates)
+            ):
+                updates["status"] = ReviewStatus.REVIEWED
 
             target_status = updates.get("status")
             if admin_reopen or (target_status is not None and target_status != current.status):

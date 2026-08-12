@@ -638,7 +638,9 @@ class TestBatchCreation:
 
         assert body["planned_review_ids"] == [eligible[0]]
         assert body["unchanged_review_ids"] == [already_past[0]]
-        assert (await harness.repository.get_review(eligible[0])).status is ReviewStatus.PLANNED
+        planned = await harness.repository.get_review(eligible[0])
+        assert planned.status is ReviewStatus.PLANNED
+        assert planned.assigned_reviewer is None
         assert (
             await harness.repository.get_review(already_past[0])
         ).status is ReviewStatus.IN_PROGRESS

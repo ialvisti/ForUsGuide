@@ -484,6 +484,60 @@ class TestOptimisticConcurrency:
 
 
 class TestStatusTransitions:
+    async def test_an_evaluation_moves_an_unreviewed_review_to_reviewed(self, repo):
+        review = await _seed(repo)
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(rating=4),
+            expected_version=review.version,
+            context=_context(),
+        )
+
+        assert patched.status is ReviewStatus.REVIEWED
+        event = (await repo.list_audit_events(review.review_id)).items[-1]
+        assert "status" in event.changed_fields
+
+    async def test_an_evaluation_does_not_move_a_triaged_review_backwards(self, repo):
+        review = await _seed(
+            repo,
+            status=ReviewStatus.TRIAGED,
+            assigned_reviewer=REVIEWER,
+        )
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(comments="clarified"),
+            expected_version=review.version,
+            context=_context(),
+        )
+
+        assert patched.status is ReviewStatus.TRIAGED
+
+    async def test_assignment_alone_does_not_move_an_unreviewed_review(self, repo):
+        review = await _seed(repo)
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(assigned_reviewer=REVIEWER),
+            expected_version=review.version,
+            context=_context(),
+        )
+
+        assert patched.status is ReviewStatus.UNREVIEWED
+
+    async def test_an_explicit_status_wins_over_the_derived_status(self, repo):
+        review = await _seed(repo)
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(comments="cannot proceed", status=ReviewStatus.BLOCKED),
+            expected_version=review.version,
+            context=_context(),
+        )
+
+        assert patched.status is ReviewStatus.BLOCKED
+
     async def test_an_illegal_transition_is_refused(self, repo):
         review = await _seed(repo)
 
@@ -615,6 +669,82 @@ class TestStatusTransitions:
 
 
 class TestReviewerAssignment:
+    async def test_an_evaluation_assigns_an_unowned_review_to_the_actor(self, repo):
+        review = await _seed(repo, status=ReviewStatus.REVIEWED)
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(comments="reviewed"),
+            expected_version=review.version,
+            context=_context(REVIEWER),
+        )
+
+        assert patched.assigned_reviewer == REVIEWER
+        event = (await repo.list_audit_events(review.review_id)).items[-1]
+        assert "assigned_reviewer" in event.changed_fields
+
+    async def test_an_evaluation_does_not_steal_another_reviewers_assignment(self, repo):
+        review = await _seed(
+            repo,
+            status=ReviewStatus.REVIEWED,
+            assigned_reviewer=OTHER_REVIEWER,
+        )
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(comments="reviewed without reassignment"),
+            expected_version=review.version,
+            context=_context(REVIEWER),
+        )
+
+        assert patched.comments == "reviewed without reassignment"
+        assert patched.assigned_reviewer == OTHER_REVIEWER
+
+    async def test_an_evaluation_already_owned_by_the_actor_does_not_reaudit_assignment(
+        self, repo
+    ):
+        review = await _seed(
+            repo,
+            status=ReviewStatus.REVIEWED,
+            assigned_reviewer=REVIEWER,
+        )
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(comments="reviewed again"),
+            expected_version=review.version,
+            context=_context(REVIEWER),
+        )
+
+        assert patched.assigned_reviewer == REVIEWER
+        event = (await repo.list_audit_events(review.review_id)).items[-1]
+        assert "assigned_reviewer" not in event.changed_fields
+
+    async def test_explicitly_clearing_assignment_suppresses_autoassignment(self, repo):
+        review = await _seed(repo, status=ReviewStatus.REVIEWED)
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(comments="reviewed", assigned_reviewer=None),
+            expected_version=review.version,
+            context=_context(REVIEWER),
+        )
+
+        assert patched.assigned_reviewer is None
+
+    async def test_a_status_only_remediator_patch_does_not_assign_a_reviewer(self, repo):
+        review = await _seed(repo, status=ReviewStatus.TRIAGED)
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(status=ReviewStatus.PLANNED),
+            expected_version=review.version,
+            context=_context(REVIEWER, ReviewerRole.REMEDIATOR),
+        )
+
+        assert patched.status is ReviewStatus.PLANNED
+        assert patched.assigned_reviewer is None
+
     async def test_a_reviewer_may_self_assign(self, repo):
         review = await _seed(repo)
 
@@ -799,7 +929,7 @@ class TestAuditChain:
         assert "secret participant note" not in rendered
         assert "another secret note" not in rendered
         assert events[-1].metadata == {"reason_code": "reviewer_edit"}
-        assert events[-1].changed_fields == ["comments"]
+        assert events[-1].changed_fields == ["assigned_reviewer", "comments", "status"]
 
     async def test_concurrent_mutations_leave_one_linear_chain(self, repo):
         review = await _seed(repo)
@@ -1990,6 +2120,8 @@ class TestIdempotency:
         )
 
         assert replay.version == first.version == 2
+        assert replay.assigned_reviewer == first.assigned_reviewer == REVIEWER
+        assert replay.status is first.status is ReviewStatus.REVIEWED
         assert len((await repo.list_audit_events(review.review_id)).items) == 2
         keys = await backend.dump_collection(IDEMPOTENCY_KEYS_COLLECTION)
         assert list(keys) == [sha256_hex("patch-1")]

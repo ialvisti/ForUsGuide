@@ -184,7 +184,7 @@ export function describeAssignment(review, session) {
   const state = assignmentOptions(review, session);
   const parts = [];
   if (state.assignedEmail === "") {
-    parts.push("Unassigned.");
+    parts.push("Unassigned. Saving your evaluation assigns it to you.");
   } else if (state.mine) {
     parts.push("Assigned to you.");
   } else {

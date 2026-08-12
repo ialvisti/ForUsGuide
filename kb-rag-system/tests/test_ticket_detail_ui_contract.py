@@ -543,6 +543,9 @@ class TestClosedVocabularies:
     def test_wrong_route_has_a_reviewer_facing_label(self, scripts):
         assert '["wrong_route", "Wrong route"]' in scripts["render.js"]
 
+    def test_reviewed_uses_the_pa_reviewed_label(self, scripts):
+        assert '["reviewed", "PA Reviewed"]' in scripts["render.js"]
+
     def test_the_terminal_statuses_are_the_models(self, scripts):
         declared = set(_js_string_list(scripts["state.js"], "TERMINAL_REVIEW_STATUSES"))
         canonical = {
@@ -1495,6 +1498,7 @@ class TestRagOnlyAndRoles:
         source = new_scripts["evaluation.js"]
         assert "canSelfAssign" in source
         assert "canUnassign" in source
+        assert "Saving your evaluation assigns it to you." in source
         assert "verified sign-in identity, which no route publishes" in _prose(source)
 
     def test_a_batch_control_that_cannot_work_says_why(self, dom):

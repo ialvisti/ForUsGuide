@@ -37,7 +37,7 @@ let svgNamespace = null;
 
 const STATUS_LABELS = new Map([
   ["unreviewed", "Unreviewed"],
-  ["reviewed", "Reviewed"],
+  ["reviewed", "PA Reviewed"],
   ["triaged", "Triaged"],
   ["planned", "Planned"],
   ["in_progress", "In progress"],

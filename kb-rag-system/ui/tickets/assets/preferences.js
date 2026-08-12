@@ -676,6 +676,7 @@ const ENGLISH_TO_SPANISH = new Map([
   ["Your role can read this review but not change it. Ask an administrator for the reviewer role.", "Tu rol puede leer esta revisión, pero no modificarla. Solicita a un administrador el rol de revisor."],
   ["Your role cannot change this review.", "Tu rol no puede modificar esta revisión."],
   ["Unassigned.", "Sin asignar."],
+  ["Unassigned. Saving your evaluation assigns it to you.", "Sin asignar. Al guardar tu evaluación queda asignada a ti."],
   ["Assigned to you.", "Asignada a ti."],
   ["Your role cannot change the assignment.", "Tu rol no puede cambiar la asignación."],
   ["This review has unsaved changes. Leaving now discards them. Continue?", "Esta revisión tiene cambios sin guardar. Si sales ahora, se descartarán. ¿Continuar?"],
@@ -1031,9 +1032,9 @@ function spanishPattern(core) {
     }
   }
 
-  match = core.match(/^Unassigned\. You may take an unassigned review or release your own\. Reassigning someone else's is an administrator action\.$/);
+  match = core.match(/^Unassigned\. Saving your evaluation assigns it to you\. You may take an unassigned review or release your own\. Reassigning someone else's is an administrator action\.$/);
   if (match !== null) {
-    return "Sin asignar. Puedes tomar una revisión sin asignar o liberar una asignada a ti. Reasignar la revisión de otra persona requiere un administrador.";
+    return "Sin asignar. Al guardar tu evaluación queda asignada a ti. Puedes tomar una revisión sin asignar o liberar una asignada a ti. Reasignar la revisión de otra persona requiere un administrador.";
   }
 
   match = core.match(/^Assigned to you\. You may take an unassigned review or release your own\. Reassigning someone else's is an administrator action\.$/);
@@ -1046,9 +1047,9 @@ function spanishPattern(core) {
     return `Asignada a ${match[1]}. Puedes tomar una revisión sin asignar o liberar una asignada a ti. Reasignar la revisión de otra persona requiere un administrador.`;
   }
 
-  match = core.match(/^Unassigned\. As an administrator you may take it or clear it\. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here\.$/);
+  match = core.match(/^Unassigned\. Saving your evaluation assigns it to you\. As an administrator you may take it or clear it\. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here\.$/);
   if (match !== null) {
-    return "Sin asignar. Como administrador, puedes tomarla o dejarla sin asignar. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí.";
+    return "Sin asignar. Al guardar tu evaluación queda asignada a ti. Como administrador, puedes tomarla o dejarla sin asignar. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí.";
   }
 
   match = core.match(/^Assigned to you\. As an administrator you may take it or clear it\. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here\.$/);
@@ -1368,9 +1369,9 @@ function englishPattern(core) {
     }
   }
 
-  match = core.match(/^Sin asignar\. Puedes tomar una revisión sin asignar o liberar una asignada a ti\. Reasignar la revisión de otra persona requiere un administrador\.$/);
+  match = core.match(/^Sin asignar\. Al guardar tu evaluación queda asignada a ti\. Puedes tomar una revisión sin asignar o liberar una asignada a ti\. Reasignar la revisión de otra persona requiere un administrador\.$/);
   if (match !== null) {
-    return "Unassigned. You may take an unassigned review or release your own. Reassigning someone else's is an administrator action.";
+    return "Unassigned. Saving your evaluation assigns it to you. You may take an unassigned review or release your own. Reassigning someone else's is an administrator action.";
   }
 
   match = core.match(/^Asignada a ti\. Puedes tomar una revisión sin asignar o liberar una asignada a ti\. Reasignar la revisión de otra persona requiere un administrador\.$/);
@@ -1383,9 +1384,9 @@ function englishPattern(core) {
     return `Assigned to ${match[1]}. You may take an unassigned review or release your own. Reassigning someone else's is an administrator action.`;
   }
 
-  match = core.match(/^Sin asignar\. Como administrador, puedes tomarla o dejarla sin asignar\. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí\.$/);
+  match = core.match(/^Sin asignar\. Al guardar tu evaluación queda asignada a ti\. Como administrador, puedes tomarla o dejarla sin asignar\. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí\.$/);
   if (match !== null) {
-    return "Unassigned. As an administrator you may take it or clear it. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here.";
+    return "Unassigned. Saving your evaluation assigns it to you. As an administrator you may take it or clear it. Handing it to a third person needs their verified sign-in identity, which no route publishes, so it is not offered here.";
   }
 
   match = core.match(/^Asignada a ti\. Como administrador, puedes tomarla o dejarla sin asignar\. Entregarla a una tercera persona requiere su identidad verificada de inicio de sesión, que ninguna ruta publica, por lo que esa opción no se ofrece aquí\.$/);

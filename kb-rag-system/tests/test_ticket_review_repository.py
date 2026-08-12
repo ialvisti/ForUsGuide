@@ -803,6 +803,69 @@ class TestReviewerAssignment:
         assert "assigned_reviewer" in event.changed_fields
 
 
+class TestRemediationRecordPersistence:
+    async def test_a_patch_persists_the_record_and_audits_both_fields(self, repo):
+        review = await _seed(
+            repo,
+            status=ReviewStatus.REVIEWED,
+            assigned_reviewer=REVIEWER,
+        )
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(
+                remediation_summary="Updated retrieval metadata and verified the answer.",
+                modified_surfaces=["retrieval_or_chunking", "rag_code"],
+            ),
+            expected_version=review.version,
+            context=_context(),
+        )
+
+        assert patched.remediation_summary == (
+            "Updated retrieval metadata and verified the answer."
+        )
+        assert [surface.value for surface in patched.modified_surfaces] == [
+            "rag_code",
+            "retrieval_or_chunking",
+        ]
+        event = (await repo.list_audit_events(review.review_id)).items[-1]
+        assert event.changed_fields == ["modified_surfaces", "remediation_summary"]
+
+    async def test_a_legacy_document_reads_with_empty_remediation_defaults(
+        self, repo, backend
+    ):
+        review = await _seed(repo)
+        documents = await backend.dump_collection(REVIEWS_COLLECTION)
+        legacy = dict(documents[review.review_id])
+        legacy.pop("remediation_summary", None)
+        legacy.pop("modified_surfaces", None)
+        await backend.force_write((REVIEWS_COLLECTION, review.review_id), legacy)
+
+        loaded = await repo.get_review(review.review_id)
+
+        assert loaded.remediation_summary is None
+        assert loaded.modified_surfaces == []
+
+    async def test_an_explicit_empty_surface_list_clears_the_stored_list(self, repo):
+        review = await _seed(
+            repo,
+            status=ReviewStatus.REVIEWED,
+            assigned_reviewer=REVIEWER,
+            modified_surfaces=["rag_code"],
+        )
+
+        patched = await repo.patch_review(
+            review.review_id,
+            ReviewPatch(modified_surfaces=[]),
+            expected_version=review.version,
+            context=_context(),
+        )
+
+        assert patched.modified_surfaces == []
+        event = (await repo.list_audit_events(review.review_id)).items[-1]
+        assert event.changed_fields == ["modified_surfaces"]
+
+
 # =====================================================================
 # 6-8. Hash-chained, append-only audit ledger
 # =====================================================================

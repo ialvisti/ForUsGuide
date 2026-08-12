@@ -1402,6 +1402,8 @@ _EVALUATION_FIELDS = frozenset(
         "remediation_target",
         "topic",
         "legacy_type",
+        "remediation_summary",
+        "modified_surfaces",
     }
 )
 _ALL_REVIEW_STATUS_VALUES = tuple(status.value for status in ReviewStatus)

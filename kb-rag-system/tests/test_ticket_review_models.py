@@ -19,6 +19,7 @@ from pathlib import Path
 
 import pytest
 
+import api.ticket_review_models as review_models
 from api.ticket_review_models import (
     AUDIT_RETENTION_DAYS,
     CACHE_TTL_S,
@@ -366,6 +367,24 @@ class TestClosedEnums:
             "unknown",
         ]
 
+    def test_modified_surface_values(self):
+        enum = getattr(review_models, "ModifiedSurface", None)
+        assert enum is not None
+        assert [surface.value for surface in enum] == [
+            "devrev_prompt",
+            "n8n_agent_prompt",
+            "rag_prompt",
+            "rag_code",
+            "retrieval_or_chunking",
+            "knowledge_base",
+            "inquiry_router",
+            "data_collection",
+            "n8n_flow",
+            "console_or_tooling",
+            "configuration",
+            "no_change",
+        ]
+
     def test_correlation_enums(self):
         assert [c.value for c in CorrelationStatus] == ["linked", "manual", "unavailable"]
         assert [c.value for c in CorrelationTrust] == [
@@ -425,6 +444,52 @@ class TestClosedEnums:
     def test_unknown_enum_strings_fail(self, field, value):
         with pytest.raises(ValueError):
             _review(**{field: value})
+
+
+class TestRemediationRecord:
+    @pytest.mark.parametrize("factory", (_review, ReviewPatch))
+    def test_modified_surfaces_are_sorted_and_deduplicated(self, factory):
+        model = factory(
+            modified_surfaces=["rag_code", "devrev_prompt", "rag_code"],
+        )
+        assert [surface.value for surface in model.modified_surfaces] == [
+            "devrev_prompt",
+            "rag_code",
+        ]
+
+    @pytest.mark.parametrize(
+        "factory,model_type", ((_review, TicketReview), (ReviewPatch, ReviewPatch))
+    )
+    def test_no_change_cannot_accompany_a_modified_surface(self, factory, model_type):
+        assert "modified_surfaces" in model_type.model_fields
+        with pytest.raises(ValueError, match="no_change"):
+            factory(modified_surfaces=["no_change", "rag_code"])
+
+    @pytest.mark.parametrize(
+        "factory,model_type", ((_review, TicketReview), (ReviewPatch, ReviewPatch))
+    )
+    def test_modified_surfaces_are_bounded_to_twelve_items(self, factory, model_type):
+        assert "modified_surfaces" in model_type.model_fields
+        with pytest.raises(ValueError):
+            factory(modified_surfaces=["rag_code"] * 13)
+
+    @pytest.mark.parametrize(
+        "factory,model_type", ((_review, TicketReview), (ReviewPatch, ReviewPatch))
+    )
+    def test_unknown_modified_surface_is_rejected(self, factory, model_type):
+        assert "modified_surfaces" in model_type.model_fields
+        with pytest.raises(ValueError):
+            factory(modified_surfaces=["not_a_surface"])
+
+    @pytest.mark.parametrize(
+        "factory,model_type", ((_review, TicketReview), (ReviewPatch, ReviewPatch))
+    )
+    def test_remediation_summary_has_its_own_bound(self, factory, model_type):
+        assert "remediation_summary" in model_type.model_fields
+        limit = getattr(review_models, "MAX_REMEDIATION_SUMMARY_LENGTH", None)
+        assert limit == 5_000
+        with pytest.raises(ValueError):
+            factory(remediation_summary="x" * (limit + 1))
 
 
 # =====================================================================

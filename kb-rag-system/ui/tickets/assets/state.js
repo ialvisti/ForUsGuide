@@ -188,6 +188,8 @@ export const EVALUATION_FIELDS = Object.freeze([
   "severity",
   "status",
   "remediation_target",
+  "remediation_summary",
+  "modified_surfaces",
   "assigned_reviewer",
   "resolution",
 ]);

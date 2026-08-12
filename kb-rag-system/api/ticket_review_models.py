@@ -94,6 +94,7 @@ MAX_TOPIC_LENGTH = 80
 MAX_COMMENTS_LENGTH = 10_000
 MAX_EXPECTED_BEHAVIOR_LENGTH = 10_000
 MAX_SUMMARY_LENGTH = 5_000
+MAX_REMEDIATION_SUMMARY_LENGTH = 5_000
 MAX_MESSAGE_BODY_LENGTH = 50_000
 MAX_URL_LENGTH = 2_048
 
@@ -428,6 +429,46 @@ class RemediationTarget(str, Enum):
     SOURCE_DATA = "source_data"
     NONE = "none"
     UNKNOWN = "unknown"
+
+
+class ModifiedSurface(str, Enum):
+    """What a fix actually had to touch.
+
+    Finer than :class:`RemediationTarget`, which says where the *cause* lives.
+    This says which artifact changed, so a later reviewer can find the diff and
+    the remediation agent can tell a prompt edit from a retrieval change.
+
+    The members map to real artifacts:
+
+    * ``devrev_prompt``: ``PA/DevRev/SYSTEM_PROMPT.md``.
+    * ``n8n_agent_prompt``: ``data_pipeline/agent_prompts/*.md`` and
+      ``PA/n8n prompts/*.md``.
+    * ``rag_prompt``: ``data_pipeline/prompts.py``.
+    * ``rag_code``: ``rag_engine.py``, ``gr_payload_builder.py``, and
+      ``api/main.py``.
+    * ``retrieval_or_chunking``: ``chunking.py``, ``article_processor.py``,
+      and ``pinecone_uploader.py``.
+    * ``knowledge_base``: ``PA/**/*.json``.
+    * ``inquiry_router``: ``inquiry_router.py`` and ``llm_router.py``.
+    * ``data_collection``: ``data_pipeline/forusbots_*.py``.
+    * ``n8n_flow``: ``flows_n8n/*.json``.
+    * ``console_or_tooling``: ``api/ticket_*`` and ``ui/tickets/``.
+    * ``configuration``: ``api/config.py``, environment, and Terraform.
+    * ``no_change``: no artifact; the observation was a misreading.
+    """
+
+    DEVREV_PROMPT = "devrev_prompt"
+    N8N_AGENT_PROMPT = "n8n_agent_prompt"
+    RAG_PROMPT = "rag_prompt"
+    RAG_CODE = "rag_code"
+    RETRIEVAL_OR_CHUNKING = "retrieval_or_chunking"
+    KNOWLEDGE_BASE = "knowledge_base"
+    INQUIRY_ROUTER = "inquiry_router"
+    DATA_COLLECTION = "data_collection"
+    N8N_FLOW = "n8n_flow"
+    CONSOLE_OR_TOOLING = "console_or_tooling"
+    CONFIGURATION = "configuration"
+    NO_CHANGE = "no_change"
 
 
 class CorrelationStatus(str, Enum):
@@ -885,6 +926,24 @@ class TicketReview(_Base):
     status: ReviewStatus = Field(default=ReviewStatus.UNREVIEWED)
     remediation_target: RemediationTarget = Field(default=RemediationTarget.UNKNOWN)
     assigned_reviewer: Optional[ReviewerIdentity] = Field(default=None)
+    # What the fix was, for any review the reviewer scored below 5.
+    remediation_summary: Optional[str] = Field(
+        default=None, max_length=MAX_REMEDIATION_SUMMARY_LENGTH
+    )
+    modified_surfaces: list[ModifiedSurface] = Field(default_factory=list, max_length=12)
+
+    @field_validator("modified_surfaces")
+    @classmethod
+    def _closed_and_deduplicated(
+        cls, value: Optional[list[ModifiedSurface]]
+    ) -> Optional[list[ModifiedSurface]]:
+        """Keep surfaces ordered, duplicate-free, and unambiguous about no change."""
+        if value is None:
+            return None
+        unique = sorted({item for item in value}, key=lambda item: item.value)
+        if ModifiedSurface.NO_CHANGE in unique and len(unique) > 1:
+            raise ValueError("'no_change' cannot accompany a modified surface")
+        return unique
 
     # Evidence correlation.
     correlation_status: CorrelationStatus = Field(default=CorrelationStatus.UNAVAILABLE)
@@ -933,8 +992,25 @@ class ReviewPatch(_Base):
     severity: Optional[Severity] = Field(default=None)
     status: Optional[ReviewStatus] = Field(default=None)
     remediation_target: Optional[RemediationTarget] = Field(default=None)
+    remediation_summary: Optional[str] = Field(
+        default=None, max_length=MAX_REMEDIATION_SUMMARY_LENGTH
+    )
+    modified_surfaces: Optional[list[ModifiedSurface]] = Field(default=None, max_length=12)
     assigned_reviewer: Optional[ReviewerIdentity] = Field(default=None)
     resolution: Optional[ReviewResolution] = Field(default=None)
+
+    @field_validator("modified_surfaces")
+    @classmethod
+    def _closed_and_deduplicated(
+        cls, value: Optional[list[ModifiedSurface]]
+    ) -> Optional[list[ModifiedSurface]]:
+        """Keep surfaces ordered, duplicate-free, and unambiguous about no change."""
+        if value is None:
+            return None
+        unique = sorted({item for item in value}, key=lambda item: item.value)
+        if ModifiedSurface.NO_CHANGE in unique and len(unique) > 1:
+            raise ValueError("'no_change' cannot accompany a modified surface")
+        return unique
 
 
 # =====================================================================

@@ -559,7 +559,7 @@ async function createBatchFromSelection() {
       body:
         `${created?.batch?.item_count ?? refs.length} observation(s) frozen` +
         (planned > 0 ? `, ${planned} review(s) moved to planned` : "") +
-        ". Copy the Codex prompt from the remediation panel to hand it over.",
+        ". The batch is ready for agent handoff.",
       tone: "info",
     });
     store.dispatch({ type: "selection/clear" });

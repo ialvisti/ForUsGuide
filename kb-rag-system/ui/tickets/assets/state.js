@@ -186,12 +186,11 @@ export const CONVERSATION_FILTERS = Object.freeze([
   "unclassified",
 ]);
 
-/** The four workspace panels of the detail view. */
+/** The three workspace panels of the detail view. */
 export const WORKSPACE_PANELS = Object.freeze([
   "conversation",
   "evidence",
   "history",
-  "remediation",
 ]);
 
 /** Every evaluation field the reviewer may edit, i.e. the patch surface. */

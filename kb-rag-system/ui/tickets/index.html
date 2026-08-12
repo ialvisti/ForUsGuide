@@ -555,8 +555,6 @@
               aria-controls="panel-evidence" aria-selected="false" tabindex="-1">RAG evidence</button>
       <button type="button" role="tab" id="tab-history" data-panel="history"
               aria-controls="panel-history" aria-selected="false" tabindex="-1">Review history</button>
-      <button type="button" role="tab" id="tab-remediation" data-panel="remediation"
-              aria-controls="panel-remediation" aria-selected="false" tabindex="-1">Remediation</button>
     </div>
 
     <!-- ------------------------------------------------------ conversation -->
@@ -679,59 +677,6 @@
           Load more review history
         </button>
         <p class="field-help" id="history-more-help"></p>
-      </div>
-    </section>
-
-    <!-- ------------------------------------------------------- remediation -->
-    <section class="workspace-panel" id="panel-remediation" role="tabpanel"
-             aria-labelledby="tab-remediation" tabindex="0" hidden>
-      <h4 id="remediation-heading">Remediation and resolution</h4>
-      <p class="panel-status" id="remediation-status" role="status" aria-live="polite"></p>
-      <div class="remediation-workflow-actions">
-        <button type="button" class="button button-quiet" id="detail-add-batch" disabled
-                aria-describedby="detail-batch-help">
-          Add to remediation batch
-        </button>
-        <p class="field-help" id="detail-batch-help">
-          Adds this review to a new remediation batch, frozen at the version on
-          screen. The control is disabled when this deployment reports remediation
-          as unavailable, or when your role may not curate a batch.
-        </p>
-      </div>
-      <div class="remediation-body" id="remediation-body"
-           aria-labelledby="remediation-heading"></div>
-
-      <!--
-        The batch a resolved review belongs to. Empty until the review carries a
-        batch reference, because batch access is by id and this console publishes
-        no batch listing. The agent's own controls are never rendered in here;
-        `allowedBatchActions` returns human edges only.
-      -->
-      <h5 id="batch-heading">Remediation batch</h5>
-      <p class="panel-status" id="batch-status" role="status" aria-live="polite"></p>
-      <div class="batch-card" id="batch-card" aria-labelledby="batch-heading"></div>
-      <div class="field">
-        <label class="field-label" for="batch-reason">
-          Reason or attestation for the batch decision
-        </label>
-        <textarea id="batch-reason" rows="2" maxlength="1000"
-                  aria-describedby="batch-reason-help"></textarea>
-        <p class="field-help" id="batch-reason-help">
-          Required for every batch decision except “Mark ready”, and recorded in
-          the append-only audit ledger. For “Start verification” this is your
-          attestation that you did not author the change.
-        </p>
-      </div>
-      <div class="field">
-        <label class="field-label" for="batch-prompt-fallback">
-          Codex prompt, for manual copying
-        </label>
-        <textarea id="batch-prompt-fallback" rows="6" readonly hidden
-                  aria-describedby="batch-prompt-help"></textarea>
-        <p class="field-help" id="batch-prompt-help">
-          Shown only when the browser refuses clipboard access. The prompt is not
-          stored by this console; it is fetched, handed over, and dropped.
-        </p>
       </div>
     </section>
 

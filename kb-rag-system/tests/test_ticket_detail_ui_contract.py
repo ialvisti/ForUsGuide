@@ -77,12 +77,11 @@ NEW_MODULES = (
     "answer-presentation.js",
 )
 
-#: The four workspace panels, and the tab that controls each.
+#: The three workspace panels, and the tab that controls each.
 WORKSPACE_PANELS = {
     "tab-conversation": "panel-conversation",
     "tab-evidence": "panel-evidence",
     "tab-history": "panel-history",
-    "tab-remediation": "panel-remediation",
 }
 
 #: Every element the controller writes into, by id.
@@ -108,7 +107,6 @@ REQUIRED_IDS = (
     "history-status",
     "history-integrity",
     "history-list",
-    "remediation-body",
     "evaluation-form",
     "eval-errors",
     "eval-save",
@@ -153,7 +151,6 @@ TECHNICAL_AUDIT_IDS = (
     "panel-conversation",
     "panel-evidence",
     "panel-history",
-    "panel-remediation",
 )
 
 #: Each editable control, and the canonical bound its ``maxlength`` must equal.
@@ -279,7 +276,7 @@ class TestWorkspaceStructure:
         for term in terms:
             assert term.all_text(), "a metadata row has no label"
 
-    def test_the_workspace_has_its_own_four_tabs_over_four_panels(self, dom):
+    def test_the_workspace_has_three_tabs_over_three_panels(self, dom):
         tablist = _by_id(dom, "detail-tablist")
         assert tablist.get("role") == "tablist"
         tabs = [node for node in tablist.walk() if node.get("role") == "tab"]
@@ -296,12 +293,23 @@ class TestWorkspaceStructure:
             # scrolled or read without a pointer.
             assert panel.get("tabindex") == "0"
 
-    def test_the_four_panels_are_the_named_ones(self, dom):
+    def test_the_three_panels_are_the_named_ones(self, dom):
         labels = [
             _by_id(dom, tab_id).all_text()
-            for tab_id in ("tab-conversation", "tab-evidence", "tab-history", "tab-remediation")
+            for tab_id in ("tab-conversation", "tab-evidence", "tab-history")
         ]
-        assert labels == ["Conversation", "RAG evidence", "Review history", "Remediation"]
+        assert labels == ["Conversation", "RAG evidence", "Review history"]
+
+    def test_remediation_is_not_a_workspace_panel(self, dom, scripts):
+        detail = _detail(dom)
+        assert not [
+            node for node in detail.walk() if node.get("data-panel") == "remediation"
+        ]
+        assert _js_string_list(scripts["state.js"], "WORKSPACE_PANELS") == [
+            "conversation",
+            "evidence",
+            "history",
+        ]
 
     def test_the_workspace_adds_no_second_data_table(self, dom):
         """One table on this page, and it is the results table.
@@ -1390,12 +1398,7 @@ class TestReadableTechnicalAudit:
             for ancestor in reload_control.ancestors()
         )
 
-        add_batch = _by_id(detail, "detail-add-batch")
-        assert any(
-            ancestor.get("id") == "panel-remediation"
-            for ancestor in add_batch.ancestors()
-        )
-        for control_id in ("detail-reload", "detail-add-batch", "detail-copy-id"):
+        for control_id in ("detail-reload", "detail-copy-id"):
             assert sum(node.get("id") == control_id for node in detail.walk()) == 1
 
     def test_remote_change_summaries_and_exact_keys_are_legible_and_protected(
@@ -1511,7 +1514,7 @@ class TestRagOnlyAndRoles:
         assert "export async function createReview" not in adapter
 
     @pytest.mark.parametrize(
-        "control", ["eval-save", "eval-reset", "detail-add-batch", "conflict-overwrite"]
+        "control", ["eval-save", "eval-reset", "conflict-overwrite"]
     )
     def test_every_write_action_can_be_disabled(self, dom, new_scripts, control):
         assert control in _ids(_detail(dom))
@@ -1540,20 +1543,6 @@ class TestRagOnlyAndRoles:
         assert "canUnassign" in source
         assert "Saving your evaluation assigns it to you." in source
         assert "verified sign-in identity, which no route publishes" in _prose(source)
-
-    def test_a_batch_control_that_cannot_work_says_why(self, dom):
-        """The help names the two reasons the control can be unusable.
-
-        It used to say "no route", because Stage 8 had not published one. The
-        route exists now, so the honest reasons are configuration and role — and
-        a disabled control that does not say which is indistinguishable from a
-        broken one.
-        """
-        help_text = _flat(_by_id(_detail(dom), "detail-batch-help").all_text()).lower()
-        assert "disabled" in help_text
-        assert "unavailable" in help_text
-        assert "role" in help_text
-
 
 # =====================================================================
 # 12 — closing a review
@@ -1737,7 +1726,6 @@ class TestNoRegressions:
             "conversation-status",
             "evidence-status",
             "history-status",
-            "remediation-status",
             "evaluation-actor",
         ):
             node = _by_id(detail, status)

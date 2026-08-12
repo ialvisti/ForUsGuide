@@ -364,6 +364,11 @@ class TestReviewerFirstWorkflow:
 
 class TestEvaluationForm:
 
+    def test_status_control_has_a_role_visibility_container(self, dom):
+        form = _by_id(dom, "evaluation-form")
+        container = _by_id(form, "eval-status-field")
+        assert _by_id(container, "eval-status").get("name") == "status"
+
     def test_the_form_exists_and_never_submits_itself(self, dom):
         form = _by_id(dom, "evaluation-form")
         assert form.tag == "form"

@@ -128,6 +128,17 @@ export function populateChoices(dom) {
  */
 export function populateStatuses(dom, { review, role }) {
   const current = review?.status ?? "unreviewed";
+  // Only an administrator decides a status. For a reviewer it is a consequence
+  // of saving, derived by the server, so a control here would offer a choice
+  // that is not theirs to make.
+  const visible = role === "admin";
+  dom.statusField.hidden = !visible;
+  if (!visible) {
+    replaceChildren(dom.status, [option("", "Leave unchanged")]);
+    dom.status.disabled = true;
+    dom.statusHelp.textContent = "";
+    return [];
+  }
   const allowed = allowedNextStatuses(current, { role });
   const children = [option("", "Leave unchanged")];
   for (const value of allowed) {

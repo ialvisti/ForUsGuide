@@ -157,6 +157,7 @@ function collectDom() {
     observationType: byId("eval-observation-type"),
     severity: byId("eval-severity"),
     remediationTarget: byId("eval-remediation-target"),
+    statusField: byId("eval-status-field"),
     status: byId("eval-status"),
     statusHelp: byId("eval-status-help"),
     assignment: byId("eval-assignment"),

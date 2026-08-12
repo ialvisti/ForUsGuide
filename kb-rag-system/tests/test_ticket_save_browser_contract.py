@@ -58,6 +58,65 @@ process.stdout.write(JSON.stringify({
 }));
 """
 
+_STATUS_HARNESS = r"""
+import fs from "node:fs";
+
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
+
+class FakeNode {
+  constructor(tag = "div") {
+    this.tag = tag;
+    this.children = [];
+    this.disabled = false;
+    this.hidden = false;
+    this.textContent = "";
+  }
+  get firstChild() {
+    return this.children[0] ?? null;
+  }
+  appendChild(child) {
+    this.children.push(child);
+    return child;
+  }
+  removeChild(child) {
+    this.children.splice(this.children.indexOf(child), 1);
+  }
+  setAttribute(name, value) {
+    this[name] = value;
+  }
+}
+
+globalThis.document = {
+  documentElement: { lang: "en" },
+  createElement: (tag) => new FakeNode(tag),
+};
+
+const evaluation = await import(request.evaluationUrl);
+
+function renderFor(role) {
+  const dom = {
+    statusField: new FakeNode(),
+    status: new FakeNode("select"),
+    statusHelp: new FakeNode("p"),
+  };
+  const allowed = evaluation.populateStatuses(dom, {
+    review: { status: "reviewed" },
+    role,
+  });
+  return {
+    allowed,
+    hidden: dom.statusField.hidden,
+    disabled: dom.status.disabled,
+    help: dom.statusHelp.textContent,
+  };
+}
+
+process.stdout.write(JSON.stringify({
+  reviewer: renderFor("reviewer"),
+  admin: renderFor("admin"),
+}));
+"""
+
 
 def test_verified_session_subject_reaches_the_self_assignment_patch() -> None:
     request = {
@@ -79,3 +138,27 @@ def test_verified_session_subject_reaches_the_self_assignment_patch() -> None:
         "email": "reviewer@example.invalid",
         "display_name": "Synthetic Reviewer",
     }
+
+
+def test_only_an_admin_is_offered_the_status_control() -> None:
+    request = {
+        "evaluationUrl": (UI_ASSETS_DIRECTORY / "evaluation.js").as_uri(),
+    }
+    completed = subprocess.run(
+        ["node", "--input-type=module", "-e", _STATUS_HARNESS],
+        check=True,
+        capture_output=True,
+        input=json.dumps(request),
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+
+    assert result["reviewer"] == {
+        "allowed": [],
+        "hidden": True,
+        "disabled": True,
+        "help": "",
+    }
+    assert result["admin"]["hidden"] is False
+    assert result["admin"]["disabled"] is False
+    assert "resolved" in result["admin"]["allowed"]

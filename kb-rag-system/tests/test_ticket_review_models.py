@@ -1403,6 +1403,11 @@ REVIEW_TABLE = {
     ReviewStatus.WONT_FIX: set(),
 }
 
+ADMIN_REVIEW_TABLE = {
+    ReviewStatus.REVIEWED: {ReviewStatus.RESOLVED},
+    ReviewStatus.TRIAGED: {ReviewStatus.RESOLVED},
+}
+
 BATCH_TABLE = {
     BatchStatus.DRAFT: {BatchStatus.READY, BatchStatus.CANCELLED},
     BatchStatus.READY: {BatchStatus.CLAIMED, BatchStatus.CANCELLED},
@@ -1447,10 +1452,48 @@ class TestReviewTransitions:
     def test_every_disallowed_edge_is_rejected(self):
         for current, targets in REVIEW_TABLE.items():
             for target in ReviewStatus:
-                if target in targets or target is current:
+                if (
+                    target in targets
+                    or target in ADMIN_REVIEW_TABLE.get(current, set())
+                    or target is current
+                ):
                     continue
                 with pytest.raises(InvalidReviewTransition):
                     assert_review_transition(current, target, actor_role=ReviewerRole.ADMIN)
+
+    def test_admin_extra_edges_are_advertised_without_changing_the_ordinary_table(self):
+        for current, targets in ADMIN_REVIEW_TABLE.items():
+            assert set(
+                allowed_review_transitions(current, actor_role=ReviewerRole.ADMIN)
+            ) == REVIEW_TABLE[current] | targets
+            assert set(
+                allowed_review_transitions(current, actor_role=ReviewerRole.REVIEWER)
+            ) == REVIEW_TABLE[current]
+
+    def test_an_admin_may_resolve_a_reviewed_review_with_a_defensible_resolution(self):
+        assert_review_transition(
+            ReviewStatus.REVIEWED,
+            ReviewStatus.RESOLVED,
+            actor_role=ReviewerRole.ADMIN,
+            resolution=_resolution(),
+        )
+
+    def test_an_admin_direct_resolution_still_requires_a_resolution(self):
+        with pytest.raises(InvalidReviewTransition, match="resolution"):
+            assert_review_transition(
+                ReviewStatus.REVIEWED,
+                ReviewStatus.RESOLVED,
+                actor_role=ReviewerRole.ADMIN,
+            )
+
+    def test_a_reviewer_cannot_take_an_admin_direct_resolution_edge(self):
+        with pytest.raises(InvalidReviewTransition, match="not an allowed"):
+            assert_review_transition(
+                ReviewStatus.REVIEWED,
+                ReviewStatus.RESOLVED,
+                actor_role=ReviewerRole.REVIEWER,
+                resolution=_resolution(),
+            )
 
     def test_resolved_and_wont_fix_are_terminal(self):
         assert allowed_review_transitions(ReviewStatus.RESOLVED) == frozenset()

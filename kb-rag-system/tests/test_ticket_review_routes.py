@@ -1057,6 +1057,72 @@ class TestPatchPreconditions:
         )
         assert response.status_code == 403
 
+    def test_an_admin_closes_a_reviewed_review_in_one_patch(self, monkeypatch):
+        harness = _harness(monkeypatch, role=ReviewerRole.ADMIN)
+        created = _create_review(harness)
+        reviewed = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client,
+                idempotency="idem-admin-direct-close-setup",
+                **{"If-Match": '"v1"'},
+            ),
+            json={"rating": 4},
+        )
+        assert reviewed.status_code == 200, reviewed.text
+        assert reviewed.json()["status"] == "reviewed"
+
+        response = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client,
+                idempotency="idem-admin-direct-close",
+                **{"If-Match": '"v2"'},
+            ),
+            json={
+                "status": "resolved",
+                "resolution": {
+                    "outcome": "no_change",
+                    "no_change_reason": "The issue was already fixed and verified.",
+                },
+            },
+        )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["status"] == "resolved"
+
+    def test_a_reviewer_cannot_use_the_admin_direct_close_edge(self, monkeypatch):
+        harness = _harness(monkeypatch, role=ReviewerRole.REVIEWER)
+        created = _create_review(harness)
+        reviewed = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client,
+                idempotency="idem-reviewer-direct-close-setup",
+                **{"If-Match": '"v1"'},
+            ),
+            json={"rating": 4},
+        )
+        assert reviewed.status_code == 200, reviewed.text
+
+        response = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client,
+                idempotency="idem-reviewer-direct-close",
+                **{"If-Match": '"v2"'},
+            ),
+            json={
+                "status": "resolved",
+                "resolution": {
+                    "outcome": "no_change",
+                    "no_change_reason": "The issue was already fixed and verified.",
+                },
+            },
+        )
+
+        assert response.status_code in {409, 422}
+
 
 # =====================================================================
 # Audit and evidence

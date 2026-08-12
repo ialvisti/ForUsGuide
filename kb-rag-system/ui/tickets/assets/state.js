@@ -83,6 +83,12 @@ export const REVIEW_TRANSITIONS = Object.freeze({
   wont_fix: Object.freeze([]),
 });
 
+/** Edges only an administrator may take. Mirrored from the server's own. */
+export const ADMIN_EXTRA_TRANSITIONS = Object.freeze({
+  reviewed: Object.freeze(["resolved"]),
+  triaged: Object.freeze(["resolved"]),
+});
+
 /** Statuses no ordinary patch can leave. Only an admin reopen does, to `triaged`. */
 export const TERMINAL_REVIEW_STATUSES = Object.freeze(["resolved", "wont_fix"]);
 
@@ -838,7 +844,11 @@ export function allowedNextStatuses(status, { role = "viewer" } = {}) {
   if (TERMINAL_REVIEW_STATUSES.includes(status)) {
     return role === "admin" ? [REOPEN_TARGET] : [];
   }
-  return [...(REVIEW_TRANSITIONS[status] ?? [])];
+  const allowed = [...(REVIEW_TRANSITIONS[status] ?? [])];
+  if (role === "admin") {
+    allowed.push(...(ADMIN_EXTRA_TRANSITIONS[status] ?? []));
+  }
+  return [...new Set(allowed)];
 }
 
 /** Whether a chosen status needs a closed resolution object to be accepted. */

@@ -33,6 +33,7 @@ import re
 
 import pytest
 
+import api.ticket_review_models as review_models
 from api.ticket_review_models import (
     MAX_COMMENTS_LENGTH,
     MAX_EXPECTED_BEHAVIOR_LENGTH,
@@ -525,6 +526,24 @@ class TestClosedVocabularies:
             for status, targets in _REVIEW_TRANSITIONS.items()
         }
         assert mirrored == canonical
+
+    def test_the_admin_transition_table_is_the_servers_own(self, scripts):
+        canonical_table = getattr(review_models, "_ADMIN_EXTRA_TRANSITIONS", None)
+        assert canonical_table is not None
+        body = _js_object(scripts["state.js"], "ADMIN_EXTRA_TRANSITIONS")
+        mirrored = {
+            state: sorted(re.findall(r'"([^"]+)"', targets))
+            for state, targets in re.findall(
+                r"(\w+): Object\.freeze\(\[([^\]]*)\]\)", body
+            )
+        }
+        canonical = {
+            status.value: sorted(target.value for target in targets)
+            for status, targets in canonical_table.items()
+        }
+        assert mirrored == canonical
+        assert 'role === "admin"' in scripts["state.js"]
+        assert "ADMIN_EXTRA_TRANSITIONS[status]" in scripts["state.js"]
 
     @pytest.mark.parametrize(
         "name,enum",

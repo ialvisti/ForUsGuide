@@ -2108,15 +2108,32 @@ _REVIEW_TRANSITIONS: dict[ReviewStatus, frozenset[ReviewStatus]] = {
     ReviewStatus.WONT_FIX: frozenset(),
 }
 
+#: Edges an administrator may take that the ordinary table refuses.
+#:
+#: The lifecycle walks a fix from triage to verification, which is right when an
+#: agent does the work. It is wrong when the administrator already knows the
+#: issue is fixed: six saves to record one fact is a table that describes a
+#: process nobody follows. A terminal target still demands a defensible
+#: ReviewResolution, so this widens who may close, never what closing costs.
+_ADMIN_EXTRA_TRANSITIONS: dict[ReviewStatus, frozenset[ReviewStatus]] = {
+    ReviewStatus.REVIEWED: frozenset({ReviewStatus.RESOLVED}),
+    ReviewStatus.TRIAGED: frozenset({ReviewStatus.RESOLVED}),
+}
+
 TERMINAL_REVIEW_STATUSES = frozenset({ReviewStatus.RESOLVED, ReviewStatus.WONT_FIX})
 _REVIEW_MUTATING_ROLES = frozenset(
     {ReviewerRole.REVIEWER, ReviewerRole.REMEDIATOR, ReviewerRole.ADMIN}
 )
 
 
-def allowed_review_transitions(status: ReviewStatus) -> frozenset[ReviewStatus]:
-    """Return the closed set of statuses reachable from ``status``."""
-    return _REVIEW_TRANSITIONS[status]
+def allowed_review_transitions(
+    status: ReviewStatus, *, actor_role: ReviewerRole = ReviewerRole.REVIEWER
+) -> frozenset[ReviewStatus]:
+    """Return the closed set of statuses reachable by ``actor_role``."""
+    allowed = set(_REVIEW_TRANSITIONS[status])
+    if actor_role is ReviewerRole.ADMIN:
+        allowed |= _ADMIN_EXTRA_TRANSITIONS.get(status, frozenset())
+    return frozenset(allowed)
 
 
 def assert_review_transition(
@@ -2153,7 +2170,10 @@ def assert_review_transition(
     if admin_reopen:
         raise InvalidReviewTransition(f"'{current.value}' is not terminal and cannot be reopened")
 
-    if target not in _REVIEW_TRANSITIONS[current]:
+    allowed = set(_REVIEW_TRANSITIONS[current])
+    if actor_role is ReviewerRole.ADMIN:
+        allowed |= _ADMIN_EXTRA_TRANSITIONS.get(current, frozenset())
+    if target not in allowed:
         raise InvalidReviewTransition(
             f"'{current.value}' -> '{target.value}' is not an allowed review transition"
         )

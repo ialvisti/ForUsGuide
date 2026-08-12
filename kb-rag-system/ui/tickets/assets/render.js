@@ -665,6 +665,21 @@ const REMEDIATION_LABELS = new Map([
   ["unknown", "Unknown"],
 ]);
 
+export const MODIFIED_SURFACE_LABELS = new Map([
+  ["devrev_prompt", "DevRev prompt"],
+  ["n8n_agent_prompt", "n8n agent prompt"],
+  ["rag_prompt", "RAG prompt"],
+  ["rag_code", "RAG code"],
+  ["retrieval_or_chunking", "Retrieval or chunking"],
+  ["knowledge_base", "Knowledge base"],
+  ["inquiry_router", "Inquiry router"],
+  ["data_collection", "Data collection"],
+  ["n8n_flow", "n8n flow"],
+  ["console_or_tooling", "Console or tooling"],
+  ["configuration", "Configuration"],
+  ["no_change", "No change needed"],
+]);
+
 /**
  * Fill the facet-value control.
  *
@@ -831,6 +846,8 @@ const FIELD_LABELS = new Map([
   ["severity", "Severity"],
   ["status", "Status"],
   ["remediation_target", "Remediation target"],
+  ["remediation_summary", "What was done"],
+  ["modified_surfaces", "What was modified"],
   ["assigned_reviewer", "Assigned reviewer"],
   ["legacy_reviewer_display_name", "Historical reviewer"],
   ["resolution", "Resolution"],

@@ -662,6 +662,7 @@ class TestThemeAndLanguagePreferences:
             "Rate the final answer and document the correction, if any.",
             "Wrong route",
             "The root-cause taxonomy this console adds. Use “Wrong route” when the answer took the wrong path with the information it already had.",
+            "Remediation record",
             "Technical audit details",
             "Save review",
         ):

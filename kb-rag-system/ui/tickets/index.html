@@ -444,6 +444,33 @@
           </div>
         </fieldset>
 
+        <details id="remediation-record" class="remediation-record" hidden>
+          <summary id="remediation-record-summary">Remediation record</summary>
+          <p class="remediation-record-intro">
+            <strong>What fixed it.</strong>
+            <span>Fill this in when the answer scored below 5 and something had to change.</span>
+            <span>It is what a later reviewer reads to find the change.</span>
+          </p>
+          <div class="remediation-record-body">
+            <div class="field field-wide">
+              <label for="eval-remediation-summary">What was done</label>
+              <textarea id="eval-remediation-summary" name="remediation_summary" rows="4"
+                        maxlength="5000"
+                        aria-describedby="eval-remediation-summary-count"></textarea>
+              <p class="char-count" id="eval-remediation-summary-count"></p>
+            </div>
+
+            <fieldset class="field field-wide chip-select" id="eval-modified-surfaces">
+              <legend>What was modified</legend>
+              <div class="checks chip-checks" id="eval-modified-surfaces-group"></div>
+              <p class="field-help" id="eval-modified-surfaces-help">
+                Every surface the fix touched. Choose “No change needed” alone
+                when the observation was a misreading.
+              </p>
+            </fieldset>
+          </div>
+        </details>
+
         <p class="form-errors" id="eval-errors" role="alert"></p>
 
         <div class="field field-wide field-actions evaluation-actions">

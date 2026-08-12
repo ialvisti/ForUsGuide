@@ -157,6 +157,8 @@ function collectDom() {
     observationType: byId("eval-observation-type"),
     severity: byId("eval-severity"),
     remediationTarget: byId("eval-remediation-target"),
+    remediationRecord: byId("remediation-record"),
+    modifiedSurfaces: byId("eval-modified-surfaces-group"),
     statusField: byId("eval-status-field"),
     status: byId("eval-status"),
     statusHelp: byId("eval-status-help"),
@@ -1387,6 +1389,10 @@ function renderEvaluation(current) {
     force: current.ref !== lastRenderedRef || Object.keys(current.draft).length === 0,
   });
   evaluation.syncResolutionVisibility(dom, { review: current.review, draft: current.draft });
+  evaluation.syncRemediationVisibility(dom, {
+    review: current.review,
+    draft: current.draft,
+  });
   evaluation.updateCounts(dom, { review: current.review, draft: current.draft });
   evaluation.applyRole(dom, {
     role: activeRole,

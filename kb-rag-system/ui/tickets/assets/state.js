@@ -122,6 +122,22 @@ export const REMEDIATION_TARGETS = Object.freeze([
   "unknown",
 ]);
 
+/** What a fix had to touch. The server's closed set, in display order. */
+export const MODIFIED_SURFACES = Object.freeze([
+  "devrev_prompt",
+  "n8n_agent_prompt",
+  "rag_prompt",
+  "rag_code",
+  "retrieval_or_chunking",
+  "knowledge_base",
+  "inquiry_router",
+  "data_collection",
+  "n8n_flow",
+  "console_or_tooling",
+  "configuration",
+  "no_change",
+]);
+
 export const RESOLUTION_OUTCOMES = Object.freeze([
   "fixed",
   "no_change",
@@ -142,6 +158,7 @@ export const FIELD_LIMITS = Object.freeze({
   legacy_type: 80,
   comments: 10000,
   expected_behavior: 10000,
+  remediation_summary: 5000,
   verification_summary: 5000,
   no_change_reason: 1000,
   branch: 256,
@@ -772,6 +789,8 @@ const SAVED_VALUE_PATHS = Object.freeze({
   severity: ["severity"],
   status: ["status"],
   remediation_target: ["remediation_target"],
+  remediation_summary: ["remediation_summary"],
+  modified_surfaces: ["modified_surfaces"],
   outcome: ["resolution", "outcome"],
   verification_summary: ["resolution", "verification_summary"],
   no_change_reason: ["resolution", "no_change_reason"],
@@ -792,7 +811,17 @@ export function savedValue(review, field) {
     }
     current = current[step];
   }
-  return current === null || current === undefined ? "" : String(current);
+  if (current === null || current === undefined) {
+    return "";
+  }
+  // A repeated field is carried in the draft as a sorted, comma-joined string so
+  // the whole dirty/conflict machinery keeps comparing strings. Sorting here as
+  // well as on the server means a document written before that rule still reads
+  // as clean instead of marking the form dirty on load.
+  if (Array.isArray(current)) {
+    return [...current].sort().join(",");
+  }
+  return String(current);
 }
 
 /**

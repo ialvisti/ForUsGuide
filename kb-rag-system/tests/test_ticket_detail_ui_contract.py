@@ -39,9 +39,11 @@ from api.ticket_review_models import (
     MAX_EXPECTED_BEHAVIOR_LENGTH,
     MAX_ID_LENGTH,
     MAX_LEGACY_TYPE_LENGTH,
+    MAX_REMEDIATION_SUMMARY_LENGTH,
     MAX_REASON_LENGTH,
     MAX_SUMMARY_LENGTH,
     MAX_TOPIC_LENGTH,
+    ModifiedSurface,
     ObservationType,
     RemediationTarget,
     ResolutionOutcome,
@@ -158,6 +160,7 @@ TECHNICAL_AUDIT_IDS = (
 CANONICAL_LIMITS = {
     "eval-comments": MAX_COMMENTS_LENGTH,
     "eval-expected-behavior": MAX_EXPECTED_BEHAVIOR_LENGTH,
+    "eval-remediation-summary": MAX_REMEDIATION_SUMMARY_LENGTH,
     "eval-verification-summary": MAX_SUMMARY_LENGTH,
     "eval-no-change-reason": MAX_REASON_LENGTH,
     "eval-branch": MAX_ID_LENGTH,
@@ -170,6 +173,7 @@ LIMIT_FIELD_NAMES = {
     "legacy_type": MAX_LEGACY_TYPE_LENGTH,
     "comments": MAX_COMMENTS_LENGTH,
     "expected_behavior": MAX_EXPECTED_BEHAVIOR_LENGTH,
+    "remediation_summary": MAX_REMEDIATION_SUMMARY_LENGTH,
     "verification_summary": MAX_SUMMARY_LENGTH,
     "no_change_reason": MAX_REASON_LENGTH,
     "branch": MAX_ID_LENGTH,
@@ -364,6 +368,28 @@ class TestEvaluationForm:
         container = _by_id(form, "eval-status-field")
         assert _by_id(container, "eval-status").get("name") == "status"
 
+    def test_remediation_record_is_a_native_disclosure_inside_the_form(self, dom):
+        form = _by_id(dom, "evaluation-form")
+        record = _by_id(form, "remediation-record")
+        assert record.tag == "details"
+        assert record.get("hidden") is not None
+        assert _by_id(record, "eval-remediation-summary").get("name") == (
+            "remediation_summary"
+        )
+        assert _by_id(record, "eval-modified-surfaces-group").tag == "div"
+
+    def test_modified_surface_choices_use_native_labelled_checkboxes(self, scripts):
+        source = scripts["evaluation.js"]
+        assert 'name: "modified_surfaces"' in source
+        assert 'type: "checkbox"' in source
+        assert 'attrs: { for: id }' in source
+        assert 'className: "check chip-check"' in source
+
+    def test_remediation_record_has_its_own_disclosure_styles(self, css_source):
+        assert ".remediation-record > summary" in css_source
+        assert ".remediation-record[open] > summary::before" in css_source
+        assert ".remediation-record:not([open]) > :not(summary)" in css_source
+
     def test_the_form_exists_and_never_submits_itself(self, dom):
         form = _by_id(dom, "evaluation-form")
         assert form.tag == "form"
@@ -543,6 +569,7 @@ class TestClosedVocabularies:
         "name,enum",
         [
             ("OBSERVATION_TYPES", ObservationType),
+            ("MODIFIED_SURFACES", ModifiedSurface),
             ("SEVERITIES", Severity),
             ("REMEDIATION_TARGETS", RemediationTarget),
             ("RESOLUTION_OUTCOMES", ResolutionOutcome),

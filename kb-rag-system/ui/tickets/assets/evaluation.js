@@ -28,6 +28,7 @@
 
 import {
   FIELD_LIMITS,
+  MODIFIED_SURFACES,
   OBSERVATION_TYPES,
   REMEDIATION_TARGETS,
   RESOLUTION_OUTCOMES,
@@ -38,6 +39,7 @@ import {
   statusNeedsResolution,
 } from "./state.js";
 import {
+  MODIFIED_SURFACE_LABELS,
   OBSERVATION_LABELS,
   REMEDIATION_LABELS,
   SEVERITY_LABELS,
@@ -60,6 +62,7 @@ const NEAR_LIMIT_FRACTION = 0.9;
 export const COUNTED_FIELDS = Object.freeze([
   ["eval-comments", "comments"],
   ["eval-expected-behavior", "expected_behavior"],
+  ["eval-remediation-summary", "remediation_summary"],
   ["eval-verification-summary", "verification_summary"],
   ["eval-no-change-reason", "no_change_reason"],
 ]);
@@ -71,6 +74,7 @@ const CONTROL_IDS = Object.freeze({
   expected_behavior: "eval-expected-behavior",
   severity: "eval-severity",
   remediation_target: "eval-remediation-target",
+  remediation_summary: "eval-remediation-summary",
   status: "eval-status",
   assigned_reviewer: "eval-assignment",
   outcome: "eval-outcome",
@@ -108,6 +112,23 @@ export function populateChoices(dom) {
   fillSelect(dom.observationType, OBSERVATION_TYPES, OBSERVATION_LABELS);
   fillSelect(dom.severity, SEVERITIES, SEVERITY_LABELS);
   fillSelect(dom.remediationTarget, REMEDIATION_TARGETS, REMEDIATION_LABELS);
+  replaceChildren(
+    dom.modifiedSurfaces,
+    MODIFIED_SURFACES.map((value) => {
+      const id = `eval-surface-${value.replace(/_/g, "-")}`;
+      const box = el("input", {
+        attrs: { type: "checkbox", id, name: "modified_surfaces", value },
+      });
+      const label = el("label", {
+        text: MODIFIED_SURFACE_LABELS.get(value) ?? value,
+        attrs: { for: id },
+      });
+      const wrap = el("span", { className: "check chip-check" });
+      wrap.appendChild(box);
+      wrap.appendChild(label);
+      return wrap;
+    })
+  );
   fillSelect(
     dom.outcome,
     RESOLUTION_OUTCOMES,
@@ -223,6 +244,14 @@ function ratingValue(dom) {
   return chosen === null ? "" : chosen.value;
 }
 
+/** The chosen surfaces, as the sorted, comma-joined string the draft carries. */
+function modifiedSurfacesValue(dom) {
+  const chosen = Array.from(
+    dom.modifiedSurfaces.querySelectorAll("input[name='modified_surfaces']:checked")
+  ).map((box) => box.value);
+  return chosen.sort().join(",");
+}
+
 /** Everything the controls currently hold, keyed the way the draft is. */
 export function readForm(dom) {
   const values = {};
@@ -234,6 +263,7 @@ export function readForm(dom) {
     values[field] = node.value;
   }
   values.rating = ratingValue(dom);
+  values.modified_surfaces = modifiedSurfacesValue(dom);
   return values;
 }
 
@@ -268,6 +298,17 @@ export function syncForm(dom, { review, draft, session, force = false }) {
     box.checked = box.value === rating;
   }
 
+  const surfaces =
+    "modified_surfaces" in draft
+      ? String(draft.modified_surfaces ?? "")
+      : savedValue(review, "modified_surfaces");
+  const wanted = new Set(surfaces === "" ? [] : surfaces.split(","));
+  for (const box of Array.from(
+    dom.modifiedSurfaces.querySelectorAll("input[name='modified_surfaces']")
+  )) {
+    box.checked = wanted.has(box.value);
+  }
+
   const assignment = "assigned_reviewer" in draft ? draft.assigned_reviewer : "keep";
   if (force || dom.assignment !== document.activeElement) {
     dom.assignment.value = assignment;
@@ -297,6 +338,11 @@ export function applyRole(dom, { role, review, saving, dirty }) {
   for (const box of Array.from(dom.ratingGroup.querySelectorAll("input[name='rating']"))) {
     box.disabled = !editable || saving;
   }
+  for (const box of Array.from(
+    dom.modifiedSurfaces.querySelectorAll("input[name='modified_surfaces']")
+  )) {
+    box.disabled = !editable || saving;
+  }
   dom.ratingClear.disabled = !editable || saving;
   dom.save.disabled = !editable || saving || !dirty;
   dom.reset.disabled = !editable || saving || !dirty;
@@ -318,6 +364,25 @@ export function syncResolutionVisibility(dom, { review, draft }) {
     statusNeedsResolution(chosen) || statusNeedsResolution(current) || stored !== null;
   dom.resolution.hidden = !closing;
   return closing;
+}
+
+/**
+ * Show the remediation record exactly when it applies.
+ *
+ * Below 5 is the reviewer saying something went wrong, which is the only case
+ * where "what fixed it" has an answer. A record that already exists stays
+ * visible whatever the rating now says, because hiding stored words is how they
+ * get lost.
+ */
+export function syncRemediationVisibility(dom, { review, draft }) {
+  const chosen =
+    "rating" in draft ? String(draft.rating ?? "") : savedValue(review, "rating");
+  const rating = chosen === "" ? null : Number.parseInt(chosen, 10);
+  const stored =
+    Boolean(review?.remediation_summary) || (review?.modified_surfaces ?? []).length > 0;
+  const applies = stored || (Number.isInteger(rating) && rating < 5);
+  dom.remediationRecord.hidden = !applies;
+  return applies;
 }
 
 function displayLocale() {
@@ -437,6 +502,7 @@ export function buildSave({ review, draft, session }) {
   const NULLABLE_TEXT = new Set([
     "comments",
     "expected_behavior",
+    "remediation_summary",
   ]);
   const NULLABLE_ENUM = new Set(["observation_type", "severity"]);
 
@@ -450,6 +516,11 @@ export function buildSave({ review, draft, session }) {
       patch[field] = draft[field] === "" ? "unknown" : draft[field];
     } else if (field === "rating") {
       patch[field] = draft[field] === "" ? null : Number.parseInt(draft[field], 10);
+    } else if (field === "modified_surfaces") {
+      // A repeated field travels as a list. An empty draft is an explicit clear,
+      // not an omission: the field only reaches `changed` when it differs from
+      // what is stored.
+      patch[field] = draft[field] === "" ? [] : String(draft[field]).split(",");
     } else if (field === "status") {
       if (draft[field] !== "") {
         patch[field] = draft[field];

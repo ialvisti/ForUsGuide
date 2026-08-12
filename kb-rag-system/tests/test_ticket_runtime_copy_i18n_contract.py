@@ -80,6 +80,37 @@ def test_static_runtime_guidance_round_trips_without_english_fragments() -> None
             ("Code", "Código"),
             ("Workflow", "Flujo de trabajo"),
             ("None", "Ninguna"),
+            ("Remediation record", "Registro de remediación"),
+            ("What fixed it.", "Qué lo arregló."),
+            (
+                "Fill this in when the answer scored below 5 and something had to "
+                "change.",
+                "Llena esto cuando la respuesta obtuvo menos de 5 y algo tuvo que "
+                "cambiar.",
+            ),
+            (
+                "It is what a later reviewer reads to find the change.",
+                "Es lo que lee después otro revisor para encontrar el cambio.",
+            ),
+            ("What was done", "Qué se hizo"),
+            ("What was modified", "Qué se modificó"),
+            (
+                "Every surface the fix touched. Choose “No change needed” alone when "
+                "the observation was a misreading.",
+                "Cada superficie que tocó el arreglo. Elige “No hacía falta cambiar "
+                "nada” sola cuando la observación fue una mala lectura.",
+            ),
+            ("DevRev prompt", "Prompt de DevRev"),
+            ("n8n agent prompt", "Prompt del agente n8n"),
+            ("RAG prompt", "Prompt del RAG"),
+            ("RAG code", "Código del RAG"),
+            ("Retrieval or chunking", "Recuperación o fragmentación"),
+            ("Inquiry router", "Enrutador de consultas"),
+            ("Data collection", "Recolección de datos"),
+            ("n8n flow", "Flujo de n8n"),
+            ("Console or tooling", "Consola o herramientas"),
+            ("Configuration", "Configuración"),
+            ("No change needed", "No hacía falta cambiar nada"),
             (
                 "No body is shown here because the upstream body was not plain text.",
                 "Aquí no se muestra contenido porque el contenido original no era "

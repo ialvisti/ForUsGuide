@@ -3955,6 +3955,113 @@ main {
   display: none !important;
 }
 
+.remediation-record {
+  grid-column: 1 / -1;
+  min-width: 0;
+  color: var(--text);
+  background: var(--surface-sunken);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.remediation-record > summary {
+  display: flex;
+  gap: 0.65rem;
+  align-items: center;
+  min-height: var(--touch-target);
+  padding: 0.65rem 0.8rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  font-weight: 650;
+  color: var(--text-muted);
+  cursor: pointer;
+  list-style: none;
+  transition: color var(--motion-fast) ease,
+    background-color var(--motion-base) ease,
+    border-color var(--motion-base) ease;
+}
+
+.remediation-record > summary::-webkit-details-marker {
+  display: none;
+}
+
+.remediation-record > summary::before {
+  display: inline-grid;
+  flex: 0 0 1.4rem;
+  width: 1.4rem;
+  height: 1.4rem;
+  content: "+";
+  font-family: var(--font-mono);
+  font-size: 0.875rem;
+  line-height: 1;
+  border: 1px solid var(--border-strong);
+  border-radius: 50%;
+  place-items: center;
+}
+
+.remediation-record[open] > summary::before {
+  content: "\2212";
+}
+
+.remediation-record > summary:hover {
+  color: var(--text);
+  background: var(--surface-raised);
+}
+
+.remediation-record[open] > summary {
+  color: var(--text);
+  border-bottom: 1px solid var(--border);
+  border-radius: 9px 9px 0 0;
+}
+
+.remediation-record:not([open]) > :not(summary) {
+  display: none !important;
+}
+
+.remediation-record-intro {
+  display: grid;
+  gap: 0.25rem;
+  max-width: 72ch;
+  padding: 0.875rem 0.875rem 0;
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.remediation-record-body {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: 0.875rem;
+  padding: 0.875rem;
+  animation: disclosure-arrive var(--motion-fast) var(--ease-out) both;
+}
+
+.chip-checks {
+  gap: 0.5rem;
+}
+
+.chip-check {
+  min-height: var(--touch-target);
+  padding: 0.35rem 0.7rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+
+.chip-check:focus-within {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.chip-check:has(input:checked) {
+  color: var(--text);
+  background: var(--surface-raised);
+  border-color: var(--border-strong);
+}
+
+.chip-check label {
+  cursor: pointer;
+}
+
 .technical-filter-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));

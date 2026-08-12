@@ -117,6 +117,60 @@ process.stdout.write(JSON.stringify({
 }));
 """
 
+_REMEDIATION_HARNESS = r"""
+import fs from "node:fs";
+
+const request = JSON.parse(fs.readFileSync(0, "utf8"));
+const summary = { value: "Adjusted retrieval and verified the response." };
+globalThis.document = {
+  documentElement: { lang: "en" },
+  getElementById: (id) => id === "eval-remediation-summary" ? summary : null,
+};
+
+const state = await import(request.stateUrl);
+const evaluation = await import(request.evaluationUrl);
+const checked = [
+  { checked: true, value: "rag_code" },
+  { checked: true, value: "devrev_prompt" },
+];
+const dom = {
+  ratingGroup: { querySelector: () => null },
+  modifiedSurfaces: { querySelectorAll: () => checked },
+  remediationRecord: { hidden: true },
+};
+const form = evaluation.readForm(dom);
+const plan = evaluation.buildSave({
+  review: { remediation_summary: null, modified_surfaces: [] },
+  draft: form,
+  session: null,
+});
+
+const hiddenAtFive = evaluation.syncRemediationVisibility(dom, {
+  review: { remediation_summary: null, modified_surfaces: [] },
+  draft: { rating: "5" },
+});
+const visibleAtFour = evaluation.syncRemediationVisibility(dom, {
+  review: { remediation_summary: null, modified_surfaces: [] },
+  draft: { rating: "4" },
+});
+const storedStaysVisible = evaluation.syncRemediationVisibility(dom, {
+  review: { remediation_summary: "Recorded fix", modified_surfaces: [] },
+  draft: { rating: "5" },
+});
+
+process.stdout.write(JSON.stringify({
+  form,
+  patch: plan.patch,
+  saved: state.savedValue(
+    { modified_surfaces: ["rag_code", "devrev_prompt"] },
+    "modified_surfaces"
+  ),
+  hiddenAtFive,
+  visibleAtFour,
+  storedStaysVisible,
+}));
+"""
+
 
 def test_verified_session_subject_reaches_the_self_assignment_patch() -> None:
     request = {
@@ -162,3 +216,28 @@ def test_only_an_admin_is_offered_the_status_control() -> None:
     assert result["admin"]["hidden"] is False
     assert result["admin"]["disabled"] is False
     assert "resolved" in result["admin"]["allowed"]
+
+
+def test_remediation_record_uses_sorted_draft_values_and_rating_visibility() -> None:
+    request = {
+        "evaluationUrl": (UI_ASSETS_DIRECTORY / "evaluation.js").as_uri(),
+        "stateUrl": (UI_ASSETS_DIRECTORY / "state.js").as_uri(),
+    }
+    completed = subprocess.run(
+        ["node", "--input-type=module", "-e", _REMEDIATION_HARNESS],
+        check=True,
+        capture_output=True,
+        input=json.dumps(request),
+        text=True,
+    )
+    result = json.loads(completed.stdout)
+
+    assert result["form"]["modified_surfaces"] == "devrev_prompt,rag_code"
+    assert result["patch"] == {
+        "remediation_summary": "Adjusted retrieval and verified the response.",
+        "modified_surfaces": ["devrev_prompt", "rag_code"],
+    }
+    assert result["saved"] == "devrev_prompt,rag_code"
+    assert result["hiddenAtFive"] is False
+    assert result["visibleAtFour"] is True
+    assert result["storedStaysVisible"] is True

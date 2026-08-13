@@ -904,6 +904,22 @@ class TestReviewLifecycle:
         assert response.status_code == 200
         assert len(response.json()["items"]) == 1
 
+    def test_the_verified_remediation_agent_may_list_the_review_queue(self, monkeypatch):
+        harness = _harness(
+            monkeypatch,
+            email=AGENT_SA,
+            settings_overrides={
+                "AGENT_SERVICE_ACCOUNT": AGENT_SA,
+                "AGENT_IAP_TARGET_AUDIENCE": f"{CONSOLE_ORIGIN}/*",
+            },
+        )
+        _create_review(harness)
+
+        response = harness.client.get(f"{API_PREFIX}/reviews", headers=_auth_headers())
+
+        assert response.status_code == 200, response.text
+        assert len(response.json()["items"]) == 1
+
     def test_a_facet_needs_both_halves(self, monkeypatch):
         harness = _harness(monkeypatch)
         response = harness.client.get(

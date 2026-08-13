@@ -2,9 +2,9 @@
 
 What this is
 ------------
-The one program a coding agent uses to claim a remediation batch, read the
-frozen observations, record what it did, and hand the work back to a human. It
-speaks only to the console's admin API over IAP.
+The one program a coding agent uses to enumerate low-rated reviews, claim a
+remediation batch, read the frozen observations, record what it did, and hand
+the work back to a human. It speaks only to the console's admin API over IAP.
 
 What this deliberately is not
 -----------------------------
@@ -62,8 +62,8 @@ import time
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterable, Mapping, Optional, Protocol, Sequence
-from urllib.parse import urlsplit
+from typing import Any, Callable, Iterable, Mapping, Optional, Protocol, Sequence, cast
+from urllib.parse import urlencode, urlsplit
 
 import httpx
 
@@ -88,6 +88,7 @@ EXIT_UNSAFE = 8
 
 API_PREFIX = "/api/admin/v1"
 BATCHES_PATH = "/remediation-batches"
+REVIEWS_PATH = "/reviews"
 LEASE_TOKEN_HEADER = "X-Tickets-Lease-Token"
 IDEMPOTENCY_HEADER = "Idempotency-Key"
 LOCAL_REVIEWER_HEADER = "X-Tickets-Local-Reviewer"
@@ -99,6 +100,18 @@ REMEDIATION_HEARTBEAT_S = 5 * 60
 REMEDIATION_MAX_CONTINUOUS_LEASE_S = 2 * 60 * 60
 
 VALID_ENVIRONMENTS = ("local", "staging", "production")
+REVIEW_STATUSES = (
+    "unreviewed",
+    "reviewed",
+    "triaged",
+    "planned",
+    "in_progress",
+    "changes_proposed",
+    "verifying",
+    "resolved",
+    "blocked",
+    "wont_fix",
+)
 LOOPBACK_HOSTS = frozenset({"127.0.0.1", "::1", "localhost"})
 
 #: The directory Git is asked for. Never joined from caller input.
@@ -803,6 +816,25 @@ class ConsoleClient:
             return UpstreamError(message, hint="the console reports itself unavailable")
         return UpstreamError(message)
 
+    def reviews_with_rating(
+        self, rating: int, *, status: Optional[str] = None
+    ) -> list[Mapping[str, Any]]:
+        params: list[tuple[str, str]] = [
+            ("facet", "rating"),
+            ("facet_value", str(rating)),
+            ("page_size", "100"),
+        ]
+        if status:
+            params.append(("statuses", status))
+        response = self.call(
+            "GET",
+            f"{API_PREFIX}{REVIEWS_PATH}?{urlencode(params)}",
+        )
+        body = response.body
+        if not isinstance(body, Mapping) or not isinstance(body.get("items"), list):
+            raise UpstreamError("the review queue response has no item list")
+        return [item for item in body["items"] if isinstance(item, Mapping)]
+
     # -- the batch surface ------------------------------------------------
 
     def batch_path(self, batch_id: str, suffix: str = "") -> str:
@@ -898,6 +930,23 @@ _SUMMARY_FIELDS = (
     "plan_artifact",
     "verification_summary",
     "prompt_template_version",
+)
+
+_BELOW_RATING_FIELDS = (
+    "review_id",
+    "devrev_display_id",
+    "rating",
+    "observation_type",
+    "severity",
+    "remediation_target",
+    "status",
+    "comments",
+    "expected_behavior",
+    "modified_surfaces",
+    "remediation_summary",
+    "ticket_job_ids",
+    "request_id_hashes",
+    "source_article_ids",
 )
 
 
@@ -1194,6 +1243,43 @@ def _assert_repository_matches(context: Context) -> None:
         raise UnsafeEnvironmentError(
             f"this checkout is on {head!r} and {expected!r} is not an ancestor of it"
         ) from exc
+
+
+def command_reviews_below_rating(context: Context) -> int:
+    """Merge equality queries into the low-rated review set."""
+    threshold = int(context.args.rating_below)
+    status = getattr(context.args, "status", None)
+    unique: dict[str, Mapping[str, Any]] = {}
+    for rating in range(1, threshold):
+        for item in context.client.reviews_with_rating(rating, status=status):
+            actual = item.get("rating")
+            if isinstance(actual, bool) or not isinstance(actual, int):
+                continue
+            if actual < 1 or actual >= threshold:
+                continue
+            review_id = str(item.get("review_id") or "")
+            if not REVIEW_ID_PATTERN.match(review_id):
+                continue
+            unique.setdefault(review_id, item)
+
+    ordered = list(unique.values())
+    # Python's sort is stable, so equal timestamps retain rating-query order.
+    ordered.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+    payload = [
+        {field: item.get(field) for field in _BELOW_RATING_FIELDS}
+        for item in ordered
+    ]
+    if context.as_json:
+        context.out(payload)
+    else:
+        out = context.stdout if context.stdout is not None else sys.stdout
+        for item in payload:
+            print(
+                f"{item['review_id']} {item['devrev_display_id'] or '-'} "
+                f"rating={item['rating']} status={item['status'] or '-'}",
+                file=out,
+            )
+    return EXIT_OK
 
 
 def command_auth_doctor(context: Context) -> int:
@@ -1593,6 +1679,7 @@ def command_block(context: Context) -> int:
 
 
 COMMANDS: dict[str, Callable[[Context], int]] = {
+    "reviews below-rating": command_reviews_below_rating,
     "auth doctor": command_auth_doctor,
     "batch show": command_show,
     "batch claim": command_claim,
@@ -1646,6 +1733,14 @@ def _add_common(parser: argparse.ArgumentParser, *, needs_batch: bool) -> None:
         parser.add_argument("--batch-id", required=True)
 
 
+def _add_review_common(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--console-url", required=True, help="exact console origin")
+    parser.add_argument(
+        "--environment", required=True, choices=list(VALID_ENVIRONMENTS)
+    )
+    parser.add_argument("--json", action="store_true", help="machine-readable output")
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="ticket_review_cli.py",
@@ -1662,6 +1757,30 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = auth_sub.add_parser("doctor", help="check credentials and reachability")
     _add_common(doctor, needs_batch=False)
     doctor.add_argument("--batch-id", help="optionally also probe one batch")
+
+    reviews = top.add_parser("reviews", help="query durable reviews")
+    reviews_sub = reviews.add_subparsers(dest="command", required=True)
+    below_rating = reviews_sub.add_parser(
+        "below-rating",
+        help="list reviews whose recorded rating is below a threshold",
+        description=(
+            "List reviews whose recorded rating is below the threshold. "
+            "Unrated reviews are excluded because unrated is not low-rated."
+        ),
+    )
+    _add_review_common(below_rating)
+    below_rating.add_argument(
+        "--rating-below",
+        type=int,
+        choices=range(2, 7),
+        default=5,
+        help="exclusive rating threshold (default: 5)",
+    )
+    below_rating.add_argument(
+        "--status",
+        choices=REVIEW_STATUSES,
+        help="optionally require one review status",
+    )
 
     batch = top.add_parser("batch", help="work on one remediation batch")
     batch_sub = batch.add_subparsers(dest="command", required=True)
@@ -1777,7 +1896,10 @@ def run(
         console_url = validated_console_url(args.console_url, environment=environment)
         args.environment = environment
         args.console_url = console_url
-        resolved_store = store or LeaseStore.resolve(runner=git_runner)
+        needs_store = args.group != "reviews"
+        resolved_store = store or (
+            LeaseStore.resolve(runner=git_runner) if needs_store else None
+        )
         resolved_signer = signer or build_signer(
             console_url=console_url, environment=environment, transport=transport
         )
@@ -1786,7 +1908,9 @@ def run(
         )
         context = Context(
             args=args,
-            store=resolved_store,
+            # Review queries never touch lease state. Batch/auth commands always
+            # resolve a real store before reaching their handler.
+            store=cast(LeaseStore, resolved_store),
             client=client,
             signer=resolved_signer,
             spawner=spawner,
@@ -1796,8 +1920,8 @@ def run(
         announce(
             console_url=console_url,
             environment=environment,
-            repo_id=args.repo_id,
-            base_ref=args.expected_base_ref,
+            repo_id=getattr(args, "repo_id", "-"),
+            base_ref=getattr(args, "expected_base_ref", "-"),
             batch_id=getattr(args, "batch_id", None),
             apply=bool(getattr(args, "apply", False)),
             stream=stderr,

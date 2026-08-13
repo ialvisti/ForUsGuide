@@ -49,6 +49,7 @@ BATCH_ID = "0" * 31 + "1"
 OTHER_BATCH_ID = "f" * 32
 REVIEW_A = "a" * 64
 REVIEW_B = "b" * 64
+REVIEW_C = "c" * 64
 COMMIT = "c" * 40
 
 DEPLOYED_CONSOLE = "https://tickets-console-abc-uc.a.run.app"
@@ -100,6 +101,7 @@ class _Recorder:
             {
                 "method": request.method,
                 "path": request.url.path,
+                "query": dict(request.url.params),
                 "headers": dict(request.headers),
                 "body": json.loads(request.content) if request.content else None,
             }
@@ -196,6 +198,7 @@ class TestCommandSurface:
             "batch submit",
             "batch block",
             "batch release",
+            "reviews below-rating",
         }
 
     def test_the_help_renders_for_every_subcommand(self, capsys):
@@ -292,6 +295,116 @@ class TestCommandSurface:
         for prefix in ("claim", "beat", "mat", "patch", "release"):
             key = cli.new_idempotency_key(prefix)
             assert validate_idempotency_key(key) == key
+
+
+class TestReviewsBelowRating:
+    def test_help_says_unrated_reviews_are_not_low_rated(self):
+        help_text = " ".join(
+            _subparser("reviews", "below-rating").format_help().split()
+        )
+        assert "Unrated reviews are excluded" in help_text
+        assert "--rating-below" in help_text
+        assert "--status" in help_text
+
+    def test_four_rating_queries_are_deduplicated_filtered_and_stably_sorted(
+        self, store
+    ):
+        expected_fields = {
+            "review_id",
+            "devrev_display_id",
+            "rating",
+            "observation_type",
+            "severity",
+            "remediation_target",
+            "status",
+            "comments",
+            "expected_behavior",
+            "modified_surfaces",
+            "remediation_summary",
+            "ticket_job_ids",
+            "request_id_hashes",
+            "source_article_ids",
+        }
+
+        def review(review_id: str, rating: int | None, updated_at: str) -> dict[str, Any]:
+            return {
+                "review_id": review_id,
+                "devrev_display_id": f"TICKET-{review_id[0]}",
+                "rating": rating,
+                "observation_type": "wrong_route",
+                "severity": "medium",
+                "remediation_target": "code",
+                "status": "reviewed",
+                "comments": "Synthetic observation",
+                "expected_behavior": "Synthetic expected behavior",
+                "modified_surfaces": ["rag_code"],
+                "remediation_summary": "Synthetic fix",
+                "ticket_job_ids": [f"job-{review_id[0]}"],
+                "request_id_hashes": [review_id],
+                "source_article_ids": [f"article-{review_id[0]}"],
+                "updated_at": updated_at,
+            }
+
+        def response(request: httpx.Request) -> httpx.Response:
+            rating = int(request.url.params["facet_value"])
+            pages = {
+                1: [review(REVIEW_A, 1, "2026-08-12T12:00:00Z")],
+                2: [
+                    review(REVIEW_B, 2, "2026-08-12T14:00:00Z"),
+                    review(REVIEW_A, 1, "2026-08-12T12:00:00Z"),
+                ],
+                3: [
+                    review(REVIEW_C, 3, "2026-08-12T13:00:00Z"),
+                    review("e" * 64, 5, "2026-08-12T15:00:00Z"),
+                    review("f" * 64, None, "2026-08-12T16:00:00Z"),
+                ],
+                4: [review("d" * 64, 4, "2026-08-12T13:00:00Z")],
+            }
+            return httpx.Response(
+                200,
+                json={"items": pages[rating], "next_cursor": None, "page_size": 100},
+            )
+
+        recorder = _Recorder(
+            {("GET", f"{cli.API_PREFIX}/reviews"): response}
+        )
+        code, out, _ = _run(
+            [
+                "reviews",
+                "below-rating",
+                "--console-url",
+                DEPLOYED_CONSOLE,
+                "--environment",
+                "staging",
+                "--rating-below",
+                "5",
+                "--status",
+                "reviewed",
+                "--json",
+            ],
+            recorder=recorder,
+            store=store,
+        )
+
+        assert code == cli.EXIT_OK
+        assert len(recorder.calls) == 4
+        assert [call["query"]["facet_value"] for call in recorder.calls] == [
+            "1",
+            "2",
+            "3",
+            "4",
+        ]
+        assert all(call["query"]["facet"] == "rating" for call in recorder.calls)
+        assert all(call["query"]["statuses"] == "reviewed" for call in recorder.calls)
+        payload = json.loads(out)
+        assert [item["review_id"] for item in payload] == [
+            REVIEW_B,
+            REVIEW_C,
+            "d" * 64,
+            REVIEW_A,
+        ]
+        assert all(set(item) == expected_fields for item in payload)
+        assert all(item["rating"] in {1, 2, 3, 4} for item in payload)
 
 
 _DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')

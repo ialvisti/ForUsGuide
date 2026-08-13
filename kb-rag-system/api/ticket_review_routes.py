@@ -625,6 +625,23 @@ async def authenticated_agent(
     return reviewer
 
 
+async def review_queue_reader(
+    reviewer: Annotated[AuthenticatedReviewer, Depends(authenticated_reviewer)],
+) -> AuthenticatedReviewer:
+    """A human viewer or the verified remediation agent.
+
+    The agent needs this one read-only queue surface to enumerate low-rated
+    reviews before it can form remediation batches. It receives no review detail
+    shortcut and no human write permission; every mutation keeps its existing
+    role and precondition checks.
+    """
+    if reviewer.is_agent and reviewer.role is ReviewerRole.AGENT:
+        return reviewer
+    if role_at_least(reviewer.role, ReviewerRole.VIEWER):
+        return reviewer
+    raise AuthorizationFailed("that role may not read the review queue")
+
+
 def _rate_limited(
     request: Request, reviewer: AuthenticatedReviewer, *, write: bool
 ) -> None:
@@ -1131,7 +1148,7 @@ def _rewrapped_timeline(
 async def list_reviews(
     request: Request,
     response: Response,
-    reviewer: Annotated[AuthenticatedReviewer, Depends(require_role(ReviewerRole.VIEWER))],
+    reviewer: Annotated[AuthenticatedReviewer, Depends(review_queue_reader)],
     service: Annotated[Any, Depends(get_service)],
     page_cursor: CursorHeader = None,
     statuses: Annotated[Optional[list[ReviewStatus]], Query()] = None,

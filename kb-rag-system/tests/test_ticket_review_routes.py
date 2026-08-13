@@ -904,6 +904,30 @@ class TestReviewLifecycle:
         assert response.status_code == 200
         assert len(response.json()["items"]) == 1
 
+    def test_the_rating_facet_matches_the_numeric_review_field(self, monkeypatch):
+        harness = _harness(monkeypatch)
+        created = _create_review(harness)
+        patched = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client,
+                idempotency="idem-patch-rating-facet",
+                **{"If-Match": '"v1"'},
+            ),
+            json={"rating": 4},
+        )
+        assert patched.status_code == 200, patched.text
+
+        response = harness.client.get(
+            f"{API_PREFIX}/reviews?facet=rating&facet_value=4",
+            headers=_auth_headers(),
+        )
+
+        assert response.status_code == 200, response.text
+        assert [item["review_id"] for item in response.json()["items"]] == [
+            created["review_id"]
+        ]
+
     def test_the_verified_remediation_agent_may_list_the_review_queue(self, monkeypatch):
         harness = _harness(
             monkeypatch,
@@ -938,6 +962,30 @@ class TestReviewLifecycle:
 
 
 class TestPatchPreconditions:
+
+    def test_null_modified_surfaces_is_rejected_without_corrupting_the_review(
+        self, monkeypatch
+    ):
+        harness = _harness(monkeypatch)
+        created = _create_review(harness)
+
+        rejected = harness.client.patch(
+            f"{API_PREFIX}/reviews/{created['review_id']}",
+            headers=_write_headers(
+                harness.client,
+                idempotency="idem-patch-null-surfaces",
+                **{"If-Match": '"v1"'},
+            ),
+            json={"modified_surfaces": None},
+        )
+
+        assert rejected.status_code == 422, rejected.text
+        persisted = harness.client.get(
+            f"{API_PREFIX}/reviews/{created['review_id']}", headers=_auth_headers()
+        )
+        assert persisted.status_code == 200, persisted.text
+        assert persisted.json()["modified_surfaces"] == []
+        assert persisted.json()["version"] == 1
 
     def test_a_patch_requires_if_match(self, monkeypatch):
         harness = _harness(monkeypatch)

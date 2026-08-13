@@ -358,7 +358,7 @@ class TestReviewsBelowRating:
                     review("e" * 64, 5, "2026-08-12T15:00:00Z"),
                     review("f" * 64, None, "2026-08-12T16:00:00Z"),
                 ],
-                4: [review("d" * 64, 4, "2026-08-12T13:00:00Z")],
+                4: [review("d" * 64, 4, "2026-08-12T13:00:00.500000Z")],
             }
             return httpx.Response(
                 200,
@@ -399,12 +399,46 @@ class TestReviewsBelowRating:
         payload = json.loads(out)
         assert [item["review_id"] for item in payload] == [
             REVIEW_B,
-            REVIEW_C,
             "d" * 64,
+            REVIEW_C,
             REVIEW_A,
         ]
         assert all(set(item) == expected_fields for item in payload)
         assert all(item["rating"] in {1, 2, 3, 4} for item in payload)
+
+    def test_a_rating_query_reads_every_cursor_page(self):
+        def response(request: httpx.Request) -> httpx.Response:
+            cursor = request.headers.get(cli.CURSOR_HEADER)
+            pages = {
+                None: {
+                    "items": [{"review_id": REVIEW_A}],
+                    "next_cursor": "opaque-page-2",
+                    "page_size": 100,
+                },
+                "opaque-page-2": {
+                    "items": [{"review_id": REVIEW_B}],
+                    "next_cursor": None,
+                    "page_size": 100,
+                },
+            }
+            return httpx.Response(200, json=pages[cursor])
+
+        recorder = _Recorder({("GET", f"{cli.API_PREFIX}/reviews"): response})
+        client = cli.ConsoleClient(
+            console_url=DEPLOYED_CONSOLE,
+            signer=_StubSigner(),
+            transport=recorder.transport,
+        )
+
+        items = client.reviews_with_rating(1, status="reviewed")
+
+        assert [item["review_id"] for item in items] == [REVIEW_A, REVIEW_B]
+        assert len(recorder.calls) == 2
+        assert recorder.calls[0]["headers"].get(cli.CURSOR_HEADER.lower()) is None
+        assert (
+            recorder.calls[1]["headers"][cli.CURSOR_HEADER.lower()]
+            == "opaque-page-2"
+        )
 
 
 _DOCSTRING = re.compile(r'("""|\'\'\')(?:.|\n)*?\1')

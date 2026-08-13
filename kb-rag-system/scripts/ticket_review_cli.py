@@ -61,6 +61,7 @@ import sys
 import time
 import uuid
 from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, Iterable, Mapping, Optional, Protocol, Sequence, cast
 from urllib.parse import urlencode, urlsplit
@@ -130,6 +131,8 @@ IDEMPOTENCY_PATTERN = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{7,127}\Z")
 HTTP_CONNECT_TIMEOUT_S = 5.0
 HTTP_READ_TIMEOUT_S = 30.0
 MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+MAX_REVIEW_CURSOR_LENGTH = 2_048
+MAX_REVIEW_QUERY_PAGES = 1_000
 
 IAM_CREDENTIALS_HOST = "iamcredentials.googleapis.com"
 JWT_LIFETIME_S = 300
@@ -826,14 +829,30 @@ class ConsoleClient:
         ]
         if status:
             params.append(("statuses", status))
-        response = self.call(
-            "GET",
-            f"{API_PREFIX}{REVIEWS_PATH}?{urlencode(params)}",
-        )
-        body = response.body
-        if not isinstance(body, Mapping) or not isinstance(body.get("items"), list):
-            raise UpstreamError("the review queue response has no item list")
-        return [item for item in body["items"] if isinstance(item, Mapping)]
+        path = f"{API_PREFIX}{REVIEWS_PATH}?{urlencode(params)}"
+        items: list[Mapping[str, Any]] = []
+        cursor: Optional[str] = None
+        seen_cursors: set[str] = set()
+        for _page in range(MAX_REVIEW_QUERY_PAGES):
+            response = self.call("GET", path, cursor=cursor)
+            body = response.body
+            if not isinstance(body, Mapping) or not isinstance(body.get("items"), list):
+                raise UpstreamError("the review queue response has no item list")
+            items.extend(item for item in body["items"] if isinstance(item, Mapping))
+
+            next_cursor = body.get("next_cursor")
+            if next_cursor is None:
+                return items
+            if (
+                not isinstance(next_cursor, str)
+                or not next_cursor
+                or len(next_cursor) > MAX_REVIEW_CURSOR_LENGTH
+                or next_cursor in seen_cursors
+            ):
+                raise UpstreamError("the review queue returned an invalid page cursor")
+            seen_cursors.add(next_cursor)
+            cursor = next_cursor
+        raise UpstreamError("the review queue exceeded the pagination safety limit")
 
     # -- the batch surface ------------------------------------------------
 
@@ -1245,6 +1264,21 @@ def _assert_repository_matches(context: Context) -> None:
         ) from exc
 
 
+def _review_updated_at(item: Mapping[str, Any]) -> datetime:
+    """Return one comparable UTC instant, with malformed values sorted last."""
+    raw = item.get("updated_at")
+    if not isinstance(raw, str):
+        return datetime.min.replace(tzinfo=timezone.utc)
+    normalized = f"{raw[:-1]}+00:00" if raw.endswith("Z") else raw
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
 def command_reviews_below_rating(context: Context) -> int:
     """Merge equality queries into the low-rated review set."""
     threshold = int(context.args.rating_below)
@@ -1264,7 +1298,7 @@ def command_reviews_below_rating(context: Context) -> int:
 
     ordered = list(unique.values())
     # Python's sort is stable, so equal timestamps retain rating-query order.
-    ordered.sort(key=lambda item: str(item.get("updated_at") or ""), reverse=True)
+    ordered.sort(key=_review_updated_at, reverse=True)
     payload = [
         {field: item.get(field) for field in _BELOW_RATING_FIELDS}
         for item in ordered

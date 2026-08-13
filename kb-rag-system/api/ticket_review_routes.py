@@ -1176,9 +1176,20 @@ async def list_reviews(
             CODE_UNSUPPORTED_FILTER,
             "a facet filter needs both a name and a value",
         )
+    typed_facet_value: str | int | None = facet_value
+    if facet == "rating" and facet_value is not None:
+        if facet_value not in {"1", "2", "3", "4", "5"}:
+            raise ConsoleHTTPError(
+                status.HTTP_422_UNPROCESSABLE_ENTITY,
+                CODE_UNSUPPORTED_FILTER,
+                "the rating facet must be an integer from 1 through 5",
+            )
+        typed_facet_value = int(facet_value)
     query = ReviewListQuery(
         statuses=statuses or [],
-        facets={facet: facet_value} if facet is not None and facet_value is not None else {},
+        facets={facet: typed_facet_value}
+        if facet is not None and typed_facet_value is not None
+        else {},
         title_contains=title_contains,
         devrev_display_id=devrev_display_id,
         updated_after=updated_after,

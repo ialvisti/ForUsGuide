@@ -1006,7 +1006,7 @@ class ReviewPatch(_Base):
     ) -> Optional[list[ModifiedSurface]]:
         """Keep surfaces ordered, duplicate-free, and unambiguous about no change."""
         if value is None:
-            return None
+            raise ValueError("modified_surfaces must be omitted or contain a list")
         unique = sorted({item for item in value}, key=lambda item: item.value)
         if ModifiedSurface.NO_CHANGE in unique and len(unique) > 1:
             raise ValueError("'no_change' cannot accompany a modified surface")

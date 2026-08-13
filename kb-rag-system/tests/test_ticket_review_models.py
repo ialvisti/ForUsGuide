@@ -447,6 +447,10 @@ class TestClosedEnums:
 
 
 class TestRemediationRecord:
+    def test_patch_rejects_explicit_null_modified_surfaces(self):
+        with pytest.raises(ValueError, match="modified_surfaces"):
+            ReviewPatch(modified_surfaces=None)
+
     @pytest.mark.parametrize("factory", (_review, ReviewPatch))
     def test_modified_surfaces_are_sorted_and_deduplicated(self, factory):
         model = factory(

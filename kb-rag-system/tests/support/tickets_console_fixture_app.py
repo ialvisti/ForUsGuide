@@ -1151,22 +1151,29 @@ async def seed_reviews(
         ingested = await evaluation_service.ingest(fixture_evaluation_event(index))
         assert ingested.run.review_id is not None
         review = await repository.get_review(ingested.run.review_id)
+        status_path = _SEEDED_STATUSES[ordinal % len(_SEEDED_STATUSES)]
+        fields: dict[str, Any] = {
+            "topic": topics[ordinal % len(topics)],
+            "legacy_type": ("Answer quality", "Missing content")[ordinal % 2],
+            "rating": ratings[ordinal % len(ratings)],
+            "comments": (
+                f"Synthetic reviewer note {index}. The assistant answered from the "
+                "wrong article and the participant had to ask twice, which is the "
+                "kind of length this column has to survive without breaking the row."
+            ),
+            "observation_type": observations[ordinal % len(observations)],
+            "severity": severities[ordinal % len(severities)],
+            "expected_behavior": "Answer from the current plan document on the first reply.",
+            "assigned_reviewer": _fixture_actor() if ordinal % 2 else None,
+        }
+        if status_path == ("unreviewed",):
+            # Evaluation patches now derive `reviewed`. This scenario is the one
+            # deliberate exception, so declaring the current status explicitly
+            # suppresses derivation without inventing an illegal transition.
+            fields["status"] = "unreviewed"
         review = await repository.patch_review(
             review.review_id,
-            ReviewPatch(
-                topic=topics[ordinal % len(topics)],
-                legacy_type=("Answer quality", "Missing content")[ordinal % 2],
-                rating=ratings[ordinal % len(ratings)],
-                comments=(
-                    f"Synthetic reviewer note {index}. The assistant answered from the "
-                    "wrong article and the participant had to ask twice, which is the "
-                    "kind of length this column has to survive without breaking the row."
-                ),
-                observation_type=observations[ordinal % len(observations)],
-                severity=severities[ordinal % len(severities)],
-                expected_behavior="Answer from the current plan document on the first reply.",
-                assigned_reviewer=_fixture_actor() if ordinal % 2 else None,
-            ),
+            ReviewPatch(**fields),
             expected_version=review.version,
             context=_context(f"fields-{index:02d}"),
         )
@@ -1183,7 +1190,7 @@ async def seed_reviews(
 
             await repository.backend.transact(_seed_historical_reviewer)
             review = await repository.get_review(review.review_id)
-        for step, status in enumerate(_SEEDED_STATUSES[ordinal % len(_SEEDED_STATUSES)]):
+        for step, status in enumerate(status_path):
             if status == "unreviewed":
                 continue
             patch = ReviewPatch(status=status)

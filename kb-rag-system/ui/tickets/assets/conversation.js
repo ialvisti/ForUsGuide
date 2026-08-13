@@ -1,13 +1,14 @@
 /**
  * The conversation panel.
  *
- * One rule shapes every line of this module: **the five kinds of author are
+ * One rule shapes every line of this module: **the rendered kinds of author are
  * never conflated.** A participant wrote something the customer can see; a human
- * agent replied; the assistant answered; the ticket system recorded a change;
- * and an entry whose author could not be decided is *unclassified*, not a guess.
- * The server decides which of those an entry is, from configured identities and
- * upstream actor types — never from a display name, because a Rev user may be
- * called "Support Bot" and an automation may be called by a person's name.
+ * agent replied; the assistant answered; and an entry whose author could not be
+ * decided is *unclassified*, not a guess. Change events are removed by the
+ * service before they reach this module. The server decides the remaining class
+ * from configured identities and upstream actor types — never from a display
+ * name, because a Rev user may be called "Support Bot" and an automation may be
+ * called by a person's name.
  *
  * So this module reads `actor_class`, `internal` and `participant_facing` and
  * renders what they say. It never derives one from another, and it never labels
@@ -67,7 +68,7 @@ function authorPresentation(message) {
   const actor = message.actor ?? null;
   if (actor === null) {
     return {
-      text: message.actor_class === "event" ? "Ticket system" : "Author not recorded",
+      text: "Author not recorded",
       recorded: false,
     };
   }
@@ -186,36 +187,6 @@ function audienceNode(message, internal) {
   );
 }
 
-function eventEntry(message, item) {
-  const internal = message.internal === true;
-  item.className = "chat-event";
-  const row = el("div", { className: "activity-row" });
-  row.appendChild(labelledBadge(
-    "message-role",
-    actorClassLabel("event"),
-    { "data-actor-class": "event" },
-    "message-role-glyph",
-  ));
-  const hasRecordedSummary = Boolean(message.change_summary);
-  row.appendChild(el("span", {
-    className: "entry-body",
-    text: hasRecordedSummary
-      ? message.change_summary
-      : "A change was recorded with no summary.",
-    attrs: hasRecordedSummary
-      ? { "data-user-content": "", translate: "no" }
-      : {},
-  }));
-  if (message.created_at) {
-    const time = el("span", { className: "entry-time" });
-    time.appendChild(timeElement(message.created_at));
-    row.appendChild(time);
-  }
-  row.appendChild(audienceNode(message, internal));
-  item.appendChild(row);
-  return item;
-}
-
 function technicalDetails(message) {
   const details = el("details", { className: "message-technical" });
   details.appendChild(el("summary", { text: "Technical details" }));
@@ -264,10 +235,6 @@ export function conversationEntry(message, { expanded = false } = {}) {
         : {}),
     },
   });
-
-  if (actorClass === "event" || message.kind === "change_event") {
-    return eventEntry(message, item);
-  }
 
   const author = authorPresentation(message);
   const avatar = el("span", {

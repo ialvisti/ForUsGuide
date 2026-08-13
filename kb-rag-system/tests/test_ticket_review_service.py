@@ -385,6 +385,83 @@ def _service(devrev, repo, clock, *, broker=None, classifier=None, **kwargs):
 
 
 class TestBoundedHydration:
+    async def test_change_events_are_removed_before_classification_and_cache(
+        self, repo, clock
+    ):
+        cached: list[str] = []
+
+        async def record_cache_entry(entry):
+            cached.append(entry.remote_entry_id)
+
+        repo.upsert_message_cache_entry = record_cache_entry  # type: ignore[assignment]
+        devrev = _FakeDevRev(
+            pages=[
+                TimelinePage(
+                    items=[
+                        _entry("comment-1"),
+                        _entry(
+                            "event-1",
+                            kind=TimelineEntryKind.CHANGE_EVENT,
+                            author_id=None,
+                            body=None,
+                            body_type=None,
+                            visibility=TimelineVisibility.INTERNAL,
+                            change_summary="stage changed",
+                        ),
+                        _entry("comment-2"),
+                    ],
+                    page_size=50,
+                )
+            ]
+        )
+
+        page = await _service(devrev, repo, clock).get_timeline_page(SYNTHETIC_DON)
+
+        assert [item.entry_id for item in page.items] == ["comment-1", "comment-2"]
+        assert [message.entry_id for message in page.messages] == [
+            "comment-1",
+            "comment-2",
+        ]
+        assert cached == ["comment-1", "comment-2"]
+
+    async def test_an_event_only_page_is_empty_without_becoming_partial(
+        self, repo, clock
+    ):
+        cached: list[str] = []
+
+        async def record_cache_entry(entry):
+            cached.append(entry.remote_entry_id)
+
+        repo.upsert_message_cache_entry = record_cache_entry  # type: ignore[assignment]
+        devrev = _FakeDevRev(
+            pages=[
+                TimelinePage(
+                    items=[
+                        _entry(
+                            "event-1",
+                            kind=TimelineEntryKind.CHANGE_EVENT,
+                            author_id=None,
+                            body=None,
+                            body_type=None,
+                            visibility=TimelineVisibility.INTERNAL,
+                            change_summary="stage changed",
+                        )
+                    ],
+                    next_cursor="cursor-2",
+                    page_size=50,
+                    partial=False,
+                )
+            ]
+        )
+
+        page = await _service(devrev, repo, clock).get_timeline_page(SYNTHETIC_DON)
+
+        assert page.items == []
+        assert page.messages == []
+        assert page.next_cursor == "cursor-2"
+        assert page.partial is False
+        assert cached == []
+
     async def test_one_detail_call_is_one_works_get_plus_one_timeline_page(
         self, repo, clock
     ):

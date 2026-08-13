@@ -922,14 +922,23 @@ class TicketReviewService:
             warnings.append(WARNING_TIMELINE_UNAVAILABLE)
             return None, True, CacheState.FRESH
 
-        messages = [self._classifier.normalize(entry) for entry in page.items]
-        cache_state = await self._cache_messages(detail, page.items, warnings)
+        # Change events are dropped here, before classification and before the
+        # cache, because the console does not keep them: filtering in the browser
+        # would still put them on the wire and in Firestore. `page.next_cursor`
+        # is DevRev's, so paging stays correct; a page just carries fewer items.
+        kept = [
+            entry
+            for entry in page.items
+            if entry.kind is not TimelineEntryKind.CHANGE_EVENT
+        ]
+        messages = [self._classifier.normalize(entry) for entry in kept]
+        cache_state = await self._cache_messages(detail, kept, warnings)
 
         classified = ClassifiedTimelinePage(
             # Source order preserved: the adapter's order is DevRev's order, and
             # re-sorting a single page would misrepresent it. An explicitly
             # loaded multi-page set may be sorted; one page may not.
-            items=list(page.items),
+            items=list(kept),
             messages=messages,
             next_cursor=page.next_cursor,
             prev_cursor=page.prev_cursor,

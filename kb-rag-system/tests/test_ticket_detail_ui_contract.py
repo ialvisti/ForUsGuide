@@ -667,16 +667,6 @@ class TestConversationRendering:
             assert field in source, field
         assert "timeElement" in source
 
-    def test_a_change_event_is_summarised_apart_from_a_message(self, new_scripts):
-        """A change event carries no body and no author by construction.
-
-        Rendering it in the same shape as a reply would invent both, and an
-        invented author on an audit-adjacent surface is worse than a missing one.
-        """
-        source = new_scripts["conversation.js"]
-        assert "change_summary" in source
-        assert 'message.kind === "change_event"' in source
-
     def test_an_unmodelled_entry_falls_back_safely_with_an_identifier(self, new_scripts):
         """No raw payload, and something a support request can name."""
         source = new_scripts["conversation.js"]
@@ -699,7 +689,7 @@ class TestConversationRendering:
         assert "Show the whole message" in source
         assert '.entry-body[data-collapsed="true"]' in css_source
 
-    def test_the_seven_named_filters_are_offered_with_messages_as_the_default(
+    def test_the_six_named_filters_are_offered_with_messages_as_the_default(
         self, dom, scripts
     ):
         group = _by_id(dom, "conversation-filter-group")
@@ -714,7 +704,6 @@ class TestConversationRendering:
             "internal",
             "ai_or_system",
             "human_agent",
-            "event",
             "unclassified",
         }
         assert {node.get("name") for node in radios} == {"conversation-filter"}
@@ -1401,14 +1390,9 @@ class TestReadableTechnicalAudit:
         for control_id in ("detail-reload", "detail-copy-id"):
             assert sum(node.get("id") == control_id for node in detail.walk()) == 1
 
-    def test_remote_change_summaries_and_exact_keys_are_legible_and_protected(
-        self, scripts, css_source
-    ):
+    def test_exact_keys_are_legible_and_protected(self, scripts, css_source):
         preferences = scripts["preferences.js"]
-        conversation = scripts["conversation.js"]
         assert '"[data-user-content]"' in preferences
-        assert "message.change_summary" in conversation
-        assert '"data-user-content"' in conversation
         assert '"[data-kind=\'change_event\'] .entry-body"' not in preferences
 
         key_rule = re.search(r"\.structured-key\s*\{([^}]*)\}", css_source)

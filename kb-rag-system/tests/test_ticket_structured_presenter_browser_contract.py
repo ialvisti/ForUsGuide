@@ -564,7 +564,7 @@ class TestBoundedProgressivePresentation:
 
 class TestConversationDisclosureAccessibility:
 
-    def test_messages_filter_keeps_comments_and_excludes_ticket_activity(self):
+    def test_messages_filter_keeps_comments_and_excludes_unsupported_entries(self):
         comments = [
             {
                 "entry_id": f"message-{index}",
@@ -575,14 +575,6 @@ class TestConversationDisclosureAccessibility:
                 ["participant", "ai_or_system", "ai_or_system", "human_agent", "unknown"]
             )
         ]
-        events = [
-            {
-                "entry_id": f"event-{index}",
-                "kind": "change_event",
-                "actor_class": "event",
-            }
-            for index in range(13)
-        ]
         unsupported = {
             "entry_id": "unsupported-external",
             "kind": "unsupported",
@@ -591,22 +583,16 @@ class TestConversationDisclosureAccessibility:
 
         messages = _run(
             "conversation-filter",
-            value=[*comments, *events, unsupported],
+            value=[*comments, unsupported],
             options={"filter": "messages"},
-        )
-        activity = _run(
-            "conversation-filter",
-            value=[*comments, *events, unsupported],
-            options={"filter": "event"},
         )
         unclassified = _run(
             "conversation-filter",
-            value=[*comments, *events, unsupported],
+            value=[*comments, unsupported],
             options={"filter": "unclassified"},
         )
 
         assert messages["entry_ids"] == [entry["entry_id"] for entry in comments]
-        assert activity["entry_ids"] == [entry["entry_id"] for entry in events]
         assert unclassified["entry_ids"] == ["message-4", "unsupported-external"]
 
     def test_participant_message_is_an_outgoing_chat_bubble(self):
@@ -674,45 +660,6 @@ class TestConversationDisclosureAccessibility:
         assert agent_role["attrs"].get("data-actor-class") == "human_agent"
         assert ai_role["text"] == "AI or system"
         assert agent_role["text"] == "Human agent"
-
-    def test_ticket_event_is_a_compact_activity_row_not_a_message_bubble(self):
-        result = _run(
-            "conversation",
-            value={
-                "entry_id": "event-recorded",
-                "kind": "change_event",
-                "actor_class": "event",
-                "visibility": "internal",
-                "change_summary": "stage: queued -> in_progress",
-                "created_at": "2026-08-10T14:13:00Z",
-            },
-        )["before"]
-
-        assert "chat-event" in result["className"].split()
-        assert any(
-            "activity-row" in node["className"].split() for node in _walk(result)
-        )
-        assert not any(
-            "chat-bubble" in node["className"].split() for node in _walk(result)
-        )
-        assert "stage: queued -> in_progress" in result["text"]
-
-    def test_an_external_event_is_not_falsely_labelled_internal(self):
-        result = _run(
-            "conversation",
-            value={
-                "entry_id": "external-event",
-                "kind": "change_event",
-                "actor_class": "event",
-                "visibility": "external",
-                "internal": False,
-                "participant_facing": True,
-                "change_summary": "Synthetic external activity.",
-            },
-        )["before"]
-
-        assert "Participant-visible" in result["text"]
-        assert "not shown to participant" not in result["text"]
 
     def test_an_ordinary_message_does_not_print_its_upstream_entry_id(self):
         result = _run(
@@ -815,45 +762,6 @@ class TestConversationDisclosureAccessibility:
         assert fallback_author["text"] == "Author not recorded"
         assert "data-user-content" not in fallback_author["attrs"]
         assert "translate" not in fallback_author["attrs"]
-
-    def test_only_recorded_change_summaries_are_protected_as_remote_content(self):
-        recorded = _run(
-            "conversation",
-            value={
-                "entry_id": "event-recorded",
-                "actor_class": "event",
-                "kind": "change_event",
-                "visibility": "private",
-                "change_summary": "Ready",
-            },
-        )["before"]
-        recorded_body = next(
-            node
-            for node in _walk(recorded)
-            if "entry-body" in node["className"].split()
-        )
-        assert recorded_body["text"] == "Ready"
-        assert recorded_body["attrs"].get("data-user-content") == ""
-        assert recorded_body["attrs"].get("translate") == "no"
-
-        fallback = _run(
-            "conversation",
-            value={
-                "entry_id": "event-fallback",
-                "actor_class": "event",
-                "kind": "change_event",
-                "visibility": "private",
-                "change_summary": "",
-            },
-        )["before"]
-        fallback_body = next(
-            node
-            for node in _walk(fallback)
-            if "entry-body" in node["className"].split()
-        )
-        assert fallback_body["text"] == "A change was recorded with no summary."
-        assert "data-user-content" not in fallback_body["attrs"]
-        assert "translate" not in fallback_body["attrs"]
 
     def test_remote_metadata_tokens_do_not_protect_their_interface_prefixes(self):
         result = _run(

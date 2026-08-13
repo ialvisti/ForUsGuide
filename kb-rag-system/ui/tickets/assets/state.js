@@ -182,7 +182,6 @@ export const CONVERSATION_FILTERS = Object.freeze([
   "internal",
   "ai_or_system",
   "human_agent",
-  "event",
   "unclassified",
 ]);
 

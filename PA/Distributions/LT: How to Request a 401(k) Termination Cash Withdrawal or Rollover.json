@@ -2,7 +2,7 @@
   "metadata": {
     "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
     "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or a RightSignature electronic form provided directly when portal access is not possible (for example, MFA is not enrolled). Includes rollover best practices such as correct wire vs. check details, data-entry tips, and common errors to avoid. Also covers the small account balance fee-out process for terminated participants with a Total Vested Balance of $75 or less, where the account is closed and no funds are distributed. This article is specific to the recordkeeper LT Trust.",
+    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or the RightSignature electronic form. The form link is always shared together with the portal steps as a secondary option, clearly labeled to be used only if the participant has problems with the website or cannot log in (for example, MFA is not enrolled). Covers delivery methods and fees, including OverNight Check delivery, which can only be requested on the RightSignature electronic form and is not available in the participant portal. Includes rollover best practices such as correct wire vs. check details, data-entry tips, and common errors to avoid. Also covers the small account balance fee-out process for terminated participants with a Total Vested Balance of $75 or less, where the account is closed and no funds are distributed. This article is specific to the recordkeeper LT Trust.",
     "audience": "Internal AI Support Agent",
     "record_keeper": "LT Trust",
     "plan_type": "401(k)",
@@ -17,7 +17,7 @@
     "language": "en-US",
     "last_updated": null,
     "schema_version": "kb_article_v2",
-    "transformed_at": "2026-02-11",
+    "transformed_at": "2026-08-13",
     "source_last_updated": "2025-10-15",
     "source_system": "DevRev",
     "topic": "termination_distribution_request",
@@ -63,7 +63,8 @@
         "rules": [
           "A $75 distribution fee applies to all requests.",
           "No additional charges apply for ACH or Regular Mail Check.",
-          "An additional $35 wire fee applies if a wire or OverNight Check is chosen.",
+          "An additional $35 wire fee applies if a wire is chosen.",
+          "An additional $50 OverNight Check fee applies if an OverNight Check is chosen. OverNight Check can only be requested on the RightSignature electronic form, so this fee only applies to form requests. Do not mention the OverNight Check option or the $50 OverNight Check fee when explaining the participant portal (website) process.",
           "Wire transfer and OverNight Check fees are non-refundable."
         ]
       },
@@ -79,7 +80,9 @@
         "category": "submission_method",
         "rules": [
           "Submitting through the participant portal is the preferred and fastest route.",
-          "If portal access is not possible because MFA is not enrolled or the participant cannot log in, provide the participant directly with the RightSignature electronic form to submit the request (a slower secondary option than the portal). Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. Share this link only after termination distribution eligibility is confirmed (Terminated status, termination date on file, and Total Vested Balance above $75). Do not ask the participant to contact Support just to obtain the form."
+          "Always include the RightSignature electronic form link in the response alongside the portal steps, and state clearly that the form should be used only if the participant is having problems with the website or cannot log in (for example, MFA is not enrolled). Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. Share this link only after termination distribution eligibility is confirmed (Terminated status, termination date on file, and Total Vested Balance above $75). Do not ask the participant to contact Support just to obtain the form.",
+          "The RightSignature electronic form is a slower secondary option and must never be presented as the default or preferred route while the participant can use the portal.",
+          "OverNight Check delivery can only be requested on the RightSignature electronic form; it cannot be selected in the participant portal."
         ]
       },
       {
@@ -88,7 +91,8 @@
           "Checks are sent via USPS or UPS.",
           "Wires require exact instructions to avoid rejections and returns.",
           "A returned wire or rejected ACH may be converted to a mailed check sent to the participant's home address on file.",
-          "Overnight checks are sent via UPS and cannot be delivered to P.O. boxes; a physical street address is required."
+          "Overnight checks are sent via UPS and cannot be delivered to P.O. boxes; a physical street address is required.",
+          "OverNight Check is not a delivery option in the participant portal. A participant who wants an overnight check must submit the request on the RightSignature electronic form, where the additional $50 OverNight Check fee applies."
         ]
       },
       {
@@ -196,8 +200,8 @@
       },
       {
         "service": "OverNight Check delivery",
-        "fee": "$35",
-        "notes": "Applies in addition to the Distribution request fee if an OverNight Check is chosen; non-refundable."
+        "fee": "$50",
+        "notes": "Applies in addition to the Distribution request fee if an OverNight Check is chosen; non-refundable. OverNight Check can only be requested on the RightSignature electronic form, not in the participant portal, so this fee never applies to a request submitted through the website."
       }
     ],
     "steps": [
@@ -206,7 +210,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.",
-        "notes": "Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan. If the participant cannot log in because MFA is not enrolled or they are having login issues, do not use these portal steps — instead provide them directly with the RightSignature electronic form to submit the request (after confirming eligibility): https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
+        "notes": "Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). If the participant has more than one 401(k) through ForUsAll, they should double-check they are accessing the correct plan. Always share the RightSignature electronic form link together with these portal steps (after confirming eligibility), telling the participant to use it only if they run into problems on the website or cannot log in, for example because MFA is not enrolled: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
       },
       {
         "step_number": 2,
@@ -241,7 +245,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must provide delivery details for the chosen option.",
-        "notes": "For cash checks, the participant must provide a mailing address and any additional withholding if selected. For cash wires, the participant must provide required routing and account details. For rollover checks, the participant must provide the receiving institution, mailing address, rollover destination type (IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan), and the IRA or sub-account number if selecting IRA or Roth IRA. For rollover wires, the participant must provide the bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider. Important: many financial institutions have different instructions for wires versus ACH — the participant must use wire-specific details. Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork. Some fields have system-imposed character limits; participants may need to abbreviate names or addresses."
+        "notes": "For cash checks, the participant must provide a mailing address and any additional withholding if selected. For cash wires, the participant must provide required routing and account details. For rollover checks, the participant must provide the receiving institution, mailing address, rollover destination type (IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan), and the IRA or sub-account number if selecting IRA or Roth IRA. For rollover wires, the participant must provide the bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider. Important: many financial institutions have different instructions for wires versus ACH — the participant must use wire-specific details. Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork. Some fields have system-imposed character limits; participants may need to abbreviate names or addresses. The delivery options available in the portal are check, ACH, and wire; OverNight Check is not offered in the portal, so do not mention it here. A participant who needs an overnight check must submit the request on the RightSignature electronic form instead, where an additional $50 OverNight Check fee applies."
       },
       {
         "step_number": 7,
@@ -255,7 +259,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must track review, processing, and delivery timelines after submission.",
-        "notes": "ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution. Overnight checks typically complete in about 1–2 weeks after approval."
+        "notes": "ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution. Overnight checks (available only on the RightSignature electronic form) typically complete in about 1–2 weeks after approval."
       }
     ],
     "common_issues": [
@@ -320,8 +324,8 @@
         "resolution": "Explain that incorrect wire instructions caused rejection and reissue by check. The extra wire fee is non-refundable, so the participant should confirm all wire details with the receiving institution before submitting."
       },
       {
-        "issue": "The participant selected overnight check but provided a P.O. box as the mailing address.",
-        "resolution": "Explain that overnight checks are sent via UPS, which does not deliver to P.O. boxes. The participant must provide a physical street address for overnight delivery."
+        "issue": "The participant selected overnight check on the RightSignature electronic form but provided a P.O. box as the mailing address.",
+        "resolution": "Explain that overnight checks are sent via UPS, which does not deliver to P.O. boxes. The participant must provide a physical street address for overnight delivery. Remember that overnight check delivery is only available on the RightSignature electronic form and carries an additional $50 non-refundable fee."
       },
       {
         "issue": "The participant mentions they are not receiving the authentication code through their emails or text messages, and Participant data 'MFA' is 'enrolled' (Participant doesn't mention they have forgotten their password).",
@@ -390,6 +394,10 @@
       {
         "issue": "The participant's system status shows Active, but they explicitly state they have already separated from employment (resigned, quit, or were terminated).",
         "resolution": "Do not proceed with an active-employee-only option (hardship, loan, or in-service distribution). Ask for the participant's termination/separation date, explain that the system still shows them as active and that we will review this internally to update their employment status, and escalate to ForUsAll Support with the stated separation date. Once the termination date is on file, the termination distribution process can proceed."
+      },
+      {
+        "issue": "The participant is submitting through the portal and asks for an overnight check.",
+        "resolution": "Explain that the portal only offers check, ACH, and wire delivery, and that an overnight check can only be requested on the RightSignature electronic form. If the participant wants overnight delivery, share the form link (after confirming eligibility) and disclose that an additional $50 non-refundable OverNight Check fee applies on top of the $75 distribution fee: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
       }
     ],
     "examples": [
@@ -451,11 +459,15 @@
       },
       {
         "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $500 and wants a paper check as a cash lump sum distribution.",
-        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose Lump Sum and check as the method, and submit the request. If they don't have MFA enrolled or cannot log in, provide them directly with the RightSignature electronic form link to submit the request: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
+        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose Lump Sum and check as the method, and submit the request. Also share the RightSignature electronic form link in the same response, telling them to use it only if they have problems on the website or cannot log in (for example, MFA is not enrolled): https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
       },
       {
         "scenario": "A participant with a Terminated status and a termination date on file has an account Total Vested Balance of $1,200 and wants a wire transaction as a lump sum distribution.",
-        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose wire as the method, and submit the request. If they do not have MFA enrolled or cannot log in, provide them directly with the RightSignature electronic form link to submit the request: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
+        "outcome": "The participant can proceed with a standard termination distribution request in the ForUsAll portal if they have MFA enrolled and can log in: log in, go to Loans & Distributions, in the Separation of Service section select Termination Distribution (or Default if not visible), then choose wire as the method, and submit the request. Also share the RightSignature electronic form link in the same response, telling them to use it only if they have problems on the website or cannot log in (for example, MFA is not enrolled): https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
+      },
+      {
+        "scenario": "A participant asks how to get their distribution check overnighted.",
+        "outcome": "Explain that overnight check delivery cannot be selected in the participant portal and must be requested on the RightSignature electronic form, and that an additional $50 non-refundable OverNight Check fee applies on top of the $75 distribution fee. Overnight checks are sent via UPS and require a physical street address, not a P.O. box."
       }
     ],
     "additional_notes": [
@@ -465,14 +477,15 @@
           "ForUsAll reviews distribution requests within about two business days.",
           "Checks typically arrive in about 2–3 weeks after approval via USPS.",
           "Wires typically complete in about 1–2 weeks after approval depending on the receiving institution.",
-          "Overnight checks typically complete in about 1–2 weeks after approval depending on the receiving institution."
+          "Overnight checks, which are only available on the RightSignature electronic form, typically complete in about 1–2 weeks after approval depending on the receiving institution."
         ]
       },
       {
         "category": "fees",
         "notes": [
           "A $75 distribution fee applies to all requests.",
-          "An additional $35 fee applies if a wire or overnight check is chosen and is non-refundable."
+          "An additional $35 fee applies if a wire is chosen and is non-refundable.",
+          "An additional $50 fee applies if an OverNight Check is chosen and is non-refundable. OverNight Check is only available on the RightSignature electronic form, so this fee is never quoted for a portal request."
         ]
       },
       {
@@ -500,7 +513,8 @@
       {
         "category": "alternate_submission_method",
         "notes": [
-          "If portal access is not possible (for example MFA is not enrolled or the participant cannot log in), provide the participant directly with the RightSignature electronic form to submit the request; it is typically slower than portal submission. Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
+          "Always share the RightSignature electronic form link together with the portal instructions (after eligibility is confirmed), and state clearly that the participant should use it only if they have problems with the website or cannot log in, for example because MFA is not enrolled. The form is typically slower than portal submission. Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723",
+          "OverNight Check delivery is only available on the RightSignature electronic form and adds a $50 non-refundable fee; it cannot be selected in the participant portal."
         ]
       },
       {
@@ -547,11 +561,11 @@
       },
       {
         "question": "What are the delivery timelines for checks and wires?",
-        "answer": "ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS, wires typically complete in about 1–2 weeks after approval depending on the receiving institution, and overnight checks typically complete in about 1–2 weeks after approval."
+        "answer": "ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS, wires typically complete in about 1–2 weeks after approval depending on the receiving institution, and overnight checks (available only on the RightSignature electronic form) typically complete in about 1–2 weeks after approval."
       },
       {
         "question": "How long does a rollover approval typically take?",
-        "answer": "ForUsAll reviews the rollover request and supporting paperwork within about two business days after submission. Once approved, the funds are released to the receiving institution: wires and overnight checks typically complete in about 1–2 weeks after approval, and standard USPS checks typically arrive in about 2–3 weeks after approval. The approval review itself (two business days) is separate from the delivery time."
+        "answer": "ForUsAll reviews the rollover request and supporting paperwork within about two business days after submission. Once approved, the funds are released to the receiving institution: wires typically complete in about 1–2 weeks after approval, overnight checks (available only on the RightSignature electronic form) also typically complete in about 1–2 weeks after approval, and standard USPS checks typically arrive in about 2–3 weeks after approval. The approval review itself (two business days) is separate from the delivery time."
       },
       {
         "question": "What taxes apply to a cash distribution?",
@@ -627,7 +641,7 @@
       },
       {
         "question": "Can a participant request help submitting a distribution request without doing it online?",
-        "answer": "If the participant cannot log in to their ForUsAll online account (for example MFA is not enrolled), they can be provided directly with the RightSignature electronic form to complete the distribution request: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. For security reasons, participants must complete the form themselves, and Support cannot initiate the request for them."
+        "answer": "Yes. The RightSignature electronic form link is shared in the response together with the portal steps, with a clear note that it should be used only if the participant has problems with the website or cannot log in (for example, MFA is not enrolled): https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. For security reasons, participants must complete the form themselves, and Support cannot initiate the request for them."
       },
       {
         "question": "How can a participant get additional assistance if they need help with a distribution request?",
@@ -644,6 +658,14 @@
       {
         "question": "Will I receive a tax form for my distribution or rollover?",
         "answer": "Yes, you will receive an IRS Form 1099-R by January 31 of the following year for tax reporting purposes. This applies to both cash distributions and rollovers."
+      },
+      {
+        "question": "Can a participant request an overnight check through the website?",
+        "answer": "No. The participant portal only offers check, ACH, and wire delivery. An overnight check can only be requested on the RightSignature electronic form, and it carries an additional $50 non-refundable fee on top of the $75 distribution fee."
+      },
+      {
+        "question": "How much is the overnight check fee?",
+        "answer": "The OverNight Check fee is $50 and is non-refundable. It applies in addition to the $75 distribution fee, and only to requests submitted on the RightSignature electronic form, because overnight delivery cannot be selected in the participant portal. The wire fee is a separate $35 fee."
       }
     ],
     "definitions": [
@@ -766,7 +788,7 @@
         "Do not promise exact delivery dates; use the stated approximate timelines only.",
         "Do not guarantee whether state withholding will apply or specify state withholding amounts.",
         "Do not claim the wire fee can be refunded; the wire fee is non-refundable.",
-        "Do not claim where or how to access any document other than the portal URL, the RightSignature electronic form link, and contact methods explicitly provided in this article. The RightSignature electronic form link may be shared directly with the participant on the MFA-not-enrolled / cannot-log-in path after eligibility is confirmed.",
+        "Do not claim where or how to access any document other than the portal URL, the RightSignature electronic form link, and contact methods explicitly provided in this article. The RightSignature electronic form link is shared directly with the participant once eligibility is confirmed, always with the note that it is only for participants who have problems with the website or cannot log in.",
         "Do not claim that ForUsAll will help complete all required fields on this form.",
         "Do not disclose account balances or vesting percentages, or any other sensitive information.",
         "Do not claim that wire and check instructions are the same; many financial institutions have different details for wires versus ACH.",
@@ -787,11 +809,14 @@
         "Do not state that unvested funds can be distributed under any scenario; only vested balances are eligible.",
         "Do not state that the participant will receive a specific type of confirmation (email, letter, portal message) for fee-out unless explicitly stated.",
         "Do not tell a participant that an outstanding loan can be ignored during the termination distribution process; unpaid loan balances have tax and penalty consequences.",
-        "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead."
+        "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead.",
+        "Do not offer, mention, or price OverNight Check delivery when describing the participant portal (website) process; overnight delivery cannot be requested there.",
+        "Do not quote $35 as the overnight check fee. The OverNight Check fee is $50; the $35 fee is the wire fee.",
+        "Do not present the RightSignature electronic form as the default, faster, or preferred submission route; it is shared only as a fallback for website or login problems."
       ],
       "must_do_if_unsure": [
         "Advise the participant to contact ForUsAll Support if vesting percentages or account sources appear incorrect.",
-        "If portal access issues prevent online submission (for example MFA is not enrolled or the participant cannot log in), provide the participant directly with the RightSignature electronic form to submit the request (after confirming eligibility) rather than only routing them to Support.",
+        "Once eligibility is confirmed, always include the RightSignature electronic form link in the response with a clear note that it is only for participants who have problems with the website or cannot log in (for example, MFA is not enrolled), rather than routing them to Support to obtain it.",
         "Advise the participant to contact ForUsAll Support if employment separation status appears uncertain or not reflected in the portal options.",
         "Advise the participant to contact ForUsAll Support if they are unsure about the information needed to complete the form.",
         "Direct the participant to contact ForUsAll Support at help@forusall.com or 844-401-2253 if they are unsure which distribution type to select.",
@@ -824,7 +849,7 @@
         {
           "label": "Termination Distribution RightSignature Request Form",
           "url": "https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723",
-          "purpose": "Provide this link directly to the participant to submit a termination distribution (cash, rollover, or split) when portal access is not possible (MFA not enrolled or cannot log in), after confirming eligibility (Terminated status, termination date on file, and Total Vested Balance above $75)."
+          "purpose": "Share this link with the participant in the same response as the portal steps, clearly stating it should only be used if they have problems with the website or cannot log in (MFA not enrolled or cannot log in), after confirming eligibility (Terminated status, termination date on file, and Total Vested Balance above $75). This form is also the only way to request OverNight Check delivery, which adds a $50 non-refundable fee."
         },
         "https://www.irs.gov/retirement-plans/plan-participant-employee/rollovers-of-retirement-plan-and-ira-distributions"
       ],
@@ -1075,7 +1100,7 @@
         "If Total Vested Balance is above $75, the normal distribution process applies.",
         "If Total Vested Balance is $75 or less, fee-out applies and no normal distribution request can be initiated.",
         "If Total Vested Balance is above $75 and MFA is enrolled and the participant can log in, they qualify to submit the normal distribution request online in the ForUsAll portal.",
-        "If Total Vested Balance is above $75 and MFA is not enrolled or the participant cannot log in, they qualify to submit the normal distribution request using the RightSignature electronic form, which is provided to them directly (link in the submission-method rules and references), not requested from Support.",
+        "If Total Vested Balance is above $75, the RightSignature electronic form link is included in the response alongside the portal steps, flagged for use only if the participant has problems with the website or cannot log in (link in the submission-method rules and references). It is never requested from Support.",
         "If Rehire date is not null, it must be before the termination date.",
         "Only vested balances are eligible for distribution."
       ],
@@ -1130,12 +1155,13 @@
       "allowed_conclusions": [
         "If the participant is terminated, has a termination date on file, has MFA enrolled for online account access, and the Total Vested Balance is above $75, they can submit the normal distribution request online in the ForUsAll portal.",
         "If the participant is terminated, has a termination date on file, and the Total Vested Balance is $75 or less, the account will be closed through the fee-out process and no funds will be distributed.",
-        "If the participant is terminated, has a termination date on file, and the Total Vested Balance is above $75 but MFA is not enrolled or the participant cannot log in, provide them directly with the RightSignature electronic form link to submit the normal distribution request (no need to contact Support to obtain it).",
+        "If the participant is terminated, has a termination date on file, and the Total Vested Balance is above $75, include the RightSignature electronic form link in the response together with the portal steps, stating it is only for use if they have problems with the website or cannot log in (no need to contact Support to obtain it).",
         "If a rehire date is present and it's after the termination date, the participant is not eligible for a distribution.",
         "If the participant is eligible for a distribution, they can request a rollover or a cash distribution or a partial rollover or partial cash withdrawal.",
         "The participant can complete the rollover online by following the steps in this article.",
         "A $75 processing fee applies to all distribution requests. To confirm the correct distribution process, verify termination status Terminated, termination date on file, and current Total Vested Balance amount before confirming which process applies.",
-        "Provide general guidance about the LT Trust termination distribution process (eligibility prerequisites, fee-out vs normal, online portal vs RightSignature paths, lump sum / rollover / partial options, processing timelines and fees) without requiring confirmation of the participant's name, status, termination/rehire date, MFA enrollment, vested balance, last payroll date, or chosen distribution type; only block when the participant is asking to actually submit a specific request and a true blocker is unconfirmed."
+        "Provide general guidance about the LT Trust termination distribution process (eligibility prerequisites, fee-out vs normal, online portal vs RightSignature paths, lump sum / rollover / partial options, processing timelines and fees) without requiring confirmation of the participant's name, status, termination/rehire date, MFA enrollment, vested balance, last payroll date, or chosen distribution type; only block when the participant is asking to actually submit a specific request and a true blocker is unconfirmed.",
+        "OverNight Check delivery can only be requested on the RightSignature electronic form and adds a $50 non-refundable fee; the portal offers check, ACH, and wire only."
       ],
       "not_allowed_conclusions": [
         "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant. If information is not provided by the participant or if not available in our system, we cannot confirm eligibility and contact support will be needed.",
@@ -1146,7 +1172,9 @@
         "Do not promise that a rollover will complete faster than the typical timelines stated in this article.",
         "Do not say a participant with a Total Vested Balance of $75 or less can request a normal distribution.",
         "Do not guarantee any payout will occur for fee-out closures.",
-        "Do not state any processing time, delivery time, or confirmation timing that is not stated."
+        "Do not state any processing time, delivery time, or confirmation timing that is not stated.",
+        "Do not tell the participant they can select overnight check delivery in the participant portal.",
+        "Do not state the overnight check fee is $35; it is $50."
       ]
     },
     "response_frames": {
@@ -1155,20 +1183,23 @@
           "We confirmed you are eligible since you already have a termination date.",
           "You can request a termination distribution in the ForUsAll participant portal under Loans & Distributions at the top right corner.",
           "Please follow the steps outlined in the article to request a distribution.",
-          "For rollovers, you can complete the process online by logging in at forusall.com/login and selecting Loans & Distributions."
+          "For rollovers, you can complete the process online by logging in at forusall.com/login and selecting Loans & Distributions.",
+          "If you have any trouble with the website or cannot log in, you can submit the same request using this secure electronic form instead: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
         ],
         "next_steps": [
           "Guide the participant through the portal steps in order to request a distribution.",
           "If the participant mentions the type of distribution they want to request, be specific about the steps they need to follow.",
           "For rollovers, under Termination Distribution, select Separation of Service and click Get Started.",
-          "Before submitting a rollover, advise the participant to confirm with their receiving provider all of the information provided, including wire-specific details if applicable."
+          "Before submitting a rollover, advise the participant to confirm with their receiving provider all of the information provided, including wire-specific details if applicable.",
+          "Include the RightSignature electronic form link in the response with a clear note that it is only for use if the participant has problems with the website or cannot log in: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
         ],
         "warnings": [
           "A $75 processing fee applies to all distribution requests.",
-          "An additional $35 fee applies for wire distributions (non-refundable) and overnight check delivery. If you would like your check to be overnighted, contact ForUsAll Support.",
+          "An additional $35 non-refundable fee applies for wire distributions.",
+          "Overnight check delivery cannot be selected on the website. It can only be requested on the secure electronic form and adds a $50 non-refundable fee. Only mention this if the participant asks about overnight delivery or is using the form.",
           "For cash distributions, 20% federal withholding applies and state withholding may apply.",
           "For cash distribution be advised a possible 10% early withdrawal penalty may apply if you are under 59 1/2 years old.",
-          "Be advised the processing time for a wire is 1 to 2 weeks, overnight checks are 1 to 2 weeks, and standard checks are typically delivered in 2 to 3 weeks. These timelines are approximate and cannot be expedited.",
+          "Be advised the processing time for a wire is 1 to 2 weeks, and standard checks are typically delivered in 2 to 3 weeks. Overnight checks, when requested on the electronic form, are also 1 to 2 weeks. These timelines are approximate and cannot be expedited.",
           "Incorrect wire instructions may cause rejection and reissue by check, adding delays and a non-refundable wire fee."
         ],
         "questions_to_ask": [],
@@ -1181,13 +1212,15 @@
           "Do not provide tax advice.",
           "Do not provide information to fill in required fields; the participant must enter this information themselves.",
           "Do not promise a specific completion date beyond the stated typical timelines.",
-          "Do not mention the small balance threshold if the balance is above $75."
+          "Do not mention the small balance threshold if the balance is above $75.",
+          "Do not mention overnight check delivery as an option available on the website.",
+          "Do not present the electronic form as the faster or preferred way to submit the request."
         ]
       },
       "blocked_missing_data": {
         "participant_message_components": [
           "To guide you through the request, I need a few details about the type of distribution and delivery method you want.",
-          "You can submit through the portal under Loans & Distributions, or, if you cannot access the portal, we can provide you a secure RightSignature electronic form to submit your request."
+          "You can submit through the portal under Loans & Distributions. If you have problems with the website or cannot log in, you can use this secure electronic form instead: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
         ],
         "next_steps": [
           "Collect the missing details required for the participant's selected option (cash, rollover, or split) and delivery method (check or wire).",

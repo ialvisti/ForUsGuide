@@ -15,7 +15,7 @@
         "language": "en-US",
         "last_updated": null,
         "schema_version": "kb_article_v2",
-        "transformed_at": "2026-02-01",
+        "transformed_at": "2026-08-13",
         "source_last_updated": null,
         "source_system": "DevRev",
         "topic": "hardship_withdrawal",
@@ -80,6 +80,15 @@
                     "When a separation claim conflicts with an 'Active' system status, do NOT offer hardship withdrawal, 401(k) loan, or in-service distribution — these are available only to actively employed participants. An 'Active' status alongside an explicit separation claim most likely means the admin system has not been updated yet.",
                     "In this conflict: (1) ask the participant for their termination/separation date; (2) tell them we will review this internally because the system still shows them as active; (3) escalate to the team to verify and update the employment status."
                 ]
+            },
+            {
+                "category": "fees",
+                "rules": [
+                    "Standard processing is $75 for all hardship withdrawals, regardless of disbursement method.",
+                    "Wire transfer adds $35 on top of the $75 standard processing fee.",
+                    "Overnight check adds $50 on top of the $75 standard processing fee.",
+                    "ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee."
+                ]
             }
         ],
         "fees": [
@@ -89,9 +98,19 @@
                 "notes": "Applies to all hardship withdrawals regardless of disbursement method."
             },
             {
-                "service": "Wire Transfer or Overnight Check",
+                "service": "Wire Transfer",
                 "fee": "$75 + $35",
-                "notes": "An additional $35 applies for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee."
+                "notes": "An additional $35 applies for wire transfer, on top of the $75 standard processing fee."
+            },
+            {
+                "service": "Overnight Check",
+                "fee": "$75 + $50",
+                "notes": "An additional $50 applies for overnight check delivery, on top of the $75 standard processing fee. The hardship withdrawal request is submitted on the RightSignature form, which is where the overnight check option is selected."
+            },
+            {
+                "service": "ACH bank transfer or standard mail check",
+                "fee": "$75",
+                "notes": "No additional fee beyond the $75 standard processing fee."
             }
         ],
         "steps": [
@@ -204,7 +223,7 @@
             },
             {
                 "question": "What are the fees for a hardship withdrawal request?",
-                "answer": "Standard processing is $75 for all hardship withdrawals. Wire transfer or overnight check adds +$35. ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee."
+                "answer": "Standard processing is $75 for all hardship withdrawals. Wire transfer adds +$35 and overnight check adds +$50. ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee."
             },
             {
                 "question": "How does the participant start the request?",
@@ -262,7 +281,8 @@
                 "Do not guarantee whether state income tax withholding will apply or specify state withholding amounts; state taxes vary by state.",
                 "Do not claim the participant can withdraw more than the documented hardship expense amount or withdraw extra for unrelated expenses.",
                 "Do not invent additional IRS hardship reasons, fees, or timelines not listed in the article.",
-                "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead."
+                "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead.",
+                "Do not quote $35 as the overnight check fee. The overnight check fee is $50; the $35 fee is the wire transfer fee."
             ],
             "must_do_if_unsure": [
                 "If asked whether employer match funds or other sources are eligible, state that it depends on the plan and will be determined by reviewing plan documents. (we as ForUsAll have to review it, participants have no access to plan documents)",
@@ -408,7 +428,7 @@
             "missing_data_conditions": [],
             "allowed_conclusions": [
                 "After setting expectations and providing the Hardship Distribution Guidelines, send the participant the Hardship Withdrawal RightSignature Request Form link to complete the form: https://secure.rightsignature.com/templates/e269d55a-e20f-4f12-b102-52a502ffb644/template-signer-link/403087cbdada4fddb76a446b88014133",
-                "Standard processing has a $75 fee, with an additional +$35 for wire transfer or overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.",
+                "Standard processing has a $75 fee, with an additional +$35 for wire transfer and an additional +$50 for overnight check; ACH bank transfer and standard mail check have no additional fee beyond the $75 standard processing fee.",
                 "Funds are subject to federal income taxes, state income taxes may also apply depending on the participant's state of residence, and a 10% early withdrawal penalty may apply if the participant is under age 59.5.",
                 "ForUsAll does not collect supporting documents; the participant must retain documentation in case of an IRS audit."
             ],

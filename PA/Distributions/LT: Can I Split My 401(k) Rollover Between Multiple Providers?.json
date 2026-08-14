@@ -2,7 +2,7 @@
     "metadata": {
         "article_id": "can_i_split_my_401_k_rollover_between_multiple_providers",
         "title": "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
-        "description": "Guides a former employee through requesting a split rollover distribution from a ForUsAll-administered LT Trust 401(k). Covers two paths: (1) when the participant has both Roth and pre-tax sources and wants each sent to a different provider, the rollover is completed through the online portal (MFA enrollment required); (2) when the participant has only one source and wants to split it across multiple providers, the request must be handled manually via the RightSignature Separation of Service: Rollover Request Form. Includes eligibility requirements, fee disclosures, delivery methods, and processing timelines.",
+        "description": "Guides a former employee through requesting a split rollover distribution from a ForUsAll-administered LT Trust 401(k). Covers two paths: (1) when the participant has both Roth and pre-tax sources and wants each sent to a different provider, the rollover is completed through the online portal (MFA enrollment required); (2) when the participant has only one source and wants to split it across multiple providers, the request must be handled manually via the RightSignature Separation of Service: Rollover Request Form. Includes eligibility requirements, fee disclosures, delivery methods, and processing timelines. OverNight Check delivery can only be requested on the RightSignature form and is not available in the online dashboard. The RightSignature form link is also shared alongside the online workflow as a secondary option, clearly labeled for use only if the participant has problems with the website or cannot log in.",
         "topic": "distribution",
         "subtopics": [
             "split_rollover",
@@ -32,7 +32,7 @@
         "language": "en-US",
         "last_updated": null,
         "schema_version": "kb_article_v2",
-        "transformed_at": "2026-03-16",
+        "transformed_at": "2026-08-13",
         "source_last_updated": null,
         "source_system": "DevRev"
     },
@@ -78,7 +78,7 @@
                 "rules": [
                     "A $75 distribution fee applies to all requests.",
                     "No additional charges apply for a Regular Mail Check.",
-                    "An additional $35 wire fee applies if a wire is chosen, and an additional $50 fee applies if an OverNight Check is chosen. These fees apply per wire or per overnight check, not per request.",
+                    "An additional $35 wire fee applies if a wire is chosen, and an additional $50 fee applies if an OverNight Check is chosen. These fees apply per wire or per overnight check, not per request. OverNight Check can only be requested on the RightSignature form, so the $50 OverNight Check fee never applies to a request submitted through the online dashboard and must not be mentioned when explaining the website process.",
                     "Wire transfer and OverNight Check fees are non-refundable."
                 ]
             },
@@ -94,7 +94,9 @@
                 "category": "submission_method",
                 "rules": [
                     "Submitting through the participant portal is the preferred and fastest route only when the participant has full online access with MFA enrolled and is rolling Roth funds to one provider and pre-tax funds to another provider.",
-                    "If the participant is splitting one source across multiple providers or portal processing is not available, the participant must use the manual RightSignature process or contact support."
+                    "If the participant is splitting one source across multiple providers or portal processing is not available, the participant must use the manual RightSignature process or contact support.",
+                    "Always include the RightSignature form link in the response together with the online workflow steps, and state clearly that the participant should use it only if they have problems with the website or cannot log in. Share the link only after the Must Have items are verified. Form link: https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e",
+                    "The RightSignature form is the mandatory path for a one-source split across multiple providers, and a fallback path for every other scenario. It must never be presented as faster or preferred when the participant can use the online dashboard."
                 ]
             },
             {
@@ -102,7 +104,8 @@
                 "rules": [
                     "Checks are sent via USPS or UPS.",
                     "Wires require exact instructions to avoid rejections and returns.",
-                    "A returned wire may be converted to a mailed check."
+                    "A returned wire may be converted to a mailed check.",
+                    "OverNight Check delivery can only be requested on the RightSignature form; it cannot be selected in the online dashboard. Overnight checks are sent via UPS and add a $50 non-refundable fee."
                 ]
             }
         ],
@@ -120,7 +123,7 @@
             {
                 "service": "OverNight Check delivery",
                 "fee": "$50",
-                "notes": "Applies in addition to the Distribution request fee if an OverNight Check is chosen; non-refundable."
+                "notes": "Applies in addition to the Distribution request fee if an OverNight Check is chosen; non-refundable. It applies per overnight check. OverNight Check can only be requested on the RightSignature form, not in the online dashboard, so this fee never applies to a request submitted through the website."
             }
         ],
         "steps": [
@@ -164,7 +167,7 @@
                 "type": "participant-facing",
                 "visibility": "both",
                 "description": "The participant must provide delivery details for the chosen option.",
-                "notes": "For checks, the participant must provide a mailing address and (for cash) any additional withholding if selected. For wires, the participant must provide required routing and account details. For rollovers, the participant must provide the receiving institution information and IRA or sub-account number if applicable."
+                "notes": "For checks, the participant must provide a mailing address and (for cash) any additional withholding if selected. For wires, the participant must provide required routing and account details. For rollovers, the participant must provide the receiving institution information and IRA or sub-account number if applicable. The delivery options available in the online dashboard are check, ACH, and wire; OverNight Check is not offered there, so do not mention it in the portal path. A participant who needs an overnight check must use the RightSignature form, where an additional $50 OverNight Check fee applies."
             },
             {
                 "step_number": 7,
@@ -206,7 +209,7 @@
                 "type": "participant-facing",
                 "visibility": "both",
                 "description": "Capture each destination account or provider and the requested delivery method for each portion.",
-                "notes": "The article examples include regular check, OverNight Check, and wire transfer as delivery methods."
+                "notes": "The article examples include regular check, OverNight Check, and wire transfer as delivery methods. OverNight Check is only selectable on this RightSignature form path, not in the online dashboard."
             },
             {
                 "step_number": 13,
@@ -289,6 +292,10 @@
             {
                 "issue": "The participant wants to submit the request by phone but has not yet provided the full split details.",
                 "resolution": "Collect the complete instructions during the conversation or ask the participant to send the full breakdown by email so the request can be documented accurately."
+            },
+            {
+                "issue": "The participant asks whether they can choose overnight check delivery in the online dashboard.",
+                "resolution": "Explain that the online dashboard offers check, ACH, and wire delivery only, and that an overnight check can only be requested on the RightSignature form. Disclose the additional $50 non-refundable OverNight Check fee before sharing the form link."
             }
         ],
         "examples": [
@@ -379,6 +386,10 @@
             {
                 "scenario": "A participant provides all split rollover instructions clearly, but asks where to find the RightSignature form before support has sent it.",
                 "outcome": "The participant should be told that the Separation of Service: Rollover Request Form is shared after the Must Have items are verified for the manual process. Do not claim any other access path unless it is explicitly provided in the approved process."
+            },
+            {
+                "scenario": "A participant using the online workflow for their Roth and pre-tax rollovers asks to have one of the checks overnighted.",
+                "outcome": "Explain that overnight check delivery is not available in the online dashboard and can only be requested on the RightSignature form, which carries an additional $50 non-refundable fee on top of the $75 distribution fee."
             }
         ],
         "additional_notes": [
@@ -399,7 +410,7 @@
             {
                 "category": "fees",
                 "notes": [
-                    "A $75 distribution fee applies to all requests, with additional non-refundable fees of $35 per wire or $50 per overnight check."
+                    "A $75 distribution fee applies to all requests, with additional non-refundable fees of $35 per wire or $50 per overnight check. The $50 overnight check fee only applies on the RightSignature form path, because overnight delivery cannot be selected in the online dashboard."
                 ]
             },
             {
@@ -407,6 +418,13 @@
                 "notes": [
                     "The portal displays Traditional and any Roth sources.",
                     "Ensure the receiving account accepts the tax character of the funds (for example, Roth IRA for Roth amounts)."
+                ]
+            },
+            {
+                "category": "alternate_submission_method",
+                "notes": [
+                    "Always share the RightSignature form link in the response together with the online workflow steps, once the Must Have items are verified, and state clearly that it should be used only if the participant has problems with the website or cannot log in. Form link: https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e",
+                    "For a one-source split across multiple providers, the RightSignature form is the only submission path and is not optional."
                 ]
             }
         ],
@@ -502,6 +520,18 @@
             {
                 "question": "Does the article provide an example of an amount-based split rollover?",
                 "answer": "Yes. The article includes an example where $1,000 of a pre-tax account is rolled to one destination and the remaining balance is rolled to another destination."
+            },
+            {
+                "question": "Can a participant request an OverNight Check through the online dashboard?",
+                "answer": "No. The online dashboard offers check, ACH, and wire delivery only. An OverNight Check can only be requested on the RightSignature form, and it adds a $50 non-refundable fee per overnight check on top of the $75 distribution fee."
+            },
+            {
+                "question": "How much is the OverNight Check fee?",
+                "answer": "The OverNight Check fee is $50 per overnight check and is non-refundable. It applies in addition to the $75 distribution fee and only on the RightSignature form path. The wire fee is a separate $35 fee per wire."
+            },
+            {
+                "question": "Is the RightSignature form link shared even when the participant can use the online workflow?",
+                "answer": "Yes. Once the Must Have items are verified, the form link is included in the response alongside the online workflow steps, with a clear note that the participant should only use it if they have problems with the website or cannot log in."
             }
         ],
         "definitions": [
@@ -658,7 +688,7 @@
                 "Do not guarantee any rule beyond what the participant clearly instructs in the request.",
                 "Do not suggest a portal-based workflow when the participant is splitting one source across multiple providers.",
                 "Do not claim support for a split request unless the participant's instructions are clearly provided.",
-                "Do not claim where or how to access the RightSignature link beyond stating that the Separation of Service: Rollover Request Form is shared after the Must Have items are verified for the manual process.",
+                "Do not claim where or how to access the RightSignature link beyond sharing the Separation of Service: Rollover Request Form link itself once the Must Have items are verified, always with the note that it is only for participants who have problems with the website or cannot log in (and is the required path for a one-source split).",
                 "Do not assume percentages, dollar amounts, destinations, or delivery methods if the participant's instructions are incomplete.",
                 "Do not say the request is ready to proceed until all split details are clearly provided.",
                 "Do not state that support can process a wire portion without complete wire instructions.",
@@ -668,14 +698,18 @@
                 "Do not give the participant an alternate submission path unless it is explicitly documented in the approved process.",
                 "Do not promise that a requested delivery method will be accepted if the participant has not provided the required details.",
                 "Do not restate inconsistent instructions as final until the participant confirms one clear version of the request.",
-                "Do not say the participant is eligible without confirming employment status, balance thresholds, or plan limitations first."
+                "Do not say the participant is eligible without confirming employment status, balance thresholds, or plan limitations first.",
+                "Do not offer, mention, or price OverNight Check delivery when describing the online dashboard workflow; overnight delivery cannot be requested there.",
+                "Do not quote $35 as the overnight check fee. The OverNight Check fee is $50; the $35 fee is the wire fee.",
+                "Do not present the RightSignature form as faster or preferred than the online dashboard for the scenarios the dashboard supports."
             ],
             "must_do_if_unsure": [
                 "Ask the participant to clarify exactly how the rollover should be divided.",
                 "Ask the participant to clarify the destination account or provider for each portion if it is not clear.",
                 "Ask the participant to clarify whether each portion is based on percentage or dollar amount if that is not clear.",
                 "Use only the contact methods stated in the article when directing the participant to start the process. For the manual process, share the Separation of Service: Rollover Request Form only after the Must Have items are verified; otherwise redirect to support.",
-                "Disclose all applicable fees (distribution fee, wire fee, overnight check fee) before sharing the RightSignature link or directing the participant to submit through the portal."
+                "Disclose all applicable fees (distribution fee, wire fee, overnight check fee) before sharing the RightSignature link or directing the participant to submit through the portal.",
+                "Once the Must Have items are verified, include the RightSignature form link in the response with a clear note that it is only for participants who have problems with the website or cannot log in."
             ]
         },
         "references": {
@@ -1011,7 +1045,9 @@
                 "The rollover may be split by percentage or by dollar amount if instructions are clearly provided.",
                 "After the Must Have items are verified for the manual process, the Separation of Service: Rollover Request Form can be shared to finalize the request.",
                 "The request requires manual review and processing because routing funds to multiple destinations is complex.",
-                "Provide general guidance about how split rollovers work (multiple destinations allowed, percentage or dollar amount, online vs manual process, RightSignature form for manual) without requiring the participant's specific termination date, balance, MFA status, or split instructions; only request these when the participant asks to actually execute or wants confirmation of personal eligibility."
+                "Provide general guidance about how split rollovers work (multiple destinations allowed, percentage or dollar amount, online vs manual process, RightSignature form for manual) without requiring the participant's specific termination date, balance, MFA status, or split instructions; only request these when the participant asks to actually execute or wants confirmation of personal eligibility.",
+                "OverNight Check delivery can only be requested on the RightSignature form and adds a $50 non-refundable fee per overnight check; the online dashboard offers check, ACH, and wire only.",
+                "Once the Must Have items are verified, the RightSignature form link is included in the response alongside the online workflow steps, flagged for use only if the participant has problems with the website or cannot log in."
             ],
             "not_allowed_conclusions": [
                 "If no user is found in our system, or any of the data points are missing, this doesn't mean that the participant is not eligible for a distribution, we just need to confirm the information with the participant.",
@@ -1022,7 +1058,9 @@
                 "Do not contradict the stated review and delivery timing in this article.",
                 "Do not assert eligibility limitations or requirements that are not stated in the article.",
                 "Do not say the request can proceed when the split instructions are unclear or incomplete.",
-                "Do not claim how the participant accesses the RightSignature link beyond what the article states."
+                "Do not claim how the participant accesses the RightSignature link beyond what the article states.",
+                "Do not tell the participant they can select OverNight Check delivery in the online dashboard.",
+                "Do not state the overnight check fee is $35; it is $50."
             ]
         },
         "response_frames": {
@@ -1035,30 +1073,35 @@
                     "Explain that separate Roth and pre-tax destinations may use the online workflow when eligible, while one-source split rollovers must be handled through the manual process.",
                     "Make sure to provide exact split instructions, including allocation method, destination for each portion, and delivery method for each portion.",
                     "For the manual process, after the Must Have items are verified, the Separation of Service: Rollover Request Form can be shared to finalize the request.",
-                    "Since a one-source split rollover involves routing funds to multiple destinations, it requires manual review and processing."
+                    "Since a one-source split rollover involves routing funds to multiple destinations, it requires manual review and processing.",
+                    "If you have any trouble with the website or cannot log in, you can submit the request using this secure electronic form instead: https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e"
                 ],
                 "next_steps": [
                     "If the participant is eligible for the manual process, send the participant the Separation of Service: Rollover Request Form link: https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e",
                     "Have the participant fill out the RightSignature form. If the participant has more questions, instruct to contact support by email at help@forusall.com or by phone at 844-401-2253.",
                     "Collect the complete split instructions.",
-                    "Once filled out, the request will be submitted for manual review and processing by support."
+                    "Once filled out, the request will be submitted for manual review and processing by support.",
+                    "Include the Separation of Service: Rollover Request Form link in the response with a clear note that it is only for use if the participant has problems with the website or cannot log in: https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e"
                 ],
                 "warnings": [
                     "A one-source split rollover must be manually reviewed and processed because funds are being routed to multiple destinations.",
-                    "Do not promise an exact funding date beyond the stated timelines in this article."
+                    "Do not promise an exact funding date beyond the stated timelines in this article.",
+                    "Overnight check delivery cannot be selected in the online dashboard. It can only be requested on the secure electronic form and adds a $50 non-refundable fee per overnight check."
                 ],
                 "questions_to_ask": [],
                 "what_not_to_say": [
                     "Do not say a one-source split rollover can be submitted through the online dashboard.",
                     "Do not promise a processing timeline beyond what the article states.",
-                    "Do not omit the requirement for clear instructions."
+                    "Do not omit the requirement for clear instructions.",
+                    "Do not mention overnight check delivery as an option available in the online dashboard."
                 ]
             },
             "blocked_missing_data": {
                 "participant_message_components": [
                     "Explain that the request can be handled, but more detail is needed before it can move forward.",
                     "Tell the participant that split instructions must be clearly provided.",
-                    "Remind the participant that the manual process is finalized through the Separation of Service: Rollover Request Form only after the Must Have items are verified."
+                    "Remind the participant that the manual process is finalized through the Separation of Service: Rollover Request Form only after the Must Have items are verified.",
+                    "If you have problems with the website or cannot log in, you can use this secure electronic form to submit the request once we have your split details: https://secure.rightsignature.com/templates/83141e78-6a3e-43ac-b8bd-2583e00eea31/template-signer-link/71610e51efbc8b08b859e7345d98169e"
                 ],
                 "next_steps": [
                     "Ask for the missing split details.",

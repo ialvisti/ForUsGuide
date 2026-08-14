@@ -41,7 +41,7 @@
         "language": "en-US",
         "last_updated": null,
         "schema_version": "kb_article_v2",
-        "transformed_at": "2026-04-24",
+        "transformed_at": "2026-08-13",
         "source_last_updated": null,
         "source_system": "DevRev"
     },
@@ -121,7 +121,8 @@
                     "Record Keeper must be identified first before disclosing any loan-related fee.",
                     "If the Record Keeper is RK: Vanguard, disclose the Vanguard fee rules only.",
                     "If the Record Keeper is RK: LT Trust, disclose the LT Trust fee rules only.",
-                    "If the Record Keeper is neither RK: Vanguard nor RK: LT Trust, support must confirm any loan-related fees before they are disclosed."
+                    "If the Record Keeper is neither RK: Vanguard nor RK: LT Trust, support must confirm any loan-related fees before they are disclosed.",
+                    "For RK: LT Trust plans, the online loan request offers ACH, wire, and check delivery only. Overnight Check can only be requested on the RightSignature loan request form, so the $50 overnight check fee must not be mentioned when explaining the website process."
                 ]
             }
         ],
@@ -154,7 +155,7 @@
             {
                 "service": "LT Trust overnight check fee",
                 "fee": "$50",
-                "notes": "Additional fee if Overnight Check is selected as the disbursal payment method when requesting a loan. Applies only to RK: LT Trust plans. This fee applies per overnight check, not per request, and is non-refundable. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
+                "notes": "Additional fee if Overnight Check is selected as the disbursal payment method when requesting a loan. Applies only to RK: LT Trust plans. This fee applies per overnight check, not per request, and is non-refundable. Overnight Check can only be requested on the RightSignature loan request form; it is not a selectable delivery method in the online loan request, so do not mention the Overnight Check option or this fee when guiding a participant through the website. Record Keeper must be identified first before disclosing any loan-related fee. If Record Keeper cannot be determined, redirect to support."
             }
         ],
         "steps": [
@@ -413,6 +414,10 @@
             {
                 "issue": "Participant disputes a disclosed fee because they expected a different amount.",
                 "resolution": "Reconfirm the participant's Record Keeper and disclose only the fee rules that apply to that confirmed route. If the Record Keeper is not Vanguard or LT Trust, or if the fee rule cannot be confirmed, direct the participant to support."
+            },
+            {
+                "issue": "The participant wants overnight delivery of their loan proceeds while submitting the request online.",
+                "resolution": "Explain that overnight check delivery is not available in the online loan request. For RK: LT Trust plans, it can only be requested on the RightSignature loan request form and adds a $50 non-refundable fee per overnight check. Confirm the Record Keeper before disclosing any fee, and if the Record Keeper cannot be determined, redirect to support."
             }
         ],
         "examples": [
@@ -450,7 +455,7 @@
             },
             {
                 "scenario": "A participant with RK: LT Trust asks what happens if Overnight Check is selected for loan delivery.",
-                "outcome": "Explain that for LT Trust plans, an additional $50 Overnight Check fee applies, and that the fee applies per overnight check, not per request."
+                "outcome": "Explain that for LT Trust plans, an additional $50 Overnight Check fee applies, and that the fee applies per overnight check, not per request. Also explain that Overnight Check cannot be selected in the online loan request and can only be requested on the RightSignature loan request form."
             },
             {
                 "scenario": "A participant with RK: LT Trust asks whether wire or Overnight Check fees can be refunded later.",
@@ -563,6 +568,10 @@
             {
                 "scenario": "An employer terminates the 401(k) plan while the participant still has an outstanding loan balance.",
                 "outcome": "Explain that payroll loan repayments stop, the remaining balance is generally due in full before the plan closes, and if it is not repaid, it is treated as a taxable distribution. Also explain that online account access is disabled once the plan is fully terminated and distributed."
+            },
+            {
+                "scenario": "A participant with RK: LT Trust is being walked through the online loan request and asks for the loan check to be overnighted.",
+                "outcome": "Explain that the online loan request offers ACH, wire, and check delivery only, and that an overnight check can only be requested on the RightSignature loan request form, where an additional $50 non-refundable Overnight Check fee applies. Route to the LT Trust loan article for the form link once loan qualification is confirmed."
             }
         ],
         "additional_notes": [
@@ -640,7 +649,7 @@
             },
             {
                 "question": "Is there an additional fee for Overnight Check on LT Trust plans?",
-                "answer": "Yes. For LT Trust plans, an additional $50 Overnight Check fee applies, and it applies per overnight check, not per request."
+                "answer": "Yes. For LT Trust plans, an additional $50 Overnight Check fee applies, and it applies per overnight check, not per request. Overnight Check can only be requested on the RightSignature loan request form; it is not available in the online loan request."
             },
             {
                 "question": "Are LT Trust wire and Overnight Check fees refundable?",
@@ -737,6 +746,10 @@
             {
                 "question": "What happens to online account access if the employer terminates the 401(k) plan?",
                 "answer": "Once the plan is fully terminated and distributed, online account access is disabled. Participants should make sure their mailing address is current so they can receive tax forms and instructions."
+            },
+            {
+                "question": "Can a participant select Overnight Check in the online loan request?",
+                "answer": "No. The online loan request offers ACH, wire, and check delivery only. For RK: LT Trust plans, an overnight check can only be requested on the RightSignature loan request form, and it carries an additional $50 non-refundable fee per overnight check."
             }
         ],
         "definitions": [
@@ -854,7 +867,9 @@
                 "Do not disclose LT Trust delivery fees, maintenance fees, or processing fees unless the participant's Record Keeper is confirmed as RK: LT Trust.",
                 "Do not disclose the Vanguard $150 loan fee unless the participant's Record Keeper is confirmed as RK: Vanguard.",
                 "Do not treat support confirmation as optional when the participant's Record Keeper is neither RK: Vanguard nor RK: LT Trust and a fee question is being asked.",
-                "Do not guess, infer, or improvise a fee amount when fee details cannot be confirmed from the applicable Record Keeper rules."
+                "Do not guess, infer, or improvise a fee amount when fee details cannot be confirmed from the applicable Record Keeper rules.",
+                "Do not offer, mention, or price Overnight Check delivery when describing the online loan request; overnight delivery cannot be requested there.",
+                "Do not quote $35 as the LT Trust overnight check fee. The overnight check fee is $50; the $35 fee is the wire fee."
             ],
             "must_do_if_unsure": [
                 "Confirm the participant's status internally before guiding them through a loan-request path.",

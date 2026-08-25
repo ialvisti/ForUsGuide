@@ -1,6 +1,6 @@
 # Builder and minimal runtime use the same reviewed Chainguard snapshot from
 # ci/tool-images.env, so Python and native-wheel ABIs remain identical.
-FROM cgr.dev/chainguard/python:latest-dev@sha256:7a568bcee42666f73f041645a41c913ce1d442f4c24cf6019bc543a90820e531 AS python-runtime
+FROM cgr.dev/chainguard/python:latest-dev@sha256:14acabef9a759e7d07bf647afec92bc28cbe0f89c978fe426411c85035121c14 AS python-runtime
 
 USER 0
 WORKDIR /build
@@ -12,7 +12,7 @@ COPY requirements.lock ./
 RUN python -m pip install --no-cache-dir --target=/opt/python \
     --require-hashes -r requirements.lock
 
-FROM cgr.dev/chainguard/python:latest@sha256:a0365f7b90bf7b78a5e35f2709efb7c9263acf9c7b1905e0ec4c3e943c88e64d
+FROM cgr.dev/chainguard/python:latest@sha256:d812438658b47b73cb4c089f4cca09bca1ba50f6cd1843133864ee074d9ec49b
 
 WORKDIR /app
 ENV PYTHONDONTWRITEBYTECODE=1 \

@@ -22,6 +22,7 @@ from data_pipeline.ticket_job_models import (
 from data_pipeline.ticket_job_repository import (
     JOBS_COLLECTION,
     PAYLOADS_COLLECTION,
+    TICKET_EVALUATION_OUTBOX_COLLECTION,
     InMemoryTicketJobBackend,
     TicketJobRepository,
 )
@@ -156,6 +157,46 @@ class TestReconcilerRepairs:
         assert active == [("ticket_jobs_active", 2, {})]
         assert len(oldest) == 1
         assert 37 <= oldest[0][1] < 40
+
+    async def test_run_emits_exact_evaluation_recovery_depth_and_oldest_age(
+        self, repo, backend, monkeypatch,
+    ):
+        now = utcnow()
+        backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION] = {
+            "pending:0": {
+                "state": "pending",
+                "created_at": now - timedelta(seconds=43),
+            },
+            "retry:0": {
+                "state": "retry",
+                "created_at": now - timedelta(seconds=17),
+            },
+            "delivered:0": {
+                "state": "delivered",
+                "created_at": now - timedelta(seconds=90),
+            },
+        }
+        emitted = []
+        monkeypatch.setattr(
+            "data_pipeline.ticket_reconciler.ticket_metrics.emit",
+            lambda metric, value, **labels: emitted.append(
+                (metric, value, labels)
+            ),
+        )
+
+        await TicketReconciler(repo, FakeQueue()).run_once()
+
+        depth = [
+            event for event in emitted
+            if event[0] == "ticket_evaluation_recovery_depth"
+        ]
+        oldest = [
+            event for event in emitted
+            if event[0] == "ticket_evaluation_recovery_oldest_age_seconds"
+        ]
+        assert depth == [("ticket_evaluation_recovery_depth", 2, {})]
+        assert len(oldest) == 1
+        assert 43 <= oldest[0][1] < 46
 
     async def test_reconciler_reenqueues_pending_outbox(self, repo):
         rec = await _seed(repo)   # queued, enqueue_state=pending

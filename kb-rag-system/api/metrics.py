@@ -104,6 +104,29 @@ _METRIC_SPECS: Mapping[str, _MetricSpec] = {
     ),
     "ticket_jobs_active": _MetricSpec(_COUNT_MAX, {}, True),
     "ticket_jobs_oldest_age_seconds": _MetricSpec(2_678_400.0, {}),
+    "ticket_evaluation_delivery_count": _MetricSpec(
+        _COUNT_MAX,
+        {
+            "hydration_status": _values(
+                "pending", "succeeded", "failed",
+            )
+        },
+        True,
+    ),
+    "ticket_evaluation_delivery_latency_seconds": _MetricSpec(
+        2_678_400.0,
+        {
+            "hydration_status": _values(
+                "pending", "succeeded", "failed",
+            )
+        },
+    ),
+    "ticket_evaluation_recovery_depth": _MetricSpec(
+        _COUNT_MAX, {}, True,
+    ),
+    "ticket_evaluation_recovery_oldest_age_seconds": _MetricSpec(
+        2_678_400.0, {},
+    ),
     "ticket_reconciler_duration_seconds": _MetricSpec(600.0, {}),
     "ticket_reconciler_count": _MetricSpec(
         _COUNT_MAX,

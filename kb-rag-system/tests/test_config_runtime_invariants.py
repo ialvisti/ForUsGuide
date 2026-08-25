@@ -213,7 +213,7 @@ def test_evaluation_publisher_configuration_is_all_or_nothing(
         ({"TICKET_EVALUATION_INGEST_URL": "http://unsafe.test"}, "HTTPS"),
         ({"TICKET_EVALUATION_INGEST_AUDIENCE": "audience with spaces"}, "AUDIENCE"),
         ({"TICKET_EVALUATION_PUBLISH_TIMEOUT_S": 0}, "TIMEOUT"),
-        ({"TICKET_EVALUATION_PUBLISH_BATCH_SIZE": 101}, "BATCH"),
+        ({"TICKET_EVALUATION_PUBLISH_BATCH_SIZE": 26}, "BATCH"),
         ({"TICKET_EVALUATION_OUTBOX_RETENTION_S": 60}, "RETENTION"),
     ),
 )
@@ -221,6 +221,21 @@ def test_evaluation_publisher_bounds_fail_closed(monkeypatch, overrides, message
     _evaluation_publisher_config(monkeypatch, **overrides)
 
     with pytest.raises(ValueError, match=message):
+        validate_settings()
+
+
+def test_fast_publisher_timeout_exceeds_inline_hydration_without_regression(
+    monkeypatch,
+):
+    assert Settings.model_fields[
+        "TICKET_EVALUATION_PUBLISH_TIMEOUT_S"
+    ].default == 10.0
+    _evaluation_publisher_config(
+        monkeypatch,
+        TICKET_EVALUATION_PUBLISH_TIMEOUT_S=5.0,
+    )
+
+    with pytest.raises(ValueError, match="TIMEOUT"):
         validate_settings()
 
 

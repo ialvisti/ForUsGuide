@@ -46,6 +46,13 @@ from data_pipeline.pinecone_uploader import (
 )
 from data_pipeline.retrieval_privacy import UnsafeRetrievalQuery
 from data_pipeline.execution_logger import ExecutionLogger
+from api.direct_ticket_evaluation import (
+    begin_direct_ticket_evaluation,
+    complete_direct_ticket_evaluation,
+    direct_replay_response,
+    direct_success_entry,
+    record_direct_failure_best_effort,
+)
 from data_pipeline.llm_router import (
     LLMRouter,
     build_routes_from_settings,
@@ -357,6 +364,16 @@ def _make_coverage_pack_builder(rag_engine: RAGEngine):
 async def _close_runtime_resources(app: FastAPI) -> None:
     """Close every process-owned client without skipping later resources."""
     logger.info("Shutting down API...")
+    evaluation_publisher = getattr(
+        app.state, "ticket_evaluation_publisher", None,
+    )
+    if evaluation_publisher is not None:
+        try:
+            close_publisher = getattr(evaluation_publisher, "aclose", None)
+            if close_publisher is not None:
+                await close_publisher()
+        except Exception:
+            logger.error("Error closing ticket evaluation publisher")
     queue = getattr(app.state, "ticket_queue", None)
     if queue is not None:
         try:
@@ -474,6 +491,20 @@ async def lifespan(app: FastAPI):
                 retention_days=settings.TICKET_IDEMPOTENCY_RETENTION_DAYS,
                 max_outstanding=settings.TICKET_MAX_OUTSTANDING_JOBS,
                 rate_limit_per_minute=settings.RATE_LIMIT_HANDLE_TICKET,
+                evaluation_outbox_retention_s=(
+                    settings.TICKET_EVALUATION_OUTBOX_RETENTION_S
+                ),
+            )
+
+        # Normal delivery belongs beside the process that commits the outbox.
+        # The scheduled reconciler remains the repair path for any best-effort
+        # token/network/receiver failure after that commit.
+        if (
+            role in {"producer", "worker"}
+            and settings.TICKET_EVALUATION_PUBLISH_ENABLED
+        ):
+            app.state.ticket_evaluation_publisher = (
+                _build_ticket_evaluation_publisher(app.state.ticket_repo)
             )
 
         # ForusBots y el orchestrator pertenecen exclusivamente al worker.
@@ -533,6 +564,25 @@ def _build_ticket_job_backend():
             database=settings.FIRESTORE_DATABASE,
         )
     return InMemoryTicketJobBackend()
+
+
+def _build_ticket_evaluation_publisher(
+    repo: TicketJobRepository,
+):
+    """Build the role-bound exact/outbox publisher from validated settings."""
+    from data_pipeline.ticket_evaluation_publisher import (
+        TicketEvaluationPublisher,
+    )
+
+    return TicketEvaluationPublisher(
+        repo,
+        base_url=settings.TICKET_EVALUATION_INGEST_URL,
+        audience=settings.TICKET_EVALUATION_INGEST_AUDIENCE,
+        service_account=(
+            settings.TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT
+        ),
+        timeout_s=settings.TICKET_EVALUATION_PUBLISH_TIMEOUT_S,
+    )
 
 
 def _build_orchestrator_from_state(app: FastAPI) -> TicketOrchestrator:
@@ -1096,6 +1146,7 @@ async def required_data_endpoint(
         logger.info(f"Required data completed | Confidence: {result.confidence}")
 
         response = RequiredDataResponse(
+            ticket_id=request.ticket_id,
             article_reference=result.article_reference,
             required_fields=result.required_fields,
             confidence=result.confidence,
@@ -1170,6 +1221,19 @@ async def generate_response_endpoint(
     **Autenticación:** Requiere header `X-API-Key`
     """
     start = time.monotonic()
+    reservation = await begin_direct_ticket_evaluation(
+        http_request,
+        ticket_id=request.ticket_id,
+        route="generate_response",
+        inquiry=request.inquiry,
+        topic=request.topic,
+    )
+    if reservation.replay_response is not None:
+        return GenerateResponseResult.model_validate(
+            reservation.replay_response,
+        )
+    invocation_id = reservation.invocation_id
+    terminal_entry: Optional[dict[str, Any]] = None
     try:
         logger.info(
             "Generate response request | inquiry_length=%d | max_tokens=%d",
@@ -1207,6 +1271,25 @@ async def generate_response_endpoint(
             metadata=result.metadata
         )
 
+        terminal_entry = direct_success_entry(
+            route="generate_response",
+            inquiry=request.inquiry,
+            topic=request.topic,
+            response=response,
+        )
+        replay_payload = direct_replay_response(response)
+        public_response = (
+            GenerateResponseResult.model_validate(replay_payload)
+            if http_request.headers.get("Idempotency-Key") is not None
+            else response
+        )
+        await complete_direct_ticket_evaluation(
+            http_request,
+            invocation_id,
+            terminal_entry,
+            replay_response=replay_payload,
+        )
+
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
             await exec_logger.log_execution(
@@ -1214,12 +1297,20 @@ async def generate_response_endpoint(
                 endpoint="generate_response",
                 duration_ms=duration_ms,
                 request_data=request.model_dump(),
-                response_data=response.model_dump(),
+                response_data=public_response.model_dump(),
             )
 
-        return response
+        return public_response
 
     except Exception as e:
+        if terminal_entry is None:
+            await record_direct_failure_best_effort(
+                http_request,
+                invocation_id,
+                route="generate_response",
+                inquiry=request.inquiry,
+                topic=request.topic,
+            )
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
             await exec_logger.log_execution(
@@ -1252,7 +1343,6 @@ async def knowledge_question_endpoint(
     Endpoint 3: Answer a general knowledge question using the KB.
 
     This endpoint takes a plain question and returns an answer based on
-    the knowledge base articles. No participant data, record keeper, or
     plan type is required — it performs a broad semantic search.
 
     **Use cases:**
@@ -1260,9 +1350,32 @@ async def knowledge_question_endpoint(
     - Quick knowledge base lookups via the UI
     - Testing KB coverage for a given topic
 
-    **No autenticación requerida** (endpoint público para UI)
+    **Autenticación:** una consulta general sin ``ticket_id`` sigue siendo
+    pública para la UI. Al incluir ``ticket_id`` se requiere ``X-API-Key`` y la
+    ejecución se registra de forma durable para `/tickets`.
     """
+    if request.ticket_id is not None:
+        # General KB lookups remain public at the application layer.  A caller
+        # asking to create a ticket evaluation must authenticate as an API
+        # client before it can persist an event for DevRev authorization.
+        from api.auth import authenticate_principal
+
+        await authenticate_principal(http_request)
+
     start = time.monotonic()
+    reservation = await begin_direct_ticket_evaluation(
+        http_request,
+        ticket_id=request.ticket_id,
+        route="knowledge_question",
+        inquiry=request.question,
+        topic="general",
+    )
+    if reservation.replay_response is not None:
+        return KnowledgeQuestionResponse.model_validate(
+            reservation.replay_response,
+        )
+    invocation_id = reservation.invocation_id
+    terminal_entry: Optional[dict[str, Any]] = None
     try:
         logger.info(
             "Knowledge question request | question_length=%d",
@@ -1288,6 +1401,25 @@ async def knowledge_question_endpoint(
             metadata=result.metadata
         )
 
+        terminal_entry = direct_success_entry(
+            route="knowledge_question",
+            inquiry=request.question,
+            topic="general",
+            response=response,
+        )
+        replay_payload = direct_replay_response(response)
+        public_response = (
+            KnowledgeQuestionResponse.model_validate(replay_payload)
+            if http_request.headers.get("Idempotency-Key") is not None
+            else response
+        )
+        await complete_direct_ticket_evaluation(
+            http_request,
+            invocation_id,
+            terminal_entry,
+            replay_response=replay_payload,
+        )
+
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
             await exec_logger.log_execution(
@@ -1295,12 +1427,20 @@ async def knowledge_question_endpoint(
                 endpoint="knowledge_question",
                 duration_ms=duration_ms,
                 request_data=request.model_dump(),
-                response_data=response.model_dump(),
+                response_data=public_response.model_dump(),
             )
 
-        return response
+        return public_response
 
     except Exception as e:
+        if terminal_entry is None:
+            await record_direct_failure_best_effort(
+                http_request,
+                invocation_id,
+                route="knowledge_question",
+                inquiry=request.question,
+                topic="general",
+            )
         if exec_logger:
             duration_ms = (time.monotonic() - start) * 1000
             await exec_logger.log_execution(
@@ -1325,6 +1465,8 @@ async def knowledge_question_endpoint(
 def _build_suggested_call(
     inquiry: str,
     route: str,
+    *,
+    ticket_id: Optional[str] = None,
 ) -> Tuple[str, Dict[str, Any]]:
     """Build the downstream endpoint path + ready-to-send payload for ``route``.
 
@@ -1336,17 +1478,26 @@ def _build_suggested_call(
     declares them as required).
     """
     if route == "knowledge_question":
-        return "/api/v1/knowledge-question", {"question": inquiry}
+        payload: Dict[str, Any] = {"question": inquiry}
+        if ticket_id is not None:
+            payload["ticket_id"] = ticket_id
+        return "/api/v1/knowledge-question", payload
     if route == "generate_response":
-        return "/api/v1/generate-response", {
+        payload = {
             "inquiry": inquiry,
             "record_keeper": None,
             "plan_type": None,
             "topic": None,
             "collected_data": {},
         }
+        if ticket_id is not None:
+            payload["ticket_id"] = ticket_id
+        return "/api/v1/generate-response", payload
     # needs_more_info → caller should run the existing required-data flow first
-    return "/api/v1/required-data", {"inquiry": inquiry}
+    payload = {"inquiry": inquiry}
+    if ticket_id is not None:
+        payload["ticket_id"] = ticket_id
+    return "/api/v1/required-data", payload
 
 
 def _apply_router_mode(route: str, mode: str) -> Tuple[str, Optional[str]]:
@@ -1378,11 +1529,12 @@ async def route_inquiry_endpoint(
     """
     Endpoint 4: Classify an inquiry to choose the right downstream endpoint.
 
-    Accepts only ``inquiry`` and an optional ``router_mode`` override. Returns
-    the routing decision plus a ``suggested_endpoint``/``suggested_payload``
-    template the caller invokes next. When ``route == 'needs_more_info'``,
-    ``user_message`` is populated with a participant-ready prompt asking for
-    the missing detail.
+    Accepts ``inquiry``, an optional ``router_mode`` override, and an optional
+    trusted workflow-owned ``ticket_id``. Returns the routing decision plus a
+    ``suggested_endpoint``/``suggested_payload`` template the caller invokes
+    next; when present, the validated ticket identity is propagated into that
+    template. When ``route == 'needs_more_info'``, ``user_message`` is populated
+    with a participant-ready prompt asking for the missing detail.
 
     **Routes:**
     - ``knowledge_question`` → punctual KB lookup (`/api/v1/knowledge-question`)
@@ -1416,7 +1568,9 @@ async def route_inquiry_endpoint(
         )
 
         suggested_endpoint, suggested_payload = _build_suggested_call(
-            request.inquiry, effective_route
+            request.inquiry,
+            effective_route,
+            ticket_id=request.ticket_id,
         )
 
         # If the override forced the route to needs_more_info, the LLM never

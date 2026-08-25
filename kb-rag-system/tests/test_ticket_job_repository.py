@@ -1318,6 +1318,34 @@ async def _record_rag_invocation(repo, record, index, checkpoint):
 
 class TestTicketEvaluationOutbox:
 
+    async def test_due_retry_keeps_a_fair_slot_when_pending_fills_the_batch(
+        self, repo, backend,
+    ):
+        observed_at = utcnow()
+        collection = backend._data.setdefault(
+            TICKET_EVALUATION_OUTBOX_COLLECTION, {}
+        )
+        for index in range(25):
+            collection[f"pending-{index:03d}:0"] = {
+                "state": "pending",
+                "created_at": observed_at,
+            }
+        collection["due-retry:0"] = {
+            "state": "retry",
+            "created_at": observed_at - timedelta(minutes=8),
+            "next_attempt_at": observed_at - timedelta(seconds=1),
+        }
+
+        page = await repo.scan_ticket_evaluation_outbox(
+            limit=25,
+            observed_at=observed_at,
+        )
+
+        assert len(page) == 25
+        assert "due-retry:0" in {
+            execution_id for execution_id, _document in page
+        }
+
     async def test_due_retry_is_not_hidden_by_more_than_one_page_of_future_retries(
         self, repo, backend,
     ):

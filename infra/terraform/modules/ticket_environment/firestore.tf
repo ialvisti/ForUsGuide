@@ -99,6 +99,24 @@ resource "google_firestore_index" "ticket_evaluation_due_retries" {
   }
 }
 
+# Exact recovery depth/oldest-age gauges filter pending/retry and order by
+# created_at. Keeping this query indexed prevents observability from competing
+# with the bounded delivery scan.
+resource "google_firestore_index" "ticket_evaluation_state_created_at" {
+  project    = var.project_id
+  database   = local.db_name
+  collection = "ticket_evaluation_outbox"
+
+  fields {
+    field_path = "state"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "created_at"
+    order      = "ASCENDING"
+  }
+}
+
 # Bounded recovery scan for started invocations whose observation deadline is
 # due. The document name provides deterministic pagination across batches.
 resource "google_firestore_index" "ticket_rag_invocation_recovery" {

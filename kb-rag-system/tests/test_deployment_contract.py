@@ -243,6 +243,17 @@ def test_reconciler_deploy_contract_wires_the_ticket_evaluation_outbox() -> None
     }
     for name in required_environment:
         assert f'name  = "{name}"' in cloud_run_tf
+
+    publish_timeout = variables_tf.split(
+        'variable "ticket_evaluation_publish_timeout_s"', 1
+    )[1].split("\n}", 1)[0]
+    assert re.search(r"default\s*=\s*10(?:\.0)?\b", publish_timeout)
+    assert "var.ticket_evaluation_publish_timeout_s >= 10" in publish_timeout
+    assert "var.ticket_evaluation_publish_timeout_s <= 60" in publish_timeout
+    publish_batch = variables_tf.split(
+        'variable "ticket_evaluation_publish_batch_size"', 1
+    )[1].split("\n}", 1)[0]
+    assert "var.ticket_evaluation_publish_batch_size <= 25" in publish_batch
     assert (
         "value = var.ticket_evaluation_publish_enabled ? "
         'var.reconciler_sa_email : ""'
@@ -264,6 +275,29 @@ def test_reconciler_deploy_contract_wires_the_ticket_evaluation_outbox() -> None
     assert 'field_path = "state"' in due_retry_index
     assert 'field_path = "next_attempt_at"' in due_retry_index
     assert 'field_path = "__name__"' in due_retry_index
+
+
+def test_all_rag_runtime_roles_receive_the_evaluation_fast_path_contract() -> None:
+    cloud_run_tf = _read(
+        TF_ROOT / "modules" / "ticket_environment" / "cloud_run.tf"
+    )
+
+    # Producer and worker now publish the exact event they just committed;
+    # reconciler keeps the same configuration solely as the repair path.
+    for name in (
+        "TICKET_EVALUATION_PUBLISH_ENABLED",
+        "TICKET_EVALUATION_INGEST_URL",
+        "TICKET_EVALUATION_INGEST_AUDIENCE",
+        "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT",
+        "TICKET_EVALUATION_PUBLISH_TIMEOUT_S",
+    ):
+        assert cloud_run_tf.count(f'name  = "{name}"') == 3
+
+    for runtime_role in ("producer", "worker", "reconciler"):
+        assert (
+            "value = var.ticket_evaluation_publish_enabled ? "
+            f"var.{runtime_role}_sa_email : \"\""
+        ) in cloud_run_tf
 
 
 def test_rag_invocation_journal_has_terminal_ttl_and_recovery_index() -> None:

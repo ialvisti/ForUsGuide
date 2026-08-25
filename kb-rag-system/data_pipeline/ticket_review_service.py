@@ -94,6 +94,7 @@ from data_pipeline.devrev_client import (
     DevRevClient,
     DevRevConfigurationError,
     DevRevError,
+    DevRevInvalidIdentifierError,
     DevRevNotFoundError,
     DevRevRequestError,
     DevRevResourceLimitError,
@@ -148,6 +149,9 @@ CANDIDATE_RATIONALE_UNVERIFIED = (
 # page must never fan out one request per row without a bound: 50 rows would be
 # 50 simultaneous DevRev calls and an immediate rate-limit.
 DEFAULT_HYDRATION_CONCURRENCY = 5
+DEFAULT_EVALUATION_HYDRATION_TIMEOUT_S = 5.0
+MAX_EVALUATION_HYDRATION_TIMEOUT_S = 10.0
+MAX_EVALUATION_HYDRATION_RETRY_BATCH = 25
 EVALUATION_HYDRATION_RETRY_BASE_S = 30
 EVALUATION_HYDRATION_RETRY_CAP_S = 60 * 60
 EVALUATION_HYDRATION_SLOW_RETRY_S = 15 * 60
@@ -211,10 +215,16 @@ class TicketEvaluationService:
         devrev: DevRevClient,
         repository: TicketReviewRepository,
         clock: Callable[[], datetime] = utc_now,
+        hydration_timeout_s: float = DEFAULT_EVALUATION_HYDRATION_TIMEOUT_S,
     ) -> None:
+        if isinstance(hydration_timeout_s, bool) or not (
+            0.001 <= float(hydration_timeout_s) <= MAX_EVALUATION_HYDRATION_TIMEOUT_S
+        ):
+            raise ValueError("evaluation hydration timeout must be 0.001..10 seconds")
         self._devrev = devrev
         self._repo = repository
         self._clock = clock
+        self._hydration_timeout_s = float(hydration_timeout_s)
 
     @staticmethod
     def _system_context(execution_id: str) -> MutationContext:
@@ -230,10 +240,32 @@ class TicketEvaluationService:
         run, created = await self._repo.persist_ticket_evaluation(event)
         claim = await self._repo.claim_ticket_evaluation_hydration(run.execution_id)
         if claim is not None:
-            run = await self._hydrate(claim)
+            run = await self._hydrate_with_deadline(claim)
         else:
             run = await self._repo.get_ticket_evaluation(run.execution_id)
         return TicketEvaluationIngestResult(run=run, created=created)
+
+    async def _hydrate_with_deadline(
+        self, claim: EvaluationHydrationClaim
+    ) -> TicketEvaluationRun:
+        """Bound DevRev plus linking, then durably ACK a retryable timeout."""
+        try:
+            async with asyncio.timeout(self._hydration_timeout_s):
+                return await self._hydrate(claim)
+        except TimeoutError:
+            run = claim.run
+            delay = min(
+                EVALUATION_HYDRATION_RETRY_CAP_S,
+                EVALUATION_HYDRATION_RETRY_BASE_S
+                * (2 ** min(max(run.hydration_attempts - 1, 0), 7)),
+            )
+            return await self._repo.record_ticket_evaluation_hydration_failure(
+                run.execution_id,
+                error_code="devrev_timeout",
+                retryable=True,
+                next_attempt_at=self._clock() + timedelta(seconds=delay),
+                lease_token=claim.lease_token,
+            )
 
     async def _hydrate(self, claim: EvaluationHydrationClaim) -> TicketEvaluationRun:
         run = claim.run
@@ -241,7 +273,12 @@ class TicketEvaluationService:
             ticket = await self._devrev.get_ticket(run.event.ticket_id)
         except DevRevError as exc:
             authorization_denied = isinstance(
-                exc, (DevRevNotFoundError, DevRevScopeError)
+                exc,
+                (
+                    DevRevNotFoundError,
+                    DevRevScopeError,
+                    DevRevInvalidIdentifierError,
+                ),
             )
             # A token/configuration/contract incident says nothing about this
             # ticket's scope. Keep the durable run quarantined and retry it at
@@ -274,19 +311,55 @@ class TicketEvaluationService:
             lease_token=claim.lease_token,
         )
 
-    async def retry_due_hydrations(self, *, limit: int = 20) -> tuple[int, int]:
+    async def retry_due_hydrations(
+        self, *, limit: int = 20
+    ) -> tuple[int, int, int]:
+        if isinstance(limit, bool) or not 1 <= limit <= MAX_EVALUATION_HYDRATION_RETRY_BATCH:
+            raise ValueError("evaluation hydration retry limit must be 1..25")
         due = await self._repo.list_due_ticket_evaluation_hydrations(limit=limit)
-        attempted = 0
-        succeeded = 0
-        for run in due:
-            claim = await self._repo.claim_ticket_evaluation_hydration(run.execution_id)
-            if claim is None:
-                continue
-            attempted += 1
-            hydrated = await self._hydrate(claim)
-            if hydrated.hydration_status.value == "succeeded":
-                succeeded += 1
-        return attempted, succeeded
+        semaphore = asyncio.Semaphore(DEFAULT_HYDRATION_CONCURRENCY)
+
+        async def _retry_one(run: TicketEvaluationRun) -> tuple[int, int, int]:
+            async with semaphore:
+                claim: Optional[EvaluationHydrationClaim] = None
+                try:
+                    claim = await self._repo.claim_ticket_evaluation_hydration(
+                        run.execution_id
+                    )
+                    if claim is None:
+                        return 0, 0, 0
+                    hydrated = await self._hydrate_with_deadline(claim)
+                    succeeded = int(hydrated.hydration_status.value == "succeeded")
+                    return 1, succeeded, 0
+                except asyncio.CancelledError:
+                    # Process/request cancellation is control flow.  Let the
+                    # TaskGroup cancel every sibling and rely on the durable
+                    # lease for crash recovery.
+                    raise
+                except Exception as exc:  # noqa: BLE001 - isolate batch items
+                    # One adapter/repository defect must not cancel siblings
+                    # that may already hold five-minute hydration leases.  The
+                    # affected claim remains retryable at its lease deadline.
+                    logger.error(
+                        "ticket evaluation hydration retry item failed; "
+                        "error_type=%s",
+                        type(exc).__name__,
+                    )
+                    # Preserve the legacy meaning of ``attempted``: hydration
+                    # starts only after a lease was acquired. A claim failure
+                    # is still observable through the independent error count.
+                    return int(claim is not None), 0, 1
+
+        tasks: list[asyncio.Task[tuple[int, int, int]]] = []
+        async with asyncio.TaskGroup() as group:
+            for run in due:
+                tasks.append(group.create_task(_retry_one(run)))
+        results = [task.result() for task in tasks]
+        return (
+            sum(row[0] for row in results),
+            sum(row[1] for row in results),
+            sum(row[2] for row in results),
+        )
 
     async def list_runs(
         self,
@@ -407,6 +480,10 @@ def _hydration_error_code(exc: DevRevError) -> str:
         return "devrev_rate_limited"
     if isinstance(exc, (DevRevNotFoundError, DevRevScopeError)):
         return "devrev_not_found_or_out_of_scope"
+    if isinstance(exc, DevRevInvalidIdentifierError):
+        return "devrev_invalid_ticket_id"
+    if isinstance(exc, DevRevRequestError):
+        return "devrev_request"
     if isinstance(exc, DevRevAuthenticationError):
         return "devrev_authentication"
     if isinstance(exc, DevRevConfigurationError):

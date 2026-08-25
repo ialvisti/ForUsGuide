@@ -68,20 +68,68 @@ def test_ticket_platform_declares_three_isolated_services() -> None:
     assert 'contains(["foundation", "workload"]' in variables
 
 
+def test_ingest_hydration_deadline_is_bounded_inside_cloud_run_request() -> None:
+    cloud_run = _read(MODULE / "cloud_run.tf")
+    variables = _read(MODULE / "variables.tf")
+
+    assert 'variable "ingest_hydration_timeout_s"' in variables
+    hydration_variable = variables.split(
+        'variable "ingest_hydration_timeout_s"', 1
+    )[1].split("\n}", 1)[0]
+    assert re.search(r"default\s*=\s*5(?:\.0)?\b", hydration_variable)
+    assert "var.ingest_hydration_timeout_s <= 10" in hydration_variable
+    assert 'timeout                          = "60s"' in cloud_run
+    assert 'name  = "TICKET_EVALUATION_INGEST_HYDRATION_TIMEOUT_S"' in cloud_run
+    assert "value = tostring(var.ingest_hydration_timeout_s)" in cloud_run
+
+
 def test_ticket_platform_wires_exact_service_to_service_iam() -> None:
     iam = _read(MODULE / "iam.tf")
     main = _read(MODULE / "main.tf")
+    cloud_run = _read(MODULE / "cloud_run.tf")
 
     assert (
         'resource "google_cloud_run_v2_service_iam_member" '
         '"publisher_invokes_ingest"'
     ) in iam
-    assert 'member   = "serviceAccount:${var.publisher_service_account_email}"' in iam
+    assert (
+        "for_each = local.workload_enabled ? "
+        "local.expected_publisher_service_accounts_by_role : {}"
+    ) in iam
+    assert 'member   = "serviceAccount:${each.value}"' in iam
+    assert (
+        "value = jsonencode(sort(tolist("
+        "local.expected_publisher_service_accounts)))"
+    ) in cloud_run
+    for runtime_identity in (
+        "ticket-producer-${local.suffix}",
+        "ticket-worker-${local.suffix}",
+        "ticket-reconciler-${local.suffix}",
+    ):
+        assert runtime_identity in main
+    assert "expected_publisher_service_accounts_by_role = {" in main
+    assert (
+        "expected_publisher_service_accounts = "
+        "toset(values(local.expected_publisher_service_accounts_by_role))"
+    ) in main
     assert "expected_publisher_service_account" in main
     assert (
         "var.publisher_service_account_email == "
         "local.expected_publisher_service_account"
     ) in main
+    assert "jsonencode([var.publisher_service_account_email])" not in cloud_run
+    assert (
+        'member   = "serviceAccount:${var.publisher_service_account_email}"'
+        not in iam
+    )
+    assert (
+        "from = "
+        "google_cloud_run_v2_service_iam_member.publisher_invokes_ingest[0]"
+    ) in iam
+    assert (
+        'to   = google_cloud_run_v2_service_iam_member.publisher_invokes_ingest["reconciler"]'
+        in iam
+    )
     assert (
         'resource "google_cloud_run_v2_service_iam_member" '
         '"console_invokes_broker"'
@@ -102,6 +150,7 @@ def test_ticket_platform_wires_exact_service_to_service_iam() -> None:
 
 def test_ticket_platform_uses_named_database_and_no_file_exchange_storage() -> None:
     firestore = _read(MODULE / "firestore.tf")
+    cloud_run = _read(MODULE / "cloud_run.tf")
 
     assert 'name        = local.console_database' in firestore
     assert 'delete_protection_state = "DELETE_PROTECTION_ENABLED"' in firestore
@@ -117,6 +166,14 @@ def test_ticket_platform_uses_named_database_and_no_file_exchange_storage() -> N
 
     assert re.search(r'collection\s*=\s*"ticket_reviews"', firestore)
     assert 'field_path = "updated_at"' in firestore
+    assert (
+        'resource "google_firestore_index" '
+        '"ticket_evaluations_hydrated_updated_at"'
+    ) in firestore
+    assert 'collection  = "ticket_evaluation_runs"' in firestore
+    assert 'field_path = "hydration_status"' in firestore
+    assert 'field_path = "updated_at"' in firestore
+    assert "google_firestore_index.ticket_evaluations_hydrated_updated_at" in cloud_run
 
 
 def test_ticket_platform_wires_runtime_configuration_and_numeric_secrets() -> None:
@@ -254,3 +311,30 @@ def test_evaluation_dead_letters_page_the_existing_on_call_channels() -> None:
     ) in monitoring
     assert "google_logging_metric.evaluation_dead_letter.name" in monitoring
     assert "notification_channels = var.notification_channels" in monitoring
+
+
+def test_evaluation_visibility_gap_and_recovery_have_deployable_monitoring() -> None:
+    monitoring = _read(
+        TF_ROOT / "modules" / "ticket_environment" / "monitoring.tf"
+    )
+
+    for metric in (
+        "evaluation_not_visible_ack",
+        "evaluation_delivery_latency",
+        "evaluation_recovery_depth",
+        "evaluation_recovery_oldest_age",
+    ):
+        assert f'resource "google_logging_metric" "{metric}"' in monitoring
+    assert r'\"metric\":\"ticket_evaluation_delivery_count\"' in monitoring
+    for status in ("pending", "failed", "unknown"):
+        assert status in monitoring
+    assert (
+        'resource "google_monitoring_alert_policy" '
+        '"ticket_evaluation_visibility_gap"'
+    ) in monitoring
+    assert (
+        'resource "google_monitoring_alert_policy" '
+        '"ticket_evaluation_recovery_age"'
+    ) in monitoring
+    assert "notification_channels = var.notification_channels" in monitoring
+    assert "Evaluation visibility and recovery" in monitoring

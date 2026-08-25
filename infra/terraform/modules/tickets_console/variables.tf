@@ -41,6 +41,19 @@ variable "image_digest" {
   }
 }
 
+variable "ingest_hydration_timeout_s" {
+  type        = number
+  default     = 5
+  description = "Deadline absoluto por hidratación inline; deja margen para ACK dentro del timeout Cloud Run de 60s."
+  validation {
+    condition = (
+      var.ingest_hydration_timeout_s >= 0.1 &&
+      var.ingest_hydration_timeout_s <= 10
+    )
+    error_message = "ingest_hydration_timeout_s debe estar entre 0.1 y 10 segundos."
+  }
+}
+
 variable "publisher_service_account_email" {
   type    = string
   default = ""

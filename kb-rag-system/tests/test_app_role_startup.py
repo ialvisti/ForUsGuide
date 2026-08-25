@@ -25,6 +25,7 @@ class _StartupSpies:
         self.queue = Mock(aclose=AsyncMock())
         self.validator = Mock()
         self.execution_logger = Mock()
+        self.evaluation_publisher = Mock(aclose=AsyncMock())
 
         self.pinecone_ctor = Mock(return_value=self.pinecone)
         self.llm_router_ctor = Mock(return_value=self.llm_router)
@@ -36,6 +37,9 @@ class _StartupSpies:
         self.queue_builder = Mock(return_value=self.queue)
         self.validator_builder = Mock(return_value=self.validator)
         self.execution_logger_ctor = Mock(return_value=self.execution_logger)
+        self.evaluation_publisher_builder = Mock(
+            return_value=self.evaluation_publisher
+        )
 
     def patches(self) -> ExitStack:
         stack = ExitStack()
@@ -61,6 +65,13 @@ class _StartupSpies:
         stack.enter_context(
             patch("api.main.ExecutionLogger", self.execution_logger_ctor)
         )
+        stack.enter_context(
+            patch(
+                "api.main._build_ticket_evaluation_publisher",
+                self.evaluation_publisher_builder,
+                create=True,
+            )
+        )
         return stack
 
 
@@ -72,6 +83,7 @@ async def _run_lifespan(
     *,
     execution_logging: bool = False,
     firestore_database: str = "",
+    evaluation_publish: bool = False,
 ):
     from api.config import settings
     from api.main import lifespan
@@ -80,6 +92,9 @@ async def _run_lifespan(
     monkeypatch.setattr(settings, "TICKET_HANDLER_MODE", mode)
     monkeypatch.setattr(settings, "ENABLE_EXECUTION_LOGGING", execution_logging)
     monkeypatch.setattr(settings, "FIRESTORE_DATABASE", firestore_database)
+    monkeypatch.setattr(
+        settings, "TICKET_EVALUATION_PUBLISH_ENABLED", evaluation_publish,
+    )
     spies = _StartupSpies()
     application = FastAPI()
     with spies.patches():
@@ -162,6 +177,40 @@ async def test_worker_closes_clients_when_lifespan_body_raises(monkeypatch):
     assert observed_spies is not None
     observed_spies.forusbots.aclose.assert_awaited_once_with()
     observed_spies.pinecone.close.assert_called_once_with()
+
+
+@pytest.mark.parametrize("role", ["producer", "worker"])
+async def test_rag_roles_build_and_close_immediate_evaluation_publisher(
+    monkeypatch,
+    role,
+):
+    from api.config import settings
+
+    async with _run_lifespan(
+        role,
+        "disabled",
+        monkeypatch,
+        evaluation_publish=True,
+    ) as (application, spies):
+        assert application.state.ticket_evaluation_publisher is \
+            spies.evaluation_publisher
+        spies.evaluation_publisher_builder.assert_called_once_with(spies.repo)
+        assert spies.repo_ctor.call_args.kwargs[
+            "evaluation_outbox_retention_s"
+        ] == settings.TICKET_EVALUATION_OUTBOX_RETENTION_S
+
+    spies.evaluation_publisher.aclose.assert_awaited_once_with()
+
+
+async def test_disabled_immediate_publisher_is_not_constructed(monkeypatch):
+    async with _run_lifespan(
+        "producer",
+        "disabled",
+        monkeypatch,
+        evaluation_publish=False,
+    ) as (application, spies):
+        assert not hasattr(application.state, "ticket_evaluation_publisher")
+        spies.evaluation_publisher_builder.assert_not_called()
 
 
 async def test_reconciler_initializes_only_repository_and_queue(monkeypatch):
@@ -260,6 +309,10 @@ def _pin_deployed_role_settings(monkeypatch, **overrides) -> None:
         ),
         "FORUSBOTS_BASE_URL": "https://forusbots.example.com",
         "FORUSBOTS_AUTH_TOKEN": "forusbots-test-token",
+        "FORUSBOTS_MAX_WAIT_S": 200.0,
+        "TICKET_INQUIRY_BUDGET_S": 300.0,
+        "TICKET_TOTAL_BUDGET_S": 480.0,
+        "TICKET_ATTEMPT_BUDGET_S": 480.0,
         "TICKET_JOB_BACKEND": "firestore",
         "FIRESTORE_DATABASE": "(default)",
         "TICKET_TASK_QUEUE": "inline",

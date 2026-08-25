@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import hmac
 import logging
+import math
 from collections.abc import Callable, Sequence
 from contextlib import asynccontextmanager
 from typing import Any, Optional
@@ -67,6 +68,11 @@ class TicketEvaluationIngestSettings(BaseSettings):
     DEVREV_ALLOWED_PART_DONS: list[str] = Field(default_factory=list)
     DEVREV_ALLOWED_TICKET_VISIBILITY_IDS: list[int] = Field(default_factory=list)
     DEVREV_ALLOWED_TIMELINE_VISIBILITIES: list[str] = Field(default_factory=list)
+    # Absolute wall-clock budget for one inline hydration, including the
+    # DevRev call and the authorization/link transaction.  A timeout is stored
+    # as retryable and returned in the ACK instead of consuming Cloud Run's
+    # 60-second request window.
+    HYDRATION_TIMEOUT_S: float = 5.0
 
 
 def validate_ingest_settings(settings: TicketEvaluationIngestSettings) -> bool:
@@ -104,6 +110,14 @@ def validate_ingest_settings(settings: TicketEvaluationIngestSettings) -> bool:
         errors.append("DEVREV_ALLOWED_TICKET_VISIBILITY_IDS must be non-empty")
     if not settings.DEVREV_ALLOWED_TIMELINE_VISIBILITIES:
         errors.append("DEVREV_ALLOWED_TIMELINE_VISIBILITIES must be non-empty")
+    hydration_timeout = settings.HYDRATION_TIMEOUT_S
+    if (
+        isinstance(hydration_timeout, bool)
+        or not isinstance(hydration_timeout, (int, float))
+        or not math.isfinite(float(hydration_timeout))
+        or not 0.1 <= float(hydration_timeout) <= 10.0
+    ):
+        errors.append("HYDRATION_TIMEOUT_S must be between 0.1 and 10 seconds")
     if errors:
         raise ValueError("Invalid ticket evaluation ingest configuration: " + "; ".join(errors))
     return True
@@ -123,6 +137,9 @@ class HydrationRetryAcknowledgement(BaseModel):
 
     attempted: int = Field(ge=0)
     succeeded: int = Field(ge=0)
+    # Additive field: publishers talking to an older receiver continue to
+    # interpret its two-field ACK as errors=0 during a rolling deployment.
+    errors: int = Field(default=0, ge=0)
 
 
 TokenVerifier = Callable[[str, str], dict[str, Any]]
@@ -247,13 +264,23 @@ def _configure_routes(app: FastAPI) -> FastAPI:
             hydration_status=result.run.hydration_status,
         )
 
-    @app.post(RETRY_ROUTE, response_model=HydrationRetryAcknowledgement)
+    @app.post(
+        RETRY_ROUTE,
+        response_model=HydrationRetryAcknowledgement,
+        response_model_exclude_defaults=True,
+    )
     async def retry_hydration(
-        limit: int = Query(default=20, ge=1, le=100),
+        limit: int = Query(default=20, ge=1, le=25),
         _caller: str = Depends(_authorize),
     ) -> HydrationRetryAcknowledgement:
-        attempted, succeeded = await app.state.service.retry_due_hydrations(limit=limit)
-        return HydrationRetryAcknowledgement(attempted=attempted, succeeded=succeeded)
+        attempted, succeeded, errors = (
+            await app.state.service.retry_due_hydrations(limit=limit)
+        )
+        return HydrationRetryAcknowledgement(
+            attempted=attempted,
+            succeeded=succeeded,
+            errors=errors,
+        )
 
     @app.exception_handler(HTTPException)
     async def http_error(_request: Request, exc: HTTPException) -> JSONResponse:
@@ -338,7 +365,11 @@ async def lifespan(app: FastAPI):
         api_version=settings.DEVREV_VERSION,
         environment=settings.ENVIRONMENT,
     )
-    app.state.service = TicketEvaluationService(devrev=devrev, repository=repository)
+    app.state.service = TicketEvaluationService(
+        devrev=devrev,
+        repository=repository,
+        hydration_timeout_s=settings.HYDRATION_TIMEOUT_S,
+    )
     app.state.oidc_audience = settings.OIDC_AUDIENCE
     app.state.allowed_service_accounts = tuple(settings.ALLOWED_SERVICE_ACCOUNTS)
     app.state.token_verifier = verify_google_id_token

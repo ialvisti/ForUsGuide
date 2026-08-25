@@ -575,7 +575,8 @@ export function normalizeExecutionSummary(item) {
     classificationReasoning: value.classification_reasoning ?? "",
     generatedAnswerExcerpt: value.generated_answer_excerpt ?? "",
     occurredAt: value.occurred_at ?? "",
-    createdAt: value.occurred_at ?? "",
+    readyAt: value.ready_at ?? value.occurred_at ?? "",
+    createdAt: value.ready_at ?? value.occurred_at ?? "",
     review: value.review ?? null,
   };
 }

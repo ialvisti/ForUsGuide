@@ -36,6 +36,7 @@ import {
 
 const SPRITE_URL = "/tickets/assets/icons.svg";
 const TEXT_DEBOUNCE_MS = 300;
+const QUEUE_REFRESH_MS = 15_000;
 
 const store = createStore();
 
@@ -51,6 +52,7 @@ const dom = {
   filterForms: document.getElementById("filter-forms"),
   executionForm: document.getElementById("filters-executions"),
   activeFilters: document.getElementById("active-filters"),
+  technicalBatch: document.getElementById("technical-batch-details"),
   bulkBar: document.getElementById("bulk-bar"),
   bulkCount: document.getElementById("bulk-count"),
   bulkClear: document.getElementById("bulk-clear"),
@@ -75,6 +77,7 @@ const dom = {
 let icons = new Map();
 let requestSerial = 0;
 let cooldownTimer = null;
+let queueRefreshTimer = null;
 let restoreFocusTo = null;
 let filterSheetInerted = [];
 
@@ -151,8 +154,8 @@ function normalizeExecutionRow(item) {
     runStatus: execution.runStatus ?? "",
     hydrationStatus: execution.hydrationStatus ?? "unavailable",
     review: execution.review ?? null,
-    createdAt: execution.occurredAt ?? execution.createdAt ?? "",
-    updatedAt: execution.occurredAt ?? execution.createdAt ?? "",
+    createdAt: execution.readyAt ?? execution.occurredAt ?? execution.createdAt ?? "",
+    updatedAt: execution.readyAt ?? execution.occurredAt ?? execution.createdAt ?? "",
   };
 }
 
@@ -212,6 +215,62 @@ async function load({ refresh = false } = {}) {
     store.dispatch({ type: "load/failed", error });
     reportError(error);
   }
+}
+
+function refreshVisibleQueue() {
+  const state = store.getState();
+  const hasCurrentPage = state.phase === "ready";
+  const canRecoverEmptyPage = state.phase === "error"
+    && state.error?.recoverable === true
+    && (
+      state.error?.status === 0
+      || state.error?.status === 429
+      || state.error?.status >= 500
+    );
+  if (
+    document.visibilityState !== "visible"
+    || (!hasCurrentPage && !canRecoverEmptyPage)
+    || state.selected !== ""
+    || state.cursor !== null
+    || api.cooldownRemainingS() > 0
+  ) {
+    return;
+  }
+  void load({ refresh: true });
+}
+
+function startQueueAutoRefresh() {
+  if (queueRefreshTimer === null) {
+    queueRefreshTimer = globalThis.setInterval(refreshVisibleQueue, QUEUE_REFRESH_MS);
+  }
+}
+
+function stopQueueAutoRefresh() {
+  if (queueRefreshTimer !== null) {
+    globalThis.clearInterval(queueRefreshTimer);
+    queueRefreshTimer = null;
+  }
+}
+
+function handleVisibilityChange() {
+  if (document.visibilityState === "visible") {
+    refreshVisibleQueue();
+  }
+}
+
+function handlePageShow(event) {
+  if (!event.persisted) {
+    return;
+  }
+  startQueueAutoRefresh();
+  const phase = store.getState().phase;
+  if (phase === "loading" || phase === "refreshing") {
+    // pagehide aborts in-flight reads. A bfcache restore must supersede that
+    // abandoned request instead of leaving the queue stuck in a loading phase.
+    void load({ refresh: true });
+    return;
+  }
+  refreshVisibleQueue();
 }
 
 function startCooldown(seconds) {
@@ -309,7 +368,7 @@ function describeDisabledCapabilities(flags) {
 
 function renderAll(state) {
   document.body.classList.toggle("detail-open", state.selected !== "");
-  dom.caption.textContent = "Tickets ready for evaluation, newest received first.";
+  dom.caption.textContent = "Tickets ready for evaluation, newest ready first.";
 
   const identity = state.session;
   dom.sessionEmail.textContent = identity?.email ?? "—";
@@ -363,6 +422,10 @@ function renderAll(state) {
   const role = state.session?.role ?? "viewer";
   const { refs: batchable } = batchableSelection(state.rows, state.selectedIds);
   const batchesOn = flags.remediation_enabled === true;
+  dom.technicalBatch.hidden = !batchesOn || !canCurateBatches(role);
+  if (dom.technicalBatch.hidden) {
+    dom.technicalBatch.open = false;
+  }
   dom.bulkRemediation.disabled =
     !batchesOn || !canCurateBatches(role) || batchable.length === 0 || paused;
   dom.bulkRemediationHelp.textContent = !batchesOn
@@ -425,9 +488,14 @@ function renderTable(state) {
     return;
   }
   if (state.rows.length === 0 && state.phase === "ready") {
+    const hasOlderCandidates = state.nextCursor !== null;
     render.renderStateRow(dom.body, {
-      title: "No RAG executions match these filters",
-      body: "Clear a filter, or verify the execution and ticket identifiers.",
+      title: hasOlderCandidates
+        ? "No matches on this page; older executions remain"
+        : "No RAG executions match these filters",
+      body: hasOlderCandidates
+        ? "Continue to the next page to search the remaining ready executions."
+        : "Clear a filter, or verify the execution and ticket identifiers.",
     });
     return;
   }
@@ -724,22 +792,6 @@ function wireTable() {
       }
       return;
     }
-    const row = event.target.closest('[data-row="ticket"]');
-    if (row !== null) {
-      openDetail(row.dataset.executionId, row);
-    }
-  });
-
-  dom.body.addEventListener("keydown", (event) => {
-    if (event.key !== "Enter" && event.key !== " ") {
-      return;
-    }
-    const row = event.target.closest('[data-row="ticket"]');
-    if (row === null || event.target !== row) {
-      return;
-    }
-    event.preventDefault();
-    openDetail(row.dataset.executionId, row);
   });
 
   dom.selectAll.addEventListener("change", () => {
@@ -880,7 +932,13 @@ async function boot() {
     }
     load();
   });
-  globalThis.addEventListener("pagehide", () => api.abortAll());
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  globalThis.addEventListener("pageshow", handlePageShow);
+  startQueueAutoRefresh();
+  globalThis.addEventListener("pagehide", () => {
+    stopQueueAutoRefresh();
+    api.abortAll();
+  });
 
   await load();
 }

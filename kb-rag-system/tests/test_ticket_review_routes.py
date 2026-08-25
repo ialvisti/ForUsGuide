@@ -444,6 +444,7 @@ class TestTicketList:
         body = response.json()
         assert body["items"][0]["execution_id"] == "job123:0"
         assert body["items"][0]["devrev_display_id"] == SYNTHETIC_DISPLAY_ID
+        assert body["items"][0]["ready_at"].endswith("Z")
         assert body["items"][0]["review"]["status"] == "unreviewed"
         assert harness.devrev.list_calls == []
 

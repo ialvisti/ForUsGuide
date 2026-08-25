@@ -146,6 +146,7 @@ __all__ = [
     "DevRevConfigurationError",
     "DevRevConflictError",
     "DevRevError",
+    "DevRevInvalidIdentifierError",
     "DevRevNotFoundError",
     "DevRevPaginationError",
     "DevRevPermissionError",
@@ -357,6 +358,10 @@ class DevRevRequestError(DevRevError):
     out-of-bound cursor or limit, an unknown ``mode``, and use of a closed
     client.
     """
+
+
+class DevRevInvalidIdentifierError(DevRevRequestError):
+    """A ticket/work identity cannot be sent to DevRev safely."""
 
 
 class DevRevConfigurationError(DevRevError):
@@ -1476,15 +1481,17 @@ class DevRevClient:
     @staticmethod
     def _validated_work_identifier(work_id: str) -> str:
         if not isinstance(work_id, str):
-            raise DevRevRequestError("a DevRev identifier must be a string")
+            raise DevRevInvalidIdentifierError(
+                "a DevRev identifier must be a string"
+            )
         candidate = work_id.strip()
         if not candidate:
-            raise DevRevRequestError("a DevRev identifier is required")
+            raise DevRevInvalidIdentifierError("a DevRev identifier is required")
         if _DON_PATTERN.match(candidate) and len(candidate) <= MAX_ID_LENGTH:
             return candidate
         if _DISPLAY_ID_PATTERN.match(candidate) and len(candidate) <= MAX_DISPLAY_ID_LENGTH:
             return candidate
-        raise DevRevRequestError(
+        raise DevRevInvalidIdentifierError(
             "a DevRev identifier must be a bounded DON or display id"
         )
 

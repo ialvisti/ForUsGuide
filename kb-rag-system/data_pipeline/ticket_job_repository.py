@@ -61,6 +61,7 @@ from data_pipeline.ticket_job_models import (
     PublicErrorCode,
     TicketJobRecord,
     TicketJobState,
+    fingerprint_request,
     hash_idempotency_key,
     hash_tenant_id,
     utcnow,
@@ -91,6 +92,11 @@ _PAYLOAD_FIELDS = frozenset({
 
 _RATE_WINDOW_S = 60
 _RATE_WINDOW_TTL = timedelta(hours=48)
+_DIRECT_RAG_RECOVERY_GRACE = timedelta(minutes=10)
+_DIRECT_TICKET_DON_RE = re.compile(r"^don:[A-Za-z0-9_.:/+-]{1,252}$")
+_DIRECT_TICKET_DISPLAY_RE = re.compile(
+    r"^[A-Za-z][A-Za-z0-9]{0,15}-[0-9]{1,20}$"
+)
 
 Document = dict[str, Any]
 CollectionData = dict[str, dict[str, Document]]
@@ -203,6 +209,14 @@ class TicketEvaluationConflict(TicketJobError):
 
 class TicketEvaluationReplayNotAllowed(TicketJobError):
     """Only a durable evaluation dead letter can be manually replayed."""
+
+
+class DirectRagInvocationInProgress(TicketJobError):
+    """A stable direct-RAG request is already executing."""
+
+
+class DirectRagInvocationFailed(TicketJobError):
+    """A stable direct-RAG request already reached a terminal failure."""
 
 
 @dataclass(frozen=True)
@@ -1273,6 +1287,253 @@ class TicketJobRepository:
 
         return await self.backend.transact(_txn)
 
+    async def begin_direct_rag_invocation(
+        self,
+        *,
+        request_id: str,
+        ticket_id: str,
+        route: str,
+        inquiry: str,
+        topic: str,
+        tenant_id: Optional[str] = None,
+    ) -> str:
+        """Persist an invocation intent for a legacy response endpoint.
+
+        Direct endpoints have no durable ticket job or worker lease.  A hash
+        of the server-generated request ID supplies a bounded, non-sensitive
+        job identity while a conservative recovery deadline lets the normal
+        reconciler audit a process crash.  As with worker calls, this method
+        must commit before the RAG provider effect begins.
+        """
+        invocation_id, replay_response = await self.reserve_direct_rag_invocation(
+            request_id=request_id,
+            ticket_id=ticket_id,
+            route=route,
+            inquiry=inquiry,
+            topic=topic,
+            tenant_id=tenant_id,
+        )
+        if replay_response is not None:
+            raise TicketEvaluationConflict(
+                "an unkeyed direct invocation cannot replay"
+            )
+        return invocation_id
+
+    async def reserve_direct_rag_invocation(
+        self,
+        *,
+        request_id: str,
+        ticket_id: str,
+        route: str,
+        inquiry: str,
+        topic: str,
+        tenant_id: Optional[str] = None,
+        principal_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
+    ) -> tuple[str, Optional[Document]]:
+        """Atomically reserve or replay a ticket-associated direct RAG call.
+
+        The raw idempotency key is never persisted.  Matching completed calls
+        return their minimized public response before another provider effect;
+        an in-flight reservation fails closed so the caller can retry later.
+        """
+        if route not in {
+            EvaluationRoute.KNOWLEDGE_QUESTION.value,
+            EvaluationRoute.GENERATE_RESPONSE.value,
+        }:
+            raise ValueError("direct invocation requires a response RAG route")
+        if not isinstance(request_id, str) or not request_id.strip():
+            raise ValueError("direct invocation requires a request id")
+        if len(request_id.encode("utf-8")) > 512:
+            raise ValueError("direct invocation request id is too long")
+        if not isinstance(ticket_id, str) or not (
+            _DIRECT_TICKET_DON_RE.fullmatch(ticket_id)
+            or _DIRECT_TICKET_DISPLAY_RE.fullmatch(ticket_id)
+        ):
+            raise ValueError("direct invocation requires a DevRev ticket id")
+        if (
+            not isinstance(inquiry, str)
+            or not inquiry.strip()
+            or len(inquiry) > 20_000
+        ):
+            raise ValueError("direct invocation inquiry is invalid")
+        if not isinstance(topic, str) or not topic.strip() or len(topic) > 256:
+            raise ValueError("direct invocation topic is invalid")
+        if tenant_id is not None and (
+            not isinstance(tenant_id, str)
+            or not tenant_id.strip()
+            or len(tenant_id) > 256
+        ):
+            raise ValueError("direct invocation tenant is invalid")
+        if idempotency_key is not None:
+            if (
+                not isinstance(idempotency_key, str)
+                or re.fullmatch(
+                    r"[A-Za-z0-9._:-]{8,128}", idempotency_key,
+                ) is None
+            ):
+                raise ValueError("direct invocation idempotency key is invalid")
+            if not isinstance(principal_id, str) or not principal_id.strip():
+                raise ValueError(
+                    "direct invocation idempotency requires a principal"
+                )
+
+        normalized_inquiry = inquiry.strip()
+        normalized_topic = topic.strip()
+        request_fingerprint = fingerprint_request({
+            "ticket_id": ticket_id,
+            "route": route,
+            "inquiry": normalized_inquiry,
+            "topic": normalized_topic,
+            "tenant_id": tenant_id,
+        })
+        direct_receipt_id: Optional[str] = None
+        if idempotency_key is not None:
+            idempotency_hash = hash_idempotency_key(
+                principal_id or "", idempotency_key,
+            )
+            direct_receipt_id = f"direct:{idempotency_hash}"
+            request_digest = idempotency_hash
+        else:
+            request_digest = hashlib.sha256(
+                request_id.encode("utf-8")
+            ).hexdigest()
+        job_id = f"direct_{request_digest[:32]}"
+        invocation_id = rag_invocation_id(
+            job_id,
+            0,
+            lease_epoch=1,
+            attempt=1,
+        )
+
+        async def _txn(
+            view: TransactionView,
+        ) -> tuple[str, Optional[Document]]:
+            now = utcnow()
+            if direct_receipt_id is not None:
+                receipt = await view.get(
+                    RECEIPTS_COLLECTION, direct_receipt_id,
+                )
+                if receipt is not None:
+                    if (
+                        receipt.get("kind") != "direct_rag"
+                        or receipt.get("request_fingerprint")
+                        != request_fingerprint
+                        or receipt.get("tenant_id_hash")
+                        != (
+                            hash_tenant_id(tenant_id)
+                            if tenant_id is not None else None
+                        )
+                    ):
+                        raise TicketEvaluationConflict(
+                            "direct RAG idempotency key was reused with "
+                            "different input"
+                        )
+                    receipt_invocation_id = receipt.get("invocation_id")
+                    if receipt_invocation_id != invocation_id:
+                        raise TicketEvaluationConflict(
+                            "direct RAG idempotency receipt is inconsistent"
+                        )
+                    receipt_state = receipt.get("state")
+                    if receipt_state == "completed":
+                        replay_response = receipt.get("response_payload")
+                        if not isinstance(replay_response, dict):
+                            raise TicketEvaluationConflict(
+                                "direct RAG replay response is unavailable"
+                            )
+                        return invocation_id, replay_response
+                    if receipt_state == "started":
+                        raise DirectRagInvocationInProgress(
+                            "direct RAG invocation is already in progress"
+                        )
+                    if receipt_state == "failed":
+                        raise DirectRagInvocationFailed(
+                            "direct RAG invocation already failed"
+                        )
+                    raise TicketEvaluationConflict(
+                        "direct RAG idempotency receipt has invalid state"
+                    )
+            existing = await view.get(
+                RAG_INVOCATIONS_COLLECTION, invocation_id,
+            )
+            if existing is not None:
+                _assert_invocation_matches(
+                    existing,
+                    invocation_id=invocation_id,
+                    job_id=job_id,
+                    index=0,
+                    lease_epoch=1,
+                )
+                raise TicketEvaluationConflict(
+                    "direct RAG invocation already started for this request"
+                )
+            event_seed: Document = {
+                "invocation_id": invocation_id,
+                "job_id": job_id,
+                "inquiry_index": 0,
+                "attempt": 1,
+                "lease_epoch": 1,
+                "ticket_id": ticket_id,
+                "tenant_id": tenant_id,
+                "route": route,
+                "inquiry": normalized_inquiry,
+                "topic": normalized_topic,
+                "classification": {
+                    "route": route,
+                    "confidence": None,
+                    "reasoning": (
+                        "Caller selected the direct ticket-associated "
+                        f"{route} endpoint."
+                    ),
+                    "metadata": {"producer": "legacy_direct_endpoint"},
+                },
+                "correlation": {
+                    "request_fingerprint": request_digest,
+                },
+            }
+            invocation: Document = {
+                "invocation_id": invocation_id,
+                "job_id": job_id,
+                "inquiry_index": 0,
+                "route": route,
+                "attempt": 1,
+                "lease_epoch": 1,
+                "origin": "direct_endpoint",
+                "worker_hash": request_digest[:32],
+                "state": "started",
+                "started_at": now,
+                "updated_at": now,
+                "next_recovery_at": now + _DIRECT_RAG_RECOVERY_GRACE,
+                "completed_at": None,
+                "event_digest": None,
+                "event_seed": event_seed,
+            }
+            if direct_receipt_id is not None:
+                invocation["direct_receipt_id"] = direct_receipt_id
+            validate_durable_document(invocation, max_depth=14)
+            view.set(
+                RAG_INVOCATIONS_COLLECTION, invocation_id, invocation,
+            )
+            if direct_receipt_id is not None:
+                receipt = {
+                    "kind": "direct_rag",
+                    "request_fingerprint": request_fingerprint,
+                    "tenant_id_hash": (
+                        hash_tenant_id(tenant_id)
+                        if tenant_id is not None else None
+                    ),
+                    "invocation_id": invocation_id,
+                    "state": "started",
+                    "created_at": now,
+                    "updated_at": now,
+                    "expires_at": now + self._retention,
+                }
+                validate_durable_document(receipt, max_depth=8)
+                view.set(RECEIPTS_COLLECTION, direct_receipt_id, receipt)
+            return invocation_id, None
+
+        return await self.backend.transact(_txn)
+
     async def record_inquiry_result(self, job_id: str, index: int,
                                     entry: Dict[str, Any],
                                     *, lease_epoch: Optional[int] = None,
@@ -1404,6 +1665,8 @@ class TicketJobRepository:
         entry: Dict[str, Any],
         *,
         completed_at: Optional[datetime] = None,
+        replay_response: Optional[Document] = None,
+        replay_error_code: Optional[str] = None,
     ) -> Document:
         """Complete only the invocation ledger, without changing job state.
 
@@ -1466,6 +1729,57 @@ class TicketJobRepository:
                     invocation_id,
                     invocation,
                 )
+            direct_receipt_id = invocation.get("direct_receipt_id")
+            if isinstance(direct_receipt_id, str):
+                receipt = await view.get(
+                    RECEIPTS_COLLECTION, direct_receipt_id,
+                )
+                if receipt is None or receipt.get("invocation_id") != invocation_id:
+                    raise TicketEvaluationConflict(
+                        "direct RAG idempotency receipt is unavailable"
+                    )
+                receipt_state = receipt.get("state")
+                if receipt_state == "started":
+                    if replay_response is not None:
+                        validate_durable_document(replay_response, max_depth=14)
+                        receipt.update({
+                            "state": "completed",
+                            "response_payload": replay_response,
+                            "updated_at": now,
+                            "expires_at": now + self._retention,
+                        })
+                    elif replay_error_code is not None:
+                        receipt.update({
+                            "state": "failed",
+                            "error_code": replay_error_code,
+                            "updated_at": now,
+                            "expires_at": now + self._retention,
+                        })
+                    else:
+                        raise TicketEvaluationConflict(
+                            "direct RAG completion lacks a replay outcome"
+                        )
+                    validate_durable_document(receipt, max_depth=14)
+                    view.set(
+                        RECEIPTS_COLLECTION, direct_receipt_id, receipt,
+                    )
+                elif receipt_state == "completed":
+                    if (
+                        replay_response is None
+                        or receipt.get("response_payload") != replay_response
+                    ):
+                        raise TicketEvaluationConflict(
+                            "direct RAG replay response changed"
+                        )
+                elif receipt_state == "failed":
+                    if replay_error_code != receipt.get("error_code"):
+                        raise TicketEvaluationConflict(
+                            "direct RAG replay failure changed"
+                        )
+                else:
+                    raise TicketEvaluationConflict(
+                        "direct RAG idempotency receipt has invalid state"
+                    )
             return invocation
 
         return await self.backend.transact(_txn)
@@ -2623,6 +2937,27 @@ class TicketJobRepository:
             await self.backend.transact(_advance_cursor)
         return docs
 
+    async def get_ticket_evaluation_outbox(
+        self,
+        execution_id: str,
+    ) -> Optional[Document]:
+        """Return one exact outbox event with a single bounded point read.
+
+        Delivery eligibility remains a publisher concern. In particular, the
+        immediate path sends only a newly committed ``pending`` record while
+        retry timing remains owned by the scheduled batch scanner.
+        """
+        if (
+            not isinstance(execution_id, str)
+            or not 3 <= len(execution_id) <= 160
+            or "/" in execution_id
+        ):
+            raise ValueError("evaluation execution id is invalid")
+        return await self.backend.get_doc(
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            execution_id,
+        )
+
     async def scan_ticket_evaluation_outbox(
         self,
         *,
@@ -2631,27 +2966,34 @@ class TicketJobRepository:
     ) -> ScanPage:
         """Return a bounded page of new and due evaluation deliveries.
 
-        New events are read first so a future retry cannot starve newly
-        produced evidence.  Retry lookahead remains bounded and delivery is
-        idempotent at the receiver.
+        New events retain most of the batch, while due retries receive a
+        bounded fair share.  Without that reservation, sustained pending
+        traffic can hide an already-due retry forever.  If either side has
+        less work, the other fills the remaining capacity.
         """
         if isinstance(limit, bool) or not 1 <= limit <= 100:
             raise ValueError("evaluation outbox limit must be between 1 and 100")
         now = observed_at or utcnow()
-        pending = await self.backend.scan_collection(
+        due_retries = await self.backend.scan_due_ticket_evaluation_retries(
             TICKET_EVALUATION_OUTBOX_COLLECTION,
             limit,
-            states=["pending"],
-        )
-        remaining = limit - len(pending)
-        if remaining <= 0:
-            return pending
-        retries = await self.backend.scan_due_ticket_evaluation_retries(
-            TICKET_EVALUATION_OUTBOX_COLLECTION,
-            remaining,
             due_before=now,
         )
-        return [*pending, *retries]
+        reserved_retries = min(
+            len(due_retries),
+            max(1, limit // 5),
+        )
+        pending_limit = limit - reserved_retries
+        pending = (
+            await self.backend.scan_collection(
+                TICKET_EVALUATION_OUTBOX_COLLECTION,
+                pending_limit,
+                states=["pending"],
+            )
+            if pending_limit > 0 else []
+        )
+        remaining = limit - len(pending)
+        return [*pending, *due_retries[:remaining]]
 
     async def mark_ticket_evaluation_delivered(
         self,
@@ -2821,4 +3163,13 @@ class TicketJobRepository:
         return await self.backend.active_job_stats(
             JOBS_COLLECTION,
             [TicketJobState.QUEUED.value, TicketJobState.RUNNING.value],
+        )
+
+    async def ticket_evaluation_recovery_stats(
+        self,
+    ) -> tuple[int, Optional[datetime]]:
+        """Exact count and oldest timestamp for recoverable outbox events."""
+        return await self.backend.active_job_stats(
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            ["pending", "retry"],
         )

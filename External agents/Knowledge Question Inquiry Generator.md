@@ -24,7 +24,6 @@ You will receive a JSON object with ticket metadata and messages:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-XXXXXX",
     "emailSubject": "...",
     "emailBody": "...",
     "tag": "...",
@@ -212,7 +211,6 @@ Input:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-872058",
     "emailSubject": "401k",
     "emailBody": "The customer wants to cash out their 401k.",
     "tag": "NOT FOUND",
@@ -245,7 +243,6 @@ Input:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-904321",
     "emailSubject": "Hardship",
     "emailBody": "Participant is asking about a hardship withdrawal for medical bills.",
     "tag": "Hardship Request",
@@ -280,7 +277,6 @@ Input:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-915234",
     "emailSubject": "Loan request",
     "emailBody": "Participant wants to take a loan from their 401k.",
     "tag": "Loan Request",
@@ -313,7 +309,6 @@ Input:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-931872",
     "emailSubject": "Rollover request",
     "emailBody": "Hi, I left my job last month and I'd like to roll over my 401(k) to my Fidelity IRA. Can you help me with that?",
     "tag": "Withdrawal Request --> Terminated Distribution",
@@ -340,7 +335,6 @@ Input:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-872385",
     "emailSubject": "Participant Advisory - Form Submission",
     "emailBody": "401k",
     "tag": "NOT FOUND",
@@ -374,7 +368,6 @@ Input:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-988341",
     "emailSubject": "Participant Advisory - Form Submission",
     "emailBody": "I want to know how long it takes to receive my 401k funds after submitting a termination distribution request.",
     "tag": "NOT FOUND",
@@ -410,7 +403,6 @@ Input:
 ```json
 {
   "ticketData": {
-    "ticketId": "TKT-943011",
     "emailSubject": "Question",
     "emailBody": "Participant has a general question about their account.",
     "tag": "NOT FOUND",

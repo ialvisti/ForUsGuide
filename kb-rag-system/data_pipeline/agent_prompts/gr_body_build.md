@@ -654,7 +654,6 @@ Build the `context` object from `caseData.ticketData` to provide the KB API with
 ```json
 {
   "context": {
-    "ticket_id": "caseData.ticketData.ticketId",
     "agent_name": "caseData.ticketData.userName",
     "agent_email": "caseData.ticketData.userEmail",
     "email_subject": "caseData.ticketData.emailSubject",
@@ -829,7 +828,6 @@ Output:
     }
   },
   "context": {
-    "ticket_id": "TKT-872058",
     "agent_name": "Ivan Alvis",
     "agent_email": "ivan.alvis@forusall.com",
     "email_subject": "401k",
@@ -932,7 +930,6 @@ Output:
     }
   },
   "context": {
-    "ticket_id": "TKT-904821",
     "agent_name": "Sarah Johnson",
     "agent_email": "sarah.johnson@forusall.com",
     "email_subject": "Rollover request",
@@ -1062,7 +1059,6 @@ Output:
     }
   },
   "context": {
-    "ticket_id": "TKT-915234",
     "agent_name": "Carlos Mendez",
     "agent_email": "carlos.mendez@forusall.com",
     "email_subject": "Loan request",
@@ -1180,7 +1176,6 @@ Output:
     }
   },
   "context": {
-    "ticket_id": "TKT-874034",
     "agent_name": "Ajinkya Joshi",
     "agent_email": "ajinkya.joshi10@gmail.com",
     "email_subject": "Roll over previous employer 401k",
@@ -1272,7 +1267,6 @@ Output:
     }
   },
   "context": {
-    "ticket_id": "TKT-933015",
     "agent_name": "Luis Herrera",
     "agent_email": "luis.herrera@forusall.com",
     "email_subject": "Move funds to Schwab IRA",
@@ -1396,7 +1390,6 @@ Output:
     }
   },
   "context": {
-    "ticket_id": "TKT-874189",
     "agent_name": "Ben Svoboda",
     "agent_email": "bencsvoboda@gmail.com",
     "email_subject": "401k Rollover",

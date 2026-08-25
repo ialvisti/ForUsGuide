@@ -199,6 +199,9 @@ class Settings(BaseSettings):
     TICKET_EVALUATION_INGEST_URL: str = ""
     TICKET_EVALUATION_INGEST_AUDIENCE: str = ""
     TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT: str = ""
+    # Fast-publish runs inside participant-facing RAG endpoints, so its total
+    # wall-clock budget stays at 10s.  Ingest bounds inline hydration at 5s;
+    # any ambiguous timeout remains recoverable from the durable outbox.
     TICKET_EVALUATION_PUBLISH_TIMEOUT_S: float = 10.0
     TICKET_EVALUATION_PUBLISH_BATCH_SIZE: int = 25
     # TTL begins only after receiver acknowledgement. Pending/retry/dead_letter
@@ -397,15 +400,15 @@ def validate_settings() -> bool:
                 "de service account"
             )
     if not _finite_positive(settings.TICKET_EVALUATION_PUBLISH_TIMEOUT_S) or \
-            not 0.1 <= float(settings.TICKET_EVALUATION_PUBLISH_TIMEOUT_S) <= 60:
+            not 10 <= float(settings.TICKET_EVALUATION_PUBLISH_TIMEOUT_S) <= 60:
         errors.append(
-            "TICKET_EVALUATION_PUBLISH_TIMEOUT_S debe estar entre 0.1 y 60"
+            "TICKET_EVALUATION_PUBLISH_TIMEOUT_S debe estar entre 10 y 60"
         )
     evaluation_batch = settings.TICKET_EVALUATION_PUBLISH_BATCH_SIZE
     if isinstance(evaluation_batch, bool) or not isinstance(evaluation_batch, int) \
-            or not 1 <= evaluation_batch <= 100:
+            or not 1 <= evaluation_batch <= 25:
         errors.append(
-            "TICKET_EVALUATION_PUBLISH_BATCH_SIZE debe estar entre 1 y 100"
+            "TICKET_EVALUATION_PUBLISH_BATCH_SIZE debe estar entre 1 y 25"
         )
     evaluation_retention = settings.TICKET_EVALUATION_OUTBOX_RETENTION_S
     if isinstance(evaluation_retention, bool) \

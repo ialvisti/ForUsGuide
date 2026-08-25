@@ -73,16 +73,23 @@ resource "google_secret_manager_secret_iam_member" "broker" {
   member    = "serviceAccount:${google_service_account.evidence_broker.email}"
 }
 
-# The existing reconciler is the sole event-ingest caller.  Runtime OIDC also
-# verifies this exact email and the custom audience, so Cloud Run IAM is not the
-# only authorization boundary.
+# Producer and worker provide the immediate path; reconciler is the repair
+# path. Runtime OIDC verifies the same closed identity set and custom audience,
+# so Cloud Run IAM is not the only authorization boundary.
 resource "google_cloud_run_v2_service_iam_member" "publisher_invokes_ingest" {
-  count    = local.workload_enabled ? 1 : 0
+  for_each = local.workload_enabled ? local.expected_publisher_service_accounts_by_role : {}
   project  = var.project_id
   location = var.region
   name     = google_cloud_run_v2_service.ingest[0].name
   role     = "roles/run.invoker"
-  member   = "serviceAccount:${var.publisher_service_account_email}"
+  member   = "serviceAccount:${each.value}"
+}
+
+# Preserve the existing reconciler member while moving from the original
+# single-instance resource to the keyed, three-publisher contract.
+moved {
+  from = google_cloud_run_v2_service_iam_member.publisher_invokes_ingest[0]
+  to   = google_cloud_run_v2_service_iam_member.publisher_invokes_ingest["reconciler"]
 }
 
 # Only the console runtime can call the evidence broker.

@@ -240,14 +240,19 @@ def test_read_only_chat_copy_round_trips() -> None:
 def test_primary_outcome_filter_copy_round_trips() -> None:
     _round_trip(
         [
+            ("Tickets to review", "Tickets por revisar"),
+            (
+                "Open a ticket, record the evaluation, and continue with the next review.",
+                "Abre un ticket, registra la evaluación y continúa con la siguiente revisión.",
+            ),
             ("Outcome", "Resultado"),
             ("Request type", "Tipo de solicitud"),
             ("Any outcome", "Cualquier resultado"),
             ("Knowledge Question", "Pregunta de conocimiento"),
             ("Generate Response", "Generar respuesta"),
             (
-                "Tickets ready for evaluation, newest received first.",
-                "Tickets listos para evaluar, del más reciente al más antiguo.",
+                "Tickets ready for evaluation, newest ready first.",
+                "Tickets listos para evaluar, ordenados por disponibilidad más reciente.",
             ),
         ]
     )

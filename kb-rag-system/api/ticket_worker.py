@@ -672,6 +672,35 @@ def _emit_phase(phase: str) -> None:
     _emit_worker_metric("ticket_phase_count", 1, phase=phase)
 
 
+async def _publish_ticket_evaluation_best_effort(
+    app: Any,
+    invocation_id: Optional[str],
+) -> None:
+    """Offer one committed event immediately; the outbox owns recovery."""
+    if invocation_id is None:
+        return
+    publisher = getattr(app.state, "ticket_evaluation_publisher", None)
+    if publisher is None:
+        return
+    try:
+        await publisher.publish_execution(invocation_id)
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001 - reconciler retries the durable outbox
+        logger.warning("immediate ticket evaluation delivery deferred")
+
+
+async def _complete_rag_invocation_and_publish(
+    app: Any,
+    repo: TicketJobRepository,
+    invocation_id: str,
+    entry: Dict[str, Any],
+) -> None:
+    """Commit an invocation outcome before attempting exact-ID delivery."""
+    await repo.complete_rag_invocation(invocation_id, entry)
+    await _publish_ticket_evaluation_best_effort(app, invocation_id)
+
+
 def _route_metric_step(route: Any) -> str:
     return {
         "knowledge_question": "retrieve",
@@ -1101,13 +1130,17 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             ) from None
         _emit_phase("persist_inquiry_result")
         try:
-            return await repo.record_inquiry_result(
+            checkpoint = await repo.record_inquiry_result(
                 job_id,
                 inquiry_index,
                 entry,
                 lease_epoch=lease_epoch,
                 invocation_id=invocation_id,
             )
+            await _publish_ticket_evaluation_best_effort(
+                app, invocation_id,
+            )
+            return checkpoint
         except StaleLeaseEpoch:
             # The job checkpoint remains fenced, but a result that really
             # returned still belongs in the invocation ledger.  Recovery may
@@ -1115,8 +1148,8 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
             # answer-less outcome remains immutable.
             if invocation_id is not None:
                 try:
-                    await repo.complete_rag_invocation(
-                        invocation_id, entry,
+                    await _complete_rag_invocation_and_publish(
+                        app, repo, invocation_id, entry,
                     )
                 except Exception:  # noqa: BLE001 - preserve original fence
                     logger.info(
@@ -1305,7 +1338,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     )
                     real = real_outcome
                     if shadow_invocation_id is not None:
-                        await repo.complete_rag_invocation(
+                        await _complete_rag_invocation_and_publish(
+                            app,
+                            repo,
                             shadow_invocation_id,
                             _entry_from_outcome(i, real_outcome),
                         )
@@ -1332,7 +1367,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                 except _ForusBotsSubmitIntentAlreadyExists:
                     intent_blocked = True
                     if shadow_invocation_id is not None:
-                        await repo.complete_rag_invocation(
+                        await _complete_rag_invocation_and_publish(
+                            app,
+                            repo,
                             shadow_invocation_id,
                             {
                                 "route": getattr(cls, "route", None),
@@ -1355,7 +1392,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     })
                 except asyncio.TimeoutError:
                     if shadow_invocation_id is not None:
-                        await repo.complete_rag_invocation(
+                        await _complete_rag_invocation_and_publish(
+                            app,
+                            repo,
                             shadow_invocation_id,
                             {
                                 "route": getattr(cls, "route", None),
@@ -1382,7 +1421,9 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
                     logger.error("shadow pipeline failed (inquiry_index=%d)", i)
                     if shadow_invocation_id is not None:
                         try:
-                            await repo.complete_rag_invocation(
+                            await _complete_rag_invocation_and_publish(
+                                app,
+                                repo,
                                 shadow_invocation_id,
                                 {
                                     "route": getattr(cls, "route", None),

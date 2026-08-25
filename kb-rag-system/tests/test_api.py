@@ -167,7 +167,8 @@ class TestRequiredDataEndpoint:
                 "inquiry": "I want to rollover my 401k balance",
                 "record_keeper": "LT Trust",
                 "plan_type": "401(k)",
-                "topic": "rollover"
+                "topic": "rollover",
+                "ticket_id": "TKT-1234",
             },
             headers={"X-API-Key": test_api_key}
         )
@@ -177,6 +178,7 @@ class TestRequiredDataEndpoint:
         assert 'article_reference' in data
         assert 'required_fields' in data
         assert 'confidence' in data
+        assert data["ticket_id"] == "TKT-1234"
 
 
 class TestGenerateResponseEndpoint:
@@ -915,6 +917,10 @@ class TestTicketHandlerContainment:
             TICKET_HANDLER_MODE="full",
             FORUSBOTS_BASE_URL="https://forusbots.internal.example",
             FORUSBOTS_AUTH_TOKEN="tok",
+            FORUSBOTS_MAX_WAIT_S=200.0,
+            TICKET_INQUIRY_BUDGET_S=300.0,
+            TICKET_TOTAL_BUDGET_S=480.0,
+            TICKET_ATTEMPT_BUDGET_S=480.0,
             LLM_ROUTE_CLASSIFY="gpt-5.5",
             LLM_ROUTE_DECOMPOSE="gpt-5.5",
             LLM_ROUTE_GR_OUTCOME="gpt-5.5",

@@ -13,6 +13,8 @@ from api import metrics
 
 _INTEGER_METRICS = {
     "ticket_jobs_active",
+    "ticket_evaluation_delivery_count",
+    "ticket_evaluation_recovery_depth",
     "ticket_reconciler_count",
     "ticket_result_count",
     "ticket_forusbots_count",
@@ -84,6 +86,24 @@ def test_emit_sanitizes_label_values_and_optional_identifiers(
         ("ticket_queue_delay_seconds", {"code": "observed"}),
         ("ticket_jobs_active", {}),
         ("ticket_jobs_oldest_age_seconds", {}),
+        (
+            "ticket_evaluation_delivery_count",
+            {"hydration_status": "succeeded"},
+        ),
+        (
+            "ticket_evaluation_delivery_latency_seconds",
+            {"hydration_status": "pending"},
+        ),
+        (
+            "ticket_evaluation_delivery_count",
+            {"hydration_status": "unknown"},
+        ),
+        (
+            "ticket_evaluation_delivery_latency_seconds",
+            {"hydration_status": "unknown"},
+        ),
+        ("ticket_evaluation_recovery_depth", {}),
+        ("ticket_evaluation_recovery_oldest_age_seconds", {}),
         ("ticket_reconciler_count", {"reason": "fenced_leases"}),
         (
             "ticket_step_latency_seconds",

@@ -27,6 +27,12 @@ locals {
   broker_service_name  = "tickets-evidence-broker-${local.suffix}"
 
   expected_publisher_service_account = "ticket-reconciler-${local.suffix}@${var.project_id}.iam.gserviceaccount.com"
+  expected_publisher_service_accounts_by_role = {
+    producer   = "ticket-producer-${local.suffix}@${var.project_id}.iam.gserviceaccount.com"
+    worker     = "ticket-worker-${local.suffix}@${var.project_id}.iam.gserviceaccount.com"
+    reconciler = local.expected_publisher_service_account
+  }
+  expected_publisher_service_accounts = toset(values(local.expected_publisher_service_accounts_by_role))
 
   ingest_audience = "https://${local.ingest_service_name}.${var.project_id}.tickets.internal"
   broker_audience = "https://${local.broker_service_name}.${var.project_id}.tickets.internal"

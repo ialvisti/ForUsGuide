@@ -9,7 +9,7 @@ Define la estructura de datos para los endpoints:
 import re
 from datetime import datetime
 from typing import List, Dict, Any, Optional, Literal
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from enum import Enum
 
 # Enums CERRADOS del job durable: n8n nunca interpreta strings arbitrarios
@@ -33,6 +33,29 @@ class PlanType(str, Enum):
     PLAN_401K = "401(k)"
     PLAN_403B = "403(b)"
     PLAN_457 = "457"
+
+
+_DEVREV_DON_RE = re.compile(r"^don:[A-Za-z0-9_.:/+-]{1,252}$")
+_DEVREV_DISPLAY_ID_RE = re.compile(
+    r"^[A-Za-z][A-Za-z0-9]{0,15}-[0-9]{1,20}$"
+)
+
+
+def normalize_optional_ticket_id(value: Optional[str]) -> Optional[str]:
+    """Validate the DevRev identity needed by the evaluation ledger.
+
+    General-purpose RAG calls remain valid without a ticket.  Once a caller
+    associates a call with a ticket, however, accepting arbitrary text would
+    create an outbox record that the DevRev hydrator can never authorize.
+    """
+    if value is None:
+        return None
+    candidate = value.strip()
+    if _DEVREV_DON_RE.fullmatch(candidate):
+        return candidate
+    if _DEVREV_DISPLAY_ID_RE.fullmatch(candidate):
+        return candidate.upper()
+    raise ValueError("ticket_id must be a bounded DevRev DON or display id")
 
 
 # ============================================================================
@@ -79,6 +102,16 @@ class RequiredDataRequest(BaseModel):
         description="Otras inquiries relacionadas en el mismo ticket"
     )
 
+    ticket_id: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "DevRev identity injected from the trusted workflow trigger, not "
+            "from LLM output, and propagated to the final response endpoint. "
+            "Required-data itself does not create an evaluation row."
+        ),
+    )
+
     @field_validator('inquiry')
     @classmethod
     def validate_inquiry(cls, v: str) -> str:
@@ -101,6 +134,11 @@ class RequiredDataRequest(BaseModel):
     def validate_topic(cls, v: str) -> str:
         """Normaliza el topic a lowercase."""
         return v.lower().strip()
+
+    @field_validator("ticket_id")
+    @classmethod
+    def validate_ticket_id(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_optional_ticket_id(v)
 
 
 class GenerateResponseRequest(BaseModel):
@@ -158,6 +196,16 @@ class GenerateResponseRequest(BaseModel):
         description="Total de inquiries en el ticket"
     )
 
+    ticket_id: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "DevRev identity injected from the trusted workflow trigger, not "
+            "from LLM output. When present, this response is durably recorded "
+            "for the ticket evaluation console."
+        ),
+    )
+
     @field_validator('inquiry')
     @classmethod
     def validate_inquiry(cls, v: str) -> str:
@@ -180,6 +228,33 @@ class GenerateResponseRequest(BaseModel):
     def validate_topic(cls, v: str) -> str:
         """Normaliza el topic."""
         return v.lower().strip()
+
+    @field_validator("ticket_id")
+    @classmethod
+    def validate_ticket_id(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_optional_ticket_id(v)
+
+    @model_validator(mode="after")
+    def require_workflow_owned_top_level_ticket_id(self) -> "GenerateResponseRequest":
+        """Treat context identity only as a consistency check, never authority."""
+        raw_context_id = (
+            self.context.get("ticket_id")
+            if isinstance(self.context, dict) else None
+        )
+        if raw_context_id is None:
+            return self
+        if not isinstance(raw_context_id, str):
+            raise ValueError("context.ticket_id must be a DevRev ticket_id")
+        context_id = normalize_optional_ticket_id(raw_context_id)
+        if self.ticket_id is None:
+            raise ValueError(
+                "top-level ticket_id is required when context.ticket_id is supplied"
+            )
+        if context_id != self.ticket_id:
+            raise ValueError(
+                "ticket_id must match context.ticket_id when both are supplied"
+            )
+        return self
 
 
 # ============================================================================
@@ -239,6 +314,15 @@ class UsedChunk(BaseModel):
 
 class RequiredDataResponse(BaseModel):
     """Response del endpoint /required-data."""
+
+    ticket_id: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "Validated DevRev identity echoed from the request so workflow "
+            "steps can carry it deterministically into the final RAG call."
+        ),
+    )
 
     article_reference: ArticleReference = Field(..., description="Artículo de referencia")
 
@@ -502,12 +586,27 @@ class KnowledgeQuestionRequest(BaseModel):
         description="General knowledge question about 401(k) plans, processes, or rules"
     )
 
+    ticket_id: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "DevRev identity injected from the trusted workflow trigger, not "
+            "from LLM output. When present, this answer is durably recorded "
+            "for the ticket evaluation console and requires API auth."
+        ),
+    )
+
     @field_validator('question')
     @classmethod
     def validate_question(cls, v: str) -> str:
         if not v.strip():
             raise ValueError("Question cannot be empty")
         return v.strip()
+
+    @field_validator("ticket_id")
+    @classmethod
+    def validate_ticket_id(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_optional_ticket_id(v)
 
 
 class KnowledgeQuestionResponse(BaseModel):
@@ -572,6 +671,15 @@ class RouteInquiryRequest(BaseModel):
             "full→todas las rutas honradas. Si es None usa settings.ROUTER_MODE."
         ),
     )
+    ticket_id: Optional[str] = Field(
+        default=None,
+        max_length=256,
+        description=(
+            "DevRev identity injected from the trusted workflow trigger, not "
+            "from LLM output, and propagated to the suggested downstream "
+            "request. Classification itself does not create an evaluation row."
+        ),
+    )
 
     @field_validator('inquiry')
     @classmethod
@@ -579,6 +687,11 @@ class RouteInquiryRequest(BaseModel):
         if not v.strip():
             raise ValueError("Inquiry cannot be empty")
         return v.strip()
+
+    @field_validator("ticket_id")
+    @classmethod
+    def validate_ticket_id(cls, v: Optional[str]) -> Optional[str]:
+        return normalize_optional_ticket_id(v)
 
 
 class RouteInquiryResponse(BaseModel):

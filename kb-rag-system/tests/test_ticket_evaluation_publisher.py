@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import json
 from datetime import datetime, timezone
@@ -163,6 +164,405 @@ async def test_publisher_sends_oidc_in_both_headers_and_marks_exact_ack():
     assert stored["attempt_count"] == 1
     assert stored["delivered_at"] is not None
     assert stored["expires_at"] > stored["delivered_at"]
+
+
+async def test_publisher_uses_short_connect_but_waits_for_the_bounded_ack():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+    observed_timeout = {}
+
+    async def handler(request):
+        observed_timeout.update(request.extensions["timeout"])
+        return httpx.Response(201, json={
+            "accepted": True,
+            "execution_id": event.execution_id,
+            "replayed": False,
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+            timeout_s=10.0,
+        )
+        counts = await publisher.publish_pending(batch_size=1)
+
+    assert counts["evaluation_delivered"] == 1
+    assert observed_timeout == {
+        "connect": 5.0,
+        "read": 10.0,
+        "write": 5.0,
+        "pool": 5.0,
+    }
+
+
+async def test_publisher_enforces_timeout_as_a_total_ack_deadline():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+
+    async def handler(_request):
+        # MockTransport does not implement httpx's phase timeouts.  This proves
+        # the publisher owns a real wall-clock deadline around the full ACK.
+        await asyncio.sleep(0.5)
+        return httpx.Response(201, json={
+            "accepted": True,
+            "execution_id": event.execution_id,
+            "replayed": False,
+        })
+
+    started = asyncio.get_running_loop().time()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+            timeout_s=0.1,
+        )
+        counts = await publisher.publish_pending(batch_size=1)
+    elapsed = asyncio.get_running_loop().time() - started
+
+    stored = await backend.get_doc(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, event.execution_id
+    )
+    assert elapsed < 0.4
+    assert counts["evaluation_retried"] == 1
+    assert stored["state"] == "retry"
+    assert stored["last_error_code"] == "DESTINATION_UNAVAILABLE"
+
+
+async def test_exact_publish_deadline_also_bounds_oidc_token_minting():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+
+    def blocking_token_factory(_audience):
+        import time
+
+        time.sleep(0.5)
+        return "late-token"
+
+    async def handler(_request):
+        raise AssertionError("HTTP must not start after the exact-path deadline")
+
+    started = asyncio.get_running_loop().time()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=blocking_token_factory,
+            timeout_s=0.1,
+        )
+        counts = await publisher.publish_execution(event.execution_id)
+    elapsed = asyncio.get_running_loop().time() - started
+
+    stored = await backend.get_doc(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, event.execution_id
+    )
+    assert elapsed < 0.4
+    assert counts["evaluation_retried"] == 1
+    assert stored["state"] == "pending"
+
+
+async def test_exact_publish_deadline_includes_the_outbox_point_read():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+    original_get = repo.get_ticket_evaluation_outbox
+
+    async def delayed_get(execution_id):
+        await asyncio.sleep(0.5)
+        return await original_get(execution_id)
+
+    repo.get_ticket_evaluation_outbox = delayed_get
+
+    async def handler(_request):
+        raise AssertionError("HTTP must not start after the point-read deadline")
+
+    started = asyncio.get_running_loop().time()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+            timeout_s=0.1,
+        )
+        counts = await publisher.publish_execution(event.execution_id)
+    elapsed = asyncio.get_running_loop().time() - started
+
+    stored = await backend.get_doc(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, event.execution_id
+    )
+    assert elapsed < 0.4
+    assert counts["evaluation_retried"] == 1
+    assert stored["state"] == "pending"
+
+
+@pytest.mark.parametrize(
+    ("hydration_status", "ack_field"),
+    [
+        ("pending", "pending"),
+        ("succeeded", "succeeded"),
+        ("failed", "failed"),
+        ("unknown", None),
+    ],
+)
+async def test_publisher_emits_closed_visibility_status_from_private_ack(
+    monkeypatch,
+    hydration_status,
+    ack_field,
+):
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+    emitted = []
+    monkeypatch.setattr(
+        "data_pipeline.ticket_evaluation_publisher.ticket_metrics.emit",
+        lambda metric, value, **labels: emitted.append((metric, value, labels)),
+    )
+
+    async def handler(_request):
+        ack = {
+            "accepted": True,
+            "execution_id": event.execution_id,
+            "replayed": False,
+        }
+        if ack_field is not None:
+            ack["hydration_status"] = ack_field
+        return httpx.Response(201, json=ack)
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+        )
+        counts = await publisher.publish_pending(batch_size=1)
+
+    assert counts["evaluation_delivered"] == 1
+    assert (
+        "ticket_evaluation_delivery_count",
+        1,
+        {"hydration_status": hydration_status},
+    ) in emitted
+    latency = [
+        item for item in emitted
+        if item[0] == "ticket_evaluation_delivery_latency_seconds"
+    ]
+    assert len(latency) == 1
+    assert latency[0][1] >= 0
+    assert latency[0][1] < 5
+    assert latency[0][2] == {"hydration_status": hydration_status}
+
+
+async def test_publisher_retries_ack_with_unrecognized_hydration_status(
+    monkeypatch,
+):
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+    emitted = []
+    monkeypatch.setattr(
+        "data_pipeline.ticket_evaluation_publisher.ticket_metrics.emit",
+        lambda metric, value, **labels: emitted.append((metric, value, labels)),
+    )
+
+    async def handler(_request):
+        return httpx.Response(201, json={
+            "accepted": True,
+            "execution_id": event.execution_id,
+            "replayed": False,
+            "hydration_status": "participant-private-value",
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+        )
+        counts = await publisher.publish_pending(batch_size=1)
+
+    stored = await backend.get_doc(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, event.execution_id
+    )
+    assert counts["evaluation_retried"] == 1
+    assert stored["last_error_code"] == "INVALID_ACK"
+    assert emitted == []
+
+
+async def test_publish_execution_sends_exact_pending_event_not_first_scan_result():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    first = await _seed_outbox(
+        backend,
+        _event(execution_id="00000000000000000000000000000000:0"),
+    )
+    target = await _seed_outbox(
+        backend,
+        _event(execution_id="ffffffffffffffffffffffffffffffff:0"),
+    )
+    requested_execution_ids = []
+
+    async def handler(request):
+        execution_id = json.loads(request.content)["execution_id"]
+        requested_execution_ids.append(execution_id)
+        return httpx.Response(201, json={
+            "accepted": True,
+            "execution_id": execution_id,
+            "replayed": False,
+        })
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+        )
+        counts = await publisher.publish_execution(target.execution_id)
+
+    assert requested_execution_ids == [target.execution_id]
+    assert counts == {
+        "evaluation_scanned": 1,
+        "evaluation_delivered": 1,
+        "evaluation_retried": 0,
+        "evaluation_rejected": 0,
+        "evaluation_errors": 0,
+    }
+    assert (
+        await backend.get_doc(
+            TICKET_EVALUATION_OUTBOX_COLLECTION, first.execution_id
+        )
+    )["state"] == "pending"
+    assert (
+        await backend.get_doc(
+            TICKET_EVALUATION_OUTBOX_COLLECTION, target.execution_id
+        )
+    )["state"] == "delivered"
+
+
+async def test_publish_execution_transient_failure_records_retry_state():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+
+    async def handler(_request):
+        return httpx.Response(503, text="private upstream response")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+        )
+        counts = await publisher.publish_execution(event.execution_id)
+
+    stored = await backend.get_doc(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, event.execution_id
+    )
+    assert counts["evaluation_retried"] == 1
+    assert stored["state"] == "retry"
+    assert stored["attempt_count"] == 1
+    assert stored["last_error_code"] == "HTTP_503"
+    assert stored["next_attempt_at"] > stored["updated_at"]
+
+
+@pytest.mark.parametrize("terminal_state", ["delivered", "dead_letter"])
+async def test_publish_execution_does_not_resend_terminal_event(terminal_state):
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    backend = InMemoryTicketJobBackend()
+    repo = TicketJobRepository(backend)
+    event = await _seed_outbox(backend)
+    if terminal_state == "delivered":
+        await repo.mark_ticket_evaluation_delivered(
+            event.execution_id,
+            event_digest=event.canonical_digest(),
+        )
+    else:
+        await repo.record_ticket_evaluation_delivery_failure(
+            event.execution_id,
+            event_digest=event.canonical_digest(),
+            error_code="HTTP_422",
+            retryable=False,
+        )
+    before = await backend.get_doc(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, event.execution_id
+    )
+    token_calls = 0
+
+    def token_factory(_audience):
+        nonlocal token_calls
+        token_calls += 1
+        return "token"
+
+    async def handler(_request):
+        raise AssertionError("terminal evaluation must not be resent")
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            repo,
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=token_factory,
+        )
+        counts = await publisher.publish_execution(event.execution_id)
+
+    assert counts == {
+        "evaluation_scanned": 0,
+        "evaluation_delivered": 0,
+        "evaluation_retried": 0,
+        "evaluation_rejected": 0,
+        "evaluation_errors": 0,
+    }
+    assert token_calls == 0
+    assert await backend.get_doc(
+        TICKET_EVALUATION_OUTBOX_COLLECTION, event.execution_id
+    ) == before
 
 
 @pytest.mark.parametrize("status_code", [200, 201])
@@ -526,8 +926,104 @@ async def test_hydration_retry_runs_with_both_oidc_headers_when_outbox_is_empty(
         "Bearer oidc-for-https://evaluation.internal"
     assert request.headers["x-forus-workload-authorization"] == \
         request.headers["authorization"]
+    assert request.extensions["timeout"] == {
+        "connect": 5.0,
+        "read": 45.0,
+        "write": 5.0,
+        "pool": 5.0,
+    }
     assert counts == {
         "evaluation_hydration_attempted": 3,
         "evaluation_hydration_succeeded": 2,
         "evaluation_hydration_errors": 0,
     }
+
+
+async def test_hydration_retry_propagates_receiver_item_errors():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    async def handler(_request):
+        return httpx.Response(
+            200,
+            json={"attempted": 6, "succeeded": 5, "errors": 1},
+        )
+
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = TicketEvaluationPublisher(
+            TicketJobRepository(InMemoryTicketJobBackend()),
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+        )
+        counts = await publisher.retry_due_hydrations(limit=6)
+
+    assert counts == {
+        "evaluation_hydration_attempted": 6,
+        "evaluation_hydration_succeeded": 5,
+        "evaluation_hydration_errors": 1,
+    }
+
+
+def test_hydration_ack_allows_claim_errors_without_a_hydration_attempt():
+    from data_pipeline.ticket_evaluation_publisher import _valid_hydration_ack
+
+    acknowledgement = _valid_hydration_ack(
+        b'{"attempted":0,"succeeded":0,"errors":1}'
+    )
+
+    assert acknowledgement == (0, 0, 1)
+
+
+async def test_hydration_retry_total_deadline_includes_oidc_token_minting(
+    monkeypatch,
+):
+    from data_pipeline import ticket_evaluation_publisher as publisher_module
+
+    monkeypatch.setattr(publisher_module, "HYDRATION_RETRY_TIMEOUT_S", 0.1)
+
+    def blocking_token_factory(_audience):
+        import time
+
+        time.sleep(0.5)
+        return "late-token"
+
+    async def handler(_request):
+        raise AssertionError("hydration HTTP must not start after its deadline")
+
+    started = asyncio.get_running_loop().time()
+    async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as client:
+        publisher = publisher_module.TicketEvaluationPublisher(
+            TicketJobRepository(InMemoryTicketJobBackend()),
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=blocking_token_factory,
+        )
+        counts = await publisher.retry_due_hydrations(limit=20)
+    elapsed = asyncio.get_running_loop().time() - started
+
+    assert elapsed < 0.4
+    assert counts == {
+        "evaluation_hydration_attempted": 0,
+        "evaluation_hydration_succeeded": 0,
+        "evaluation_hydration_errors": 1,
+    }
+
+
+async def test_hydration_retry_rejects_a_batch_that_cannot_fit_one_ack_budget():
+    from data_pipeline.ticket_evaluation_publisher import TicketEvaluationPublisher
+
+    async with httpx.AsyncClient() as client:
+        publisher = TicketEvaluationPublisher(
+            TicketJobRepository(InMemoryTicketJobBackend()),
+            base_url="https://evaluation.example.run.app",
+            audience="https://evaluation.internal",
+            service_account="rag-publisher@example.iam.gserviceaccount.com",
+            client=client,
+            token_factory=lambda _audience: "token",
+        )
+        with pytest.raises(ValueError, match="1..25"):
+            await publisher.retry_due_hydrations(limit=26)

@@ -1949,6 +1949,71 @@ class _TicketEvaluationEvidenceOrchestrator(_HeartbeatBlockingOrchestrator):
 
 class TestTicketEvaluationCheckpointIntegration:
 
+    async def test_worker_fast_publishes_the_exact_event_only_after_commit(self):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            RAG_INVOCATIONS_COLLECTION,
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        backend = InMemoryTicketJobBackend()
+        repo = TicketJobRepository(backend)
+        record = await _seed_repo_job(repo, ticket_id="TKT-7006")
+        published = []
+
+        async def publish_exact(invocation_id):
+            invocation = backend._data[RAG_INVOCATIONS_COLLECTION][invocation_id]
+            outbox = backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION][
+                invocation_id
+            ]
+            assert invocation["state"] == "completed"
+            assert outbox["state"] == "pending"
+            published.append(invocation_id)
+
+        app = _worker_app(
+            repo, _TicketEvaluationEvidenceOrchestrator(delay_s=0),
+        )
+        app.state.ticket_evaluation_publisher = SimpleNamespace(
+            publish_execution=AsyncMock(side_effect=publish_exact),
+        )
+
+        final = await run_ticket_job(app, record.job_id)
+
+        assert final.state.value == "succeeded"
+        assert len(published) == 1
+        assert published[0] in backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION]
+
+    async def test_worker_result_survives_immediate_publisher_failure(self):
+        from api.ticket_worker import run_ticket_job
+        from data_pipeline.ticket_job_repository import (
+            TICKET_EVALUATION_OUTBOX_COLLECTION,
+            InMemoryTicketJobBackend,
+            TicketJobRepository,
+        )
+
+        backend = InMemoryTicketJobBackend()
+        repo = TicketJobRepository(backend)
+        record = await _seed_repo_job(repo, ticket_id="TKT-7005")
+        app = _worker_app(
+            repo, _TicketEvaluationEvidenceOrchestrator(delay_s=0),
+        )
+        app.state.ticket_evaluation_publisher = SimpleNamespace(
+            publish_execution=AsyncMock(
+                side_effect=RuntimeError("synthetic destination failure"),
+            ),
+        )
+
+        final = await run_ticket_job(app, record.job_id)
+
+        assert final.state.value == "succeeded"
+        app.state.ticket_evaluation_publisher.publish_execution.assert_awaited_once()
+        assert len(backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION]) == 1
+        assert next(iter(
+            backend._data[TICKET_EVALUATION_OUTBOX_COLLECTION].values()
+        ))["state"] == "pending"
+
     async def test_rag_worker_checkpoint_creates_full_bounded_outbox_event(self):
         from api.ticket_worker import run_ticket_job
         from data_pipeline.ticket_job_repository import (

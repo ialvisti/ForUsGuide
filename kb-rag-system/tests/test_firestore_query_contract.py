@@ -56,8 +56,13 @@ class _ClientProbe:
 
 class _DescendingQueryProbe:
     def __init__(self) -> None:
+        self.where_calls: list[tuple[tuple[object, ...], dict[str, object]]] = []
         self.order_by_calls: list[tuple[object, dict[str, object]]] = []
         self.start_after_calls: list[object] = []
+
+    def where(self, *args: object, **kwargs: object) -> _DescendingQueryProbe:
+        self.where_calls.append((args, kwargs))
+        return self
 
     def order_by(self, field: object, **kwargs: object) -> _DescendingQueryProbe:
         self.order_by_calls.append((field, kwargs))
@@ -141,19 +146,34 @@ async def test_evaluation_query_orders_timestamp_and_id_descending() -> None:
     backend = object.__new__(FirestoreTicketReviewBackend)
     client = _DescendingClientProbe()
     object.__setattr__(backend, "_client", cast(object, client))
-    occurred_at = datetime(2026, 8, 11, 17, 30, tzinfo=timezone.utc)
+    object.__setattr__(
+        backend,
+        "_firestore",
+        SimpleNamespace(FieldFilter=FieldFilter),
+    )
+    ready_at = datetime(2026, 8, 11, 17, 30, tzinfo=timezone.utc)
 
     await backend.list_collection_descending(
         "ticket_evaluation_runs",
-        order_by="event.occurred_at",
+        order_by="updated_at",
         limit=25,
-        start_after=(occurred_at, "run-2"),
+        start_after=(ready_at, "run-2"),
+        where_equal=("hydration_status", "succeeded"),
     )
 
+    assert len(client.query.where_calls) == 1
+    args, kwargs = client.query.where_calls[0]
+    assert args == ()
+    assert set(kwargs) == {"filter"}
+    equality = kwargs["filter"]
+    assert isinstance(equality, FieldFilter)
+    assert equality.field_path == "hydration_status"
+    assert equality.op_string == "=="
+    assert equality.value == "succeeded"
     assert client.query.order_by_calls == [
-        ("event.occurred_at", {"direction": "DESCENDING"}),
+        ("updated_at", {"direction": "DESCENDING"}),
         ("__name__", {"direction": "DESCENDING"}),
     ]
     assert client.query.start_after_calls == [
-        {"event.occurred_at": occurred_at, "__name__": "run-2"}
+        {"updated_at": ready_at, "__name__": "run-2"}
     ]

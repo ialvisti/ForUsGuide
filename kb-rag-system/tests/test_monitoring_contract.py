@@ -109,7 +109,9 @@ def test_worker_metrics_use_one_canonical_cloud_logging_representation() -> None
         'check "ticket_monitoring_notification_channels"'
     )]
 
-    assert locals_block.count('labels.python_logger="ticket_metrics"') == 2
+    # Producer, worker, and their combined immediate-evaluation filter all use
+    # the same canonical structured logger representation.
+    assert locals_block.count('labels.python_logger="ticket_metrics"') == 3
 
 
 def test_canonical_run_metrics_read_json_message_not_text_payload() -> None:

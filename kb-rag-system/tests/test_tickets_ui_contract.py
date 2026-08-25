@@ -82,8 +82,6 @@ EXPECTED_ASSET_TYPES: dict[str, tuple[str, ...]] = {
 REQUIRED_EXECUTION_COLUMNS = (
     "Ticket",
     "Review status",
-    "Request type",
-    "Received",
     "Rating",
     "Reviewer",
     "Actions",
@@ -224,6 +222,37 @@ def parse(markup: str) -> Node:
     builder.feed(markup)
     builder.close()
     return builder.root
+
+
+def _css_rule_bodies(source: str, selector: str) -> list[str]:
+    """Return declaration bodies for an exact selector, in cascade order."""
+    without_comments = re.sub(r"/\*.*?\*/", "", source, flags=re.DOTALL)
+    bodies: list[str] = []
+    for match in re.finditer(r"([^{}]+)\{([^{}]*)\}", without_comments):
+        selectors = []
+        for part in match.group(1).split(","):
+            candidate = part.strip()
+            if candidate.startswith("@") and "\n" in candidate:
+                candidate = candidate.rsplit("\n", 1)[-1].strip()
+            selectors.append(candidate)
+        if selector in selectors:
+            bodies.append(match.group(2))
+    return bodies
+
+
+def _font_size_px(value: str) -> float:
+    match = re.fullmatch(r"([0-9.]+)(?:rem|px)", value)
+    assert match is not None
+    amount = float(match.group(1))
+    return amount * 16 if value.endswith("rem") else amount
+
+
+def _last_font_size_px(source: str, selector: str) -> float:
+    values: list[str] = []
+    for body in _css_rule_bodies(source, selector):
+        values.extend(re.findall(r"font-size\s*:\s*([0-9.]+(?:rem|px))", body))
+    assert values, f"no font-size declaration for {selector}"
+    return _font_size_px(values[-1])
 
 
 # =====================================================================
@@ -412,7 +441,7 @@ class TestDocumentStructure:
             if re.fullmatch(r"h[1-6]", node.tag)
         ]
         assert levels, "the page has no headings"
-        assert levels.count(1) == 1
+        assert levels.count(1) == 2
         assert levels[0] == 1
         for previous, current in zip(levels, levels[1:]):
             assert current <= previous + 1, levels
@@ -441,7 +470,9 @@ class TestDocumentStructure:
         tables = dom.find_all("table")
         assert tables, "no data table"
         for table in tables:
-            assert table.find_all("caption"), "a data table with no caption"
+            captions = table.find_all("caption")
+            assert captions, "a data table with no caption"
+            assert "visually-hidden" in (captions[0].get("class") or "").split()
             headers = [
                 node for node in table.find_all("th") if node.get("scope") == "col"
             ]
@@ -476,7 +507,8 @@ class TestDocumentStructure:
             "session-email",
             "session-role",
             "health-state",
-            "operational-heading",
+            "queue-heading",
+            "detail-heading",
             "execution-queue",
             "filters-executions",
             "bulk-bar",
@@ -486,6 +518,7 @@ class TestDocumentStructure:
             "ticket-detail",
         ):
             assert required in ids, f"missing region: {required}"
+        assert "operational-heading" not in ids
 
     def test_there_is_one_rag_execution_collection_and_no_source_switcher(self, dom):
         source_tablists = [
@@ -496,7 +529,7 @@ class TestDocumentStructure:
         assert source_tablists == []
         queues = [node for node in dom.walk() if node.get("id") == "execution-queue"]
         assert len(queues) == 1
-        assert "Tickets ready for evaluation" in queues[0].all_text()
+        assert "Tickets to review" in queues[0].all_text()
 
     def test_no_file_exchange_or_manual_queue_language_is_visible(self, dom):
         visible = dom.all_text()
@@ -528,7 +561,8 @@ class TestColumns:
         headers = self._column_headers(dom)
         positions = [headers.index(name) for name in REQUIRED_EXECUTION_COLUMNS]
         assert positions == sorted(positions), headers
-        assert headers.index("Request type") == headers.index("Review status") + 1
+        assert "Request type" not in headers
+        assert "Received" not in headers
         assert all(
             technical not in headers
             for technical in ("Execution", "Route", "Run status", "DevRev context")
@@ -541,11 +575,36 @@ class TestColumns:
         assert "knowledge_question" in renderer
         assert "generate_response" in renderer
 
-    def test_the_queue_declares_newest_received_first(self, scripts):
+    def test_request_type_and_received_time_are_grouped_in_the_ticket_cell(self, scripts):
+        renderer = scripts["render.js"]
+        assert "cell-ticket-meta" in renderer
+        assert 'cell("Request type"' not in renderer
+        assert 'cell("Received"' not in renderer
+        ticket_cell = renderer.split("const ticketCell", 1)[1].split(
+            "const review =", 1
+        )[0]
+        assert "REQUEST_TYPE_LABELS" in ticket_cell
+        assert "row.route" in ticket_cell
+        assert "timeElement(row.createdAt)" in ticket_cell
+        assert "readyAt: value.ready_at" in scripts["api.js"]
+        assert "createdAt: execution.readyAt" in scripts["app.js"]
+
+    def test_the_queue_declares_newest_ready_first(self, scripts):
         assert (
-            'dom.caption.textContent = "Tickets ready for evaluation, newest received first.";'
+            'dom.caption.textContent = "Tickets ready for evaluation, newest ready first.";'
             in scripts["app.js"]
         )
+
+    def test_empty_filtered_page_never_claims_global_absence_when_more_exist(
+        self, scripts
+    ):
+        app = scripts["app.js"]
+        empty_branch = app.split(
+            'if (state.rows.length === 0 && state.phase === "ready")', 1
+        )[1].split("return;", 1)[0]
+        assert "state.nextCursor" in empty_branch
+        assert "No matches on this page; older executions remain" in empty_branch
+        assert "Continue to the next page" in empty_branch
 
 
 class TestReviewerIsNotTheSessionActor:
@@ -972,6 +1031,73 @@ class TestNarrowLayout:
         announcement = block.split(".announcement-rail p:last-child", 1)[1]
         assert re.search(r"\{[^}]*display:\s*none", announcement)
 
+    def test_the_mobile_header_is_compact_and_not_sticky(self, css_source):
+        block = self._narrow_block(css_source)
+        headers = _css_rule_bodies(block, ".app-header")
+        assert headers
+        assert "position: static" in headers[-1]
+        inner = _css_rule_bodies(block, ".app-header-inner")
+        assert inner
+        assert "min-height: auto" in inner[-1]
+
+    @pytest.mark.parametrize(
+        "selector", (".preference-field", "#language-select", "#theme-toggle")
+    )
+    def test_compact_header_controls_keep_44px_targets(self, css_source, selector):
+        bodies = _css_rule_bodies(css_source, selector)
+        assert bodies
+        assert any(
+            re.search(r"(?:min-height|height):\s*(?:var\(--touch-target\)|44px)", body)
+            for body in bodies
+        )
+
+    def test_results_heading_and_live_status_share_one_row(self, dom, css_source):
+        heading = _by_id(dom, "results-heading")
+        status = _by_id(dom, "table-status")
+        assert heading.parent is status.parent
+        assert "results-heading-row" in (heading.parent.get("class") or "").split()
+        bodies = _css_rule_bodies(css_source, ".results-heading-row")
+        assert bodies
+        assert re.search(r"display:\s*(?:flex|grid)", bodies[-1])
+
+    def test_long_ticket_metadata_wraps(self, css_source):
+        bodies = _css_rule_bodies(css_source, ".cell-ticket-meta")
+        assert bodies
+        assert any(
+            re.search(r"overflow-wrap:\s*(?:anywhere|break-word)", body)
+            for body in bodies
+        )
+
+    def test_selection_cells_only_appear_for_an_available_open_batch_disclosure(
+        self, css_source
+    ):
+        hidden = _css_rule_bodies(css_source, ".col-select")
+        assert hidden
+        assert "display: none" in hidden[-1]
+        assert re.search(
+            r"#technical-batch-details:not\(\[hidden\]\)\[open\][^{]*"
+            r"\.col-select\s*\{[^}]*display:\s*(?:table-cell|flex)",
+            css_source,
+        )
+
+
+class TestReadableSecondaryText:
+    @pytest.mark.parametrize(
+        "selector",
+        (
+            ".env-badge",
+            ".health",
+            ".field > label",
+            "thead th",
+            ".pill",
+            ".page-position",
+            "tbody td::before",
+            "tbody th[data-label]::before",
+        ),
+    )
+    def test_functional_secondary_text_is_at_least_12px(self, css_source, selector):
+        assert _last_font_size_px(css_source, selector) >= 12
+
 
 class TestIconButtons:
 
@@ -1228,9 +1354,22 @@ class TestRowRendering:
         app = scripts["app.js"]
         assert "stopPropagation" in app or "closest" in app
 
-    def test_a_row_opens_on_enter(self, scripts):
+    def test_only_the_named_review_button_navigates_from_a_row(self, scripts):
+        renderer = scripts["render.js"]
+        ticket_row = renderer.split("export function ticketRow", 1)[1].split(
+            "function textCell", 1
+        )[0]
+        assert "tabindex" not in ticket_row
+
         app = scripts["app.js"]
-        assert '"Enter"' in app
+        wire_table = app.split("function wireTable()", 1)[1].split(
+            "// ---------------------------------------------------------------------------\n"
+            "// Boot",
+            1,
+        )[0]
+        assert 'addEventListener("keydown"' not in wire_table
+        assert "closest('[data-row=\"ticket\"]')" not in wire_table
+        assert 'control.dataset.action === "open"' in wire_table
 
     def test_partial_pages_are_rendered_as_partial(self, scripts):
         renderer = scripts["render.js"] + scripts["app.js"]
@@ -1260,13 +1399,24 @@ class TestReviewerFirstLayout:
         assert "Ticket evaluation flow" not in dom.all_text()
         assert "pageTallies" not in scripts["app.js"]
 
-    def test_the_page_opens_with_a_flat_reviewer_instruction(self, dom):
-        heading = _by_id(dom, "operational-heading")
-        assert heading.tag == "header"
-        assert "operational-heading" in (heading.get("class") or "").split()
-        assert _by_id(heading, "page-heading").tag == "h1"
-        assert _by_id(heading, "page-heading").all_text() == "Ticket reviews"
-        assert "CRM" in heading.all_text()
+    def test_each_mutually_exclusive_task_view_has_one_primary_heading(self, dom):
+        ids = {node.get("id") for node in dom.walk() if node.get("id")}
+        assert "operational-heading" not in ids
+        assert "page-heading" not in ids
+        assert _by_id(dom, "queue-heading").tag == "h1"
+        assert _by_id(dom, "queue-heading").all_text() == "Tickets to review"
+        assert _by_id(dom, "detail-heading").tag == "h1"
+        assert _by_id(dom, "evaluation-heading").tag == "h2"
+        assert _by_id(dom, "ticket-detail").get("hidden") is not None
+
+    def test_batch_disclosure_is_hidden_by_capability_and_role(self, scripts):
+        app = scripts["app.js"]
+        assert 'technicalBatch: document.getElementById("technical-batch-details")' in app
+        assignment = re.search(r"dom\.technicalBatch\.hidden\s*=\s*([^;]+);", app)
+        assert assignment
+        expression = assignment.group(1)
+        assert "batchesOn" in expression or "remediation_enabled" in expression
+        assert "canCurateBatches(role)" in expression
 
     @pytest.mark.parametrize(
         ("disclosure_id", "summary_text"),

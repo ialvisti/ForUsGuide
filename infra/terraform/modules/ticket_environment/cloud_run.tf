@@ -188,6 +188,13 @@ locals {
   )
   producer_managed_env_names = setunion(toset(keys(local.common_env)), toset([
     "APP_ROLE",
+    "TICKET_EVALUATION_INGEST_AUDIENCE",
+    "TICKET_EVALUATION_INGEST_URL",
+    "TICKET_EVALUATION_OUTBOX_RETENTION_S",
+    "TICKET_EVALUATION_PUBLISH_BATCH_SIZE",
+    "TICKET_EVALUATION_PUBLISH_ENABLED",
+    "TICKET_EVALUATION_PUBLISH_TIMEOUT_S",
+    "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT",
     "TICKET_HANDLER_MODE",
     "TICKET_SHADOW_SAMPLE_RATE",
     "TICKET_WORKER_URL",
@@ -275,6 +282,34 @@ resource "google_cloud_run_v2_service" "producer" {
       env {
         name  = "TICKET_WORKER_SERVICE_ACCOUNT"
         value = var.task_signer_sa_email
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISH_ENABLED"
+        value = tostring(var.ticket_evaluation_publish_enabled)
+      }
+      env {
+        name  = "TICKET_EVALUATION_INGEST_URL"
+        value = var.ticket_evaluation_ingest_url
+      }
+      env {
+        name  = "TICKET_EVALUATION_INGEST_AUDIENCE"
+        value = var.ticket_evaluation_ingest_audience
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT"
+        value = var.ticket_evaluation_publish_enabled ? var.producer_sa_email : ""
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISH_TIMEOUT_S"
+        value = tostring(var.ticket_evaluation_publish_timeout_s)
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISH_BATCH_SIZE"
+        value = tostring(var.ticket_evaluation_publish_batch_size)
+      }
+      env {
+        name  = "TICKET_EVALUATION_OUTBOX_RETENTION_S"
+        value = tostring(var.ticket_evaluation_outbox_retention_s)
       }
       dynamic "env" {
         for_each = local.common_env
@@ -493,6 +528,34 @@ resource "google_cloud_run_v2_service" "worker" {
       env {
         name  = "TICKET_WORKER_AUDIENCE"
         value = local.worker_oidc_audience
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISH_ENABLED"
+        value = tostring(var.ticket_evaluation_publish_enabled)
+      }
+      env {
+        name  = "TICKET_EVALUATION_INGEST_URL"
+        value = var.ticket_evaluation_ingest_url
+      }
+      env {
+        name  = "TICKET_EVALUATION_INGEST_AUDIENCE"
+        value = var.ticket_evaluation_ingest_audience
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISHER_SERVICE_ACCOUNT"
+        value = var.ticket_evaluation_publish_enabled ? var.worker_sa_email : ""
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISH_TIMEOUT_S"
+        value = tostring(var.ticket_evaluation_publish_timeout_s)
+      }
+      env {
+        name  = "TICKET_EVALUATION_PUBLISH_BATCH_SIZE"
+        value = tostring(var.ticket_evaluation_publish_batch_size)
+      }
+      env {
+        name  = "TICKET_EVALUATION_OUTBOX_RETENTION_S"
+        value = tostring(var.ticket_evaluation_outbox_retention_s)
       }
       dynamic "env" {
         for_each = local.common_env

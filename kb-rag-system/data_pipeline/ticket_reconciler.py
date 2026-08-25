@@ -58,6 +58,7 @@ _monotonic = time.monotonic
 
 DEFAULT_BATCH_SIZE = 25
 ENQUEUED_RECHECK_AFTER_S = 60.0
+_MAX_RECOVERY_AGE_S = 2_678_400.0
 
 
 class ReconcilerQueue(Protocol):
@@ -138,6 +139,31 @@ class TicketReconciler:
             raise
         except Exception:  # noqa: BLE001 - observability never blocks repair
             logger.error("active job gauge collection failed")
+
+    async def _emit_evaluation_recovery_gauges(
+        self, observed_at: datetime,
+    ) -> None:
+        """Emit exact outbox recovery depth/age without business identifiers."""
+        try:
+            depth, oldest_created_at = (
+                await self.repo.ticket_evaluation_recovery_stats()
+            )
+            oldest_age_s = 0.0
+            if oldest_created_at is not None:
+                oldest_age_s = max(
+                    0.0,
+                    (observed_at - oldest_created_at).total_seconds(),
+                )
+            oldest_age_s = min(oldest_age_s, _MAX_RECOVERY_AGE_S)
+            ticket_metrics.emit("ticket_evaluation_recovery_depth", depth)
+            ticket_metrics.emit(
+                "ticket_evaluation_recovery_oldest_age_seconds",
+                oldest_age_s,
+            )
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # noqa: BLE001 - observability never blocks repair
+            logger.error("evaluation recovery gauge collection failed")
 
     async def run_once(self) -> Dict[str, int]:
         """Un lote acotado. Devuelve conteos sanitizados por categoría."""
@@ -356,6 +382,7 @@ class TicketReconciler:
             },
         )
         await self._emit_active_gauges(utcnow())
+        await self._emit_evaluation_recovery_gauges(utcnow())
         try:
             ticket_metrics.emit(
                 "ticket_reconciler_duration_seconds",

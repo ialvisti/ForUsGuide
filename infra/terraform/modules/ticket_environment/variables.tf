@@ -294,10 +294,10 @@ variable "ticket_evaluation_publish_timeout_s" {
   default = 10
   validation {
     condition = (
-      var.ticket_evaluation_publish_timeout_s >= 0.1 &&
+      var.ticket_evaluation_publish_timeout_s >= 10 &&
       var.ticket_evaluation_publish_timeout_s <= 60
     )
-    error_message = "ticket_evaluation_publish_timeout_s debe estar entre 0.1 y 60."
+    error_message = "ticket_evaluation_publish_timeout_s debe estar entre 10 y 60."
   }
 }
 
@@ -308,9 +308,9 @@ variable "ticket_evaluation_publish_batch_size" {
     condition = (
       floor(var.ticket_evaluation_publish_batch_size) == var.ticket_evaluation_publish_batch_size &&
       var.ticket_evaluation_publish_batch_size >= 1 &&
-      var.ticket_evaluation_publish_batch_size <= 100
+      var.ticket_evaluation_publish_batch_size <= 25
     )
-    error_message = "ticket_evaluation_publish_batch_size debe ser un entero entre 1 y 100."
+    error_message = "ticket_evaluation_publish_batch_size debe ser un entero entre 1 y 25."
   }
 }
 

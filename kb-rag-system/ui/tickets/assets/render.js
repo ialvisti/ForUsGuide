@@ -22,7 +22,7 @@
  */
 
 /** Column count of the results table; a full-width state row spans all of it. */
-export const COLUMN_COUNT = 8;
+export const COLUMN_COUNT = 6;
 
 /** Longest live title preview rendered in a row, in characters. */
 const TITLE_PREVIEW_LIMIT = 160;
@@ -374,7 +374,6 @@ export function ticketRow(row, { selected }) {
       "data-row": "ticket",
       "data-execution-id": row.executionId,
       "data-display-id": row.displayId,
-      tabindex: "0",
       "aria-selected": selected ? "true" : "false",
     },
   });
@@ -403,22 +402,24 @@ export function ticketRow(row, { selected }) {
       el("span", { className: "cell-title", text: clip(row.title, TITLE_PREVIEW_LIMIT) })
     );
   }
+  const ticketMeta = el("span", { className: "cell-ticket-meta" });
+  ticketMeta.appendChild(
+    el("span", {
+      className: "cell-request-type",
+      text: REQUEST_TYPE_LABELS.get(row.route) ?? (row.route || "Unknown"),
+    })
+  );
+  ticketMeta.appendChild(
+    el("span", { className: "cell-meta-divider", text: "·", attrs: { "aria-hidden": "true" } })
+  );
+  ticketMeta.appendChild(timeElement(row.createdAt));
+  ticketCell.appendChild(ticketMeta);
   tr.appendChild(ticketCell);
 
   const review = row.review ?? null;
   const reviewStatus = cell("Review status", "cell-status");
   reviewStatus.appendChild(statusPill(review?.status ?? "unreviewed"));
   tr.appendChild(reviewStatus);
-
-  const requestType = cell("Request type", "cell-request-type");
-  requestType.appendChild(
-    el("span", { text: REQUEST_TYPE_LABELS.get(row.route) ?? (row.route || "Unknown") })
-  );
-  tr.appendChild(requestType);
-
-  const received = cell("Received", "cell-updated");
-  received.appendChild(timeElement(row.createdAt));
-  tr.appendChild(received);
 
   tr.appendChild(ratingCell(review ? review.rating ?? null : null));
   tr.appendChild(reviewerCell(review));

@@ -18,7 +18,9 @@ from api.ticket_review_models import (
 from data_pipeline.devrev_client import (
     DevRevAuthenticationError,
     DevRevConfigurationError,
+    DevRevInvalidIdentifierError,
     DevRevNotFoundError,
+    DevRevRequestError,
     DevRevScopeError,
     DevRevTransientError,
 )
@@ -122,9 +124,46 @@ class _BlockingDevRev(_DevRev):
 
     async def get_ticket(self, ticket_id: str) -> DevRevTicketDetail:
         self.get_calls.append(ticket_id)
+        if self.error:
+            raise self.error
         self.started.set()
         await self.release.wait()
         return _ticket()
+
+
+class _ConcurrentDevRev(_DevRev):
+    """Measure the receiver's bounded retry fan-out using real awaits."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.active = 0
+        self.max_active = 0
+
+    async def get_ticket(self, ticket_id: str) -> DevRevTicketDetail:
+        self.get_calls.append(ticket_id)
+        if self.error:
+            raise self.error
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        try:
+            await asyncio.sleep(0.02)
+            return _ticket()
+        finally:
+            self.active -= 1
+
+
+class _SelectiveFailureDevRev(_ConcurrentDevRev):
+    def __init__(self, *, failed_ticket_id: str) -> None:
+        super().__init__()
+        self.failed_ticket_id = failed_ticket_id
+
+    async def get_ticket(self, ticket_id: str) -> DevRevTicketDetail:
+        if self.error:
+            return await super().get_ticket(ticket_id)
+        if ticket_id == self.failed_ticket_id:
+            self.get_calls.append(ticket_id)
+            raise RuntimeError("synthetic per-item adapter bug")
+        return await super().get_ticket(ticket_id)
 
 
 @pytest.fixture
@@ -165,6 +204,193 @@ async def test_repository_is_idempotent_and_rejects_conflicting_replay(stack):
         )
 
 
+async def test_ingest_bounds_hydration_and_acks_the_durable_failure_for_retry():
+    from api.ticket_review_models import DevRevHydrationStatus
+    from data_pipeline.ticket_review_repository import (
+        InMemoryTicketReviewBackend,
+        TicketReviewRepository,
+    )
+    from data_pipeline.ticket_review_service import TicketEvaluationService
+
+    clock = _Clock()
+    backend = InMemoryTicketReviewBackend()
+    repo = TicketReviewRepository(backend, cursor_key=CURSOR_KEY, clock=clock)
+    devrev = _BlockingDevRev()
+    service = TicketEvaluationService(
+        devrev=devrev,
+        repository=repo,
+        clock=clock,
+        hydration_timeout_s=0.01,
+    )
+
+    result = await asyncio.wait_for(service.ingest(_event()), timeout=0.5)
+    durable = await repo.get_ticket_evaluation(result.run.execution_id)
+
+    assert result.created is True
+    assert result.run == durable
+    assert result.run.hydration_status is DevRevHydrationStatus.FAILED
+    assert result.run.hydration_error_code == "devrev_timeout"
+    assert result.run.hydration_retryable is True
+    assert result.run.next_hydration_attempt_at == T0 + timedelta(seconds=30)
+
+
+async def test_due_hydration_batch_uses_at_most_five_parallel_devrev_calls():
+    from data_pipeline.ticket_review_repository import (
+        InMemoryTicketReviewBackend,
+        TicketReviewRepository,
+    )
+    from data_pipeline.ticket_review_service import TicketEvaluationService
+
+    clock = _Clock()
+    backend = InMemoryTicketReviewBackend()
+    repo = TicketReviewRepository(backend, cursor_key=CURSOR_KEY, clock=clock)
+    devrev = _ConcurrentDevRev()
+    service = TicketEvaluationService(
+        devrev=devrev,
+        repository=repo,
+        clock=clock,
+        hydration_timeout_s=0.5,
+    )
+    devrev.error = DevRevTransientError("synthetic initial outage")
+    for index in range(12):
+        await service.ingest(_event(job_id=f"retry{index:02d}"))
+    devrev.error = None
+    clock.advance(seconds=31)
+
+    attempted, succeeded, errors = await service.retry_due_hydrations(limit=12)
+
+    assert (attempted, succeeded, errors) == (12, 12, 0)
+    assert devrev.max_active == 5
+
+
+async def test_one_retry_exception_does_not_cancel_sibling_hydration_claims():
+    from data_pipeline.ticket_review_repository import (
+        InMemoryTicketReviewBackend,
+        TicketReviewRepository,
+    )
+    from data_pipeline.ticket_review_service import TicketEvaluationService
+
+    clock = _Clock()
+    backend = InMemoryTicketReviewBackend()
+    repo = TicketReviewRepository(backend, cursor_key=CURSOR_KEY, clock=clock)
+    devrev = _SelectiveFailureDevRev(failed_ticket_id="TKT-FAIL")
+    service = TicketEvaluationService(
+        devrev=devrev,
+        repository=repo,
+        clock=clock,
+        hydration_timeout_s=0.5,
+    )
+    devrev.error = DevRevTransientError("synthetic initial outage")
+    ticket_ids = ["TKT-FAIL", *(f"TKT-{index}" for index in range(5))]
+    for index, ticket_id in enumerate(ticket_ids):
+        await service.ingest(
+            _event(job_id=f"isolated{index}", ticket_id=ticket_id)
+        )
+    devrev.error = None
+    clock.advance(seconds=31)
+
+    attempted, succeeded, errors = await service.retry_due_hydrations(limit=6)
+
+    assert (attempted, succeeded, errors) == (6, 5, 1)
+    assert len((await repo.list_ticket_evaluations(limit=10)).items) == 5
+
+
+async def test_claim_exception_is_an_error_but_not_a_hydration_attempt():
+    from data_pipeline.ticket_review_repository import (
+        InMemoryTicketReviewBackend,
+        TicketReviewRepository,
+    )
+    from data_pipeline.ticket_review_service import TicketEvaluationService
+
+    clock = _Clock()
+    backend = InMemoryTicketReviewBackend()
+    repo = TicketReviewRepository(backend, cursor_key=CURSOR_KEY, clock=clock)
+    devrev = _DevRev(error=DevRevTransientError("synthetic initial outage"))
+    service = TicketEvaluationService(
+        devrev=devrev,
+        repository=repo,
+        clock=clock,
+        hydration_timeout_s=0.5,
+    )
+    for job_id in ("claim-fails", "claim-succeeds"):
+        await service.ingest(_event(job_id=job_id))
+    devrev.error = None
+    clock.advance(seconds=31)
+
+    original_claim = repo.claim_ticket_evaluation_hydration
+
+    async def _claim(execution_id):
+        if execution_id == "claim-fails:0":
+            raise RuntimeError("synthetic claim write failure")
+        return await original_claim(execution_id)
+
+    repo.claim_ticket_evaluation_hydration = _claim
+
+    attempted, succeeded, errors = await service.retry_due_hydrations(limit=2)
+
+    assert (attempted, succeeded, errors) == (1, 1, 1)
+
+
+async def test_external_cancellation_still_cancels_the_hydration_batch():
+    from data_pipeline.ticket_review_repository import (
+        InMemoryTicketReviewBackend,
+        TicketReviewRepository,
+    )
+    from data_pipeline.ticket_review_service import TicketEvaluationService
+
+    clock = _Clock()
+    backend = InMemoryTicketReviewBackend()
+    repo = TicketReviewRepository(backend, cursor_key=CURSOR_KEY, clock=clock)
+    devrev = _BlockingDevRev()
+    service = TicketEvaluationService(
+        devrev=devrev,
+        repository=repo,
+        clock=clock,
+        hydration_timeout_s=0.5,
+    )
+    devrev.error = DevRevTransientError("synthetic initial outage")
+    await service.ingest(_event(job_id="cancel-batch"))
+    devrev.error = None
+    clock.advance(seconds=31)
+
+    task = asyncio.create_task(service.retry_due_hydrations(limit=1))
+    await asyncio.wait_for(devrev.started.wait(), timeout=0.5)
+    task.cancel()
+
+    with pytest.raises(asyncio.CancelledError):
+        await task
+
+
+def test_ingest_hydration_timeout_is_explicit_and_fail_closed():
+    from pydantic import SecretStr
+
+    from api.ticket_evaluation_ingest_app import (
+        TicketEvaluationIngestSettings,
+        validate_ingest_settings,
+    )
+
+    values = {
+        "ENVIRONMENT": "production",
+        "GCP_PROJECT": "rag-kb-system",
+        "FIRESTORE_DATABASE": "tickets-console-prod",
+        "CURSOR_AEAD_KEY": SecretStr(base64.b64encode(CURSOR_KEY).decode("ascii")),
+        "OIDC_AUDIENCE": AUDIENCE,
+        "ALLOWED_SERVICE_ACCOUNTS": [PUBLISHER],
+        "DEVREV_TOKEN": SecretStr("synthetic-token"),
+        "DEVREV_ALLOWED_PART_DONS": ["don:core:part/allowed"],
+        "DEVREV_ALLOWED_TICKET_VISIBILITY_IDS": [1],
+        "DEVREV_ALLOWED_TIMELINE_VISIBILITIES": ["internal"],
+    }
+    reviewed = TicketEvaluationIngestSettings(**values)
+
+    assert reviewed.HYDRATION_TIMEOUT_S == 5.0
+    assert validate_ingest_settings(reviewed) is True
+    with pytest.raises(ValueError, match="HYDRATION_TIMEOUT_S"):
+        validate_ingest_settings(
+            TicketEvaluationIngestSettings(**values, HYDRATION_TIMEOUT_S=0)
+        )
+
+
 async def test_persist_first_is_explicitly_quarantined_until_scope_is_validated(stack):
     from data_pipeline.ticket_review_repository import EvaluationRunNotFound
 
@@ -183,9 +409,16 @@ async def test_persist_first_is_explicitly_quarantined_until_scope_is_validated(
 
 @pytest.mark.parametrize(
     "error",
-    [DevRevNotFoundError("missing"), DevRevScopeError("outside configured scope")],
+    [
+        DevRevNotFoundError("missing"),
+        DevRevScopeError("outside configured scope"),
+        DevRevInvalidIdentifierError("invalid ticket identifier"),
+    ],
 )
-async def test_only_scope_or_not_found_permanently_denies_a_durable_run(stack, error):
+async def test_terminal_ticket_identity_errors_permanently_deny_a_durable_run(
+    stack,
+    error,
+):
     from data_pipeline.ticket_review_repository import EvaluationRunNotFound
 
     _backend, repo, devrev, service, _clock = stack
@@ -217,16 +450,17 @@ async def test_two_runs_for_one_ticket_remain_two_rows_with_opaque_cursor(stack)
     }
 
 
-async def test_queue_pages_newest_occurrence_first_with_stable_ties(stack):
-    _backend, repo, _devrev, service, _clock = stack
+async def test_queue_pages_newest_ready_first_with_stable_ties(stack):
+    _backend, repo, _devrev, service, clock = stack
     cases = [
-        ("aaa-old", T0 - timedelta(minutes=2)),
-        ("bbb-new-low", T0),
-        ("ccc-new-high", T0),
-        ("zzz-mid", T0 - timedelta(minutes=1)),
+        ("aaa-first-ready", T0),
+        ("bbb-second-ready", T0 + timedelta(minutes=10)),
+        ("ccc-third-ready", T0 - timedelta(minutes=10)),
+        ("zzz-last-ready", T0 - timedelta(minutes=20)),
     ]
     for job_id, occurred_at in cases:
         await service.ingest(_event(job_id=job_id, occurred_at=occurred_at))
+        clock.advance(seconds=1)
 
     execution_ids: list[str] = []
     cursor = None
@@ -237,12 +471,26 @@ async def test_queue_pages_newest_occurrence_first_with_stable_ties(stack):
         cursor = page.next_cursor
 
     assert execution_ids == [
-        "ccc-new-high:0",
-        "bbb-new-low:0",
-        "zzz-mid:0",
-        "aaa-old:0",
+        "zzz-last-ready:0",
+        "ccc-third-ready:0",
+        "bbb-second-ready:0",
+        "aaa-first-ready:0",
     ]
     assert cursor is None
+
+
+async def test_queue_keeps_legacy_hydrated_rows_without_authorization_field(stack):
+    from data_pipeline.ticket_review_repository import EVALUATION_RUNS_COLLECTION
+
+    backend, repo, _devrev, service, _clock = stack
+    await service.ingest(_event())
+    stored = backend._data[(EVALUATION_RUNS_COLLECTION, "job123:0")]
+    stored.pop("authorization_status")
+
+    page = await repo.list_ticket_evaluations()
+
+    assert [run.execution_id for run in page.items] == ["job123:0"]
+    assert page.items[0].authorization_status is DevRevAuthorizationStatus.AUTHORIZED
 
 
 async def test_two_attempts_of_same_job_and_inquiry_remain_distinct_rows(stack):
@@ -355,19 +603,21 @@ async def test_ingest_replay_and_private_retry_honor_next_attempt_at(stack):
 
     first = await service.ingest(_event())
     replay = await service.ingest(_event())
-    early_attempted, early_succeeded = await service.retry_due_hydrations()
+    early_attempted, early_succeeded, early_errors = (
+        await service.retry_due_hydrations()
+    )
 
     assert first.created is True
     assert replay.created is False
     assert devrev.get_calls == ["TKT-1234"]
-    assert (early_attempted, early_succeeded) == (0, 0)
+    assert (early_attempted, early_succeeded, early_errors) == (0, 0, 0)
 
     clock.now = first.run.next_hydration_attempt_at
     devrev.error = None
-    attempted, succeeded = await service.retry_due_hydrations()
+    attempted, succeeded, errors = await service.retry_due_hydrations()
     stored = await repo.get_ticket_evaluation(first.run.execution_id)
 
-    assert (attempted, succeeded) == (1, 1)
+    assert (attempted, succeeded, errors) == (1, 1, 0)
     assert devrev.get_calls == ["TKT-1234", "TKT-1234"]
     assert stored.authorization_status is DevRevAuthorizationStatus.AUTHORIZED
 
@@ -377,6 +627,7 @@ async def test_ingest_replay_and_private_retry_honor_next_attempt_at(stack):
     [
         DevRevAuthenticationError("configured token was rejected"),
         DevRevConfigurationError("configured client is unavailable"),
+        DevRevRequestError("the DevRev client is closed"),
     ],
 )
 async def test_auth_and_configuration_failures_stay_quarantined_and_retryable(stack, error):
@@ -446,19 +697,102 @@ async def test_hydration_success_is_monotonic_against_a_stale_failure(stack):
     assert result.hydration_error_code is None
 
 
-async def test_filtered_scan_returns_a_continuation_before_matches_after_one_thousand(stack):
+async def test_authorized_query_never_returns_a_false_empty_before_matches(stack):
     _backend, repo, _devrev, service, _clock = stack
     for index in range(1_001):
         await repo.persist_ticket_evaluation(_event(job_id=f"zzz{index:04d}"))
     await service.ingest(_event(job_id="aaa0000"))
 
     first = await repo.list_ticket_evaluations(limit=1)
-    second = await repo.list_ticket_evaluations(limit=1, cursor=first.next_cursor)
 
-    assert first.items == []
-    assert first.next_cursor is not None
-    assert [run.execution_id for run in second.items] == ["aaa0000:0"]
-    assert second.next_cursor is None
+    assert [run.execution_id for run in first.items] == ["aaa0000:0"]
+    assert first.next_cursor is None
+
+
+async def test_exact_execution_filter_is_a_point_read_not_a_bounded_scan(stack):
+    _backend, repo, _devrev, service, clock = stack
+    await service.ingest(_event(job_id="oldest-target"))
+    for index in range(1_001):
+        clock.advance(seconds=1)
+        await service.ingest(_event(job_id=f"newer-{index:04d}"))
+
+    page = await repo.list_ticket_evaluations(
+        limit=1,
+        filters={"execution_id": "oldest-target:0"},
+    )
+
+    assert [run.execution_id for run in page.items] == ["oldest-target:0"]
+    assert page.next_cursor is None
+
+
+async def test_faceted_filters_scan_transparently_past_one_thousand_nonmatches(stack):
+    from data_pipeline.ticket_review_repository import (
+        DOC_KIND_FIELD,
+        EVALUATION_RUNS_COLLECTION,
+        _to_doc,
+    )
+
+    backend, repo, _devrev, service, clock = stack
+    target = (await service.ingest(_event(job_id="oldest-filter-target"))).run
+    assert target.review_id is not None
+    backend._data[("ticket_reviews", target.review_id)]["status"] = "reviewed"
+    clock.advance(seconds=1)
+    newer_target = (
+        await service.ingest(_event(job_id="newer-filter-target"))
+    ).run
+
+    for index in range(1_001):
+        clock.advance(seconds=1)
+        event = _event(
+            job_id=f"newer-filter-{index:04d}",
+            ticket_id=f"TKT-OTHER-{index:04d}",
+            route="generate_response",
+            status="failed",
+            classification={
+                "route": "generate_response",
+                "confidence": 0.91,
+                "reasoning": "A grounded participant response was requested.",
+            },
+        )
+        newer = target.model_copy(
+            update={
+                "execution_id": event.execution_id,
+                "event": event,
+                "event_digest": event.canonical_digest(),
+                "review_id": f"{index + 1:064x}",
+                "devrev_work_id": f"don:core:ticket/other-{index:04d}",
+                "devrev_display_id": f"TKT-OTHER-{index:04d}",
+                "created_at": clock.now,
+                "updated_at": clock.now,
+            }
+        )
+
+        async def _seed(view, *, run=newer):
+            view.set(
+                (EVALUATION_RUNS_COLLECTION, run.execution_id),
+                _to_doc(run, **{DOC_KIND_FIELD: "ticket_evaluation"}),
+            )
+
+        await backend.transact(_seed)
+
+    expected_filters = (
+        {"route": "knowledge_question"},
+        {"status": "succeeded"},
+        {"devrev_display_id": "TKT-1234"},
+        {"review_status": "reviewed"},
+    )
+    for filters in expected_filters:
+        first = await repo.list_ticket_evaluations(limit=1, filters=filters)
+        assert [run.execution_id for run in first.items] == [newer_target.execution_id]
+        assert first.next_cursor is not None
+
+        second = await repo.list_ticket_evaluations(
+            limit=1,
+            cursor=first.next_cursor,
+            filters=filters,
+        )
+        assert [run.execution_id for run in second.items] == [target.execution_id]
+        assert second.next_cursor is None
 
 
 async def test_detail_requires_a_persisted_run_before_devrev(stack):
@@ -602,6 +936,61 @@ def test_private_put_rejects_path_body_mismatch_and_acks_replay(stack):
     assert replay.status_code == 200
     assert replay.json()["replayed"] is True
     assert replay.headers["Cache-Control"] == "no-store"
+
+
+def test_private_retry_endpoint_caps_one_bounded_ack_batch_at_twenty_five(stack):
+    _backend, _repo, _devrev, service, _clock = stack
+    response = _ingest_client(service).post(
+        "/internal/v1/ticket-evaluations:retry-hydration",
+        headers=_headers(),
+        params={"limit": 26},
+    )
+
+    assert response.status_code == 422
+
+
+def test_private_retry_ack_keeps_the_legacy_shape_when_there_are_no_errors(stack):
+    _backend, _repo, _devrev, service, _clock = stack
+
+    response = _ingest_client(service).post(
+        "/internal/v1/ticket-evaluations:retry-hydration",
+        headers=_headers(),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"attempted": 0, "succeeded": 0}
+
+
+def test_private_retry_ack_reports_isolated_item_errors():
+    class _RetryService:
+        async def retry_due_hydrations(self, *, limit: int):
+            assert limit == 6
+            return 6, 5, 1
+
+    response = _ingest_client(_RetryService()).post(
+        "/internal/v1/ticket-evaluations:retry-hydration",
+        headers=_headers(),
+        params={"limit": 6},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"attempted": 6, "succeeded": 5, "errors": 1}
+
+
+def test_private_retry_ack_can_report_a_claim_error_without_an_attempt():
+    class _RetryService:
+        async def retry_due_hydrations(self, *, limit: int):
+            assert limit == 1
+            return 0, 0, 1
+
+    response = _ingest_client(_RetryService()).post(
+        "/internal/v1/ticket-evaluations:retry-hydration",
+        headers=_headers(),
+        params={"limit": 1},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"attempted": 0, "succeeded": 0, "errors": 1}
 
 
 def test_private_app_bounds_body_before_json_materialization(stack):

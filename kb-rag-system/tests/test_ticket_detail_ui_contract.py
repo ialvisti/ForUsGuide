@@ -245,7 +245,7 @@ class TestWorkspaceStructure:
 
     def test_the_detail_region_has_a_heading_and_a_way_back(self, dom):
         detail = _detail(dom)
-        headings = [node for node in detail.walk() if re.fullmatch(r"h[2-6]", node.tag)]
+        headings = [node for node in detail.walk() if re.fullmatch(r"h[1-6]", node.tag)]
         assert headings, "the detail region carries no heading"
         assert headings[0].get("id") == "detail-heading"
         assert headings[0].all_text()

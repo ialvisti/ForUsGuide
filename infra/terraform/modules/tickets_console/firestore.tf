@@ -60,6 +60,32 @@ resource "google_firestore_index" "review_queue" {
   deletion_policy = "PREVENT"
 }
 
+# The reviewer list must filter successful hydration in Firestore before
+# pagination.  This includes legacy authorized rows written before the
+# authorization_status field existed, while the application still validates
+# the authorization invariant.  updated_at is the moment the row became ready.
+resource "google_firestore_index" "ticket_evaluations_hydrated_updated_at" {
+  project     = var.project_id
+  database    = google_firestore_database.console.name
+  collection  = "ticket_evaluation_runs"
+  query_scope = "COLLECTION"
+
+  fields {
+    field_path = "hydration_status"
+    order      = "ASCENDING"
+  }
+  fields {
+    field_path = "updated_at"
+    order      = "DESCENDING"
+  }
+  fields {
+    field_path = "__name__"
+    order      = "DESCENDING"
+  }
+
+  deletion_policy = "PREVENT"
+}
+
 # Exactly one approved facet may accompany status.  No Cartesian product of
 # user-controlled filters is provisioned.
 resource "google_firestore_index" "review_facet" {

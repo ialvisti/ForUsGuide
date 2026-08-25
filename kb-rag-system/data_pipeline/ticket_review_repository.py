@@ -218,7 +218,7 @@ ALLOWED_REVIEW_FACETS = frozenset(
 # and version, so a token minted for one listing never opens as another.
 REVIEW_CURSOR_SCHEMA_VERSION = 1
 REVIEW_LIST_CURSOR_CONTEXT = "tickets-firestore:reviews:list:v1"
-EVALUATION_LIST_CURSOR_CONTEXT = "tickets-firestore:evaluations:list:v1"
+EVALUATION_LIST_CURSOR_CONTEXT = "tickets-firestore:evaluations:list:v2"
 EVALUATION_FILTER_FIELDS = frozenset(
     {
         "execution_id",
@@ -885,6 +885,7 @@ class TicketReviewBackend(Protocol):
         order_by: str,
         limit: int = DEFAULT_PAGE_SIZE,
         start_after: Optional[tuple[datetime, str]] = None,
+        where_equal: Optional[tuple[str, Any]] = None,
     ) -> list[tuple[str, Document]]: ...
 
     async def scan_by_field(
@@ -1085,6 +1086,7 @@ class InMemoryTicketReviewBackend:
         order_by: str,
         limit: int = DEFAULT_PAGE_SIZE,
         start_after: Optional[tuple[datetime, str]] = None,
+        where_equal: Optional[tuple[str, Any]] = None,
     ) -> list[tuple[str, Document]]:
         rows = [
             (path[1], copy.deepcopy(doc))
@@ -1092,6 +1094,10 @@ class InMemoryTicketReviewBackend:
             if len(path) == 2
             and path[0] == collection
             and isinstance(_resolve_path(doc, order_by), datetime)
+            and (
+                where_equal is None
+                or _resolve_path(doc, where_equal[0]) == where_equal[1]
+            )
         ]
         rows.sort(
             key=lambda row: (cast(datetime, _resolve_path(row[1], order_by)), row[0]),
@@ -1351,9 +1357,16 @@ class FirestoreTicketReviewBackend:
         order_by: str,
         limit: int = DEFAULT_PAGE_SIZE,
         start_after: Optional[tuple[datetime, str]] = None,
+        where_equal: Optional[tuple[str, Any]] = None,
     ) -> list[tuple[str, Document]]:
         handle = self._client.collection(collection)
-        query: Any = handle.order_by(order_by, direction="DESCENDING").order_by(
+        query: Any = handle
+        if where_equal is not None:
+            field, expected = where_equal
+            query = query.where(
+                filter=self._firestore.FieldFilter(field, "==", expected)
+            )
+        query = query.order_by(order_by, direction="DESCENDING").order_by(
             "__name__", direction="DESCENDING"
         )
         if start_after is not None:
@@ -1880,12 +1893,14 @@ class TicketReviewRepository:
         cursor: Optional[str] = None,
         filters: Optional[Mapping[str, str]] = None,
     ) -> CursorPageOf:
-        """List persisted RAG runs from newest occurrence to oldest.
+        """List authorized RAG runs from newest visibility time to oldest.
 
-        Filtering uses a bounded scan over the dedicated ledger, never DevRev
-        discovery. The opaque cursor records the occurrence timestamp, the
-        execution-id tie-breaker, and the filter digest, so it cannot be replayed
-        against a different queue or sort position.
+        Firestore first limits the candidate set to successfully hydrated rows,
+        including legacy rows that predate ``authorization_status``.  The model
+        still enforces the authorization invariant before anything is returned.
+        The opaque cursor records the hydration-update timestamp, execution-id
+        tie-breaker, and filter digest, so it cannot be replayed against a
+        different queue or sort position.
         """
         page_size = max(1, min(int(limit), MAX_PAGE_SIZE))
         normalized_filters = {
@@ -1896,6 +1911,33 @@ class TicketReviewRepository:
             raise UnsupportedFilterCombination(
                 "unsupported evaluation filters: " + ", ".join(sorted(unknown_filters))
             )
+
+        # An execution id is the Firestore document key. Scanning an ordered
+        # queue to answer an exact lookup can produce a false empty page once
+        # the target is older than the bounded scan window. Use one point read
+        # instead; authorization and every companion filter still fail closed.
+        exact_execution_id = normalized_filters.get("execution_id")
+        if exact_execution_id is not None:
+            if cursor is not None:
+                raise CursorError("an exact evaluation lookup does not page")
+            exact_doc = await self.backend.get_doc(
+                (EVALUATION_RUNS_COLLECTION, exact_execution_id)
+            )
+            exact_items: list[TicketEvaluationRun] = []
+            if exact_doc is not None:
+                exact_run = _from_doc(TicketEvaluationRun, exact_doc)
+                if _evaluation_matches(
+                    exact_run, normalized_filters
+                ) and await self._evaluation_review_status_matches(
+                    exact_run, normalized_filters.get("review_status")
+                ):
+                    exact_items.append(exact_run)
+            return CursorPageOf(
+                items=exact_items,
+                next_cursor=None,
+                page_size=page_size,
+            )
+
         filter_digest = hashlib.sha256(
             json.dumps(normalized_filters, sort_keys=True, separators=(",", ":")).encode()
         ).hexdigest()
@@ -1908,57 +1950,58 @@ class TicketReviewRepository:
                 now=self._now(),
             )
             value = payload.get("execution_id")
-            occurred_at_unix_us = payload.get("occurred_at_unix_us")
+            ready_at_unix_us = payload.get("ready_at_unix_us")
             if (
                 not isinstance(value, str)
                 or not value
-                or isinstance(occurred_at_unix_us, bool)
-                or not isinstance(occurred_at_unix_us, int)
-                or occurred_at_unix_us < 0
+                or isinstance(ready_at_unix_us, bool)
+                or not isinstance(ready_at_unix_us, int)
+                or ready_at_unix_us < 0
                 or payload.get("filter_digest") != filter_digest
             ):
                 raise CursorError("evaluation cursor payload is not readable")
             try:
-                occurred_at = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
-                    microseconds=occurred_at_unix_us
+                ready_at = datetime(1970, 1, 1, tzinfo=timezone.utc) + timedelta(
+                    microseconds=ready_at_unix_us
                 )
             except OverflowError as exc:
                 raise CursorError("evaluation cursor timestamp is not readable") from exc
-            start_after = (occurred_at, value)
+            start_after = (ready_at, value)
 
         matched: list[tuple[str, Document]] = []
         scan_cursor = start_after
-        scanned = 0
         exhausted = False
-        while len(matched) <= page_size and scanned < 1_000:
+        # Keep every individual Firestore query bounded, but traverse as many
+        # internal chunks as the selected facet needs. Returning an empty page
+        # merely because its match sits behind an arbitrary 1,000-row window
+        # makes the reviewer console claim that a persisted ticket is absent.
+        # The scan stops only after finding one visible look-ahead match or
+        # genuinely exhausting the query. Any continuation cursor is anchored
+        # to the last returned match, so callers never have to page through
+        # internal chunks of non-matching authorized rows.
+        while len(matched) <= page_size:
             rows = await self.backend.list_collection_descending(
                 EVALUATION_RUNS_COLLECTION,
-                order_by="event.occurred_at",
+                order_by="updated_at",
                 limit=MAX_PAGE_SIZE,
                 start_after=scan_cursor,
+                where_equal=(
+                    "hydration_status",
+                    DevRevHydrationStatus.SUCCEEDED.value,
+                ),
             )
             if not rows:
                 exhausted = True
                 break
             for row_id, doc in rows:
-                scanned += 1
                 run = _from_doc(TicketEvaluationRun, doc)
-                scan_cursor = (run.event.occurred_at, row_id)
+                scan_cursor = (run.updated_at, row_id)
                 if not _evaluation_matches(run, normalized_filters):
                     continue
-                expected_review_status = normalized_filters.get("review_status")
-                if expected_review_status is not None:
-                    actual_review_status = ReviewStatus.UNREVIEWED.value
-                    if run.review_id:
-                        review_doc = await self.backend.get_doc(
-                            (REVIEWS_COLLECTION, run.review_id)
-                        )
-                        if review_doc is not None and not _is_tombstone(review_doc):
-                            actual_review_status = str(
-                                review_doc.get("status") or ReviewStatus.UNREVIEWED.value
-                            )
-                    if actual_review_status != expected_review_status:
-                        continue
+                if not await self._evaluation_review_status_matches(
+                    run, normalized_filters.get("review_status")
+                ):
+                    continue
                 matched.append((row_id, doc))
                 if len(matched) > page_size:
                     break
@@ -1973,12 +2016,12 @@ class TicketReviewRepository:
         if scan_cursor is not None and (len(matched) > page_size or not exhausted):
             if len(matched) > page_size:
                 cursor_id, cursor_doc = visible[-1]
-                cursor_at = _from_doc(TicketEvaluationRun, cursor_doc).event.occurred_at
+                cursor_at = _from_doc(TicketEvaluationRun, cursor_doc).updated_at
             else:
                 cursor_at, cursor_id = scan_cursor
             epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
             delta = cursor_at.astimezone(timezone.utc) - epoch
-            occurred_at_unix_us = (
+            ready_at_unix_us = (
                 delta.days * 86_400_000_000
                 + delta.seconds * 1_000_000
                 + delta.microseconds
@@ -1987,7 +2030,7 @@ class TicketReviewRepository:
                 self._cursor_key,
                 {
                     "execution_id": cursor_id,
-                    "occurred_at_unix_us": occurred_at_unix_us,
+                    "ready_at_unix_us": ready_at_unix_us,
                     "filter_digest": filter_digest,
                 },
                 context=EVALUATION_LIST_CURSOR_CONTEXT,
@@ -1998,6 +2041,25 @@ class TicketReviewRepository:
             next_cursor=next_cursor,
             page_size=page_size,
         )
+
+    async def _evaluation_review_status_matches(
+        self,
+        run: TicketEvaluationRun,
+        expected_review_status: Optional[str],
+    ) -> bool:
+        """Resolve the linked review status without widening queue visibility."""
+        if expected_review_status is None:
+            return True
+        actual_review_status = ReviewStatus.UNREVIEWED.value
+        if run.review_id:
+            review_doc = await self.backend.get_doc(
+                (REVIEWS_COLLECTION, run.review_id)
+            )
+            if review_doc is not None and not _is_tombstone(review_doc):
+                actual_review_status = str(
+                    review_doc.get("status") or ReviewStatus.UNREVIEWED.value
+                )
+        return actual_review_status == expected_review_status
 
     async def record_ticket_evaluation_hydration_failure(
         self,

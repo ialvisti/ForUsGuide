@@ -1663,6 +1663,10 @@ class TicketEvaluationSummary(_Base):
     classification_reasoning: str = Field(..., min_length=1, max_length=8_000)
     generated_answer_excerpt: Optional[str] = Field(default=None, max_length=500)
     occurred_at: AwareDatetime = Field(...)
+    ready_at: AwareDatetime = Field(
+        ...,
+        description="Timestamp when DevRev hydration made this run reviewer-visible",
+    )
     review: Optional[TicketReviewSummary] = Field(default=None)
 
     @classmethod
@@ -1689,6 +1693,7 @@ class TicketEvaluationSummary(_Base):
             classification_reasoning=run.event.classification.reasoning,
             generated_answer_excerpt=(answer[:500] if answer else None),
             occurred_at=run.event.occurred_at,
+            ready_at=run.updated_at,
             review=TicketReviewSummary.of(review) if review else None,
         )
 

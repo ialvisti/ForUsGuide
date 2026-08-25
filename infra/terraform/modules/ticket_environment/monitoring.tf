@@ -23,6 +23,11 @@ locals {
     resource.labels.service_name="${var.worker_service_name}"
     labels.python_logger="ticket_metrics"
   EOT
+  immediate_evaluation_log_filter = <<-EOT
+    resource.type="cloud_run_revision"
+    (resource.labels.service_name="${var.producer_service_name}" OR resource.labels.service_name="${var.worker_service_name}")
+    labels.python_logger="ticket_metrics"
+  EOT
   reconciler_log_filter = <<-EOT
     resource.type="cloud_run_job"
     resource.labels.job_name="${var.reconciler_job_name}"
@@ -269,6 +274,107 @@ resource "google_logging_metric" "evaluation_dead_letter" {
     metric_kind = "DELTA"
     value_type  = "INT64"
     unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "evaluation_not_visible_ack" {
+  project     = var.project_id
+  name        = "${local.metric_prefix}_evaluation_not_visible_ack"
+  description = "ACKs inmediatos aceptados pero aún no visibles; sin IDs ni payloads."
+  filter      = <<-EOT
+    ${local.immediate_evaluation_log_filter}
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_evaluation_delivery_count\""
+    (jsonPayload.message:"\"hydration_status\":\"pending\"" OR jsonPayload.message:"\"hydration_status\":\"failed\"" OR jsonPayload.message:"\"hydration_status\":\"unknown\"")
+  EOT
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "INT64"
+    unit        = "1"
+  }
+}
+
+resource "google_logging_metric" "evaluation_delivery_latency" {
+  project         = var.project_id
+  name            = "${local.metric_prefix}_evaluation_delivery_latency_seconds"
+  description     = "Latencia desde el commit del outbox hasta el ACK de ingestión inmediata."
+  filter          = <<-EOT
+    ${local.immediate_evaluation_log_filter}
+    jsonPayload.message:"ticket_metric_event"
+    jsonPayload.message:"\"metric\":\"ticket_evaluation_delivery_latency_seconds\""
+  EOT
+  value_extractor = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+  label_extractors = {
+    hydration_status = "REGEXP_EXTRACT(jsonPayload.message, \"\\\"hydration_status\\\":\\\"([a-z_]+)\\\"\")"
+  }
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "s"
+    labels {
+      key         = "hydration_status"
+      value_type  = "STRING"
+      description = "pending, succeeded, failed o unknown."
+    }
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 24
+      growth_factor      = 2
+      scale              = 0.1
+    }
+  }
+}
+
+resource "google_logging_metric" "evaluation_recovery_depth" {
+  project         = var.project_id
+  name            = "${local.metric_prefix}_evaluation_recovery_depth"
+  description     = "Cantidad exacta de eventos pending/retry en el outbox RAG."
+  filter          = <<-EOT
+    ${local.reconciler_log_filter}
+    textPayload:"ticket_metric_event"
+    textPayload:"\"metric\":\"ticket_evaluation_recovery_depth\""
+  EOT
+  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "1"
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 24
+      growth_factor      = 2
+      scale              = 1
+    }
+  }
+}
+
+resource "google_logging_metric" "evaluation_recovery_oldest_age" {
+  project         = var.project_id
+  name            = "${local.metric_prefix}_evaluation_recovery_oldest_age_seconds"
+  description     = "Antigüedad del evento RAG recuperable más viejo."
+  filter          = <<-EOT
+    ${local.reconciler_log_filter}
+    textPayload:"ticket_metric_event"
+    textPayload:"\"metric\":\"ticket_evaluation_recovery_oldest_age_seconds\""
+  EOT
+  value_extractor = "REGEXP_EXTRACT(textPayload, \"\\\"value\\\":([0-9]+(?:\\.[0-9]+)?(?:[eE][+-]?[0-9]+)?)\")"
+
+  metric_descriptor {
+    metric_kind = "DELTA"
+    value_type  = "DISTRIBUTION"
+    unit        = "s"
+  }
+  bucket_options {
+    exponential_buckets {
+      num_finite_buckets = 24
+      growth_factor      = 2
+      scale              = 1
+    }
   }
 }
 
@@ -1271,6 +1377,64 @@ resource "google_monitoring_alert_policy" "ticket_evaluation_dead_letter" {
   notification_channels = var.notification_channels
 }
 
+resource "google_monitoring_alert_policy" "ticket_evaluation_visibility_gap" {
+  count        = local.monitoring_policy_count
+  project      = var.project_id
+  display_name = "[${var.env}] ticket evaluation accepted but not visible"
+  combiner     = "OR"
+  user_labels  = local.alert_labels
+
+  conditions {
+    display_name = "immediate ingestion ACK is pending, failed, or legacy"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.evaluation_not_visible_ack.name}\" AND resource.type=\"cloud_run_revision\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 0
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_SUM"
+        cross_series_reducer = "REDUCE_SUM"
+      }
+    }
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "El receiver aceptó el evento, pero DevRev no confirmó una fila autorizada visible. Revisar hidratación/quarantine y el reconciliador; no exponer filas denegadas para ocultar el síntoma."
+  }
+  notification_channels = var.notification_channels
+}
+
+resource "google_monitoring_alert_policy" "ticket_evaluation_recovery_age" {
+  count        = local.monitoring_policy_count
+  project      = var.project_id
+  display_name = "[${var.env}] ticket evaluation recovery older than 420s"
+  combiner     = "OR"
+  user_labels  = local.alert_labels
+
+  conditions {
+    display_name = "oldest pending/retry evaluation > 420s"
+    condition_threshold {
+      filter          = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.evaluation_recovery_oldest_age.name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
+      comparison      = "COMPARISON_GT"
+      threshold_value = 420
+      duration        = "0s"
+      aggregations {
+        alignment_period     = "60s"
+        per_series_aligner   = "ALIGN_PERCENTILE_99"
+        cross_series_reducer = "REDUCE_MAX"
+      }
+    }
+  }
+
+  documentation {
+    mime_type = "text/markdown"
+    content   = "El fast path no drenó y el evento ya superó un ciclo normal del scheduler. Revisar OIDC/IAM, receiver y estado retry/dead-letter antes de replay manual."
+  }
+  notification_channels = var.notification_channels
+}
+
 resource "google_monitoring_alert_policy" "ticket_forusbots_reconciliation" {
   count        = local.monitoring_policy_count
   project      = var.project_id
@@ -1878,6 +2042,54 @@ locals {
                 } }
               }]
               yAxis = { label = "polls/s", scale = "LINEAR" }
+            }
+          }
+        },
+        {
+          yPos = 36, width = 12, height = 4
+          widget = {
+            title = "Evaluation visibility and recovery"
+            xyChart = {
+              dataSets = [
+                {
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
+                  timeSeriesQuery = { timeSeriesFilter = {
+                    filter = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.evaluation_delivery_latency.name}\" AND resource.type=\"cloud_run_revision\""
+                    aggregation = {
+                      alignmentPeriod    = "60s"
+                      perSeriesAligner   = "ALIGN_PERCENTILE_95"
+                      crossSeriesReducer = "REDUCE_MAX"
+                      groupByFields      = ["metric.label.hydration_status"]
+                    }
+                  } }
+                },
+                {
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
+                  timeSeriesQuery = { timeSeriesFilter = {
+                    filter      = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.evaluation_recovery_depth.name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_PERCENTILE_99" }
+                  } }
+                },
+                {
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
+                  timeSeriesQuery = { timeSeriesFilter = {
+                    filter      = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.evaluation_recovery_oldest_age.name}\" AND resource.type=\"cloud_run_job\" AND resource.label.job_name=\"${var.reconciler_job_name}\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_PERCENTILE_99" }
+                  } }
+                },
+                {
+                  plotType   = "LINE"
+                  targetAxis = "Y1"
+                  timeSeriesQuery = { timeSeriesFilter = {
+                    filter      = "metric.type=\"logging.googleapis.com/user/${google_logging_metric.evaluation_not_visible_ack.name}\" AND resource.type=\"cloud_run_revision\""
+                    aggregation = { alignmentPeriod = "60s", perSeriesAligner = "ALIGN_RATE", crossSeriesReducer = "REDUCE_SUM" }
+                  } }
+                }
+              ]
+              yAxis = { label = "seconds / depth / events per second", scale = "LINEAR" }
             }
           }
         }

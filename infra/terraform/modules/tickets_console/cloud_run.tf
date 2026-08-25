@@ -7,9 +7,9 @@ resource "google_cloud_run_v2_service" "ingest" {
   project  = var.project_id
   location = var.region
   name     = local.ingest_service_name
-  # Reconciler is a Cloud Run Job with no VPC egress. Cloud Run does not treat
-  # that direct service-to-service path as internal; exact invoker IAM plus the
-  # app's audience/email checks are therefore the private boundary.
+  # RAG publishers are Cloud Run services/jobs with no VPC egress. Cloud Run
+  # does not treat that direct service-to-service path as internal; exact
+  # invoker IAM plus the app's audience/email checks are the private boundary.
   ingress              = "INGRESS_TRAFFIC_ALL"
   custom_audiences     = [local.ingest_audience]
   invoker_iam_disabled = false
@@ -47,6 +47,10 @@ resource "google_cloud_run_v2_service" "ingest" {
         value = var.environment
       }
       env {
+        name  = "TICKET_EVALUATION_INGEST_HYDRATION_TIMEOUT_S"
+        value = tostring(var.ingest_hydration_timeout_s)
+      }
+      env {
         name  = "TICKET_EVALUATION_INGEST_GCP_PROJECT"
         value = var.project_id
       }
@@ -60,7 +64,7 @@ resource "google_cloud_run_v2_service" "ingest" {
       }
       env {
         name  = "TICKET_EVALUATION_INGEST_ALLOWED_SERVICE_ACCOUNTS"
-        value = jsonencode([var.publisher_service_account_email])
+        value = jsonencode(sort(tolist(local.expected_publisher_service_accounts)))
       }
       env {
         name  = "TICKET_EVALUATION_INGEST_DEVREV_API_BASE"
@@ -457,6 +461,7 @@ resource "google_cloud_run_v2_service" "console" {
 
   depends_on = [
     google_cloud_run_v2_service.evidence_broker,
+    google_firestore_index.ticket_evaluations_hydrated_updated_at,
     google_secret_manager_secret_iam_member.console,
   ]
 }

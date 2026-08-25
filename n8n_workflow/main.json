@@ -1,0 +1,1514 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/works.update",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"ticket\",\n  \"id\": \"{{ $('Normalize Data').item.json.ticketId }}\",\n  \"applies_to_part\": \"{{ $('Normalize Data').item.json.part }}\",\n  \"custom_fields\": {\n    \"tnt__workflow_status\": \"Context Enriched\"\n  },\n  \"custom_schema_spec\": {\n    \"tenant_fragment\": true\n  },\n  \"tags\": {\n    \"set\": [\n      \n        {{ $('Normalize Data').item.json.tag }}\n      \n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-3008, 4640],
+      "id": "3a39a364-0cd6-42ea-ab46-132328cf8473",
+      "name": "Update Ticket",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/timeline-entries.create",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n\n  \"object\": \"{{ $json.ticketId }}\",\n  \"body\": \"{{ $json.body }}\",\n  \"visibility\": \"internal\",\n  \"type\": \"timeline_comment\"\n\n  \n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-3488, 4640],
+      "id": "1f6b24fa-757c-4a5a-bce5-d8bdeb3bcde9",
+      "name": "Internal Comment",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "workflowId": {
+          "__rl": true,
+          "value": "oNbQTCY1iQxtdd54",
+          "mode": "list",
+          "cachedResultUrl": "/workflow/oNbQTCY1iQxtdd54",
+          "cachedResultName": "Operations — Participant Search Fix"
+        },
+        "workflowInputs": {
+          "mappingMode": "defineBelow",
+          "value": {},
+          "matchingColumns": [],
+          "schema": [],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": true
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.2,
+      "position": [-9632, 4992],
+      "id": "0f7b7824-28d7-4bad-a667-1ec1c2e27167",
+      "name": "Participant Search"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json['Result'] === 'Participant was found' && $('Code').item.json.userEmail != 'notify@ringcentral.com'}}",
+                    "rightValue": "Participant was found",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    },
+                    "id": "9dcd9d27-22d9-4d73-80bf-9779bc0f9fd2"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Participant was Found"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e981f929-e2d0-4a14-99bd-315d7aafc649",
+                    "leftValue": "={{ $json.Result === 'Requester is NOT a Participant' && $('Code').item.json.userEmail != 'notify@ringcentral.com'}}",
+                    "rightValue": "Requester is NOT a Participant",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Requester is NOT a Participant"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "e21706e2-3cb3-4e7c-b65c-f03f7af8389f",
+                    "leftValue": "={{ $json.Result === 'Participant was NOT found' && $('Code').item.json.userEmail != 'notify@ringcentral.com'}}",
+                    "rightValue": "",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Participant was NOT found"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "loose",
+                  "version": 2
+                },
+                "conditions": [
+                  {
+                    "id": "c553c528-4da8-41ee-9302-af05ffc59e08",
+                    "leftValue": "={{ $('Code').item.json.userEmail === 'notify@ringcentral.com'}}",
+                    "rightValue": "=notify@ringcentral.com",
+                    "operator": {
+                      "type": "boolean",
+                      "operation": "true",
+                      "singleValue": true
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "Ring Central"
+            }
+          ]
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [-9232, 4960],
+      "id": "9bfc48af-d93d-4381-9f5a-7f21f749f0fa",
+      "name": "Participant Status",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "3a6259cf-e7f2-4c0e-8c71-d353159fb824",
+              "name": "body",
+              "value": "={{ $json.body }}",
+              "type": "string"
+            },
+            {
+              "id": "c787a816-339e-4d5d-85fd-d899d90531a9",
+              "name": "part",
+              "value": "={{ $json.part }}",
+              "type": "string"
+            },
+            {
+              "id": "7a77a831-1428-4643-97bd-98a03f1af05d",
+              "name": "tag",
+              "value": "={{ $json.tag }}",
+              "type": "string"
+            },
+            {
+              "id": "0019aa5c-6b30-4e5f-9a7a-40a975f7e12c",
+              "name": "ticketId",
+              "value": "={{ $json.ticketId}}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-3952, 4640],
+      "id": "607b4e58-9cbf-425c-9081-636f3f9017e2",
+      "name": "Normalize Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Set the message displayed on the note using the raw function to preserve all Newlines and BlankSpaces\n\nconst bodyPayload = String.raw`-------------------- AUTOMATED NOTE ------------------- \\n\\n \\u200B \\n\\n No participant was found in this ticket, this must be someone else in behalf of the participant, or any partner's email such as RightSignature, LT Trust, etc.\\n\\n \\u200B \\n\\n Please review and proceed accordingly.`;\n\nvar tag = String.raw`{\"id\": \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2909\"}`;\n\nif ( $input.first().json.first_contact === 'false') {\n\n  tag += String.raw`,\n  {\"id\": \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2887\"}`\n  \n}else{\n\n  tag += String.raw`,\n  {\"id\": \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2886\"}`\n  \n}\n\n// Return payload\n\nreturn{\n\n  json:{\n\n    \"ticketId\":$('Get fields1').first().json.ticketId,\n    \"body\": bodyPayload,\n    \"part\": \"CAPL-1\",\n    \"tag\": tag\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-6336, 4736],
+      "id": "6a5b87d6-bb14-48cf-a812-8a5cea299523",
+      "name": "Format Payload"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Normalize the authenticated DevRev work response and capture ticket authority.\nconst works = $input.first().json.work;\n\nif (!works || typeof works !== 'object') {\n  throw new Error('Missing DevRev work response');\n}\n\nconst displayCandidate =\n  typeof works.display_id === 'string' ? works.display_id.trim() : '';\nconst donCandidate = typeof works.id === 'string' ? works.id.trim() : '';\nconst displayId = /^[A-Za-z][A-Za-z0-9]{0,15}-[0-9]{1,20}$/;\nconst devrevDon = /^don:[A-Za-z0-9_.:/+-]{1,252}$/;\n\nconst ticketId = displayId.test(displayCandidate)\n  ? displayCandidate.toUpperCase()\n  : (devrevDon.test(donCandidate) ? donCandidate : '');\n\nif (!ticketId) {\n  throw new Error('Missing or invalid DevRev response ticket identity');\n}\n\nconst lookupTicketId = $('Validate Ticket Lookup').first().json.ticketId;\nconst normalizedDisplay = displayId.test(displayCandidate)\n  ? displayCandidate.toUpperCase()\n  : displayCandidate;\nif (lookupTicketId !== normalizedDisplay && lookupTicketId !== donCandidate) {\n  throw new Error('DevRev response ticket identity mismatch');\n}\n\nconst reporter = (works.reported_by && works.reported_by[0]) || {};\n\nreturn {\n  json: {\n    userId: reporter.id || null,\n    userName: reporter.display_name || null,\n    userEmail: reporter.email || null,\n    ticketId,\n    ticketDisplayId: displayCandidate || null,\n    emailSubject: works.title || null,\n    emailBody: works.body || null,\n    tags: Array.isArray(works.tags)\n      ? works.tags.map(tagObj => tagObj.tag.name)\n      : [],\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-11456, 4992],
+      "id": "d5b2d9a0-4dba-4187-8217-06cc74f46513",
+      "name": "Get fields1"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "// Obtener array de etiquetas\nconst tagsArray = $json.tags;\n\n// Definir etiquetas a excluir\nconst excludedTags = [\n  \"First Contact\", \"help@forusall.com\", \"Automated Email\", \"Followup Reopened\",\n  \"Issue\", \"LT Salesforce Ticket\", \"Force Out Notice\", \"IRS Notice\",\n  \"Orphan\", \"noreply@forusall.com\"\n];\n\n// Filtrar todas las etiquetas excepto las excluidas\nconst filteredTags = tagsArray.filter(tag => !excludedTags.includes(tag));\n\n// Obtener un solo tag (el primero filtrado) o \"NOT FOUND\"\nconst tag = filteredTags.length > 0 ? filteredTags[0] : \"NOT FOUND\";\n\n// Marcar true si \"First Contact\" está presente\nconst firstContact = tagsArray.includes(\"First Contact\");\n\n// Salida\nreturn {\n  json: {\n    userId: $json.userId,\n    userName: $json.userName,\n    userEmail: $json.userEmail,\n    ticketId: $json.ticketId,\n    emailSubject: $json.emailSubject,\n    emailBody: $json.emailBody,\n    tag,\n    firstContact\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-11216, 4992],
+      "id": "7f732f9d-1e10-4f69-bd1d-54f216d02ca7",
+      "name": "Get relevant tag1"
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "pa-distributions-automation",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-11984, 4992],
+      "id": "fa0f666e-66e3-4f49-abec-546371712149",
+      "name": "Webhook1",
+      "webhookId": "fc3f9515-8639-4bc9-abf7-1d7813c01e63"
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForEachItem",
+        "jsCode": "const rawTicketId = $json?.body?.id;\n\nif (typeof rawTicketId !== 'string') {\n  throw new Error('Missing canonical DevRev ticket identity');\n}\n\nconst candidate = rawTicketId.trim();\nconst displayId = /^[A-Za-z][A-Za-z0-9]{0,15}-[0-9]{1,20}$/;\nconst devrevDon = /^don:[A-Za-z0-9_.:/+-]{1,252}$/;\n\nif (!displayId.test(candidate) && !devrevDon.test(candidate)) {\n  throw new Error('Invalid canonical DevRev ticket identity');\n}\n\nconst ticketId = displayId.test(candidate) ? candidate.toUpperCase() : candidate;\n\nreturn {\n  json: {\n    ...$json,\n    ticketId,\n  },\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-11856, 4992],
+      "id": "c2e78ac8-b5d0-4c55-9d61-dac071d9f1cb",
+      "name": "Validate Ticket Lookup"
+    },
+    {
+      "parameters": {
+        "url": "https://api.devrev.ai/works.get",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $json.ticketId }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-11712, 4992],
+      "id": "559f49a3-59ae-4fcd-9246-c900adff7b93",
+      "name": "Get tickets from DevRev1",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/rev-users.list",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": [\"{{ $json.Info.payroll_email }}\"]\n} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-6864, 5616],
+      "id": "3490507b-8e87-4632-83f0-c9f94778799d",
+      "name": "Search User",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/rev-users.create",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"email\": \"{{ $('Participant Status').item.json.Info.payroll_email }}\",\n  \"display_name\": \"{{ $('Participant Status').item.json.Info.first_name + ' ' + $('Participant Status').item.json.Info.last_name }}\"\n} ",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-6192, 5456],
+      "id": "77659d83-e382-4c88-b2fe-0355e9c9900e",
+      "name": "Create User",
+      "alwaysOutputData": true,
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "UNZFdKNtCKRsT0Fz",
+          "name": "WhatsApp test"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "30d23675-b0dc-4464-b5ac-0790e8af8c73",
+              "name": "devRev_user_id",
+              "value": "={{ $json.rev_user.id }}",
+              "type": "string"
+            },
+            {
+              "id": "bf5e48af-cd16-4c8b-b08f-aba960ad389f",
+              "name": "fullName",
+              "value": "={{ $json.rev_user.display_name }}",
+              "type": "string"
+            },
+            {
+              "id": "c54aeed6-296a-4d17-99a8-fa8d951cb79e",
+              "name": "email",
+              "value": "={{ $json.rev_user.email }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [-4112, 5472],
+      "id": "b1ef16c8-f301-4311-a10c-b875f8ffa3f6",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/works.update",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"ticket\",\n  \"id\": \"{{$('Get relevant tag1').item.json.ticketId}}\",\n  \"applies_to_part\": \"CAPL-1\",\n  \"custom_fields\": {\n    \"tnt__workflow_status\": \"Context Enriched\"\n  },\n  \"custom_schema_spec\": {\n    \"tenant_fragment\": true\n  },\n  \"tags\": {\n    \"set\": [\n      {\n        \"id\": \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2913\"\n      }\n    ]\n  },\n  \"reported_by\": {\n    \"set\": [\n      \"{{ $json.devRev_user_id }}\"\n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-3712, 5472],
+      "id": "2aab0ba8-2752-4f02-9c8b-235cd0e49b03",
+      "name": "Update Ticket1",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/works.update",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"type\": \"ticket\",\n  \"id\": \"{{$('Get relevant tag1').item.json.ticketId}}\",\n  \"applies_to_part\": \"CAPL-1\",\n  \"custom_fields\": {\n    \"tnt__workflow_status\": \"Context Enriched\"\n  },\n  \"custom_schema_spec\": {\n    \"tenant_fragment\": true\n  },\n  \"tags\": {\n    \"set\": [\n      {\n        \"id\": \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2913\"\n      }\n    ]\n  },\n  \"reported_by\": {\n    \"set\": [\n      \"{{ $json.rev_users[0].id }}\"\n    ]\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-3712, 5648],
+      "id": "b526814c-c546-4541-a710-4ea069baf09c",
+      "name": "Update Ticket2",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "4d58027e-47fe-42d9-b994-ab62fd024d6d",
+              "leftValue": "={{ $json.rev_users }}",
+              "rightValue": "",
+              "operator": {
+                "type": "array",
+                "operation": "empty",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [-6528, 5616],
+      "id": "ba0aa3a0-31c0-48bf-a702-b4fa36e0ffdf",
+      "name": "User doesn't exist?"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/timeline-entries.list",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"object\": \"{{$json.ticketId}}\",\n  \"visibility\": [\n    \"external\"\n  ]\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-10960, 4992],
+      "id": "9432696b-254a-42b4-8abb-0f0955833977",
+      "name": "Get Timeline Entries",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Búsqueda en anchura (BFS) que respeta el orden de inserción y de los arrays\nfunction findAllKeysOrdered(obj, targetKey) {\n  const out = [];\n  const queue = [obj];\n\n  while (queue.length) {\n    const current = queue.shift();\n    if (current && typeof current === 'object') {\n      // 1) Capturamos primero todas las coincidencias en el nivel actual, en orden\n      for (const [k, v] of Object.entries(current)) {\n        if (k === targetKey) out.push(v);\n      }\n      // 2) Encolamos después los hijos, en el mismo orden\n      for (const v of Object.values(current)) {\n        if (v && typeof v === 'object') queue.push(v);\n      }\n    }\n  }\n  return out;\n}\n\nfunction coerceToObject(maybeJsonLike) {\n  if (maybeJsonLike && typeof maybeJsonLike === 'object') return maybeJsonLike;\n  if (typeof maybeJsonLike === 'string') {\n    const trimmed = maybeJsonLike.trim();\n    if ((trimmed.startsWith('{') && trimmed.endsWith('}')) ||\n        (trimmed.startsWith('[') && trimmed.endsWith(']'))) {\n      try { return JSON.parse(trimmed); } catch (_) {}\n    }\n  }\n  return undefined;\n}\n\nfunction toSafeString(v) {\n  if (v == null) return '';\n  if (typeof v === 'string') return v;\n  if (typeof v === 'object') {\n    try { return JSON.stringify(v); } catch (_) { return String(v); }\n  }\n  return String(v);\n}\n\n// 1) Acumular TODOS los `body` de TODOS los items en ORDEN\nconst collected = [];\nfor (const item of items) {\n  const candidate =\n    item.json?.payload ??\n    item.json?.data ??\n    item.json?.body ??\n    item.json;\n\n  const root = coerceToObject(candidate) ?? item.json;\n  const found = findAllKeysOrdered(root, 'body'); // target: \"body\"\n  if (found.length) collected.push(...found);\n}\n\n// 2) Tomamos el item base del nodo previo\nconst base = $('Get relevant tag1').first();\nconst baseJson = base?.json ?? {};\n\n// 3) Construimos ticket_messages en orden: message_1, message_2, ...\nconst ticket_messages = {};\nfor (let i = 0; i < collected.length; i++) {\n  ticket_messages[`message_${i + 1}`] = toSafeString(collected[i]);\n}\n\n// 4) Retornamos un solo item con ticket_messages\nreturn [{\n  json: {\n    ...baseJson,\n    ticket_messages\n  }\n}];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-10720, 4992],
+      "id": "93f3cb9c-9a84-42d1-8d6c-35a7010e89fb",
+      "name": "Obtain the real message from the PPT"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "list",
+          "value": "gpt-4.1-mini"
+        },
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.2,
+      "position": [-10512, 5200],
+      "id": "ce528980-509e-4b9f-bbee-fcbdbe1820c3",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "oHUluIpOKkXlIqH6",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsonSchemaExample": "{\n\t\"firstContact\": true\n}"
+      },
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.3,
+      "position": [-10256, 5200],
+      "id": "b7f175e2-2ca1-4250-a268-5218ea03f2a7",
+      "name": "Structured Output Parser"
+    },
+    {
+      "parameters": {
+        "jsCode": "var data = $('Obtain the real message from the PPT').first().json;\n\ndata.firstContact = $input.first().json.output.firstContact;\n\nif (data.ticket_messages && typeof data.ticket_messages === 'object') {\n  for (const key in data.ticket_messages) {\n    if (typeof data.ticket_messages[key] === 'string') {\n      data.ticket_messages[key] = data.ticket_messages[key]\n        .replace(/\\\\n/g, ' ')      // removes literal \"\\n\"\n        .replace(/\\r?\\n/g, ' ')    // removes real line breaks\n        .replace(/\\s+/g, ' ')      // normalizes extra spaces\n        .trim();\n    }\n  }\n}\n\nreturn {\n  json: {\n    ...data\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-9920, 4992],
+      "id": "5816bd98-6fd8-4b49-93f5-13404f2df7de",
+      "name": "Code"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Email First-Contact Detector — Boolean Output\n\nROLE\nYou are an expert email-classification assistant. Decide whether an incoming email is a FIRST CONTACT with us or a FOLLOW-UP to prior interaction with us.\n\nOUTPUT (strict)\nReturn ONLY a single boolean literal with no quotes, punctuation, or extra text:\n- True  → FIRST CONTACT\n- False → FOLLOW-UP\nIf uncertain, default to True.\n\nSCOPE OF EVIDENCE\nEvaluate BOTH subject and body, giving more weight to concrete follow-up evidence (tickets, quoted threads, explicit mentions of having contacted us) than to weak hints.\n\nDEFINITIONS\n- FOLLOW-UP (False): The sender clearly refers to earlier contact/activity involving **us/our team/system** (our ticket/case/thread, our prior email/call/chat/portal submission) OR is explicitly checking status of something already sent to us.\n- FIRST CONTACT (True): No reliable signal of prior back-and-forth with us; any dates/times mentioned refer to the sender’s personal timeline or interactions with third parties (e.g., their employer, another provider), not us.\n\nDECISION PROCEDURE (apply in order)\n1) DIRECT FOLLOW-UP CUES? → False\n   Treat as follow-up if you see any of:\n   • “following up”, “just checking in”, “circling back”, “any update”, “haven’t heard back”, “still waiting”\n   • “per our conversation/call/email”, “as discussed”, “re: my request”, “see my last email”\n   • Ticket/case/reference IDs; mentions like “case #, ticket #, reference #”\n   • Visible quoted thread (e.g., “-----Original Message-----”), “reply below”, “see thread”\n   • Prior submission via OUR channels: “I submitted the form/uploaded docs in your portal/already sent the info”\n2) INDIRECT BUT CREDIBLE EVIDENCE WITH US? → False\n   • Mentions our team/agent by name/role tied to a prior exchange: “as John from your team said…”\n   • Portal/app activity tied to waiting: “I completed your workflow and I’m awaiting confirmation”\n3) WEAK/AMBIGUOUS SIGNALS — DO NOT USE ALONE\n   • Subject prefixes “Re:”/“Fwd:”/“FW:” **without** any other follow-up evidence or quoted thread\n   • Generic “support” with no indication it’s **our** support\n4) FIRST-CONTACT CUES AND NO FOLLOW-UP CUES? → True\n   • “I would like to start/open/enroll/request…”, “how do I…”, “I need instructions/info/eligibility/fees”, “who do I contact”\n5) TIE-BREAKERS\n   • Any reliable follow-up cue overrides and yields False.\n   • If prior contact is only with a third party (HR, previous provider) and not us → True (unless another follow-up cue exists).\n   • If they say “I emailed support earlier”:\n       – If context indicates it was **our** support/portal → False.\n       – If ambiguous which support → True (unless another follow-up cue exists).\n6) STILL AMBIGUOUS? → True\n\nMULTILINGUAL CUES (Spanish → treat as follow-up when clearly about us)\n• “dando/hago seguimiento”, “solo confirmo”, “¿alguna novedad?”, “no he recibido respuesta”\n• “como hablamos/según lo conversado/como acordamos”\n• “ticket/caso #”, “reenviar”, “ver correo anterior”\n\nEXCLUSIONS (do NOT count as follow-up by themselves)\n• Personal timestamps only: “I changed jobs last week”, “On July 20 I moved plans”\n• Third-party contact only (HR/other provider) with no link to us\n• Pure thanks/closings (“thanks”, “best”), disclaimers, signatures, confidentiality footers\n• Auto-inserted “Re:” with no other signals and no quoted thread\n\nQUICK HEURISTIC\nMentions prior contact with us or our artifacts (ticket/thread/our portal submission)? → False\nOtherwise → True\n\nEXAMPLES (gold labels)\n• “Just checking on ticket #48291—I haven’t heard back since last week.” → False\n• “As discussed on our call yesterday, I’m still waiting for the rollover packet.” → False\n• “I submitted the address change in your portal this morning; any update?” → False\n• “Re: distribution request—can you confirm processing?” + quoted thread → False\n• “Forwarding the thread below; still no confirmation.” → False\n• “I’d like to open a new 401(k) and need instructions.” → True\n• “I changed jobs last week and want to understand my options.” → True\n• “HR told me to email you; I need help with a hardship withdrawal.” → True\n• “I emailed support earlier today but don’t have a ticket number.” → False IF clearly our support; otherwise True\n• “I submitted the form to Fidelity last week; what do you need from me?” → True (third-party)\n\nFINAL TASK\nNow classify this email using BOTH subject and body (ignore disclaimers/signatures; treat “Re:/Fwd:” as weak unless supported):\n\n{{ $json.emailSubject }}\n{{ (!$json.ticket_messages || Object.keys($json.ticket_messages).length === 0)\n    ? $json.emailBody\n    : $json.ticket_messages.message_1 }}\n\n\nReturn ONLY:\nTrue  (first contact)\nor\nFalse (follow-up)",
+        "hasOutputParser": true,
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 2.2,
+      "position": [-10448, 4992],
+      "id": "c5843afa-a313-4233-8bc9-738151f0848c",
+      "name": "Contact Inquiry detector"
+    },
+    {
+      "parameters": {
+        "jsCode": "function fnv1a64(value) {\n  let hash = 0xcbf29ce484222325n;\n  const prime = 0x100000001b3n;\n\n  for (let index = 0; index < value.length; index += 1) {\n    const codeUnit = value.charCodeAt(index);\n    hash ^= BigInt(codeUnit & 0xff);\n    hash = BigInt.asUintN(64, hash * prime);\n    hash ^= BigInt(codeUnit >>> 8);\n    hash = BigInt.asUintN(64, hash * prime);\n  }\n\n  return hash.toString(16).padStart(16, '0');\n}\n\nconst userData = $input.first().json.userData;\nconst forusbots = $input.first().json.fubData;\nconst ticketData = $('Code').first().json;\nconst ticketId = $('Get fields1').first().json.ticketId;\nconst canonicalTicketData = {\n  ...ticketData,\n  ticketId,\n};\n\nconst envelope = {\n  participant_id: userData.pptId ?? '',\n  plan_id: userData.planId ?? '',\n  company_name: userData.companyName ?? '',\n  company_status: userData.companyStatus ?? '',\n  company_status_detail: userData.companyStatusDetail ?? '',\n  record_keeper: forusbots.recordKeeper ?? '',\n  ticket_handler_mode: 'full',\n  max_response_tokens: 5500,\n  ticket: {\n    username: canonicalTicketData.userName ?? '',\n    user_email: canonicalTicketData.userEmail ?? '',\n    email_subject: canonicalTicketData.emailSubject ?? '',\n    email_body: canonicalTicketData.emailBody ?? '',\n    ticket_messages: canonicalTicketData.ticket_messages ?? {},\n    tag: null,\n    ticket_id: ticketId,\n    first_contact: null,\n  },\n};\nconst idempotencyKey =\n  'n8n-handle-v1-' + fnv1a64(JSON.stringify(envelope));\n\nreturn {\n  userData,\n  ticketData: canonicalTicketData,\n  forusbots,\n  idempotencyKey,\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-8480, 4192],
+      "id": "8e2b14dd-a230-4df8-aba6-d55bb7e389be",
+      "name": "Include Ticket data"
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeJSONStringForHTTP(obj) {\n  const compact = JSON.stringify(obj);\n  const escaped = compact\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\"/g, '\\\\\"');\n  return escaped;\n}\n\n// ---- inputs ------------------------------------------------------------\nconst raw = $input.first().json;\n// /handle-ticket devuelve un array (o un objeto en la ruta inline). Normalizamos.\nconst data = Array.isArray(raw) ? raw[0] : raw;\n\nconst getFields = $('Get fields1').first().json;\nconst firstContact =\n  getFields.caseData?.ticketData?.firstContact ??\n  getFields.ticketData?.firstContact ??\n  getFields.firstContact;\n\n// ---- quedarse SOLO con lo que el LLM redactor necesita ------------------\nfunction cleanInquiry(iq) {\n  if (!iq) return null;\n\n  const out = {\n    inquiry: iq.inquiry,\n    topic: iq.topic,\n    route: iq.route,\n  };\n\n  // Ruta generate_response: contenido accionable para el participante\n  const r = iq.generate_response?.response;\n  if (r) {\n    out.outcome = r.outcome;\n    out.response_to_participant = r.response_to_participant; // opening, key_points, steps, warnings\n    out.questions_to_ask = r.questions_to_ask;\n    out.escalation = r.escalation;\n  }\n\n  // Ruta knowledge_question\n  if (iq.knowledge_answer) {\n    out.knowledge_answer = {\n      answer: iq.knowledge_answer.answer,\n      key_points: iq.knowledge_answer.key_points,\n    };\n  }\n\n  // Ruta needs_more_info\n  if (iq.needs_more_info_message) {\n    out.needs_more_info_message = iq.needs_more_info_message;\n  }\n\n  return out;\n}\n\n// primary + related (soporta tickets multi-inquiry, p.ej. financiero + account_access)\nconst inquiries = [data.primary, ...(data.related || [])]\n  .filter(Boolean)\n  .map(cleanInquiry);\n\nconst payload = {\n  responseSource: \"Generate-Response\",\n  total_inquiries_in_ticket: data.total_inquiries_in_ticket,\n  inquiries,\n};\n\nconst bodyPayload = `\\`\\`\\`\\\\n\\\\n${escapeJSONStringForHTTP(payload)}\\\\n\\\\n`;\n\n// ---- tags (sin cambios) ------------------------------------------------\nlet tags = [\n  { id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2910\" }\n];\n\nif (firstContact === false || firstContact === 'false') {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2887\" });\n} else {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2886\" });\n}\n\nconst tagString = tags.map(t => JSON.stringify(t)).join(\",\\n  \");\n\nreturn {\n  json: {\n    ticketId: getFields.ticketId,\n    body: bodyPayload,\n    part: \"CAPL-1\",\n    tag: tagString,\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-5696, 4192],
+      "id": "8dd3767a-4549-4678-89d6-53230489b036",
+      "name": "Format data for DevRev Internal notes"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kb-rag-system-900340137010.us-central1.run.app/api/v1/knowledge-question",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $('Parse response').first().json.idempotencyKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({\n  question: $('Parse response').first().json.question,\n  ticket_id: $('Get fields1').first().json.ticketId,\n}) }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-6272, 5184],
+      "id": "b24975b6-ead7-48df-8392-7c988dfa5a3a",
+      "name": "Knowledge Question",
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 2000,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BxKe5WhkDk0OSs2F",
+          "name": "RAG KB System"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4.1-mini"
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [-7824, 5376],
+      "id": "456637e7-fd12-41d1-bef1-2543da2aef68",
+      "name": "OpenAI Chat Model1",
+      "credentials": {
+        "openAiApi": {
+          "id": "oHUluIpOKkXlIqH6",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeJSONStringForHTTP(obj) {\n  const compact = JSON.stringify(obj);\n  const escaped = compact\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\"/g, '\\\\\"');\n  return escaped;\n}\n\nconst input = $input.first().json;\nconst getFields = $('Get fields1').first().json;\n\nconst firstContact = getFields.caseData?.ticketData?.firstContact;\n\nconst payload = {\n  answer: input.answer,\n  key_points: input.key_points,\n  confidence_note: input.confidence_note,\n  metadata: {\n    unique_articles: input.metadata?.unique_articles,\n    relevant_articles: input.metadata?.relevant_articles,\n    model: input.metadata?.model,\n  },\n  responseSource: \"Knowledge-Question\",\n};\n\nconst bodyPayload = `\\`\\`\\`\\\\n\\\\n${escapeJSONStringForHTTP(payload)}\\\\n\\\\n`;\n\nlet tags = [\n  { id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2910\" }\n];\n\nif (firstContact === false || firstContact === 'false') {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2887\" });\n} else {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2886\" });\n}\n\nconst tagString = tags.map(t => JSON.stringify(t)).join(\",\\n  \");\n\nreturn {\n  json: {\n    ticketId: getFields.ticketId,\n    body: bodyPayload,\n    part: \"CAPL-1\",\n    tag: tagString,\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-5840, 5184],
+      "id": "2374140e-5c1b-4708-8aa7-d1cd8ecb9e9c",
+      "name": "Format Data for DevRev"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ JSON.stringify({\n  ticketData: {\n    emailSubject: $('Code').first().json.emailSubject ?? '',\n    emailBody: $('Code').first().json.emailBody ?? '',\n    tag: $('Code').first().json.tag ?? null,\n    firstContact: $('Code').first().json.firstContact ?? null,\n    ticket_messages: $('Code').first().json.ticket_messages ?? {},\n  },\n}) }}",
+        "options": {
+          "systemMessage": "You are a **Knowledge-Question Builder Agent**. Your sole job is to receive ticket data containing the participant's messages and metadata, and produce the exact JSON body needed for the `POST /api/v1/knowledge-question` HTTP request.\n\nYou do NOT call the endpoint — you only build the request body. Your output must be a single valid JSON object ready to be sent as-is.\n\n## Your Position in the Pipeline\n\n```\nParticipant sends message → DevRev (CRM)\n  → n8n detects that participant data is NOT available or NOT needed\n    → YOU receive the ticket data (messages + metadata)\n    → YOU synthesize a semantically rich question for KB retrieval\n  → n8n sends {\"question\": \"...\"} to the KB RAG API (/knowledge-question)\n    → KB RAG API performs semantic search and returns general knowledge answer\n```\n\nYou are the bridge between raw ticket messages and the knowledge base retrieval system. Your question directly determines retrieval quality — a well-formed question returns precise KB articles; a vague one returns noise.\n\n---\n\n## Input Format\n\nYou will receive a JSON object with ticket metadata and messages:\n\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"...\",\n    \"emailBody\": \"...\",\n    \"tag\": \"...\",\n    \"firstContact\": true,\n    \"ticket_messages\": {\n      \"message_1\": \"...\",\n      \"message_2\": \"...\",\n      \"message_N\": \"...\"\n    }\n  }\n}\n```\n\n| Field | What It Contains |\n|-------|-----------------|\n| `emailSubject` | Ticket subject line — topic context, often brief |\n| `emailBody` | Summarized or original participant message — primary source |\n| `tag` | DevRev classification tag (may be `\"NOT FOUND\"` or null) |\n| `firstContact` | Boolean — whether this is the first message in the ticket |\n| `ticket_messages` | All messages in the ticket, ordered by key (`message_1`, `message_2`, …) |\n\n---\n\n## Output Format\n\nYou must return ONLY a valid JSON object. No markdown, no explanatory text, no code fences — just the JSON.\n\n**Standard output** (inquiry is clear enough to query the KB):\n```json\n{\n  \"question\": \"string (10–2000 chars)\"\n}\n```\n\n**Insufficient inquiry output** (see Rule 0 below — inquiry does not reveal what the participant needs):\n```json\n{\n  \"question\": null,\n  \"insufficient_inquiry\": true\n}\n```\n\nWhen `insufficient_inquiry` is `true`, n8n will skip the KB call entirely and send the participant a greeting introducing the ForUsAll team and asking how they can help.\n\n---\n\n# ⚠️ CRITICAL RULE — WEB FORM SUBMISSIONS (READ FIRST)\n\n## If `emailSubject` is `\"Participant Advisory - Form Submission\"`\n\nThis ticket was submitted through the **ForUsAll web form**, not via email or a support conversation. The `emailSubject` value is a system-generated label that identifies the channel — it has **no relationship to the participant's question**.\n\n**When this subject is detected, you MUST:**\n\n1. **Use ONLY `emailBody`** as the source for generating the `question`.\n2. **Completely ignore** `ticket_messages`, `tag`, and `emailSubject` content — they do not reflect the participant's intent and will corrupt your output.\n3. **Do NOT interpret** the word \"form\" or \"submission\" as part of the question topic. The participant did NOT ask about a form. They asked about something else — whatever is in `emailBody`.\n\n**This rule overrides all other source-priority rules in Rule 1.**\n\n> **Why this matters:** Misreading a form-submission ticket as a question about forms is a critical retrieval failure. The KB will return irrelevant articles and the endpoint response will be wrong. Always check `emailSubject` first before reading anything else.\n\n---\n\n# QUESTION SYNTHESIS RULES\n\n## Rule 0 — Detect Insufficient Inquiries (Check Before Everything Else)\n\nBefore attempting to synthesize a question, evaluate whether the available text actually reveals what the participant needs. If it does not, **do not fabricate a question** — output the insufficient inquiry response instead.\n\n**An inquiry is insufficient when ALL usable sources (after applying any channel-specific rules) contain only:**\n- A single generic word or acronym with no supporting context (e.g., `\"401k\"`, `\"help\"`, `\"question\"`, `\"hi\"`)\n- Empty strings, null values, or whitespace only\n- System-generated text that is not written by the participant (e.g., `\"form submitted\"`, `\"N/A\"`)\n- Text that acknowledges a topic area but expresses no specific need (e.g., `\"401k question\"` with no further detail)\n\n**Do NOT mark as insufficient if:**\n- The text contains a verb that signals intent, even if brief (e.g., `\"cashout\"`, `\"withdraw\"`, `\"rollover\"`)\n- The text contains a specific scenario, condition, or detail that narrows the topic\n- The `tag` field provides a clear topic classification that disambiguates a vague message (only applies to non-form tickets)\n\n**Output when insufficient:**\n```json\n{\n  \"question\": null,\n  \"insufficient_inquiry\": true\n}\n```\n\n> **Why this matters:** Generating a broad generic question when the participant hasn't told us anything specific will cause the KB to return articles about topics the participant never asked about. This creates a response that is at best confusing and at worst completely off-topic. It is always better to ask the participant what they need.\n\n---\n\n## Rule 1 — Identify the Core Intent\n\n**First, check `emailSubject`.** If it is `\"Participant Advisory - Form Submission\"`, apply the Critical Rule above — skip to `emailBody` directly and ignore all other fields.\n\nOtherwise, read ALL ticket messages in order (`message_1` through `message_N`) to understand the full context of the participant's inquiry. The final message is what they're asking right now, but earlier messages provide essential context.\n\n**Standard priority for understanding intent (non-form tickets):**\n1. `ticket_messages` — ordered conversation; read all of them\n2. `emailBody` — summarized version; use to validate your understanding\n3. `emailSubject` — topic hint; lowest fidelity, use only to disambiguate\n\n## Rule 2 — Synthesize, Do Not Copy\n\n**Do NOT** copy-paste the participant's raw message as the question. Raw messages are often vague, misspelled, conversational, or incomplete.\n\n**DO** synthesize a clear, self-contained question that:\n- Captures the participant's **core intent** in proper, complete language\n- Includes relevant **401(k) domain terminology** for better semantic retrieval\n- Is phrased as a **question** (not a statement or a command)\n- Provides enough **topic context** for the KB to identify the right articles\n- Is **general** — do not include participant-specific details (names, balances, SSNs, plan IDs)\n\n**Bad (raw copy):** `\"i wanna cashout\"`\n**Bad (too vague):** `\"How does 401k work?\"`\n**Good (synthesized):** `\"What are the options and steps for a terminated participant to withdraw or roll over their 401(k) balance after leaving their job?\"`\n\n## Rule 3 — Include Domain-Specific Terms\n\nUse standard 401(k) terminology to maximize retrieval precision. Identify and include the relevant terms from this list based on the inquiry topic:\n\n| Topic | Key Terms to Include in Question |\n|-------|----------------------------------|\n| Termination / Cash-out | terminated participant, distribution options, rollover, cash out, vested balance |\n| Hardship Withdrawal | hardship withdrawal, qualifying reasons, IRS rules, immediate financial need |\n| Loans | 401(k) loan, borrow, repayment, maximum loan amount, outstanding balance |\n| RMDs | required minimum distribution, age 73, RMD deadline, IRS rules |\n| Rollovers | rollover, IRA, direct rollover, indirect rollover, 60-day rule |\n| Enrollment | auto-enrollment, opt out, EACA, eligibility, entry date |\n| Savings Rate | deferral rate, contribution percentage, change deferral, pre-tax, Roth |\n| MFA | multi-factor authentication, login, portal access, security |\n| Beneficiary | beneficiary designation, primary beneficiary, contingent |\n| QDRO | qualified domestic relations order, divorce, alternate payee |\n| Excess Contributions | ADP/ACP refund, excess contribution, corrective distribution |\n| In-Service Withdrawal | in-service distribution, active employee, age 59½ |\n| Force-Out | force-out, involuntary distribution, small balance, safe harbor IRA |\n| Taxes / 1099 | Form 1099-R, federal withholding, tax treatment, early withdrawal penalty |\n\n## Rule 4 — Handle Multi-Message Tickets\n\nWhen the ticket has multiple messages, synthesize a single question that captures the **current state** of the conversation:\n\n- If the participant has added clarifying detail in later messages, incorporate that detail\n- If the participant has shifted topic, prioritize the **most recent** message's intent\n- If multiple distinct questions exist, synthesize the **primary** one (the most important or most recent)\n\n**Do NOT** combine unrelated questions into one. The knowledge-question endpoint is designed for a single focused query.\n\n## Rule 5 — Length and Validation\n\n- Minimum: 10 characters (always met if you follow these rules)\n- Maximum: 2000 characters (your question should rarely exceed 300 characters — keep it concise)\n- Target: 50–200 characters — specific enough for good retrieval, short enough to stay focused\n- After writing the question, verify: **Would a KB article title plausibly answer this question?** If yes, proceed. If not, rewrite.\n\n## Rule 6 — Do Not Hallucinate or Assume\n\n- If the inquiry is ambiguous but contains enough signal to identify a topic, write a question that covers the most likely interpretation\n- Never invent details not present in the ticket data\n- Never include regulatory figures, specific dollar amounts, or dates from your training — the KB will provide those\n- **If the topic is genuinely unclear and you cannot identify any specific intent, apply Rule 0 — output `insufficient_inquiry: true`. Never default to a broad generic question about 401(k) features as a fallback.**\n\n---\n\n# STEP-BY-STEP PROCESS\n\n1. **Check `emailSubject`** — if it is `\"Participant Advisory - Form Submission\"`, apply the Critical Rule: use ONLY `emailBody`, ignore everything else.\n2. **Read** all usable sources (after step 1) to gather all available text from the participant.\n3. **Apply Rule 0** — evaluate whether the text is sufficient to identify a specific intent. If not, return `{\"question\": null, \"insufficient_inquiry\": true}` immediately. Stop here.\n4. **Identify the topic** — use the domain terms table (Rule 3) to anchor the right area.\n5. **Identify the specific sub-question** — what exactly does the participant want to know or do?\n6. **Synthesize the question** — write a clean, domain-rich, self-contained question in proper English.\n7. **Validate** length (10–2000 chars) and that it reads as a question.\n8. **Return** the JSON object.\n\n---\n\n# EXAMPLES\n\n## Example 1 — Vague Cash-Out Message\n\nInput:\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"401k\",\n    \"emailBody\": \"The customer wants to cash out their 401k.\",\n    \"tag\": \"NOT FOUND\",\n    \"firstContact\": true,\n    \"ticket_messages\": {\n      \"message_1\": \"I wanna cashout\"\n    }\n  }\n}\n```\n\nReasoning (internal — do not output):\n- Single message, very vague: \"I wanna cashout\"\n- `emailBody` confirms intent: cash out 401(k)\n- Topic: termination distribution / in-service withdrawal — unclear which, but \"cash out\" most commonly refers to terminated participants\n- Synthesize a question that covers the distribution options for a participant wanting to withdraw\n\nOutput:\n```json\n{\n  \"question\": \"What are the distribution options available to a participant who wants to cash out their 401(k), including eligibility requirements, taxes, and penalties?\"\n}\n```\n\n---\n\n## Example 2 — Multi-Message Hardship Inquiry\n\nInput:\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"Hardship\",\n    \"emailBody\": \"Participant is asking about a hardship withdrawal for medical bills.\",\n    \"tag\": \"Hardship Request\",\n    \"firstContact\": false,\n    \"ticket_messages\": {\n      \"message_1\": \"Hi, I need money urgently\",\n      \"message_2\": \"It's for a medical bill that insurance won't cover\",\n      \"message_3\": \"Can I withdraw from my 401k for this?\"\n    }\n  }\n}\n```\n\nReasoning (internal — do not output):\n- Three messages: urgent financial need → medical bill → hardship withdrawal\n- Tag confirms: \"Hardship Request\"\n- Topic clearly: hardship withdrawal, medical expense qualifying reason\n- Synthesize question including the specific qualifying reason and process\n\nOutput:\n```json\n{\n  \"question\": \"Does a medical expense that is not covered by insurance qualify as a hardship withdrawal reason, and what is the process to request a hardship withdrawal from a 401(k)?\"\n}\n```\n\n---\n\n## Example 3 — Loan Request with Context\n\nInput:\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"Loan request\",\n    \"emailBody\": \"Participant wants to take a loan from their 401k.\",\n    \"tag\": \"Loan Request\",\n    \"firstContact\": true,\n    \"ticket_messages\": {\n      \"message_1\": \"I need to take out a loan from my 401k to cover some home repairs. How do I apply?\"\n    }\n  }\n}\n```\n\nReasoning (internal — do not output):\n- Single message, clear intent: 401(k) loan for home repairs\n- Tag confirms: \"Loan Request\"\n- Topic: loan application process\n- Synthesize question covering how to apply and what to expect\n\nOutput:\n```json\n{\n  \"question\": \"How does a participant apply for a 401(k) loan, and what are the steps, eligibility requirements, and repayment terms?\"\n}\n```\n\n---\n\n## Example 4 — Rollover After Job Change\n\nInput:\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"Rollover request\",\n    \"emailBody\": \"Hi, I left my job last month and I'd like to roll over my 401(k) to my Fidelity IRA. Can you help me with that?\",\n    \"tag\": \"Withdrawal Request --> Terminated Distribution\",\n    \"firstContact\": true,\n    \"ticket_messages\": {\n      \"message_1\": \"Hi, I left my job last month and I'd like to roll over my 401(k) to my Fidelity IRA. Can you help me with that?\"\n    }\n  }\n}\n```\n\nOutput:\n```json\n{\n  \"question\": \"What is the process for a terminated participant to roll over their 401(k) balance to an IRA at an external institution like Fidelity, and how long does it take?\"\n}\n```\n\n---\n\n## Example 5 — Web Form Submission with Insufficient Body (Rule 0 + Critical Rule)\n\nInput:\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"Participant Advisory - Form Submission\",\n    \"emailBody\": \"401k\",\n    \"tag\": \"NOT FOUND\",\n    \"firstContact\": true,\n    \"ticket_messages\": {}\n  }\n}\n```\n\nReasoning (internal — do not output):\n- `emailSubject` is `\"Participant Advisory - Form Submission\"` → Critical Rule triggered\n- Use ONLY `emailBody`: `\"401k\"`\n- `ticket_messages` is empty — ignore\n- `emailBody` contains only the word \"401k\" — a single generic acronym with no verb, scenario, or intent signal\n- Rule 0: this is insufficient — cannot identify what the participant needs\n- Do NOT generate a generic question about 401(k) features; that would be fabricating intent\n\nOutput:\n```json\n{\n  \"question\": null,\n  \"insufficient_inquiry\": true\n}\n```\n\n---\n\n## Example 6 — Web Form Submission with Clear Body (CRITICAL RULE in action)\n\nInput:\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"Participant Advisory - Form Submission\",\n    \"emailBody\": \"I want to know how long it takes to receive my 401k funds after submitting a termination distribution request.\",\n    \"tag\": \"NOT FOUND\",\n    \"firstContact\": true,\n    \"ticket_messages\": {\n      \"message_1\": \"Participant Advisory - Form Submission\",\n      \"message_2\": \"form submitted\"\n    }\n  }\n}\n```\n\nReasoning (internal — do not output):\n- `emailSubject` is `\"Participant Advisory - Form Submission\"` → CRITICAL RULE triggered\n- Ignore `ticket_messages` entirely — they contain system noise, not the participant's question\n- Ignore `tag` — \"NOT FOUND\" is irrelevant here\n- Ignore `emailSubject` as a topic signal — \"form\" or \"submission\" is NOT the topic\n- Use ONLY `emailBody`: \"I want to know how long it takes to receive my 401k funds after submitting a termination distribution request.\"\n- Synthesize a precise retrieval question from `emailBody`\n\nOutput:\n```json\n{\n  \"question\": \"How long does it take to receive 401(k) funds after a termination distribution request is submitted, and what are the processing timelines?\"\n}\n```\n\n---\n\n## Example 7 — Ambiguous / General Question\n\nInput:\n```json\n{\n  \"ticketData\": {\n    \"emailSubject\": \"Question\",\n    \"emailBody\": \"Participant has a general question about their account.\",\n    \"tag\": \"NOT FOUND\",\n    \"firstContact\": true,\n    \"ticket_messages\": {\n      \"message_1\": \"hey i have a question\"\n    }\n  }\n}\n```\n\nReasoning (internal — do not output):\n- Single extremely vague message, no topic signal in emailBody or emailSubject\n- Tag is \"NOT FOUND\"\n- Cannot infer topic — use a broad anchoring question about 401(k) account management\n\nOutput:\n```json\n{\n  \"question\": \"What are the main options and features available to a participant managing their 401(k) account, including contributions, loans, withdrawals, and rollovers?\"\n}\n```\n\n---\n\n# OUTPUT VALIDATION CHECKLIST\n\nBefore returning the JSON, verify:\n\n0. ✅ **If `emailSubject` is `\"Participant Advisory - Form Submission\"`: source is ONLY `emailBody`. `ticket_messages`, `tag`, and `emailSubject` were ignored entirely.**\n1. ✅ **Insufficient inquiry check passed:** the usable text contains enough signal to identify a specific participant intent. If not, `question` is `null` and `insufficient_inquiry` is `true`.\n2. ✅ If `question` is a string: it is between 10 and 2000 characters and ends with `?`.\n3. ✅ `question` does NOT contain participant-specific data (names, balances, IDs, SSNs).\n4. ✅ `question` includes relevant 401(k) domain terminology.\n5. ✅ `question` captures the primary intent of the ticket — NOT a generic fallback invented because no intent was found.\n6. ✅ Output is valid JSON. Keys present: either `{\"question\": \"...\"}` or `{\"question\": null, \"insufficient_inquiry\": true}`.\n7. ✅ No markdown code fences, no explanatory text outside the JSON.\n\n---\n\n# OUTPUT FORMAT RULES\n\n1. Always return valid JSON.\n2. Two valid output shapes exist — no others are acceptable:\n   - Standard: `{\"question\": \"...\"}` — when the inquiry is clear enough to query the KB.\n   - Insufficient: `{\"question\": null, \"insufficient_inquiry\": true}` — when the inquiry provides no actionable signal.\n3. Do not include explanatory text outside the JSON. Your entire response must be the JSON object.\n4. Do not wrap the JSON in markdown code fences or any other formatting.\n5. The `question` value must be a plain string or `null` — no nested objects, no arrays.\n6. **Never output a generic 401(k) overview question as a fallback.** If you cannot identify a specific intent, output the insufficient inquiry shape."
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [-7824, 5184],
+      "id": "8baaf14e-fd47-4d07-95b9-eb977aa80a4f",
+      "name": "Knowledge Question Inquiry Generator"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "504c3955-6dd0-46e5-b9b8-0404b8310569",
+              "leftValue": "={{ $json.question }}",
+              "rightValue": "={{ null }}",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-6864, 5168],
+      "id": "c6247b19-29db-49dd-97bd-82fd3d985bfc",
+      "name": "Insufficient Inquiry?"
+    },
+    {
+      "parameters": {
+        "jsCode": "function fnv1a64(value) {\n  let hash = 0xcbf29ce484222325n;\n  const prime = 0x100000001b3n;\n\n  for (let index = 0; index < value.length; index += 1) {\n    const codeUnit = value.charCodeAt(index);\n    hash ^= BigInt(codeUnit & 0xff);\n    hash = BigInt.asUintN(64, hash * prime);\n    hash ^= BigInt(codeUnit >>> 8);\n    hash = BigInt.asUintN(64, hash * prime);\n  }\n\n  return hash.toString(16).padStart(16, '0');\n}\n\nconst parsed = JSON.parse($input.item.json.output);\nconst ticketId = $('Get fields1').first().json.ticketId;\nif (typeof parsed.question === 'string') {\n  const canonicalInput = JSON.stringify({\n    ticket_id: ticketId,\n    question: parsed.question.trim(),\n  });\n  parsed.idempotencyKey = 'n8n-kq-v1-' + fnv1a64(canonicalInput);\n}\nreturn { json: parsed };"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-7120, 5168],
+      "id": "d3cd6699-2c02-407d-ac08-974b87564e43",
+      "name": "Parse response"
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeJSONStringForHTTP(obj) {\n  const compact = JSON.stringify(obj);\n  const escaped = compact\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\"/g, '\\\\\"');\n  return escaped;\n}\n\nconst getFields = $('Get fields1').first().json;\n\nconst firstContact = getFields.caseData?.ticketData?.firstContact;\n\nconst payload = {\n  answer: \"Thank you for reaching out! We're the ForUsAll participant advisory team and we're here to help you with your 401(k). To get started, could you tell us a bit more about what you need help with today?\",\n  key_points: [],\n  confidence_note: \"No inquiry provided — participant did not include enough context to retrieve KB information.\",\n  metadata: {\n    unique_articles: 0,\n    relevant_articles: 0,\n    model: null,\n  },\n  responseSource: \"Knowledge-Question\",\n};\n\nconst bodyPayload = `\\`\\`\\`\\\\n\\\\n${escapeJSONStringForHTTP(payload)}\\\\n\\\\n`;\n\nlet tags = [\n  { id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2910\" }\n];\n\nif (firstContact === false || firstContact === 'false') {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2887\" });\n} else {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2886\" });\n}\n\nconst tagString = tags.map(t => JSON.stringify(t)).join(\",\\n  \");\n\nreturn {\n  json: {\n    ticketId: getFields.ticketId,\n    body: bodyPayload,\n    part: \"CAPL-1\",\n    tag: tagString,\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-6576, 5008],
+      "id": "d1cde00a-fd77-45c1-8371-220a95f2d231",
+      "name": "Insufficient output"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/kb-rag-client@rag-kb-system.iam.gserviceaccount.com:generateIdToken",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"audience\": \"https://kb-rag-system-900340137010.us-central1.run.app\",\n  \"includeEmail\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-6528, 5184],
+      "id": "e0a74be7-2306-41f6-9f6d-8c5f97928683",
+      "name": "Get GCP User Token",
+      "credentials": {
+        "googleApi": {
+          "id": "YFBGrSrNh8bRpmzY",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/timeline-entries.create",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n\n  \"object\": \"{{ $json.ticketId }}\",\n  \"body\": \"{{ $json.body }}\",\n  \"visibility\": \"internal\",\n  \"type\": \"timeline_comment\"\n\n  \n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [-2672, 4640],
+      "id": "2344a6a6-1278-4b85-9a58-9e9d8e9769bf",
+      "name": "Internal Comment2",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "wFwySBJPruuzHgE2",
+          "name": "DevRev Production"
+        }
+      },
+      "disabled": true
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/kb-rag-client@rag-kb-system.iam.gserviceaccount.com:generateIdToken",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"audience\": \"https://kb-rag-system-900340137010.us-central1.run.app\",\n  \"includeEmail\": true\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-8192, 4192],
+      "id": "4fe86c52-1179-4a2e-9727-61cbaeb80fb2",
+      "name": "Get GCP User Token1",
+      "credentials": {
+        "googleApi": {
+          "id": "YFBGrSrNh8bRpmzY",
+          "name": "Google Service Account account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://kb-rag-system-900340137010.us-central1.run.app/api/v1/handle-ticket",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $json.token }}"
+            },
+            {
+              "name": "Idempotency-Key",
+              "value": "={{ $('Include Ticket data').first().json.idempotencyKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"participant_id\": {{ JSON.stringify($('Include Ticket data').item.json.userData.pptId ?? '') }},\n  \"plan_id\": {{ JSON.stringify($('Include Ticket data').item.json.userData.planId ?? '') }},\n  \"company_name\": {{ JSON.stringify($('Include Ticket data').item.json.userData.companyName ?? '') }},\n  \"company_status\": {{ JSON.stringify($('Include Ticket data').item.json.userData.companyStatus ?? '') }},\n  \"company_status_detail\": {{ JSON.stringify($('Include Ticket data').item.json.userData.companyStatusDetail ?? '') }},\n  \"record_keeper\": {{ JSON.stringify($('Include Ticket data').item.json.forusbots.recordKeeper ?? '') }},\n  \"ticket_handler_mode\": \"full\",\n  \"max_response_tokens\": 5500,\n  \"ticket\": {\n    \"username\": {{ JSON.stringify($('Include Ticket data').item.json.ticketData.userName ?? '') }},\n    \"user_email\": {{ JSON.stringify($('Include Ticket data').item.json.ticketData.userEmail ?? '') }},\n    \"email_subject\": {{ JSON.stringify($('Include Ticket data').item.json.ticketData.emailSubject ?? '') }},\n    \"email_body\": {{ JSON.stringify($('Include Ticket data').item.json.ticketData.emailBody ?? '') }},\n    \"ticket_messages\": {{ (() => { const value = $('Include Ticket data').item.json?.ticketData?.ticket_messages; if (value === undefined || value === null || value === '' || (Array.isArray(value) && value.length === 0) || (typeof value === 'object' && !Array.isArray(value) && Object.keys(value).length === 0)) return '{}'; return JSON.stringify(value); })() }},\n    \"tag\": null,\n    \"ticket_id\": {{ JSON.stringify($('Include Ticket data').item.json.ticketData.ticketId ?? '') }},\n    \"first_contact\": null\n  }\n}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-7888, 4192],
+      "id": "e7fc14a1-2b28-4139-a544-1b5e8694e6a6",
+      "name": "Handle Ticket",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BxKe5WhkDk0OSs2F",
+          "name": "RAG KB System"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 15
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-7216, 4176],
+      "id": "e704d0bf-c53c-49fd-ada1-dba48dc2ccc0",
+      "name": "Wait",
+      "webhookId": "260cf16f-4a7b-4683-8bd2-38aa7af1ba2b"
+    },
+    {
+      "parameters": {
+        "url": "=https://kb-rag-system-900340137010.us-central1.run.app/api/v1/tickets/{{ $('Wait').item.json.ticket_job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('Get GCP User Token1').item.json.token }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [-6976, 4176],
+      "id": "51835190-d72c-4216-9487-31c4dd4de385",
+      "name": "Poll",
+      "retryOnFail": true,
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "BxKe5WhkDk0OSs2F",
+          "name": "RAG KB System"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "amount": 15
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [-6512, 4160],
+      "id": "522e7bfc-fd12-4da8-a3fd-f36b695bddb2",
+      "name": "Wait1",
+      "webhookId": "0ea0914b-1b75-4f54-bfca-86ce2c39db9c"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "587e499c-eecc-4e4d-a34a-e0724283787a",
+              "leftValue": "={{ ['queued', 'running'].includes($json.state) }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-6768, 4176],
+      "id": "c1031075-9f0d-4325-84ed-c30c3eea6602",
+      "name": "Still Running?"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "9e23f168-6794-4dce-bad8-9b2a76952658",
+              "leftValue": "={{ $json.state }}",
+              "rightValue": "succeeded",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "5638449f-a44b-4c82-9e31-8c4c6b220377",
+              "leftValue": "={{ $json.next_action }}",
+              "rightValue": "send_participant_reply",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            },
+            {
+              "id": "7791c8e7-dd6c-44b3-ac02-cc4a705133bd",
+              "leftValue": "={{ $json.metadata?.fallback ?? false }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "false",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-6336, 4176],
+      "id": "68a42380-1827-4b6e-828e-f9d33d7b30e7",
+      "name": "Safe Participant Reply?"
+    },
+    {
+      "parameters": {
+        "jsCode": "throw new Error('Ticket job is not safe to publish to DevRev');"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-6112, 4400],
+      "id": "44adac75-ea16-42c7-90ae-299270aa2ab1",
+      "name": "Stop Unsafe Terminal Result"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "70b30c6f-31b2-4132-87ff-9b80ba88c200",
+              "leftValue": "={{ $json.ticket_job_id !== undefined }}",
+              "rightValue": "={{ true }}",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [-7632, 4192],
+      "id": "bce91bb1-d3fc-4417-b461-2c9e9e0df2b5",
+      "name": "Generate response question?"
+    },
+    {
+      "parameters": {
+        "jsCode": "function escapeJSONStringForHTTP(obj) {\n  const compact = JSON.stringify(obj);\n\n  return compact\n    .replace(/\\\\/g, '\\\\\\\\')\n    .replace(/\"/g, '\\\\\"');\n}\n\n// Soporta ambos casos:\n// 1. Que el input sea directamente un objeto\n// 2. Que el input venga como array: [ { ... } ]\nconst rawInput = $input.first().json;\nconst input = Array.isArray(rawInput) ? rawInput[0] : rawInput;\n\nconst getFields = $('Get fields1').first().json;\n\n// En payload.json la respuesta está aquí:\nconst knowledgeAnswer = input.primary?.knowledge_answer || {};\n\n// firstContact puede venir nested o directo, dejamos ambos fallbacks\nconst firstContact =\n  getFields.caseData?.ticketData?.firstContact ??\n  getFields.ticketData?.firstContact ??\n  getFields.firstContact;\n\n// ticketId también con fallbacks\nconst ticketId =\n  getFields.caseData?.ticketData?.ticketId ??\n  getFields.ticketData?.ticketId ??\n  getFields.ticketId;\n\n// Payload final\nconst payload = {\n  answer: knowledgeAnswer.answer || \"\",\n  key_points: knowledgeAnswer.key_points || [],\n  confidence_note: knowledgeAnswer.confidence_note || \"\",\n  metadata: {\n    unique_articles: knowledgeAnswer.metadata?.unique_articles ?? null,\n    relevant_articles: knowledgeAnswer.metadata?.relevant_articles ?? null,\n    model: knowledgeAnswer.metadata?.model ?? null,\n  },\n  responseSource: \"Knowledge-Question\",\n};\n\n// Si necesitas el JSON escapado para mandarlo dentro de un string HTTP\nconst bodyPayload = `\\`\\`\\`\\\\n\\\\n${escapeJSONStringForHTTP(payload)}\\\\n\\\\n\\`\\`\\``;\n\nlet tags = [\n  { id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2910\" }\n];\n\nif (firstContact === false || firstContact === \"false\") {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2887\" });\n} else {\n  tags.push({ id: \"don:core:dvrv-us-1:devo/1is7v8y722:tag/2886\" });\n}\n\nconst tagString = tags.map(t => JSON.stringify(t)).join(\",\\n  \");\n\nreturn {\n  json: {\n    ticketId,\n    body: bodyPayload,\n    part: \"CAPL-1\",\n    tag: tagString,\n  }\n};"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-7216, 4400],
+      "id": "25a9de60-8430-40a8-8bf5-22fc7e9404f0",
+      "name": "Format KQ for DevRev",
+      "disabled": true
+    }
+  ],
+  "connections": {
+    "Update Ticket": {
+      "main": [
+        [
+          {
+            "node": "Internal Comment2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Internal Comment": {
+      "main": [
+        [
+          {
+            "node": "Update Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Participant Search": {
+      "main": [
+        [
+          {
+            "node": "Participant Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Participant Status": {
+      "main": [
+        [
+          {
+            "node": "Include Ticket data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format Payload",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Knowledge Question Inquiry Generator",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Search User",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Data": {
+      "main": [
+        [
+          {
+            "node": "Internal Comment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Payload": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get fields1": {
+      "main": [
+        [
+          {
+            "node": "Get relevant tag1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get relevant tag1": {
+      "main": [
+        [
+          {
+            "node": "Get Timeline Entries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Validate Ticket Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Ticket Lookup": {
+      "main": [
+        [
+          {
+            "node": "Get tickets from DevRev1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get tickets from DevRev1": {
+      "main": [
+        [
+          {
+            "node": "Get fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search User": {
+      "main": [
+        [
+          {
+            "node": "User doesn't exist?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create User": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Update Ticket1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "User doesn't exist?": {
+      "main": [
+        [
+          {
+            "node": "Create User",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Update Ticket2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Timeline Entries": {
+      "main": [
+        [
+          {
+            "node": "Obtain the real message from the PPT",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obtain the real message from the PPT": {
+      "main": [
+        [
+          {
+            "node": "Contact Inquiry detector",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Contact Inquiry detector",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Structured Output Parser": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Contact Inquiry detector",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code": {
+      "main": [
+        [
+          {
+            "node": "Participant Search",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Contact Inquiry detector": {
+      "main": [
+        [
+          {
+            "node": "Code",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Include Ticket data": {
+      "main": [
+        [
+          {
+            "node": "Get GCP User Token1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format data for DevRev Internal notes": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Question": {
+      "main": [
+        [
+          {
+            "node": "Format Data for DevRev",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Knowledge Question Inquiry Generator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Data for DevRev": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Knowledge Question Inquiry Generator": {
+      "main": [
+        [
+          {
+            "node": "Parse response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insufficient Inquiry?": {
+      "main": [
+        [
+          {
+            "node": "Insufficient output",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Get GCP User Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse response": {
+      "main": [
+        [
+          {
+            "node": "Insufficient Inquiry?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insufficient output": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GCP User Token": {
+      "main": [
+        [
+          {
+            "node": "Knowledge Question",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get GCP User Token1": {
+      "main": [
+        [
+          {
+            "node": "Handle Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Ticket": {
+      "main": [
+        [
+          {
+            "node": "Generate response question?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Poll": {
+      "main": [
+        [
+          {
+            "node": "Still Running?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait1": {
+      "main": [
+        [
+          {
+            "node": "Poll",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Still Running?": {
+      "main": [
+        [
+          {
+            "node": "Wait1",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Safe Participant Reply?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Safe Participant Reply?": {
+      "main": [
+        [
+          {
+            "node": "Format data for DevRev Internal notes",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Stop Unsafe Terminal Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate response question?": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Format data for DevRev Internal notes",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format KQ for DevRev": {
+      "main": [
+        [
+          {
+            "node": "Normalize Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {}
+}

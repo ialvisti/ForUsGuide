@@ -39,19 +39,6 @@
       </div>
     </div>
 
-    <div class="header-statuses">
-      <p class="env-badge" id="environment-badge" data-state="unknown">
-        <span class="env-label">Environment</span>
-        <span class="env-value" id="environment-value">unknown</span>
-      </p>
-
-      <p class="health" id="health-state" data-state="unknown"
-         role="status" aria-live="polite" aria-atomic="true">
-        <span class="health-dot" aria-hidden="true"></span>
-        <span class="health-text" id="health-text">Checking the console&hellip;</span>
-      </p>
-    </div>
-
     <div class="header-actions">
       <div class="preference-field">
         <label class="visually-hidden" for="language-select">Language</label>
@@ -69,44 +56,55 @@
         <span id="theme-label">Dark</span>
       </button>
 
-      <div class="session">
-        <span class="session-avatar icon" data-icon="user" aria-hidden="true"></span>
-        <div class="session-copy">
-          <p class="session-line">
-            <span class="session-label">Signed in</span>
-            <span class="session-value" id="session-email">&mdash;</span>
-          </p>
-          <p class="session-line">
-            <span class="session-label">Role</span>
-            <span class="session-value" id="session-role">&mdash;</span>
-          </p>
+      <details class="account-menu" id="account-menu">
+        <summary aria-label="Account and system status">
+          <span class="session-avatar icon" data-icon="user" aria-hidden="true"></span>
+          <span class="account-label">Account</span>
+        </summary>
+        <div class="account-panel">
+          <div class="session">
+            <div class="session-copy">
+              <p class="session-line">
+                <span class="session-label">Signed in</span>
+                <span class="session-value" id="session-email">&mdash;</span>
+              </p>
+              <p class="session-line">
+                <span class="session-label">Role</span>
+                <span class="session-value" id="session-role">&mdash;</span>
+              </p>
+            </div>
+          </div>
+
+          <div class="header-statuses">
+            <p class="env-badge" id="environment-badge" data-state="unknown">
+              <span class="env-label">Environment</span>
+              <span class="env-value" id="environment-value">unknown</span>
+            </p>
+
+            <p class="health" id="health-state" data-state="unknown"
+               role="status" aria-live="polite" aria-atomic="true">
+              <span class="health-dot" aria-hidden="true"></span>
+              <span class="health-text" id="health-text">Checking the console&hellip;</span>
+            </p>
+          </div>
         </div>
-      </div>
+      </details>
     </div>
   </div>
 </header>
 
 <main id="tickets-main">
-  <header class="operational-heading" id="operational-heading" aria-labelledby="page-heading">
-    <p class="section-kicker">Reviewer workspace</p>
-    <h1 id="page-heading">Ticket reviews</h1>
-    <p>
-      Use the CRM to review the ticket and final answer, then record the quality decision here.
-    </p>
-  </header>
-
   <section class="panel" id="execution-queue" aria-labelledby="queue-heading">
     <div class="section-heading-row queue-intro">
       <div>
-        <p class="section-kicker">Review queue</p>
-        <h2 id="queue-heading">Tickets ready for evaluation</h2>
+        <h1 id="queue-heading">Tickets to review</h1>
       </div>
       <p>
-        Choose a ticket, record the rating, and add only the context needed for follow-up.
+        Open a ticket, record the evaluation, and continue with the next review.
       </p>
     </div>
 
-    <h3 id="filters-heading">Filters</h3>
+    <h2 class="visually-hidden" id="filters-heading">Filters</h2>
     <button type="button" class="sheet-toggle" id="filter-sheet-toggle"
             aria-expanded="false" aria-controls="filter-forms">
       <span class="icon" data-icon="filter" aria-hidden="true"></span>
@@ -184,7 +182,7 @@
       <div class="active-filters" id="active-filters" aria-label="Active filters"></div>
     </div>
 
-    <details id="technical-batch-details" class="technical-batch">
+    <details id="technical-batch-details" class="technical-batch" hidden>
       <summary>Technical batch actions</summary>
       <h3 id="bulk-heading">Selected executions</h3>
       <div class="bulk-bar" id="bulk-bar" role="group" aria-labelledby="bulk-heading">
@@ -213,12 +211,14 @@
       </div>
     </details>
 
-    <h3 id="results-heading">Results</h3>
-    <p class="table-status" id="table-status" role="status" aria-live="polite"></p>
+    <div class="results-heading-row">
+      <h2 id="results-heading">Results</h2>
+      <p class="table-status" id="table-status" role="status" aria-live="polite"></p>
+    </div>
 
     <div class="table-wrap">
       <table id="tickets-table" aria-labelledby="results-heading" aria-describedby="tickets-caption">
-        <caption id="tickets-caption">
+        <caption class="visually-hidden" id="tickets-caption">
           Tickets waiting for a quality decision, with their current review status and owner.
         </caption>
         <thead>
@@ -229,8 +229,6 @@
             </th>
             <th scope="col" class="col-id">Ticket</th>
             <th scope="col" class="col-review-status">Review status</th>
-            <th scope="col" class="col-request-type">Request type</th>
-            <th scope="col" class="col-updated">Received</th>
             <th scope="col" class="col-rating">Rating</th>
             <th scope="col" class="col-reviewer">Reviewer</th>
             <th scope="col" class="col-actions">Actions</th>
@@ -285,14 +283,14 @@
 
     <div class="detail-title-group">
       <p class="section-kicker">Focused review</p>
-      <h2 id="detail-heading">Ticket detail</h2>
+      <h1 id="detail-heading">Ticket detail</h1>
       <p class="detail-target" id="detail-target"></p>
       <p class="detail-status" id="detail-status" role="status" aria-live="polite"></p>
     </div>
 
     <!-- ------------------------------------------------------- evaluation -->
     <section class="evaluation-shell reviewer-task" aria-labelledby="evaluation-heading">
-      <h3 id="evaluation-heading">Evaluation</h3>
+      <h2 id="evaluation-heading">Evaluation</h2>
       <p class="evaluation-intro">Rate the final answer and document the correction, if any.</p>
       <p class="panel-status" id="evaluation-actor" role="status" aria-live="polite"></p>
 
@@ -486,16 +484,16 @@
 
     <!-- ---------------------------------------------------- edit conflict -->
     <section class="conflict" id="conflict-panel" aria-labelledby="conflict-heading" hidden>
-      <h4 id="conflict-heading">Someone else saved this review first</h4>
+      <h3 id="conflict-heading">Someone else saved this review first</h3>
       <p class="conflict-summary" id="conflict-summary"></p>
       <div class="conflict-columns">
         <div class="conflict-column">
-          <h5 id="conflict-mine-heading">Your unsaved values</h5>
+          <h4 id="conflict-mine-heading">Your unsaved values</h4>
           <dl class="conflict-values" id="conflict-mine"
               aria-labelledby="conflict-mine-heading"></dl>
         </div>
         <div class="conflict-column">
-          <h5 id="conflict-theirs-heading">Currently saved on the server</h5>
+          <h4 id="conflict-theirs-heading">Currently saved on the server</h4>
           <dl class="conflict-values" id="conflict-theirs"
               aria-labelledby="conflict-theirs-heading"></dl>
         </div>

@@ -13,12 +13,12 @@ locals {
   metric_prefix           = "ticket_${var.env}"
   monitoring_policy_count = local.create_services ? 1 : 0
 
-  producer_log_filter   = <<-EOT
+  producer_log_filter             = <<-EOT
     resource.type="cloud_run_revision"
     resource.labels.service_name="${var.producer_service_name}"
     labels.python_logger="ticket_metrics"
   EOT
-  worker_log_filter     = <<-EOT
+  worker_log_filter               = <<-EOT
     resource.type="cloud_run_revision"
     resource.labels.service_name="${var.worker_service_name}"
     labels.python_logger="ticket_metrics"
@@ -28,7 +28,7 @@ locals {
     (resource.labels.service_name="${var.producer_service_name}" OR resource.labels.service_name="${var.worker_service_name}")
     labels.python_logger="ticket_metrics"
   EOT
-  reconciler_log_filter = <<-EOT
+  reconciler_log_filter           = <<-EOT
     resource.type="cloud_run_job"
     resource.labels.job_name="${var.reconciler_job_name}"
   EOT

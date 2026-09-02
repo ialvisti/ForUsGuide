@@ -3019,7 +3019,7 @@ class RAGEngine:
     _TERMINATION_FORM_URL = (
         "https://secure.rightsignature.com/templates/"
         "105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/"
-        "a9d83fbb137e5315fbd641bb522b9723"
+        "a9d83fbb137e5315fbd641bb522b9723"  # pragma: allowlist secret
     )
 
     @staticmethod

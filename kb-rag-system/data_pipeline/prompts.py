@@ -6,6 +6,7 @@ de required_data y generate_response.
 """
 
 import json
+import re
 from typing import Any, Dict, Optional, Tuple
 
 # ============================================================================
@@ -37,7 +38,7 @@ CRITICAL RULES:
      `plan_type`, `plan_status`, `force_out_limit`, `maximum_number_of_loans`, `auto_enrollment_rate`,
      `loan_history`, `loan_account_balance`,
      `payroll_frequency`, `last_payroll_date`, `payroll_history`,
-     `mfa_status`.
+     `mfa_status`, `crypto_enrollment`.
      If the data point describes a derivation or boolean predicate (e.g., "whether X", "has Y", "is Z", "X has ended"), emit the underlying base field slug(s) instead of the predicate name (e.g., "employment status has ended" → `termination_date` + `participant_status`; "whether the participant has Roth funds" → `roth_deferral_balance`). For composite concepts (e.g., participant full name or address), emit one slug per underlying field if the data point bundles them.
    - description: What this field represents (from the "Description" in context)
    - why_needed: Why we need this specific data (from "Why needed" in context)
@@ -178,6 +179,7 @@ CRITICAL RULES:
 2. Follow ALL guardrails strictly (what NOT to say, what NOT to promise).
 3. Use the collected participant data to personalize the response.
 4. Be specific about recordkeeper-specific procedures.
+5. Internal plan lifecycle facts are operational evidence only: use them to determine the outcome or handoff need, but never quote raw plan notes or present an administrator note as participant-facing language.
 
 CROSS-ARTICLE SYNTHESIS (RELEVANCE-DRIVEN):
 5. The context may include sections from one or multiple knowledge base articles. Judge each article's relevance to THIS specific inquiry and use only those that materially contribute. It is correct — and preferred — to ignore an article whose topic is tangential to the participant's situation.
@@ -191,6 +193,17 @@ DEDUPLICATION RULES (MANDATORY):
 11. Warnings must not repeat content already stated in key_points or steps.
 12. Do NOT create a key_point to restate the outcome_reason — that is already captured there.
 13. Do NOT add a key_point that merely paraphrases another key_point. However, DO cover every distinct relevant topic from the context (fees, taxes, timelines, eligibility details, delivery methods, etc.) — each as its own key_point or warning.
+
+INTENT-SCOPED TERMINATION DISTRIBUTION (MANDATORY):
+- Answer only the transaction the participant actually requested. Do not recite every cash, rollover, split, delivery, and troubleshooting branch merely because they coexist in the article.
+- For a pure direct rollover, include the portal path, check/wire choice, receiving-provider acceptance, account/subaccount details when relevant, applicable request/wire fees, timing, and the electronic-form fallback. Do NOT include ACH, cash withholding, cash-only tax/penalty language, or partial-cash guidance.
+- A $35 wire fee applies to each separate wire transaction. If pre-tax and Roth sources require separate wires, state the fee per wire/source; never imply one fee covers multiple wire transactions.
+- Apply 20% federal withholding and cash-tax language only to a cash distribution or the cash portion of a split transaction. It does not apply to a direct rollover.
+- If the destination is described only as a "brokerage account," do not assume it is an IRA. Use blocked_missing_data and ask one question: whether it is a retirement account (IRA/qualified employer plan) or a taxable brokerage account.
+- OverNight Check is form-only, costs an additional $50, and cannot be selected in the portal. Mention it only when requested.
+- Never mention fee-out, a small-balance/$75 eligibility threshold, a "known issue," or the rare possibility of multiple ForUsAll plans in a standard participant response.
+- When account access and a distribution are both requested, answer both: give the relevant recovery/support path and retain the eligible distribution/form path. Participant Support is 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT.
+- Keep the response concise: use no more than six participant-facing steps and omit UI detail that does not change what this participant must do.
 
 CONTENT RULES BY OUTCOME:
 • "can_proceed": Include steps the participant must follow. Include applicable fees, taxes, and delivery info as key_points. Do NOT ask the participant any questions — questions_to_ask MUST be empty []. Any detail the participant will choose later (loan amount, repayment term, delivery method, etc.) is presented as forward guidance inside steps/key_points ("during the request you'll choose ..."), never as a question. A can_proceed answer is a complete first-contact resolution.
@@ -250,8 +263,8 @@ RESPONSE SCHEMA
 
 FIELD GUIDELINES:
 - "opening": Personalize with participant name when available; otherwise use key profile data such as status, dates, and balance without inventing a name. Keep to 1-2 sentences.
-- "key_points": Include all distinct facts the participant needs to know. Aim for 3-7 points. Each must be self-contained and non-overlapping. Cover fees, taxes, timelines, eligibility nuances, delivery options, and any other relevant details from the context.
-- "steps": Sequential actions the participant must take. Be specific and detailed — include sub-steps, exact UI labels, and what to expect at each stage. Empty array [] if the outcome is blocked and there are no participant actions.
+- "key_points": Include only distinct facts applicable to the participant's stated transaction. Aim for 2-5 points. Each must be self-contained and non-overlapping; omit unrelated taxes, fees, delivery options, and edge cases.
+- "steps": Sequential actions the participant must take. Include exact UI labels where useful, but use no more than six participant-facing steps. Empty array [] if the outcome is blocked and there are no participant actions.
 - "warnings": Critical cautions (taxes, fees, penalties, non-refundable charges, deadlines). Empty array [] if none apply.
 - "questions_to_ask": Populate ONLY for "blocked_missing_data" (when core eligibility is blocked by missing data, including the active-but-separated conflict). For "can_proceed", "blocked_not_eligible", and "ambiguous_plan_rules", questions_to_ask MUST be empty []. NEVER ask for execution details (requested amount, repayment term, delivery method, wire instructions, etc.) the participant can choose during the process — surface those as forward guidance in steps/key_points instead, so the ticket can close in one reply.
 - "escalation.needed": true when the participant must contact Support to resolve, verify, or proceed. false when the participant can self-serve.
@@ -276,7 +289,7 @@ TOPIC: {topic}
 
 Determine the correct outcome based on the participant's data and the eligibility rules in the context, then generate the response.
 
-TOKEN BUDGET: You have up to {max_tokens} tokens. Use this budget generously — provide thorough, detailed information covering every relevant aspect from the context. Do not be brief when detail is available. Aim to use at least 60% of the budget.
+TOKEN BUDGET: You have up to {max_tokens} tokens. This is a ceiling, not a target. Prefer the shortest complete answer that resolves the participant's stated intent; do not add branches merely to consume tokens.
 
 Return ONLY the JSON object, no additional text."""
 
@@ -289,6 +302,9 @@ SYSTEM_PROMPT_GR_OUTCOME = """You are a 401(k) participant advisory assistant. Y
 RECORDKEEPER CONTEXT:
 - "LT Trust" is the recordkeeper used by ForUsAll. Plans on LT Trust are ForUsAll plans.
 - All LT Trust processes are performed by ForUsAll or through the ForUsAll portal.
+
+INTERNAL PLAN LIFECYCLE DATA:
+- Internal lifecycle facts are operational evidence only. Use them to determine outcome or handoff need, but never quote raw plan notes or expose administrator-authored text to the participant.
 
 RELEVANCE CHECK:
 First verify the inquiry relates to retirement plan operations (401(k), distributions, rollovers, loans, account access, etc.). If ENTIRELY UNRELATED (e.g., cooking, sports, entertainment), set outcome to "out_of_scope_inquiry".
@@ -360,6 +376,7 @@ CRITICAL RULES:
 2. Follow ALL guardrails strictly (what NOT to say, what NOT to promise).
 3. Use the collected participant data to personalize the response.
 4. Be specific about recordkeeper-specific procedures.
+5. Internal lifecycle facts are operational evidence only. They may shape the response or escalation, but never quote raw plan notes or expose administrator-authored text.
 
 CROSS-ARTICLE SYNTHESIS:
 5. Use information from context articles based on relevance to the inquiry, not based on article count. A focused single-article answer is correct when one article covers the full procedure; do not pad with tangential facts from other articles just because they appear in context.
@@ -443,11 +460,11 @@ OUTCOME_SCHEMAS = {
 OUTCOME_CONTENT_RULES = {
     "can_proceed": (
         "CONTENT RULES (outcome: can_proceed):\n"
-        "- Include steps the participant must follow. Be specific with sub-steps, UI labels, and expectations.\n"
-        "- Include applicable fees, taxes, and delivery info as key_points.\n"
+        "- Include only the steps this participant must follow, with at most six participant-facing steps.\n"
+        "- Include only applicable fees, taxes, and delivery info as key_points; a pure rollover never receives cash-only ACH/withholding guidance.\n"
         "- questions_to_ask MUST be empty []. Do NOT ask the participant anything — a can_proceed answer is a complete first-contact resolution and asking non-blocking questions only reopens the ticket.\n"
         "- Any detail the participant will choose later (requested amount, repayment term, delivery method, wire instructions, etc.) is presented as forward guidance inside steps/key_points (e.g., 'during the request you'll choose your amount, term, and delivery method — note that wire delivery adds a $35 fee'), never as a question.\n"
-        "- Aim for 3-7 key_points covering all distinct relevant facts."
+        "- Aim for 2-5 key_points covering only distinct relevant facts."
     ),
     "blocked_not_eligible": (
         "CONTENT RULES (outcome: blocked_not_eligible):\n"
@@ -485,7 +502,7 @@ TOPIC: {topic}
 DETERMINED OUTCOME: {outcome}
 OUTCOME REASON: {outcome_reason}
 
-Generate the response for the determined outcome above. Be thorough and accurate. Cover all relevant facts, fees, timelines, and processes from the context.
+Generate a concise, accurate, intent-scoped response for the determined outcome above. Include only the facts, fees, timelines, and process branches that apply to this inquiry.
 
 Return ONLY the JSON object, no additional text."""
 
@@ -524,6 +541,64 @@ def build_required_data_prompt(
     return SYSTEM_PROMPT_REQUIRED_DATA, user_prompt
 
 
+_INTERNAL_LIFECYCLE_FACT_PREFIXES = (
+    "Plan status changed",
+    "Plan active flag changed",
+    "Plan lifecycle effective date is",
+    "Plan deconversion is recorded",
+    "Plan deconversion recorded",
+    "Last payroll date recorded for deconversion",
+)
+_INTERNAL_PLAN_STATUSES = frozenset({
+    "active", "ongoing", "actively_managed", "terminated", "inactive",
+    "implementation", "in_implementation", "frozen", "closed",
+    "deconverted",
+})
+
+
+def _format_internal_plan_context(value: Any) -> str:
+    """Render only the closed, derived lifecycle vocabulary for the LLM."""
+    if not isinstance(value, dict):
+        return ""
+    lines = [
+        "Internal Plan Lifecycle Context "
+        "(internal use only; never expose or quote plan notes):"
+    ]
+    extraction_status = value.get("extraction_status")
+    if extraction_status in {
+        "ok", "empty", "panel_missing", "parse_error", "legacy_notes"
+    }:
+        lines.append(f"  - extraction_status: {extraction_status}")
+
+    current = value.get("current")
+    if isinstance(current, dict):
+        raw_status = str(current.get("status") or "").strip()
+        canonical_status = re.sub(r"[\s-]+", "_", raw_status.lower())
+        if canonical_status in _INTERNAL_PLAN_STATUSES:
+            lines.append(f"  - status: {raw_status[:50]}")
+        active = current.get("active")
+        if isinstance(active, bool):
+            lines.append(f"  - active: {str(active).lower()}")
+        status_as_of = str(current.get("status_as_of") or "").strip()
+        if re.fullmatch(r"\d{4}-\d{2}-\d{2}", status_as_of):
+            lines.append(f"  - status_as_of: {status_as_of}")
+
+    facts = value.get("lifecycle_facts")
+    safe_facts = []
+    if isinstance(facts, list):
+        for fact in facts[:12]:
+            if not isinstance(fact, str):
+                continue
+            clean = re.sub(r"[\x00-\x1f\x7f]", " ", fact).strip()[:240]
+            if clean.startswith(_INTERNAL_LIFECYCLE_FACT_PREFIXES):
+                safe_facts.append(clean)
+    for fact in safe_facts:
+        lines.append(f"  - lifecycle_fact: {fact}")
+
+    # A heading without facts has no reasoning value.
+    return "\n".join(lines) + "\n" if len(lines) > 1 else ""
+
+
 def _format_collected_data(collected_data: dict) -> str:
     """Format collected_data dict into a readable string for prompts."""
     data_str = ""
@@ -536,6 +611,11 @@ def _format_collected_data(collected_data: dict) -> str:
             data_str += "\nPlan Data:\n"
             for key, value in collected_data["plan_data"].items():
                 data_str += f"  - {key}: {value}\n"
+        internal_plan_context = _format_internal_plan_context(
+            collected_data.get("internal_plan_context")
+        )
+        if internal_plan_context:
+            data_str += f"\n{internal_plan_context}"
         if collected_data.get("data_collection_notes"):
             data_str += (
                 "\nData Collection Notes (fields we attempted but could NOT "

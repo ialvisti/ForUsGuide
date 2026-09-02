@@ -687,20 +687,43 @@ class TestGenerateBranch:
         assert out.diagnostics["unmapped_fields"][0]["field"] == "hardship_reason"
 
     async def test_gr_plan_fields_trigger_dual_scrape(self):
+        sentinel = "RAW ADMIN NOTE MUST NOT REACH ANY LLM PROMPT"
         llm = self._gr_llm()
         deps, rag, _r, forusbots = _deps(llm=llm, classify_route="generate_response")
         rag.get_required_data.return_value = SimpleNamespace(required_fields={
             "participant_data": [{"field": "account_balance", "required": True}],
             "plan_data": [{"field": "default_savings_rate", "required": True},
-                          {"field": "ein", "required": True}]})
+                          {"field": "plan_status", "required": True}]})
         forusbots.scrape_participant.return_value = _scrape_ok()
         forusbots.scrape_plan = AsyncMock(return_value=SimpleNamespace(
             job_id="plan-job-1", elapsed_seconds=8.0,
             result=[{"state": "succeeded",
                      "data": {"planId": "580",
                               "plan_design": {"default_savings_rate": 6},
-                              "basic_info": {"ein": "12-3456789"},
-                              "notes": ["backfill force out limit"]},
+                              "basic_info": {
+                                  "status": "Terminated",
+                                  "status_as_of": "2024-10-24",
+                                  "active": False,
+                              },
+                              "notes": [sentinel],
+                              "planHistory": {
+                                  "schemaVersion": 1,
+                                  "extractionStatus": "ok",
+                                  "current": {
+                                      "status": "Terminated", "active": False,
+                                      "statusAsOf": "2024-10-24",
+                                  },
+                                  "entries": [{
+                                      "source": "notes",
+                                      "occurredAt": "2024-12-09",
+                                      "note": "Plan will deconvert; last payroll is 10/24/2024",
+                                      "changes": [{
+                                          "field": "status",
+                                          "from": "actively_managed",
+                                          "to": "terminated",
+                                      }],
+                                  }],
+                              }},
                      "warnings": [], "errors": []}]))
         rag.generate_response.return_value = SimpleNamespace(decision="can_proceed", confidence=0.8)
         orch = TicketOrchestrator(deps, _settings())
@@ -716,11 +739,28 @@ class TestGenerateBranch:
         assert plan_args[0] == "580"                       # plan_id from request
         plan_keys = {m["key"] for m in plan_args[1]}
         assert plan_keys == {"basic_info", "plan_design"}
-        # plan data + notes reached the body builder as planDataModules
+        basic_request = next(m for m in plan_args[1] if m["key"] == "basic_info")
+        assert basic_request["fields"] == ["status", "status_as_of", "active"]
+        # Configuration may aid redaction, but raw admin notes/history never
+        # cross the body-builder prompt boundary.
         gr_user = llm.user_prompts["gr_body_build"]
         assert "planDataModules" in gr_user
         assert "default_savings_rate" in gr_user
-        assert "plan_notes" in gr_user
+        assert "plan_notes" not in gr_user
+        assert "plan_history" not in gr_user
+        assert sentinel not in gr_user
+        collected = rag.generate_response.await_args.kwargs["collected_data"]
+        assert collected["plan_data"]["plan_status"] == "Terminated"
+        assert "plan_notes" not in collected["plan_data"]
+        assert "plan_history" not in collected["plan_data"]
+        assert collected["internal_plan_context"]["current"] == {
+            "status": "Terminated", "active": False,
+            "status_as_of": "2024-10-24",
+        }
+        assert any(
+            "deconversion" in fact.lower()
+            for fact in collected["internal_plan_context"]["lifecycle_facts"]
+        )
         assert out.diagnostics["forusbots_plan_job_id"] == "plan-job-1"
 
     async def test_gr_plan_failure_downgrades_to_partial(self):

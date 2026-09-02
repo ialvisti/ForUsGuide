@@ -1142,7 +1142,17 @@ class TicketOrchestrator:
             "caseData": self._build_case_data(req),
         }
         if plan_modules:
-            entry["planDataModules"] = plan_modules
+            # The body builder is only a redaction/topic agent. Raw admin
+            # notes/history are neither needed nor safe in this LLM prompt;
+            # their closed-vocabulary lifecycle facts already flow through
+            # deterministic collected_data instead.
+            safe_plan_modules = {
+                key: value
+                for key, value in plan_modules.items()
+                if key not in {"plan_notes", "plan_history"}
+            }
+            if safe_plan_modules:
+                entry["planDataModules"] = safe_plan_modules
         if ticket_extracted:
             entry["ticketExtractedFields"] = {
                 v["field"]: {"value": v["value"], "evidence": v["evidence"]}

@@ -14,6 +14,7 @@ the configured provider (OpenAI or Gemini) with cross-provider fallback.
 
 import json
 import asyncio
+import copy
 import hashlib
 import logging
 import os
@@ -1216,6 +1217,12 @@ class RAGEngine:
                 collected_data=collected_data,
                 selected_chunks=selected_chunks,
             )
+            parsed, termination_response_policy_info = (
+                self._apply_termination_response_policy(
+                    parsed=parsed,
+                    retrieval_profile=retrieval_profile,
+                )
+            )
 
             # Defense-in-depth: a can_proceed answer is a complete first-contact
             # resolution. Any items the LLM left in questions_to_ask are
@@ -1313,6 +1320,7 @@ class RAGEngine:
                     "article_bundles_added": bundle_info.get("articles_added", []),
                     "retrieval_profile": retrieval_profile,
                     "outcome_policy": outcome_policy_info,
+                    "termination_response_policy": termination_response_policy_info,
                     "primary_article_id": retrieval_profile.get("primary_article_id"),
                     "excluded_articles": retrieval_profile.get("excluded_articles", []),
                     "exclusion_reasons": retrieval_profile.get("exclusion_reasons", {}),
@@ -1435,6 +1443,8 @@ class RAGEngine:
     GENERAL_POST_TERMINATION_OPTIONS_ARTICLE_ID = (
         "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax"
     )
+    ACCOUNT_SETUP_ARTICLE_ID = "lt_how_to_set_up_your_forusall_401k_account"
+    MFA_ARTICLE_ID = "multi_factor_authentication_mfa_for_forusall_401k_account"
     FORCE_OUT_ARTICLE_IDS = (
         "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
         "401k_force_out_process_sponsor_faq",
@@ -2084,6 +2094,12 @@ class RAGEngine:
                 "money as fast as possible",
             ])
         )
+        cash_component = self._contains_any(profile_text, [
+            "cash out", "cashout", "cash distribution", "lump sum cash",
+            "partial cash", "cash portion", "take the money", "withdraw to",
+            "deposit into my bank", "deposit into their bank",
+        ])
+        pure_rollover = rollover_intent and not cash_component
         delivery_or_fee_request = self._contains_any(profile_text, [
             "delivery",
             "deliver",
@@ -2161,7 +2177,7 @@ class RAGEngine:
             "force out notice",
             "force-out notice",
             "sponsor can initiate",
-        ]) or (lowest_balance is not None and lowest_balance <= 7000)
+        ])
         rmd = self._contains_any(profile_text, [
             "required minimum distribution",
             "rmd",
@@ -2178,6 +2194,43 @@ class RAGEngine:
             "link",
             "url",
         ])
+        overnight_request = self._contains_any(profile_text, [
+            "overnight", "overnight check", "next day", "expedited check",
+        ])
+        account_access = self._contains_any(profile_text, [
+            "cannot log in", "can't log in", "cant log in", "unable to log in",
+            "cannot access", "can't access", "cant access", "no access",
+            "forgot password", "forgotten password", "lost password",
+            "do not have the password", "don't have the password",
+            "no longer have the email", "lost access to my email",
+            "cannot remember which email", "can't remember which email",
+            "cant remember which email", "cannot remember my email",
+            "do not remember which email", "don't remember which email",
+            "forgot email", "forgotten email",
+            "cannot remember my password", "can't remember my password",
+            "cant remember my password", "do not remember my password",
+            "don't remember my password",
+            "old email", "email on file", "new phone", "mfa",
+            "authentication code", "authenticator app", "create an account",
+            "set up my account", "account setup",
+        ])
+        brokerage_destination = "brokerage account" in profile_text
+        explicit_retirement_destination = self._contains_any(profile_text, [
+            "rollover ira", "traditional ira", "roth ira", "ira at",
+            "qualified plan", "qualified retirement plan", "retirement account",
+            "new employer plan", "new employer's plan", "new 401(k)",
+            "new 401k", "403(b)", "403b",
+        ])
+        explicit_taxable_destination = self._contains_any(profile_text, [
+            "taxable brokerage", "individual brokerage", "regular brokerage",
+            "non-retirement account", "nonretirement account",
+        ])
+        brokerage_destination_ambiguous = (
+            rollover_intent
+            and brokerage_destination
+            and not explicit_retirement_destination
+            and not explicit_taxable_destination
+        )
         termination_distribution = (
             employment_state == "terminated"
             or self._contains_any(profile_text, [
@@ -2242,7 +2295,12 @@ class RAGEngine:
             "lowest_balance": lowest_balance,
             "rollover_intent": rollover_intent,
             "distribution_intent": distribution_intent,
+            "cash_component": cash_component,
+            "pure_rollover": pure_rollover,
             "delivery_or_fee_request": delivery_or_fee_request,
+            "overnight_request": overnight_request,
+            "account_access": account_access,
+            "brokerage_destination_ambiguous": brokerage_destination_ambiguous,
             "loan_signal": loan_signal,
             "termination_distribution": termination_distribution,
             "incoming_rollover": incoming_rollover_signal,
@@ -2490,6 +2548,17 @@ class RAGEngine:
             if value
         ]
 
+        # A termination request can coexist with an access problem. Preserve
+        # that second intent by fetching the account-setup/MFA procedures as
+        # companions to the exact outgoing procedure. Incoming rollovers are
+        # intentionally excluded from this remediation path.
+        companion_article_ids: List[str] = []
+        if signals.get("account_access") and exact_termination_procedure:
+            companion_article_ids = [
+                self.ACCOUNT_SETUP_ARTICLE_ID,
+                self.MFA_ARTICLE_ID,
+            ]
+
         return {
             "mode": (
                 "exact_procedure"
@@ -2511,6 +2580,7 @@ class RAGEngine:
             },
             "lowest_balance": signals["lowest_balance"],
             "include_references": signals["contact_or_reference"],
+            "companion_article_ids": companion_article_ids,
             "excluded_articles": excluded_articles,
             "exclusion_reasons": exclusion_reasons,
             "exclusion_signals": exclusion_signals,
@@ -2679,8 +2749,6 @@ class RAGEngine:
         )
         if balance is None:
             missing.append("vested balance")
-        elif balance <= 75:
-            blockers.append("vested balance is at or below the $75 fee-out threshold")
 
         if "blackout_period" not in plan_data and "blackout" not in plan_data:
             missing.append("blackout status")
@@ -2947,6 +3015,194 @@ class RAGEngine:
             stray = []
         parsed["questions_to_ask"] = []
         return stray
+
+    _TERMINATION_FORM_URL = (
+        "https://secure.rightsignature.com/templates/"
+        "105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/"
+        "a9d83fbb137e5315fbd641bb522b9723"
+    )
+
+    @staticmethod
+    def _response_item_text(item: Any) -> str:
+        if isinstance(item, str):
+            return item.lower()
+        try:
+            return json.dumps(item, ensure_ascii=False, sort_keys=True).lower()
+        except (TypeError, ValueError):
+            return str(item).lower()
+
+    @classmethod
+    def _apply_termination_response_policy(
+        cls,
+        parsed: Dict[str, Any],
+        retrieval_profile: Optional[Dict[str, Any]],
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Enforce the reviewed outgoing-distribution boundaries after the LLM.
+
+        This is deliberately narrow and does not run for incoming rollovers.
+        It removes obsolete/tangential content, keeps pure rollovers free of
+        cash-only tax/delivery guidance, and converts an unqualified
+        "brokerage account" into one genuine blocking clarification.
+        """
+        profile = retrieval_profile or {}
+        action = profile.get("primary_action")
+        signals = profile.get("signals") or {}
+        info: Dict[str, Any] = {
+            "applied": False,
+            "primary_action": action,
+            "removed_items": 0,
+            "brokerage_clarification": False,
+        }
+        if action == "incoming_rollover":
+            return parsed, info
+        if action not in {
+            "termination_rollover", "termination_distribution", "rollover",
+            "distribution",
+        }:
+            return parsed, info
+
+        fixed = copy.deepcopy(parsed)
+        info["applied"] = True
+
+        if signals.get("brokerage_destination_ambiguous"):
+            fixed["outcome"] = "blocked_missing_data"
+            fixed["outcome_reason"] = (
+                "The destination was described only as a brokerage account. "
+                "The correct transaction and tax treatment depend on whether "
+                "that account is retirement-qualified or taxable."
+            )
+            fixed["response_to_participant"] = {
+                "opening": (
+                    "Before I give you the rollover steps, I need to confirm "
+                    "what type of brokerage account will receive the funds."
+                ),
+                "key_points": [
+                    "A direct rollover goes to an eligible retirement account; "
+                    "a taxable brokerage account follows a different cash-distribution path."
+                ],
+                "steps": [],
+                "warnings": [],
+            }
+            fixed["questions_to_ask"] = [{
+                "question": (
+                    "Is the brokerage destination a retirement account "
+                    "(such as an IRA or qualified employer plan) or a taxable "
+                    "brokerage account?"
+                ),
+                "why": (
+                    "This determines whether the request is a direct rollover "
+                    "or a taxable cash distribution."
+                ),
+            }]
+            fixed["escalation"] = {"needed": False, "reason": None}
+            guardrails = list(fixed.get("guardrails_applied") or [])
+            guardrails.append(
+                "Did not assume that an unspecified brokerage account was an IRA."
+            )
+            fixed["guardrails_applied"] = cls._dedupe_preserving_order(guardrails)
+            info["brokerage_clarification"] = True
+            return fixed, info
+
+        response = fixed.get("response_to_participant")
+        if not isinstance(response, dict):
+            return fixed, info
+
+        obsolete_markers = (
+            "fee-out", "$75 or less", "balance threshold", "small balance",
+            "known issue", "multiple 401(k)", "more than one 401(k)",
+        )
+        pure_rollover_markers = (
+            "ach", "20%", "withholding", "cash distribution is taxable",
+            "cash distributions are taxable", "early withdrawal penalty",
+            "partial cash", "cash portion",
+        )
+        remove_markers = list(obsolete_markers)
+        if signals.get("pure_rollover"):
+            remove_markers.extend(pure_rollover_markers)
+        if not signals.get("overnight_request"):
+            remove_markers.extend(("overnight check", "overnight delivery"))
+
+        def filter_items(value: Any) -> List[Any]:
+            if not isinstance(value, list):
+                return []
+            kept: List[Any] = []
+            for item in value:
+                text = cls._response_item_text(item)
+                if any(marker in text for marker in remove_markers):
+                    info["removed_items"] += 1
+                    continue
+                kept.append(item)
+            return kept
+
+        key_points = filter_items(response.get("key_points"))
+        warnings = filter_items(response.get("warnings"))
+        steps = filter_items(response.get("steps"))
+
+        if signals.get("pure_rollover"):
+            required_points = [
+                (
+                    "Confirm that the receiving provider accepts the tax "
+                    "character of each source and whether it wants a check or wire."
+                ),
+                (
+                    "The distribution request fee is $75. A $35 non-refundable "
+                    "fee applies to each separate wire transaction; pre-tax and "
+                    "Roth sources may require separate wires."
+                ),
+            ]
+            existing = " ".join(cls._response_item_text(item) for item in key_points)
+            for point in required_points:
+                if not (
+                    ("receiving provider" in point.lower() and "receiving provider" in existing)
+                    or ("$35" in point and "$35" in existing)
+                ):
+                    key_points.append(point)
+                    existing += " " + point.lower()
+
+        if signals.get("overnight_request"):
+            overnight = (
+                "OverNight Check delivery cannot be selected in the participant "
+                "portal. It is available only on the secure RightSignature form "
+                "and adds a $50 non-refundable fee."
+            )
+            if "$50" not in " ".join(cls._response_item_text(i) for i in key_points):
+                key_points.append(overnight)
+
+        if signals.get("account_access"):
+            support = (
+                "If account access cannot be recovered, call ForUsAll Participant "
+                "Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT."
+            )
+            if "844-401-2253" not in " ".join(
+                cls._response_item_text(i) for i in key_points
+            ):
+                key_points.append(support)
+
+        # Preserve a concise portal-first path. The fallback form is always
+        # supplied after eligibility for outgoing termination requests.
+        steps = steps[:5]
+        if fixed.get("outcome") == "can_proceed":
+            form_already_present = cls._TERMINATION_FORM_URL.lower() in " ".join(
+                cls._response_item_text(item) for item in steps + key_points
+            )
+            if not form_already_present:
+                steps.append({
+                    "step_number": len(steps) + 1,
+                    "action": (
+                        "Use the secure electronic form only if the website has "
+                        "problems or you cannot log in."
+                    ),
+                    "detail": cls._TERMINATION_FORM_URL,
+                })
+        for index, step in enumerate(steps, start=1):
+            if isinstance(step, dict):
+                step["step_number"] = index
+
+        response["key_points"] = key_points[:6]
+        response["warnings"] = warnings[:4]
+        response["steps"] = steps[:6]
+        fixed["response_to_participant"] = response
+        return fixed, info
 
     def _apply_informational_outcome_policy(
         self,
@@ -3592,6 +3848,8 @@ class RAGEngine:
         allowed_chunk_types = self._exact_context_chunk_types_for_profile(
             retrieval_profile
         )
+        if include_references:
+            allowed_chunk_types = frozenset({*allowed_chunk_types, "references"})
         scored_chunks: List[Dict[str, Any]] = []
         for chunk in article_chunks:
             meta = chunk.get("metadata", {})
@@ -3614,6 +3872,43 @@ class RAGEngine:
             )
             return [], per_query_scores
 
+        # Multi-intent account-access + outgoing-distribution cases retain the
+        # exact termination procedure and add bounded companion coverage. No
+        # incoming-rollover profile receives these companions.
+        companion_ids = list(retrieval_profile.get("companion_article_ids") or [])[:2]
+        if companion_ids:
+            companion_lists = await asyncio.gather(*[
+                asyncio.to_thread(
+                    self.pinecone.list_and_fetch_chunks,
+                    prefix=companion_id,
+                    limit=100,
+                )
+                for companion_id in companion_ids
+            ])
+            companion_types = frozenset({
+                "decision_guide", "response_frames", "business_rules", "steps",
+                "common_issues", "guardrails", "references",
+            })
+            for companion_chunks in companion_lists:
+                candidates = [
+                    chunk for chunk in companion_chunks
+                    if chunk.get("metadata", {}).get("chunk_type") in companion_types
+                ]
+                candidates.sort(
+                    key=lambda chunk: (
+                        self.GR_EXACT_CONTEXT_TYPE_ORDER.get(
+                            chunk.get("metadata", {}).get("chunk_type"), 99
+                        ),
+                        chunk.get("metadata", {}).get("chunk_index", 999),
+                    )
+                )
+                for chunk in candidates[:4]:
+                    scored_chunks.append({
+                        "id": chunk.get("id"),
+                        "score": 0.94,
+                        "metadata": chunk.get("metadata", {}),
+                    })
+
         scored_chunks.sort(
             key=lambda c: self._exact_context_sort_key(c, retrieval_profile),
         )
@@ -3622,7 +3917,7 @@ class RAGEngine:
             eq: round(best_score, 4) for eq in enriched_queries
         }
         logger.info(
-            "Exact procedure routing selected one article with %d chunks",
+            "Exact procedure routing selected primary + companions with %d chunks",
             len(scored_chunks),
         )
         return scored_chunks, per_query_scores

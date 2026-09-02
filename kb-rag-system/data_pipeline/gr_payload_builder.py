@@ -127,6 +127,8 @@ PLAN_MODULES_RENAMES: Dict[Tuple[str, str], str] = {
     ("basic_info", "effective_date"): "plan_effective_date",
     ("basic_info", "official_plan_name"): "legal_plan_name",
     ("basic_info", "status"): "plan_status",
+    ("basic_info", "status_as_of"): "plan_status_as_of",
+    ("basic_info", "active"): "plan_active",
 }
 # Conceptos donde planDataModules es más autoritativo que plan_details:
 _PLAN_MODULE_WINS = {"enrollment_type", "plan_status", "minimum_age",
@@ -137,6 +139,192 @@ def snake_case(name: str) -> str:
     s = re.sub(r"[^\w]+", "_", str(name).strip())
     s = re.sub(r"_+", "_", s).strip("_")
     return s.lower()
+
+
+_INTERNAL_HISTORY_STATUSES = frozenset({
+    "ok", "empty", "panel_missing", "parse_error", "legacy_notes",
+})
+_KNOWN_PLAN_STATUSES = frozenset({
+    "active", "ongoing", "actively_managed", "terminated", "inactive",
+    "implementation", "in_implementation", "frozen", "closed",
+    "deconverted",
+})
+_US_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
+_ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
+
+
+def _normalize_lifecycle_date(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    match = _ISO_DATE_RE.search(text)
+    if match:
+        year, month, day = (int(part) for part in match.groups())
+    else:
+        match = _US_DATE_RE.search(text)
+        if not match:
+            return None
+        month, day, year = (int(part) for part in match.groups())
+    if not (1900 <= year <= 2200 and 1 <= month <= 12 and 1 <= day <= 31):
+        return None
+    return f"{year:04d}-{month:02d}-{day:02d}"
+
+
+def _normalize_plan_status(value: Any) -> Optional[str]:
+    text = str(value or "").strip()
+    canonical = re.sub(r"[\s-]+", "_", text.lower())
+    if canonical not in _KNOWN_PLAN_STATUSES:
+        return None
+    return text[:50]
+
+
+def _normalize_active(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str) and value.strip().lower() in {"true", "false"}:
+        return value.strip().lower() == "true"
+    return None
+
+
+def _append_fact(facts: List[str], fact: Optional[str]) -> None:
+    if fact and fact not in facts and len(facts) < 12:
+        facts.append(fact[:240])
+
+
+def _facts_from_lifecycle_note(note: Any, event_date: Optional[str]) -> List[str]:
+    """Extract a tiny closed fact vocabulary; never return the note itself."""
+    if not isinstance(note, str):
+        return []
+    lowered = note.lower()[:2000]
+    facts: List[str] = []
+    if "deconvert" in lowered or "deconversion" in lowered:
+        suffix = f" on {event_date}" if event_date else ""
+        facts.append(f"Plan deconversion is recorded{suffix}.")
+    payroll_match = re.search(
+        r"last\s+payroll(?:\s+we\s+should\s+process)?[^0-9]{0,40}"
+        r"(\d{1,2}/\d{1,2}/\d{4}|\d{4}-\d{2}-\d{2})",
+        lowered,
+    )
+    if payroll_match:
+        payroll_date = _normalize_lifecycle_date(payroll_match.group(1))
+        if payroll_date:
+            facts.append(
+                f"Last payroll date recorded for deconversion: {payroll_date}."
+            )
+    return facts
+
+
+def _build_internal_plan_context(
+    plan_modules: Mapping[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Reduce plan notes/history to safe lifecycle facts for reasoning.
+
+    Arbitrary note text, authors, and unrecognized changes are intentionally
+    discarded. Only closed-vocabulary statuses, booleans, dates and two
+    operational signals (deconversion / last payroll date) survive.
+    """
+    history = plan_modules.get("plan_history")
+    notes = plan_modules.get("plan_notes")
+    basic = plan_modules.get("basic_info")
+    if not isinstance(history, Mapping) and not isinstance(notes, list):
+        return None
+
+    raw_extraction_status = (
+        history.get("extractionStatus", history.get("extraction_status"))
+        if isinstance(history, Mapping) else "legacy_notes"
+    )
+    extraction_status = (
+        raw_extraction_status
+        if raw_extraction_status in _INTERNAL_HISTORY_STATUSES
+        else "parse_error"
+    )
+    current: Dict[str, Any] = {}
+    history_current = history.get("current") if isinstance(history, Mapping) else None
+    if not isinstance(history_current, Mapping):
+        history_current = {}
+    if not isinstance(basic, Mapping):
+        basic = {}
+
+    status = _normalize_plan_status(
+        history_current.get("status", basic.get("status", basic.get("Status")))
+    )
+    if status is not None:
+        current["status"] = status
+    active = _normalize_active(
+        history_current.get("active", basic.get("active", basic.get("Active")))
+    )
+    if active is not None:
+        current["active"] = active
+    status_as_of = _normalize_lifecycle_date(
+        history_current.get(
+            "statusAsOf",
+            history_current.get(
+                "status_as_of", basic.get("status_as_of", basic.get("Status as of"))
+            ),
+        )
+    )
+    if status_as_of:
+        current["status_as_of"] = status_as_of
+
+    facts: List[str] = []
+    entries = history.get("entries") if isinstance(history, Mapping) else None
+    if isinstance(entries, list):
+        for entry in entries[:50]:
+            if not isinstance(entry, Mapping):
+                continue
+            event_date = _normalize_lifecycle_date(
+                entry.get("occurredAt", entry.get("effectiveOn"))
+            )
+            changes = entry.get("changes")
+            if isinstance(changes, list):
+                for change in changes[:20]:
+                    if not isinstance(change, Mapping):
+                        continue
+                    field_name = str(change.get("field") or "").strip().lower()
+                    if field_name == "status":
+                        old = _normalize_plan_status(change.get("from"))
+                        new = _normalize_plan_status(change.get("to"))
+                        if new:
+                            detail = f" from {old}" if old else ""
+                            when = f" on {event_date}" if event_date else ""
+                            _append_fact(
+                                facts, f"Plan status changed{detail} to {new}{when}."
+                            )
+                    elif field_name == "active":
+                        old_active = _normalize_active(change.get("from"))
+                        new_active = _normalize_active(change.get("to"))
+                        if new_active is not None:
+                            detail = (
+                                f" from {str(old_active).lower()}"
+                                if old_active is not None else ""
+                            )
+                            when = f" on {event_date}" if event_date else ""
+                            _append_fact(
+                                facts,
+                                "Plan active flag changed"
+                                f"{detail} to {str(new_active).lower()}{when}.",
+                            )
+                    elif field_name in {
+                        "terminated_status_as_of", "actively_managed_status_as_of"
+                    }:
+                        effective_date = _normalize_lifecycle_date(change.get("to"))
+                        if effective_date:
+                            _append_fact(
+                                facts,
+                                f"Plan lifecycle effective date is {effective_date}.",
+                            )
+            for fact in _facts_from_lifecycle_note(entry.get("note"), event_date):
+                _append_fact(facts, fact)
+
+    # Legacy v1 note arrays remain accepted, but only recognized facts survive.
+    if isinstance(notes, list):
+        for note in notes[:50]:
+            for fact in _facts_from_lifecycle_note(note, None):
+                _append_fact(facts, fact)
+
+    return {
+        "extraction_status": extraction_status,
+        "current": current,
+        "lifecycle_facts": facts,
+    }
 
 
 def _strip_pay_date_url(value: Any) -> Any:
@@ -230,8 +418,7 @@ def _map_plan_modules(plan_modules: Mapping[str, Any],
     duration_value: Any = None
     duration_unit: Any = None
     for module_name, module_data in plan_modules.items():
-        if module_name == "plan_notes":
-            plan["plan_notes"] = module_data
+        if module_name in {"plan_notes", "plan_history"}:
             continue
         if not isinstance(module_data, Mapping):
             plan[snake_case(module_name)] = module_data
@@ -325,8 +512,11 @@ def build_collected_data(
     """
     participant: Dict[str, Any] = {}
     plan: Dict[str, Any] = {}
+    internal_plan_context: Optional[Dict[str, Any]] = None
 
     for module_name, module_data in (ppt_modules or {}).items():
+        if module_name in {"plan_notes", "plan_history"}:
+            continue
         if not isinstance(module_data, Mapping):
             plan_key = snake_case(module_name)
             plan[plan_key] = module_data       # e.g. plan_notes passthrough
@@ -348,6 +538,7 @@ def build_collected_data(
                         collision_prefix=snake_case(module_name))
 
     if plan_modules:
+        internal_plan_context = _build_internal_plan_context(plan_modules)
         _map_plan_modules(plan_modules, plan)
 
     # Conceptos derivados en código (nunca por el LLM):
@@ -372,6 +563,8 @@ def build_collected_data(
     collected: Dict[str, Any] = {"participant_data": participant}
     if plan:
         collected["plan_data"] = plan
+    if internal_plan_context is not None:
+        collected["internal_plan_context"] = internal_plan_context
     return collected
 
 

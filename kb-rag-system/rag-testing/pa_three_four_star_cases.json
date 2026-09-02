@@ -1,0 +1,167 @@
+{
+  "schema_version": 1,
+  "scope": {
+    "ratings": [3, 4],
+    "incoming_rollovers_excluded": true,
+    "plan_notes_reference_ticket_excluded": "TKT-910971",
+    "sanitization": "Names, emails, company names, account numbers, balances, and dates were replaced or omitted while preserving the reviewed intent."
+  },
+  "cases": [
+    {
+      "ticket_id": "TKT-906357",
+      "rating": 3,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_rollover",
+      "sanitized_inquiry": "I left my former employer and want to move my entire 401(k) balance into a rollover IRA. How do I complete the direct rollover?",
+      "expected_signals": {
+        "pure_rollover": true,
+        "cash_component": false,
+        "brokerage_destination_ambiguous": false,
+        "account_access": false,
+        "overnight_request": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["receiving provider", "$35", "each separate wire", "secure.rightsignature.com"],
+      "must_exclude": ["\\bach\\b", "20%", "withholding", "fee-out", "$75 or less", "known issue", "multiple 401(k)", "overnight check"],
+      "max_steps": 6
+    },
+    {
+      "ticket_id": "TKT-905927",
+      "rating": 3,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_rollover",
+      "sanitized_inquiry": "I want to roll over all pre-tax and Roth sources to my retirement provider by wire. What bank, IRA sub-account, and fee information should I confirm?",
+      "expected_signals": {
+        "pure_rollover": true,
+        "cash_component": false,
+        "brokerage_destination_ambiguous": false,
+        "overnight_request": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["receiving provider", "$35", "each separate wire", "pre-tax", "roth", "secure.rightsignature.com"],
+      "must_exclude": ["\\bach\\b", "20%", "withholding", "cash distributions are taxable", "fee-out", "balance threshold"],
+      "max_steps": 6
+    },
+    {
+      "ticket_id": "TKT-905906",
+      "rating": 3,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_distribution",
+      "sanitized_inquiry": "I no longer work for my former employer, cannot remember which email or password I used, and need to request my distribution. How can I regain access or use the form?",
+      "expected_signals": {
+        "account_access": true,
+        "brokerage_destination_ambiguous": false,
+        "overnight_request": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["844-401-2253", "monday-friday", "7:00 am-5:00 pm pt", "secure.rightsignature.com"],
+      "must_exclude": ["fee-out", "$75 or less", "known issue", "multiple 401(k)"],
+      "max_steps": 6
+    },
+    {
+      "ticket_id": "TKT-909636",
+      "rating": 4,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_distribution",
+      "sanitized_inquiry": "I recently separated from my former employer and want to cash out my account, but I have not provided my last day of employment.",
+      "expected_signals": {
+        "cash_component": true,
+        "pure_rollover": false,
+        "brokerage_destination_ambiguous": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["secure.rightsignature.com"],
+      "must_exclude": ["fee-out", "$75 or less", "known issue", "multiple 401(k)"],
+      "knowledge_category": "termination_date_followup",
+      "required_knowledge_phrases": ["termination date", "do not ask for payment details", "participant portal", "secure.rightsignature.com"],
+      "max_steps": 6
+    },
+    {
+      "ticket_id": "TKT-909733",
+      "rating": 4,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_rollover",
+      "sanitized_inquiry": "I want to transfer my full pre-tax and Roth 401(k) balance to retirement accounts at my new provider. What should I verify before submitting?",
+      "expected_signals": {
+        "pure_rollover": true,
+        "cash_component": false,
+        "brokerage_destination_ambiguous": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["receiving provider", "$35", "pre-tax", "roth", "secure.rightsignature.com"],
+      "must_exclude": ["\\bach\\b", "20%", "withholding", "fee-out", "known issue"],
+      "knowledge_category": "rollover_pre_submission_checks",
+      "required_knowledge_phrases": ["loans & distributions", "1099-r", "outstanding loan", "final payroll", "crypto"],
+      "max_steps": 6
+    },
+    {
+      "ticket_id": "TKT-910966",
+      "rating": 4,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_rollover",
+      "sanitized_inquiry": "I left my former employer and want to move my 401(k) into my main brokerage account. How do I start?",
+      "expected_signals": {
+        "pure_rollover": true,
+        "cash_component": false,
+        "brokerage_destination_ambiguous": true
+      },
+      "expected_outcome": "blocked_missing_data",
+      "expected_questions": 1,
+      "must_include": ["retirement account", "taxable brokerage account"],
+      "must_exclude": ["fee-out", "$75 or less", "known issue", "multiple 401(k)"],
+      "max_steps": 0
+    },
+    {
+      "ticket_id": "TKT-904783",
+      "rating": 4,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_distribution",
+      "sanitized_inquiry": "I am eligible for a cash distribution and need an overnight check. Can I choose overnight delivery in the portal?",
+      "expected_signals": {
+        "cash_component": true,
+        "pure_rollover": false,
+        "overnight_request": true,
+        "brokerage_destination_ambiguous": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["cannot be selected", "rightsignature", "$50"],
+      "must_exclude": ["fee-out", "$75 or less", "balance threshold", "known issue", "multiple 401(k)"],
+      "max_steps": 6
+    },
+    {
+      "ticket_id": "TKT-905935",
+      "rating": 4,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_rollover",
+      "sanitized_inquiry": "I need a full direct rollover to my IRA and cannot access my old ForUsAll login. Please give me the rollover and support options.",
+      "expected_signals": {
+        "pure_rollover": true,
+        "cash_component": false,
+        "account_access": true,
+        "brokerage_destination_ambiguous": false,
+        "overnight_request": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["receiving provider", "$35", "844-401-2253", "monday-friday", "secure.rightsignature.com"],
+      "must_exclude": ["\\bach\\b", "20%", "withholding", "known issue", "multiple 401(k)", "fee-out"],
+      "max_steps": 6
+    },
+    {
+      "ticket_id": "TKT-905909",
+      "rating": 4,
+      "topic": "termination_distribution_request",
+      "primary_action": "termination_distribution",
+      "sanitized_inquiry": "I am terminated, the website did not let me finish my distribution request, and I want an overnight check. What is the correct submission path?",
+      "expected_signals": {
+        "cash_component": false,
+        "pure_rollover": false,
+        "overnight_request": true,
+        "brokerage_destination_ambiguous": false
+      },
+      "expected_outcome": "can_proceed",
+      "must_include": ["cannot be selected", "rightsignature", "$50"],
+      "must_exclude": ["fee-out", "$75 or less", "balance threshold", "known issue", "multiple 401(k)"],
+      "max_steps": 6
+    }
+  ]
+}

@@ -148,6 +148,20 @@ class TestMapSlug:
         assert map_slug({"field": "enrollment_type", "category": "plan_data"},
                         current_year=YEAR) == [("plan_design", "enrollment_type")]
 
+        expected_status_fields = [
+            ("basic_info", "status"),
+            ("basic_info", "status_as_of"),
+            ("basic_info", "active"),
+        ]
+        for slug in ("plan_status", "plan_termination_status",
+                     "plan_operational_history"):
+            assert map_slug({"field": slug, "category": "plan_data"},
+                            current_year=YEAR) == expected_status_fields
+        assert map_slug({"field": "plan_status_as_of", "category": "plan_data"},
+                        current_year=YEAR) == [("basic_info", "status_as_of")]
+        assert map_slug({"field": "plan_active", "category": "plan_data"},
+                        current_year=YEAR) == [("basic_info", "active")]
+
     def test_plan_slugs(self):
         assert map_slug({"field": "blackout_dates"}, current_year=YEAR) == \
             [("onboarding", "blackout_begins_date"), ("onboarding", "blackout_ends_date")]
@@ -347,6 +361,20 @@ REAL_PLAN_PAYLOAD = [{
         "feature_flags": {"payroll_xray": "true",
                           "crypto_portfolio_alert_blacklist": "false"},
         "notes": ["using for test", "backfill force out limit"],
+        "planHistory": {
+            "schemaVersion": 1,
+            "extractionStatus": "ok",
+            "current": {"status": "Terminated", "active": False,
+                        "statusAsOf": "2024-10-24"},
+            "entries": [{
+                "source": "notes", "occurredAt": "2024-12-09",
+                "note": "This plan will terminate/deconvert and the last payroll is 10/24/2024",
+                "changes": [
+                    {"field": "status", "from": "actively_managed", "to": "terminated"},
+                    {"field": "terminated_status_as_of", "from": "None", "to": "2024-10-24"},
+                ],
+            }],
+        },
     },
     "warnings": [],
     "errors": [],
@@ -389,7 +417,26 @@ class TestNormalizeScrapeResult:
         assert flat["plan_design"]["employer_contribution"] == "SH Match Traditional"
         assert flat["basic_info"]["company_name"] == "StarWars Inc."
         assert flat["plan_notes"] == ["using for test", "backfill force out limit"]
+        assert flat["plan_history"]["extractionStatus"] == "ok"
+        assert flat["plan_history"]["current"]["status"] == "Terminated"
         assert "planId" not in flat
+
+    def test_plan_history_and_notes_survive_without_a_module(self):
+        flat, meta = normalize_scrape_result({
+            "data": {
+                "notes": ["termination note"],
+                "planHistory": {
+                    "schemaVersion": 1,
+                    "extractionStatus": "empty",
+                    "current": {"status": "Terminated", "active": False},
+                    "entries": [],
+                },
+            },
+        })
+
+        assert meta["shape"] == "flat_data"
+        assert flat["plan_notes"] == ["termination note"]
+        assert flat["plan_history"]["current"]["active"] is False
 
     def test_envelope_payload(self):
         flat, meta = normalize_scrape_result(ENVELOPE_PAYLOAD)

@@ -90,6 +90,9 @@ PLAN_MODULES: Dict[str, Tuple[str, ...]] = {
         "Legal Plan Name", "Relationship Manager", "Implementation Manager",
         "Service Type", "Plan Type", "Active", "Status", "Status as of",
         "3(16) ONLY", "EIN", "Effective Date",
+        # Canonical response keys are also valid request fields in ForUsBots v2.
+        # Keeping labels above preserves compatibility with older deployments.
+        "active", "status", "status_as_of",
     ),
     "plan_design": (
         "record_keeper_id", "rk_plan_id", "external_name", "lt_plan_type",
@@ -202,6 +205,7 @@ SLUG_MAP: Dict[str, Tuple[Tuple[str, str], ...]] = {
                                 ("census", "City"), ("census", "State"), ("census", "Zip Code")),
     "partial_ssn": (("census", "Partial SSN"),),
     "ssn_last4": (("census", "Partial SSN"),),
+    "crypto_enrollment": (("census", "Crypto Enrollment"),),
     # Documented Rule-10 exact predicate aliases (open predicates stay LLM):
     "employment_status_has_ended": (("census", "Termination Date"),
                                     ("census", "Eligibility Status")),
@@ -331,6 +335,26 @@ SLUG_MAP_PLAN_OVERRIDE: Dict[str, Tuple[Tuple[str, str], ...]] = {
     "auto_escalation_rate": (("plan_design", "autoescalate_rate"),),
     "enrollment_type": (("plan_design", "enrollment_type"),),
     "plan_enrollment_type": (("plan_design", "enrollment_type"),),
+    # Plan lifecycle facts live on the plan admin page.  Never satisfy these
+    # from participant-side plan_details: that value can be stale and it does
+    # not carry the effective date or active flag.
+    "plan_status": (
+        ("basic_info", "status"),
+        ("basic_info", "status_as_of"),
+        ("basic_info", "active"),
+    ),
+    "plan_termination_status": (
+        ("basic_info", "status"),
+        ("basic_info", "status_as_of"),
+        ("basic_info", "active"),
+    ),
+    "plan_operational_history": (
+        ("basic_info", "status"),
+        ("basic_info", "status_as_of"),
+        ("basic_info", "active"),
+    ),
+    "plan_status_as_of": (("basic_info", "status_as_of"),),
+    "plan_active": (("basic_info", "active"),),
 }
 # Participant-side default for auto_escalation_rate (not in the canonical 32
 # but a natural emission):
@@ -585,6 +609,16 @@ _UPSTREAM_DIAGNOSTIC_KEYS = frozenset({
     "unknownfields", "extractorwarning", "extractorwarnings",
     "moduleerror", "moduleerrors",
 })
+_PLAN_HISTORY_STATUSES = frozenset({
+    "ok", "empty", "panel_missing", "parse_error",
+})
+_PLAN_HISTORY_CHANGE_FIELDS = frozenset({
+    "active", "status", "terminated_status_as_of",
+    "actively_managed_status_as_of",
+})
+_PLAN_HISTORY_MAX_ENTRIES = 50
+_PLAN_HISTORY_MAX_NOTES = 50
+_PLAN_HISTORY_MAX_TEXT = 1000
 
 
 def _diagnostic_count(value: Any) -> int:
@@ -627,6 +661,128 @@ def _without_upstream_diagnostics(value: Any) -> Any:
     if isinstance(value, list):
         return [_without_upstream_diagnostics(child) for child in value]
     return value
+
+
+def _bounded_history_text(value: Any, *, limit: int = _PLAN_HISTORY_MAX_TEXT) -> str:
+    """Bound one untrusted plan-history string without interpreting it."""
+    if not isinstance(value, str):
+        return ""
+    clean = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]", " ", value)
+    return clean.strip()[:limit]
+
+
+def _safe_plan_notes(value: Any) -> List[str]:
+    if not isinstance(value, list):
+        return []
+    notes: List[str] = []
+    for raw in value[:_PLAN_HISTORY_MAX_NOTES]:
+        note = _bounded_history_text(raw)
+        if note:
+            notes.append(note)
+    return notes
+
+
+def _safe_history_scalar(value: Any) -> Any:
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+    return _bounded_history_text(value, limit=200)
+
+
+def _normalize_plan_history(value: Any) -> Optional[Dict[str, Any]]:
+    """Keep only the closed plan-lifecycle schema emitted by ForUsBots.
+
+    In particular, author/change-owner fields and arbitrary DOM attributes are
+    never retained. Free-text notes remain bounded here for deterministic fact
+    extraction, then are removed before the LLM prompt boundary.
+    """
+    if not isinstance(value, Mapping):
+        return None
+
+    raw_status = value.get("extractionStatus", value.get("extraction_status"))
+    extraction_status = (
+        raw_status if raw_status in _PLAN_HISTORY_STATUSES else "parse_error"
+    )
+    normalized: Dict[str, Any] = {
+        "schemaVersion": 1,
+        "extractionStatus": extraction_status,
+        "current": {},
+        "entries": [],
+    }
+
+    current = value.get("current")
+    if isinstance(current, Mapping):
+        status = _bounded_history_text(current.get("status"), limit=100)
+        if status:
+            normalized["current"]["status"] = status
+        if "active" in current:
+            active = current.get("active")
+            if isinstance(active, str) and active.lower() in {"true", "false"}:
+                active = active.lower() == "true"
+            if isinstance(active, bool):
+                normalized["current"]["active"] = active
+        status_as_of = _bounded_history_text(
+            current.get("statusAsOf", current.get("status_as_of")), limit=40
+        )
+        if status_as_of:
+            normalized["current"]["statusAsOf"] = status_as_of
+
+    entries = value.get("entries")
+    if isinstance(entries, list):
+        for raw_entry in entries[:_PLAN_HISTORY_MAX_ENTRIES]:
+            if not isinstance(raw_entry, Mapping):
+                continue
+            source = str(raw_entry.get("source") or "").strip().lower()
+            if source not in {"notes", "timeline"}:
+                continue
+            entry: Dict[str, Any] = {"source": source}
+            for source_key, target_key in (
+                ("occurredAt", "occurredAt"),
+                ("occurred_at", "occurredAt"),
+                ("effectiveOn", "effectiveOn"),
+                ("effective_on", "effectiveOn"),
+            ):
+                if target_key in entry:
+                    continue
+                text_value = _bounded_history_text(raw_entry.get(source_key), limit=40)
+                if text_value:
+                    entry[target_key] = text_value
+            note = _bounded_history_text(raw_entry.get("note"))
+            if note:
+                entry["note"] = note
+            safe_changes: List[Dict[str, Any]] = []
+            raw_changes = raw_entry.get("changes")
+            if isinstance(raw_changes, list):
+                for raw_change in raw_changes[:20]:
+                    if not isinstance(raw_change, Mapping):
+                        continue
+                    field_name = str(raw_change.get("field") or "").strip().lower()
+                    if field_name not in _PLAN_HISTORY_CHANGE_FIELDS:
+                        continue
+                    safe_changes.append({
+                        "field": field_name,
+                        "from": _safe_history_scalar(raw_change.get("from")),
+                        "to": _safe_history_scalar(raw_change.get("to")),
+                    })
+            entry["changes"] = safe_changes
+            normalized["entries"].append(entry)
+
+    return normalized
+
+
+def _attach_plan_extras(flat: Dict[str, Any], source: Mapping[str, Any]) -> bool:
+    """Attach backward-compatible notes plus structured lifecycle history."""
+    attached = False
+    notes = _safe_plan_notes(source.get("notes", source.get("plan_notes")))
+    if notes:
+        flat["plan_notes"] = notes
+        attached = True
+    history = _normalize_plan_history(
+        source.get("planHistory", source.get("plan_history"))
+    )
+    if history is not None:
+        flat["plan_history"] = history
+        attached = True
+    return attached
 
 
 def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]]:
@@ -676,8 +832,9 @@ def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]
             extractor_warning_count += _diagnostic_count(
                 entry.get("extractorWarnings")
             )
-        if isinstance(data.get("notes"), list) and data["notes"]:
-            flat["plan_notes"] = data["notes"]
+        _attach_plan_extras(flat, data)
+        if "plan_history" not in flat:
+            _attach_plan_extras(flat, result)
         meta["shape"] = "envelope"
         if module_status:
             meta["module_status"] = module_status
@@ -701,10 +858,11 @@ def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]
             k: _without_upstream_diagnostics(v) for k, v in data.items()
             if k in _KNOWN_MODULE_KEYS and isinstance(v, dict)
         }
-        if modules_found:
-            flat = dict(modules_found)
-            if isinstance(data.get("notes"), list) and data["notes"]:
-                flat["plan_notes"] = data["notes"]
+        flat = dict(modules_found)
+        _attach_plan_extras(flat, data)
+        if "plan_history" not in flat:
+            _attach_plan_extras(flat, result)
+        if flat:
             meta["shape"] = "flat_data"
             warning_count = _diagnostic_count(result.get("warnings"))
             error_count = _diagnostic_count(result.get("errors"))
@@ -719,10 +877,9 @@ def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]
         k: _without_upstream_diagnostics(v) for k, v in result.items()
         if k in _KNOWN_MODULE_KEYS and isinstance(v, dict)
     }
-    if modules_found:
-        flat = dict(modules_found)
-        if isinstance(result.get("notes"), list) and result["notes"]:
-            flat["plan_notes"] = result["notes"]
+    flat = dict(modules_found)
+    _attach_plan_extras(flat, result)
+    if flat:
         return flat, {"shape": "flat"}
 
     return {}, {"shape": "empty"}

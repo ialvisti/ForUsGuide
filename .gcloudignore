@@ -75,6 +75,7 @@
 kb-rag-system/rag-testing/**
 !kb-rag-system/rag-testing/
 !kb-rag-system/rag-testing/ground_truth.py
+!kb-rag-system/rag-testing/pa_three_four_star_cases.json
 !kb-rag-system/rag-testing/ticket_differential.py
 !kb-rag-system/rag-testing/ticket_differential_thresholds.json
 kb-rag-system/STRESS_TEST_COMPARISON_REPORT.md

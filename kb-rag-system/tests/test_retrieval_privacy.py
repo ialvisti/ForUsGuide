@@ -57,6 +57,29 @@ def test_retirement_semantics_survive_controlled_rebuild() -> None:
         assert concept in outbound
 
 
+def test_account_recovery_semantics_survive_without_copying_identifiers() -> None:
+    outbound = sanitize_retrieval_query(
+        "I cannot log in, forgot my password, and cannot access the email on "
+        "file at former-address@example.com."
+    ).lower()
+
+    for concept in (
+        "account access", "login recovery", "password reset",
+        "email access recovery",
+    ):
+        assert concept in outbound
+    assert "former-address" not in outbound
+    assert "example.com" not in outbound
+
+
+def test_unknown_email_phrase_maps_to_email_recovery_concept() -> None:
+    outbound = sanitize_retrieval_query(
+        "Participant does not know which email is on file for account access."
+    ).lower()
+
+    assert "email access recovery" in outbound
+
+
 def test_probe_text_maps_to_safe_neutral_concept() -> None:
     assert sanitize_retrieval_query("knowledge base article content") == (
         "retirement plan guidance"

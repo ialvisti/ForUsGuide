@@ -135,6 +135,24 @@ _CONTROLLED_CONCEPTS: tuple[tuple[re.Pattern[str], str], ...] = (
      "address update"),
     (_pattern(r"\bemail\b.*\b(?:change|update)\b|\b(?:change|update)\b.*\bemail\b"),
      "email update"),
+    (_pattern(
+        r"\bpassword reset\b|\breset(?:ting)?\b.{0,24}\bpassword\b|"
+        r"\bforgot(?:ten)?\b.{0,24}\bpassword\b"
+    ),
+     "password reset"),
+    (_pattern(
+        r"\bemail access recovery\b|\bemail on file\b|"
+        r"\b(?:forgot|forgotten|unknown)\b.{0,24}\bemail\b|"
+        r"\b(?:do not|does not|don't|doesn't)\s+know\b.{0,24}\bemail\b|"
+        r"\b(?:cannot|can't|cant|unable to|no longer)\b.{0,24}"
+        r"\b(?:access|use|have)\b.{0,24}\bemail\b"
+    ),
+     "email access recovery"),
+    (_pattern(
+        r"\blogin recovery\b|\blocked out\b|"
+        r"\b(?:cannot|can't|cant|unable to)\s+(?:log[ -]?in|sign[ -]?in)\b"
+    ),
+     "login recovery"),
     (_pattern(r"\blog[ -]?in\b|\bpassword\b|account\s+access|\bmfa\b|multi-factor"),
      "account access"),
     (_pattern(r"\bcheck\b"), "check delivery"),

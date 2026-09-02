@@ -3138,26 +3138,40 @@ class RAGEngine:
         warnings = filter_items(response.get("warnings"))
         steps = filter_items(response.get("steps"))
 
+        required_points: List[tuple[tuple[str, ...], str]] = []
         if signals.get("pure_rollover"):
-            required_points = [
-                (
-                    "Confirm that the receiving provider accepts the tax "
-                    "character of each source and whether it wants a check or wire."
-                ),
-                (
+            required_points.extend([
+                (("receiving provider",), (
+                    "Before submitting, confirm that the receiving provider "
+                    "accepts the tax character of each source and whether it "
+                    "requires check or wire delivery."
+                )),
+                (("$35", "each separate wire"), (
                     "The distribution request fee is $75. A $35 non-refundable "
                     "fee applies to each separate wire transaction; pre-tax and "
                     "Roth sources may require separate wires."
-                ),
-            ]
-            existing = " ".join(cls._response_item_text(item) for item in key_points)
-            for point in required_points:
-                if not (
-                    ("receiving provider" in point.lower() and "receiving provider" in existing)
-                    or ("$35" in point and "$35" in existing)
-                ):
-                    key_points.append(point)
-                    existing += " " + point.lower()
+                )),
+            ])
+            if fixed.get("outcome") == "can_proceed":
+                required_points.extend([
+                    (("subaccount number", "aba routing"), (
+                        "For a wire, use the receiving provider's wire-specific "
+                        "bank account name, ABA routing number, bank account "
+                        "number, and IRA or Roth IRA subaccount number."
+                    )),
+                    (("1099-r",), (
+                        "ForUsAll reviews the request within about two business "
+                        "days; after approval, wires typically complete in 1-2 "
+                        "weeks and standard checks in 2-3 weeks. Form 1099-R is "
+                        "issued by January 31 of the following year."
+                    )),
+                    (("outstanding loan", "final payroll", "crypto"), (
+                        "Before submitting, contact Support about any outstanding "
+                        "loan; wait at least 7 business days after final payroll; "
+                        "and, if Crypto Enrollment is active, contact Support "
+                        "because transfer or liquidation treatment is not defined."
+                    )),
+                ])
 
         if signals.get("overnight_request"):
             overnight = (
@@ -3165,10 +3179,9 @@ class RAGEngine:
                 "portal. It is available only on the secure RightSignature form "
                 "and adds a $50 non-refundable fee."
             )
-            if "$50" not in " ".join(cls._response_item_text(i) for i in key_points):
-                key_points.append(overnight)
+            required_points.append((("$50", "overnight check"), overnight))
 
-        if signals.get("account_access"):
+        if signals.get("account_access") and fixed.get("outcome") != "can_proceed":
             support = (
                 "If account access cannot be recovered, call ForUsAll Participant "
                 "Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT."
@@ -3178,22 +3191,72 @@ class RAGEngine:
             ):
                 key_points.append(support)
 
+        # Reviewed facts are deterministic and must survive the six-item cap.
+        # Replace any model-authored partial rendition with the complete
+        # canonical point, then use remaining capacity for model-specific
+        # context.  Incoming rollovers returned before this policy.
+        if required_points:
+            aliases = {
+                marker
+                for markers, _point in required_points
+                for marker in markers
+            }
+            optional_points = [
+                item for item in key_points
+                if not any(
+                    marker in cls._response_item_text(item)
+                    for marker in aliases
+                )
+            ]
+            key_points = [point for _markers, point in required_points]
+            key_points.extend(optional_points[: max(0, 6 - len(key_points))])
+
         # Preserve a concise portal-first path. The fallback form is always
-        # supplied after eligibility for outgoing termination requests.
-        steps = steps[:5]
+        # supplied after eligibility for outgoing termination requests.  Both
+        # reviewed steps are reserved before applying the six-step cap.
         if fixed.get("outcome") == "can_proceed":
-            form_already_present = cls._TERMINATION_FORM_URL.lower() in " ".join(
-                cls._response_item_text(item) for item in steps + key_points
+            canonical_markers = (
+                "loans & distributions", "termination distribution",
+                "rightsignature", cls._TERMINATION_FORM_URL.lower(),
+                "844-401-2253",
             )
-            if not form_already_present:
-                steps.append({
-                    "step_number": len(steps) + 1,
-                    "action": (
-                        "Use the secure electronic form only if the website has "
-                        "problems or you cannot log in."
-                    ),
-                    "detail": cls._TERMINATION_FORM_URL,
-                })
+            other_steps = [
+                item for item in steps
+                if not any(
+                    marker in cls._response_item_text(item)
+                    for marker in canonical_markers
+                )
+            ]
+            # Keep the same information out of key_points so the participant
+            # sees the form/support path exactly once.
+            key_points = [
+                item for item in key_points
+                if not any(
+                    marker in cls._response_item_text(item)
+                    for marker in (
+                        cls._TERMINATION_FORM_URL.lower(), "844-401-2253",
+                    )
+                )
+            ]
+            portal_step = {
+                "step_number": 1,
+                "action": (
+                    "Log in to the participant portal, select Loans & "
+                    "Distributions, then Separation of Service (or Default if "
+                    "shown) and start Termination Distribution."
+                ),
+                "detail": None,
+            }
+            fallback_step = {
+                "step_number": 2,
+                "action": (
+                    "Use the secure electronic form only for website/login "
+                    "problems. For access help, call ForUsAll Participant "
+                    "Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT."
+                ),
+                "detail": cls._TERMINATION_FORM_URL,
+            }
+            steps = [portal_step, *other_steps[:4], fallback_step]
         for index, step in enumerate(steps, start=1):
             if isinstance(step, dict):
                 step["step_number"] = index

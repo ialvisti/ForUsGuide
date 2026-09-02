@@ -221,7 +221,9 @@ def _detect_account_access_signal(text: str) -> Optional[str]:
     """Return a third-person description of the security/access blocker present in
     ``text`` (already lowercased), or None. Each clause requires a compound phrase
     so single tokens cannot trigger a false split."""
+    text = (text or "").lower()
     reasons: List[str] = []
+    possible_unauthorized_activity = False
 
     # Unsolicited password reset.
     if _contains_phrase(text, "password reset") and any(
@@ -233,6 +235,7 @@ def _detect_account_access_signal(text: str) -> Optional[str]:
         )
     ):
         reasons.append("received a password-reset email they did not request")
+        possible_unauthorized_activity = True
 
     # Cannot log in / access the account. "log into"/"log in to"/"sign in"/"log
     # on" are listed explicitly because the word-bounded match does NOT find
@@ -256,6 +259,32 @@ def _detect_account_access_signal(text: str) -> Optional[str]:
         )
     ):
         reasons.append("cannot log in to or access their account")
+
+    # Preserve the concrete recovery need in the synthetic inquiry.  The
+    # controlled Pinecone boundary maps these phrases to reviewed constants,
+    # so no participant text or identifier leaves the application.
+    forgot_password = any(
+        _contains_phrase(text, phrase)
+        for phrase in (
+            "forgot password", "forgot my password", "forgot their password",
+            "forgotten password", "do not remember my password",
+            "don't remember my password", "no longer have the password",
+        )
+    ) or re.search(r"\bforgot(?:ten)?\b.{0,32}\bpassword\b", text) is not None
+    if forgot_password:
+        reasons.append("forgot their password")
+
+    unknown_email = any(
+        _contains_phrase(text, phrase)
+        for phrase in (
+            "forgot email", "forgot my email", "forgot their email",
+            "forgotten email", "do not know which email",
+            "don't know which email", "cannot remember which email",
+            "can't remember which email", "no longer have the email",
+        )
+    ) or re.search(r"\bforgot(?:ten)?\b.{0,32}\bemail\b", text) is not None
+    if unknown_email:
+        reasons.append("does not know which email is on file")
 
     # Email on file is no longer valid / usable. The bare token "no longer works"
     # was removed: it matched the EMPLOYMENT phrase "no longer works there" and,
@@ -296,10 +325,15 @@ def _detect_account_access_signal(text: str) -> Optional[str]:
 
     if not reasons:
         return None
+    concern = (
+        " They are concerned about possible unauthorized activity and need "
+        "help regaining secure access."
+        if possible_unauthorized_activity
+        else " They need help regaining secure access."
+    )
     return (
-        "Participant reports a security/account-access issue: "
-        f"{'; '.join(reasons)}. They are concerned about account access and "
-        "possible unauthorized activity and need help regaining secure access."
+        "Participant reports an account-access issue: "
+        f"{'; '.join(reasons)}.{concern}"
     )
 
 

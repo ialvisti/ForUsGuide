@@ -22,6 +22,12 @@ ARTICLE_PATH = (
     / "Distributions"
     / "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover.json"
 )
+ACCESS_ARTICLE_PATH = (
+    Path(__file__).resolve().parents[2]
+    / "PA"
+    / "Participant Dashboard"
+    / "LT: How to Set Up Your ForUsAll 401(k) Account.json"
+)
 FORM_URL = (
     "https://secure.rightsignature.com/templates/"
     "105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/"
@@ -95,6 +101,20 @@ class TestKnowledgeContract:
         ):
             assert required.lower() in preflight.lower()
 
+    def test_account_recovery_article_covers_forgotten_email_and_password(self):
+        article = json.loads(ACCESS_ARTICLE_PATH.read_text(encoding="utf-8"))
+        rules = _business_rules(article)
+        recovery = " ".join(rules["login_recovery"])
+
+        for required in (
+            "Forgot your password?",
+            "email on file",
+            "844-401-2253",
+            "Monday-Friday",
+            "7:00 AM-5:00 PM",
+        ):
+            assert required.lower() in recovery.lower()
+
 
 class TestDeterministicIntentSignals:
     def setup_method(self):
@@ -152,6 +172,31 @@ class TestDeterministicIntentSignals:
 
 
 class TestDeterministicResponsePolicy:
+    def test_incoming_rollover_is_outside_this_policy(self):
+        parsed = {
+            "outcome": "can_proceed",
+            "response_to_participant": {
+                "opening": "Incoming rollover guidance.",
+                "key_points": ["Keep this unchanged."],
+                "steps": [],
+                "warnings": [],
+            },
+        }
+
+        fixed, info = RAGEngine._apply_termination_response_policy(
+            parsed,
+            {
+                "primary_action": "incoming_rollover",
+                "signals": {"pure_rollover": True},
+            },
+        )
+
+        assert fixed is parsed
+        assert fixed["response_to_participant"]["key_points"] == [
+            "Keep this unchanged."
+        ]
+        assert info["applied"] is False
+
     def test_full_rollover_removes_cash_only_and_obsolete_content(self):
         parsed = {
             "outcome": "can_proceed",
@@ -231,6 +276,65 @@ class TestDeterministicResponsePolicy:
         question = fixed["questions_to_ask"][0]["question"].lower()
         assert "retirement account" in question
         assert "taxable brokerage" in question
+
+    def test_required_rollover_preflight_and_support_survive_response_caps(self):
+        """Regression for TKT-905935/TKT-909733.
+
+        The model may already fill all six key-point and step slots.  The
+        reviewed outgoing-rollover facts still have to be present after the
+        deterministic response cap is applied.
+        """
+        parsed = {
+            "outcome": "can_proceed",
+            "outcome_reason": "Eligible",
+            "response_to_participant": {
+                "opening": "You can proceed.",
+                "key_points": [f"Optional model point {i}" for i in range(1, 7)],
+                "steps": [
+                    {
+                        "step_number": i,
+                        "action": f"Optional model step {i}",
+                        "detail": None,
+                    }
+                    for i in range(1, 7)
+                ],
+                "warnings": [],
+            },
+            "questions_to_ask": [],
+            "escalation": {"needed": False, "reason": None},
+            "guardrails_applied": [],
+            "data_gaps": [],
+            "coverage_gaps": [],
+        }
+        profile = {
+            "primary_action": "termination_rollover",
+            "signals": {
+                "pure_rollover": True,
+                "overnight_request": False,
+                "brokerage_destination_ambiguous": False,
+                "account_access": False,
+            },
+        }
+
+        fixed, _ = RAGEngine._apply_termination_response_policy(parsed, profile)
+        response = fixed["response_to_participant"]
+        rendered = json.dumps(response, ensure_ascii=False).lower()
+
+        assert len(response["key_points"]) <= 6
+        assert len(response["steps"]) <= 6
+        for required in (
+            "receiving provider",
+            "$35",
+            "each separate wire",
+            "loans & distributions",
+            "1099-r",
+            "outstanding loan",
+            "final payroll",
+            "crypto",
+            "844-401-2253",
+            FORM_URL.lower(),
+        ):
+            assert required in rendered
 
     def test_prompts_declare_the_same_intent_scope(self):
         prompt = prompts.SYSTEM_PROMPT_GENERATE_RESPONSE

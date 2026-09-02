@@ -324,6 +324,27 @@ class TestAccountAccessGuard:
         assert sig is not None
         assert "email on file is no longer valid" in sig
 
+    def test_plain_login_recovery_does_not_invent_unauthorized_activity(self):
+        """Regression for TKT-905906: forgotten credentials are an access
+        recovery request, not evidence of a security incident."""
+        sig = _detect_account_access_signal(
+            "I left my employer, forgot my email and password, and cannot log in."
+        )
+
+        assert sig is not None
+        assert "regaining secure access" in sig
+        assert "forgot their password" in sig
+        assert "does not know which email" in sig
+        assert "unauthorized activity" not in sig
+
+    def test_unsolicited_password_reset_keeps_security_concern(self):
+        sig = _detect_account_access_signal(
+            "I received a password reset email that I did not request."
+        )
+
+        assert sig is not None
+        assert "possible unauthorized activity" in sig
+
 
 # ---------------------------------------------------------------------------
 # Knowledge-question branch

@@ -88,7 +88,7 @@
         "brokerage_destination_ambiguous": false
       },
       "expected_outcome": "can_proceed",
-      "must_include": ["receiving provider", "$35", "pre-tax", "roth", "secure.rightsignature.com"],
+      "must_include": ["receiving provider", "$35", "pre-tax", "roth", "loans & distributions", "1099-r", "outstanding loan", "final payroll", "crypto", "secure.rightsignature.com"],
       "must_exclude": ["\\bach\\b", "20%", "withholding", "fee-out", "known issue"],
       "knowledge_category": "rollover_pre_submission_checks",
       "required_knowledge_phrases": ["loans & distributions", "1099-r", "outstanding loan", "final payroll", "crypto"],

@@ -2,13 +2,14 @@
   "metadata": {
     "article_id": "lt_how_to_set_up_your_forusall_401k_account",
     "title": "LT: How to Set Up Your ForUsAll 401(k) Account",
-    "description": "Comprehensive guidance for helping a participant set up their ForUsAll 401(k) online account once their ForUsAll profile is available for setup. Covers setup prerequisites, email matching, activation link and password creation, mandatory MFA with Google Authenticator or Okta Verify (including the second-device QR-code requirement), future login flow, and dashboard features including savings rate updates, portfolio changes, statements, beneficiary management, loans and distributions (when plan- and eligibility-permitted), and ForUsAll Participant Support contact options.",
+    "description": "Comprehensive guidance for helping a participant set up or recover access to their ForUsAll 401(k) online account once their ForUsAll profile is available for setup. Covers setup prerequisites, email matching, activation link and password creation, forgotten-password and unknown-email recovery, mandatory MFA with Google Authenticator or Okta Verify (including the second-device QR-code requirement), future login flow, and dashboard features including savings rate updates, portfolio changes, statements, beneficiary management, loans and distributions (when plan- and eligibility-permitted). For credential-recovery help, ForUsAll Participant Support is available at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PST.",
     "topic": "ForUsAll_online_account_setup",
     "subtopics": [
       "account_setup_requirements",
       "email_match_requirement",
       "online_account_registration",
       "activation_link_and_password_creation",
+      "login_and_credential_recovery",
       "multi_factor_authentication",
       "mfa_device_requirements",
       "future_login_requirements",
@@ -33,7 +34,9 @@
       "Beneficiary Related Information",
       "Investments/SDBA",
       "Loan Request",
-      "Withdrawal Request --> Terminated Distribution"
+      "Withdrawal Request --> Terminated Distribution",
+      "Account Access",
+      "Password Reset"
     ],
     "language": "en-US",
     "last_updated": null,
@@ -60,6 +63,15 @@
           "If the entered email address and any required identity verification information match the system, the participant will receive or continue through an activation flow with instructions to complete registration.",
           "If the email, last 4 of SSN, or last name do not match, or if the participant is unsure which email to use, they should contact their HR manager or ForUsAll Participant Support.",
           "After completing identity verification if prompted and creating a password through the activation or registration flow, the participant should return to forusall.com/login and log in with their email address and new password."
+        ]
+      },
+      {
+        "category": "login_recovery",
+        "rules": [
+          "If a participant forgot their password, they should go to forusall.com/login, select 'Forgot your password?', and follow the reset instructions using the email on file for their ForUsAll account.",
+          "If the password-reset email does not arrive, the participant should check spam or junk. If it still cannot be found, they should call ForUsAll Participant Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PST.",
+          "If the participant does not know or can no longer access the email on file, they should call ForUsAll Participant Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PST for identity verification and account-access help.",
+          "Never ask the participant to provide their password or authentication code in a support message."
         ]
       },
       {
@@ -141,7 +153,8 @@
           "Participants should contact ForUsAll Participant Support if they have trouble creating their account.",
           "Participants should contact ForUsAll Participant Support if they do not receive their activation email.",
           "Participants should contact ForUsAll Participant Support if they are unsure which email address to use.",
-          "Participants should contact ForUsAll Participant Support if they need help with MFA setup."
+          "Participants should contact ForUsAll Participant Support if they need help with MFA setup.",
+          "For forgotten-password, unknown-email, or inaccessible-email recovery, call ForUsAll Participant Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PST."
         ]
       }
     ],
@@ -502,6 +515,14 @@
         "answer": "They should open the activation email, follow the prompts, complete identity verification if prompted, create their password, then return to forusall.com/login and log in using their email address and new password."
       },
       {
+        "question": "What should a participant do if they forgot their password?",
+        "answer": "Go to forusall.com/login, select 'Forgot your password?', and follow the reset instructions using the email on file. If the reset email is not in the inbox or spam/junk folder, call ForUsAll Participant Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PST."
+      },
+      {
+        "question": "What should a participant do if they do not know or cannot access the email on file?",
+        "answer": "Call ForUsAll Participant Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PST for identity verification and account-access help. Do not send a password or authentication code in a support message."
+      },
+      {
         "question": "Why is MFA required during account setup?",
         "answer": "ForUsAll requires multi-factor authentication for added security. MFA helps protect the account by requiring a one-time authentication code in addition to the participant's email address and password."
       },
@@ -715,7 +736,8 @@
         "Do not guarantee that multiple beneficiary allocations can be saved unless the total allocation equals 100%.",
         "Do not provide loan limits, withdrawal eligibility rules, distribution reasons, taxes, penalties, or processing timelines unless they are shown to the participant in Loans & Distributions or explicitly stated in the article.",
         "Do not claim that ForUsAll Participant Support can change the participant's employer or payroll provider email on file; the article only says participants should contact HR or Participant Support if unsure which email to use.",
-        "Do not add or change support hours unless they are included through approved internal disclosure standards outside the article."
+        "Do not add or change the support hours; use the approved hours in this article: Monday-Friday, 7:00 AM-5:00 PM PST.",
+        "Do not ask a participant to provide their password or authentication code in a support message."
       ],
       "must_do_if_unsure": [
         "If the participant is unsure whether they can create an account yet, check whether their profile is available for setup and whether an onboarding_email is visible; redirect to support if setup status is unclear.",

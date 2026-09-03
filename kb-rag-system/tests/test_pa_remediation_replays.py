@@ -122,6 +122,16 @@ def test_sanitized_ticket_replay(case: dict):
     if "expected_questions" in case:
         assert len(fixed["questions_to_ask"]) == case["expected_questions"]
 
+    last_step_required = case.get("last_step_must_include", [])
+    if last_step_required:
+        steps = fixed["response_to_participant"]["steps"]
+        assert steps, f"{case['ticket_id']}: expected a final fallback step"
+        last_step = _rendered(steps[-1])
+        for required in last_step_required:
+            assert required.lower() in last_step, (
+                f"{case['ticket_id']}: final step missing {required}"
+            )
+
     rendered = _rendered(fixed)
     for required in case["must_include"]:
         assert required.lower() in rendered, f"{case['ticket_id']}: missing {required}"
@@ -137,3 +147,55 @@ def test_sanitized_ticket_replay(case: dict):
             assert required.lower() in knowledge, (
                 f"{case['ticket_id']}: KB category {category} missing {required}"
             )
+
+
+def test_tkt_909636_historical_state_stays_blocked_until_date_confirmation():
+    case = next(
+        row for row in _payload()["cases"] if row["ticket_id"] == "TKT-909636"
+    )
+    engine = object.__new__(RAGEngine)
+    collected = {
+        "participant_data": {"employment_status": "Active"},
+        "plan_data": {"record_keeper": "LT Trust"},
+    }
+    signals = engine._infer_retrieval_signals(
+        case["sanitized_inquiry"], case["topic"], collected
+    )
+    parsed = {
+        "outcome": "blocked_missing_data",
+        "outcome_reason": "The record still shows active employment.",
+        "response_to_participant": {
+            "opening": "We need to confirm the separation date.",
+            "key_points": [],
+            "steps": [{
+                "step_number": 1,
+                "action": "Use the cash-out form now.",
+                "detail": RAGEngine._TERMINATION_FORM_URL,
+            }],
+            "warnings": [],
+        },
+        "questions_to_ask": [{
+            "question": "What was your last day of employment?",
+            "why": "The record still shows active employment.",
+        }],
+        "data_gaps": ["Termination date"],
+    }
+
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        parsed,
+        {"primary_action": case["primary_action"], "signals": signals},
+    )
+
+    assert signals["separation_conflicts_active"] is True
+    assert fixed["outcome"] == case["historical_expected_outcome"]
+    assert len(fixed["questions_to_ask"]) == case["historical_expected_questions"]
+    assert (
+        len(fixed["response_to_participant"]["steps"])
+        <= case["historical_max_steps"]
+    )
+    rendered = _rendered(fixed)
+    for pattern in case["historical_must_exclude"]:
+        assert re.search(pattern.lower(), rendered) is None
+    questions = _rendered({"questions": fixed["questions_to_ask"]})
+    for pattern in case["historical_question_must_match"]:
+        assert re.search(pattern.lower(), questions) is not None

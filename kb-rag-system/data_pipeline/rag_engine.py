@@ -1542,6 +1542,92 @@ class RAGEngine:
         'guardrails', 'fees_details'
     ]
 
+    @staticmethod
+    def _requires_phone_support_for_unknown_email(question: str) -> bool:
+        normalized = re.sub(
+            r"[^a-z0-9]+", " ", (question or "").lower()
+        ).strip()
+        unknown_email_markers = (
+            "cannot remember which email",
+            "cant remember which email",
+            "do not remember which email",
+            "dont remember which email",
+            "do not know which email",
+            "dont know which email",
+            "no longer have the email",
+            "lost access to my email",
+            "cannot access my email",
+            "cant access my email",
+        )
+        unknown_which_email = "which email" in normalized and any(
+            marker in normalized
+            for marker in (
+                "cannot remember", "can t remember", "do not remember",
+                "don t remember", "does not remember", "doesn t remember",
+                "cannot recall", "can t recall", "do not know", "don t know",
+                "does not know", "doesn t know",
+            )
+        )
+        inaccessible_email = "email" in normalized and any(
+            marker in normalized
+            for marker in (
+                "cannot access", "can t access", "do not have access",
+                "don t have access", "does not have access",
+                "doesn t have access", "lost access", "no longer have access",
+                "email is inaccessible", "inaccessible email",
+            )
+        )
+        unknown_named_email = re.search(
+            r"\b(?:cannot|can t|do not|don t|does not|doesn t) "
+            r"(?:remember|know|recall) (?:my |her |his |their |the )?"
+            r"email\b(?! (?:password|login password)\b)",
+            normalized,
+        ) is not None
+        forgot_named_email = re.search(
+            r"\b(?:forgot|forgotten) (?:my |her |his |their |the )?"
+            r"email\b(?! (?:password|login password)\b)",
+            normalized,
+        ) is not None
+        unknown_literal_email = re.search(
+            r"\b(?:unknown|unrecognized) email(?: address)?\b"
+            r"(?! (?:password|login password)\b)",
+            normalized,
+        ) is not None
+        return (
+            unknown_which_email
+            or unknown_named_email
+            or forgot_named_email
+            or unknown_literal_email
+            or inaccessible_email
+            or any(marker in normalized for marker in unknown_email_markers)
+        )
+
+    @classmethod
+    def _apply_account_recovery_knowledge_policy(
+        cls,
+        parsed: Dict[str, Any],
+        question: str,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Use the verified support path when the login email is unavailable."""
+        if not cls._requires_phone_support_for_unknown_email(question):
+            return parsed, {"applied": False}
+
+        fixed = copy.deepcopy(parsed)
+        fixed["answer"] = (
+            "If you do not know or cannot access the email on file, call "
+            "ForUsAll Participant Support at 844-401-2253, Monday-Friday, "
+            "7:00 AM-5:00 PM PT, for identity verification and account-access "
+            "help. Self-service password reset requires knowing and being able "
+            "to access the email on file, so it is not the right path here. Do "
+            "not send your password or authentication code in a support message."
+        )
+        fixed["key_points"] = [
+            "Call Participant Support because the email on file is unknown or inaccessible.",
+            "Use 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT.",
+            "Do not send your password or authentication code in a support message.",
+        ]
+        return fixed, {"applied": True, "reason": "unknown_or_inaccessible_email"}
+
     async def ask_knowledge_question(
         self,
         question: str
@@ -1668,6 +1754,10 @@ class RAGEngine:
                     "coverage_gaps": []
                 }
 
+            parsed, account_recovery_policy_info = (
+                self._apply_account_recovery_knowledge_policy(parsed, question)
+            )
+
             # 7. Extract LLM-reported coverage gaps
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
@@ -1706,6 +1796,7 @@ class RAGEngine:
                     "unique_articles": total_articles,
                     "relevant_articles": relevant_articles,
                     "coverage_gaps": coverage_gaps,
+                    "account_recovery_policy": account_recovery_policy_info,
                     "per_query_scores": per_query_scores
                 }
             )
@@ -2033,6 +2124,13 @@ class RAGEngine:
     ) -> Dict[str, Any]:
         participant_data = (collected_data or {}).get("participant_data") or {}
         plan_data = (collected_data or {}).get("plan_data") or {}
+        age_59_5_status = participant_data.get("is_age_59_5_or_older")
+        if not isinstance(age_59_5_status, bool):
+            age_59_5_status = None
+        raw_termination_date = participant_data.get("termination_date")
+        termination_date_present = str(raw_termination_date or "").strip().lower() not in {
+            "", "unknown", "n/a", "none", "not available",
+        }
         profile_text = " ".join([
             inquiry or "",
             topic or "",
@@ -2214,6 +2312,21 @@ class RAGEngine:
             "authentication code", "authenticator app", "create an account",
             "set up my account", "account setup",
         ])
+        unknown_email_access = self._requires_phone_support_for_unknown_email(
+            profile_text
+        )
+        account_access = account_access or unknown_email_access
+        guidance_request = self._contains_any(profile_text, [
+            "requesting guidance", "guidance on", "next steps", "what steps",
+            "steps to", "how do i", "how can i", "what should i do",
+        ])
+        rollover_provider_named = rollover_intent and self._contains_any(
+            profile_text,
+            [
+                "fidelity", "vanguard", "schwab", "empower", "principal",
+                "merrill", "t. rowe", "tiaa",
+            ],
+        )
         brokerage_destination = "brokerage account" in profile_text
         explicit_retirement_destination = self._contains_any(profile_text, [
             "rollover ira", "traditional ira", "roth ira", "ira at",
@@ -2300,6 +2413,9 @@ class RAGEngine:
             "delivery_or_fee_request": delivery_or_fee_request,
             "overnight_request": overnight_request,
             "account_access": account_access,
+            "unknown_email_access": unknown_email_access,
+            "guidance_request": guidance_request,
+            "rollover_provider_named": rollover_provider_named,
             "brokerage_destination_ambiguous": brokerage_destination_ambiguous,
             "loan_signal": loan_signal,
             "termination_distribution": termination_distribution,
@@ -2309,6 +2425,8 @@ class RAGEngine:
             "force_out": force_out,
             "rmd": rmd,
             "contact_or_reference": contact_or_reference,
+            "is_age_59_5_or_older": age_59_5_status,
+            "termination_date_present": termination_date_present,
             "inquiry_intent": self._infer_inquiry_intent(profile_text),
         }
 
@@ -3052,13 +3170,20 @@ class RAGEngine:
             "primary_action": action,
             "removed_items": 0,
             "brokerage_clarification": False,
+            "rollover_execution_normalized": False,
+            "separation_conflict_trimmed": False,
         }
-        if action == "incoming_rollover":
+        if action == "incoming_rollover" or signals.get("incoming_rollover") is True:
             return parsed, info
         if action not in {
             "termination_rollover", "termination_distribution", "rollover",
             "distribution",
         }:
+            return parsed, info
+        if (
+            action in {"rollover", "distribution"}
+            and signals.get("termination_distribution") is not True
+        ):
             return parsed, info
 
         fixed = copy.deepcopy(parsed)
@@ -3103,6 +3228,80 @@ class RAGEngine:
             info["brokerage_clarification"] = True
             return fixed, info
 
+        if (
+            fixed.get("outcome") == "blocked_missing_data"
+            and action == "termination_rollover"
+            and signals.get("pure_rollover") is True
+            and signals.get("employment_state") == "terminated"
+            and signals.get("termination_date_present") is True
+            and signals.get("guidance_request") is True
+            and signals.get("rollover_provider_named") is True
+        ):
+            mentions: List[Any] = []
+            for field in ("questions_to_ask", "data_gaps"):
+                value = fixed.get(field)
+                if isinstance(value, list):
+                    mentions.extend(value)
+
+            def is_destination_subtype(item: Any) -> bool:
+                text = cls._response_item_text(item)
+                normalized_text = re.sub(r"[^a-z0-9]+", " ", text).strip()
+                if any(marker in text for marker in (
+                    "termination date", "employment status", "outstanding loan",
+                    "loan status", "vested balance", "account balance", "blackout",
+                    "rehire", "plan status", "separation date", "last day",
+                    "eligibility status", "spousal consent", "marital status",
+                    "participant status", "participant name", "beneficiary", "address",
+                    "identity verification", "when did you leave", "date you left",
+                )):
+                    return False
+                direct_markers = (
+                    "rollover destination type",
+                    "destination account type",
+                    "receiving account type",
+                )
+                tokens = set(normalized_text.split())
+                typed_account = (
+                    "account" in tokens
+                    and bool(tokens.intersection({"type", "kind", "category"}))
+                    and any(marker in text for marker in (
+                        "ira", "qualified plan", "qualified retirement plan", "roth",
+                        "retirement account", "taxable brokerage",
+                        "taxable managed account",
+                    ))
+                )
+                return any(marker in text for marker in direct_markers) or typed_account
+
+            if mentions and all(is_destination_subtype(item) for item in mentions):
+                fixed["outcome"] = "can_proceed"
+                fixed["outcome_reason"] = (
+                    "Termination status and date are supported. The receiving "
+                    "account subtype is an execution detail that the participant "
+                    "can confirm with the receiving provider before submitting."
+                )
+                response = fixed.get("response_to_participant")
+                if not isinstance(response, dict):
+                    response = {}
+                response["opening"] = (
+                    "You can start the direct-rollover process. Before submitting, "
+                    "confirm with the receiving provider that the destination is "
+                    "an eligible retirement account and accepts each source."
+                )
+                response.setdefault("key_points", [])
+                response.setdefault("steps", [])
+                response.setdefault("warnings", [])
+                fixed["response_to_participant"] = response
+                fixed["questions_to_ask"] = []
+                fixed["data_gaps"] = []
+                fixed["escalation"] = {"needed": False, "reason": None}
+                guardrails = list(fixed.get("guardrails_applied") or [])
+                guardrails.append(
+                    "Treated receiving-account subtype as a rollover execution "
+                    "detail, without assuming the account is retirement-qualified."
+                )
+                fixed["guardrails_applied"] = cls._dedupe_preserving_order(guardrails)
+                info["rollover_execution_normalized"] = True
+
         response = fixed.get("response_to_participant")
         if not isinstance(response, dict):
             return fixed, info
@@ -3112,8 +3311,12 @@ class RAGEngine:
             "known issue", "multiple 401(k)", "more than one 401(k)",
         )
         pure_rollover_markers = (
-            "ach", "20%", "withholding", "cash distribution is taxable",
-            "cash distributions are taxable", "early withdrawal penalty",
+            "ach", "20%", "withholding", "withheld", "cash distribution",
+            "cash withdrawal", "cash payment", "cash payout", "take cash",
+            "taxable distribution", "taxable withdrawal", "federal tax",
+            "irs penalty", "10 percent", "early withdrawal penalty",
+            "early-distribution tax", "additional 10%", "10% tax",
+            "10% early distribution", "early distribution penalty",
             "partial cash", "cash portion",
         )
         remove_markers = list(obsolete_markers)
@@ -3121,14 +3324,77 @@ class RAGEngine:
             remove_markers.extend(pure_rollover_markers)
         if not signals.get("overnight_request"):
             remove_markers.extend(("overnight check", "overnight delivery"))
+        if signals.get("unknown_email_access"):
+            remove_markers.extend((
+                "forgot your password", "password reset", "reset link",
+                "reset email",
+            ))
+        separation_conflict = (
+            fixed.get("outcome") == "blocked_missing_data"
+            and action in {"termination_distribution", "termination_rollover"}
+            and (
+                signals.get("separation_conflicts_active") is True
+                or signals.get("employment_state") == "active"
+            )
+        )
+        if separation_conflict:
+            remove_markers.extend((
+                "rightsignature", cls._TERMINATION_FORM_URL.lower(),
+                "cash-out form", "cash out form",
+            ))
+
+        def contains_removed_marker(value: Any) -> bool:
+            text = cls._response_item_text(value)
+            marker_match = any(
+                re.search(r"\bach\b", text) is not None
+                if marker == "ach"
+                else marker in text
+                for marker in remove_markers
+            )
+            pure_rollover_pattern_match = (
+                signals.get("pure_rollover") is True
+                and any(re.search(pattern, text) is not None for pattern in (
+                    r"\btake\s+(?:the\s+|a\s+|your\s+)?cash\b",
+                    r"\b(?:10|ten)\s*(?:%|percent)\b",
+                    r"\btax(?:es)?\b.{0,40}\bwithheld\b",
+                    r"\bwithheld\b.{0,40}\btax(?:es)?\b",
+                    r"\btaxable\b.{0,30}\bcash\b",
+                    r"\bcash\b.{0,30}\btaxable\b",
+                ))
+            )
+            return marker_match or pure_rollover_pattern_match
+
+        opening = response.get("opening")
+        if contains_removed_marker(opening):
+            response["opening"] = (
+                "You can proceed with the direct-rollover process after "
+                "confirming the receiving provider's requirements."
+                if signals.get("pure_rollover") and fixed.get("outcome") == "can_proceed"
+                else "Here is the applicable outgoing-distribution guidance."
+            )
+            info["removed_items"] += 1
+        if contains_removed_marker(fixed.get("outcome_reason")):
+            fixed["outcome_reason"] = (
+                "The participant can proceed with the direct-rollover process, "
+                "subject to the receiving provider's requirements."
+                if signals.get("pure_rollover") and fixed.get("outcome") == "can_proceed"
+                else "The response follows the applicable outgoing-distribution rules."
+            )
+            info["removed_items"] += 1
+
+        if separation_conflict:
+            original_steps = response.get("steps")
+            if isinstance(original_steps, list) and original_steps:
+                info["removed_items"] += len(original_steps)
+            response["steps"] = []
+            info["separation_conflict_trimmed"] = True
 
         def filter_items(value: Any) -> List[Any]:
             if not isinstance(value, list):
                 return []
             kept: List[Any] = []
             for item in value:
-                text = cls._response_item_text(item)
-                if any(marker in text for marker in remove_markers):
+                if contains_removed_marker(item):
                     info["removed_items"] += 1
                     continue
                 kept.append(item)
@@ -3172,6 +3438,38 @@ class RAGEngine:
                         "because transfer or liquidation treatment is not defined."
                     )),
                 ])
+        elif fixed.get("outcome") == "can_proceed" and (
+            action in {"termination_distribution", "distribution"}
+            or signals.get("cash_component")
+        ):
+            age_59_5_status = signals.get("is_age_59_5_or_older")
+            if age_59_5_status is False:
+                cash_tax_point = (
+                    "If you choose a taxable cash distribution, 20% federal "
+                    "income tax withholding generally applies; because you are "
+                    "under age 59½, an additional 10% early-distribution tax "
+                    "may apply."
+                )
+            elif age_59_5_status is True:
+                cash_tax_point = (
+                    "If you choose a taxable cash distribution, 20% federal "
+                    "income tax withholding generally applies; the additional "
+                    "10% early-distribution tax generally does not apply because "
+                    "you are at least age 59½."
+                )
+            else:
+                cash_tax_point = (
+                    "If you choose a taxable cash distribution, 20% federal "
+                    "income tax withholding generally applies; an additional "
+                    "10% early-distribution tax may apply if you are under age "
+                    "59½."
+                )
+            required_points.append((
+                (
+                    "20%", "10%", "early withdrawal", "early-distribution",
+                ),
+                cash_tax_point,
+            ))
 
         if signals.get("overnight_request"):
             overnight = (

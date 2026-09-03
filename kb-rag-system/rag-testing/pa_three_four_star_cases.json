@@ -12,12 +12,14 @@
       "rating": 3,
       "topic": "termination_distribution_request",
       "primary_action": "termination_rollover",
-      "sanitized_inquiry": "I left my former employer and want to move my entire 401(k) balance into a rollover IRA. How do I complete the direct rollover?",
+      "sanitized_inquiry": "I left my former employer and want to roll over my entire 401(k) balance into my Fidelity account. How do I complete it?",
       "expected_signals": {
         "pure_rollover": true,
         "cash_component": false,
         "brokerage_destination_ambiguous": false,
         "account_access": false,
+        "guidance_request": true,
+        "rollover_provider_named": true,
         "overnight_request": false
       },
       "expected_outcome": "can_proceed",
@@ -50,12 +52,14 @@
       "sanitized_inquiry": "I no longer work for my former employer, cannot remember which email or password I used, and need to request my distribution. How can I regain access or use the form?",
       "expected_signals": {
         "account_access": true,
+        "cash_component": false,
+        "pure_rollover": false,
         "brokerage_destination_ambiguous": false,
         "overnight_request": false
       },
       "expected_outcome": "can_proceed",
-      "must_include": ["844-401-2253", "monday-friday", "7:00 am-5:00 pm pt", "secure.rightsignature.com"],
-      "must_exclude": ["fee-out", "$75 or less", "known issue", "multiple 401(k)"],
+      "must_include": ["844-401-2253", "monday-friday", "7:00 am-5:00 pm pt", "secure.rightsignature.com", "20%", "10%", "59½"],
+      "must_exclude": ["fee-out", "$75 or less", "known issue", "multiple 401(k)", "forgot your password\\?", "8(?::00)?\\s*am"],
       "max_steps": 6
     },
     {
@@ -63,7 +67,7 @@
       "rating": 4,
       "topic": "termination_distribution_request",
       "primary_action": "termination_distribution",
-      "sanitized_inquiry": "I recently separated from my former employer and want to cash out my account, but I have not provided my last day of employment.",
+      "sanitized_inquiry": "I no longer work for my former employer and want to cash out my account, but I have not provided my last day of employment.",
       "expected_signals": {
         "cash_component": true,
         "pure_rollover": false,
@@ -72,6 +76,12 @@
       "expected_outcome": "can_proceed",
       "must_include": ["secure.rightsignature.com"],
       "must_exclude": ["fee-out", "$75 or less", "known issue", "multiple 401(k)"],
+      "historical_expected_outcome": "blocked_missing_data",
+      "historical_expected_questions": 1,
+      "historical_max_steps": 0,
+      "historical_must_include": [],
+      "historical_must_exclude": ["fee-out", "$75 or less", "known issue", "multiple 401(k)", "secure.rightsignature.com"],
+      "historical_question_must_match": ["last day|termination date"],
       "knowledge_category": "termination_date_followup",
       "required_knowledge_phrases": ["termination date", "do not ask for payment details", "participant portal", "secure.rightsignature.com"],
       "max_steps": 6
@@ -116,16 +126,16 @@
       "rating": 4,
       "topic": "termination_distribution_request",
       "primary_action": "termination_distribution",
-      "sanitized_inquiry": "I am eligible for a cash distribution and need an overnight check. Can I choose overnight delivery in the portal?",
+      "sanitized_inquiry": "I left my former employer and want to cash out my 401(k). What steps should I follow?",
       "expected_signals": {
         "cash_component": true,
         "pure_rollover": false,
-        "overnight_request": true,
+        "overnight_request": false,
         "brokerage_destination_ambiguous": false
       },
       "expected_outcome": "can_proceed",
-      "must_include": ["cannot be selected", "rightsignature", "$50"],
-      "must_exclude": ["fee-out", "$75 or less", "balance threshold", "known issue", "multiple 401(k)"],
+      "must_include": ["loans & distributions", "secure.rightsignature.com", "844-401-2253", "20%", "10%", "59½"],
+      "must_exclude": ["fee-out", "$75 or less", "balance threshold", "known issue", "multiple 401(k)", "overnight"],
       "max_steps": 6
     },
     {
@@ -150,17 +160,18 @@
       "ticket_id": "TKT-905909",
       "rating": 4,
       "topic": "termination_distribution_request",
-      "primary_action": "termination_distribution",
-      "sanitized_inquiry": "I am terminated, the website did not let me finish my distribution request, and I want an overnight check. What is the correct submission path?",
+      "primary_action": "termination_rollover",
+      "sanitized_inquiry": "I am terminated and tried to request a direct rollover to an IRA online, but the website would not let me finish. What should I do?",
       "expected_signals": {
         "cash_component": false,
-        "pure_rollover": false,
-        "overnight_request": true,
+        "pure_rollover": true,
+        "overnight_request": false,
         "brokerage_destination_ambiguous": false
       },
       "expected_outcome": "can_proceed",
-      "must_include": ["cannot be selected", "rightsignature", "$50"],
-      "must_exclude": ["fee-out", "$75 or less", "balance threshold", "known issue", "multiple 401(k)"],
+      "must_include": ["receiving provider", "$35", "each separate wire", "loans & distributions", "secure.rightsignature.com"],
+      "must_exclude": ["\\bach\\b", "20%", "withholding", "fee-out", "$75 or less", "balance threshold", "known issue", "multiple 401(k)", "overnight"],
+      "last_step_must_include": ["secure.rightsignature.com"],
       "max_steps": 6
     }
   ]

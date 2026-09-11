@@ -1,6 +1,6 @@
 # Keep Cloud Build source uploads reproducible and free of local runtime state.
 # The verification/build configs only consume the application and Terraform.
-# Default-deny every other top-level path.  Two reviewed test inputs are
+# Default-deny every other top-level path. Reviewed test inputs are
 # reopened below by exact type/path: canonical KB JSON metadata/content and the
 # incident-drill contract, and the sanitized bounded n8n workflow.  Business
 # exports, planning notes and unrelated worktree content remain excluded.
@@ -21,6 +21,10 @@
 !PA/n8n/baselines/*.js
 !PA/n8n/candidates/*.js
 !PA/n8n/tests/*.cjs
+!PA/n8n prompts/PROMPT_KNOWLEDGE_QUESTION_BUILDER.md
+!n8n_workflow/
+!n8n_workflow/main.json
+!n8n_workflow/paticipant_search.json
 !PA/Loans/Vanguard: How to Submit a Loan Request.json
 !PA/Loans/LT: 401(k) Loan Complete Guide — Submission, Repayment & Support.json
 !PA/Loans/401(k) Loan Basics and Support Guide.json

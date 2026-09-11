@@ -579,7 +579,9 @@ class IndexStatsResponse(BaseModel):
 class IdentityResolutionContext(BaseModel):
     """Lookup provenance from the authenticated workflow, never from ticket prose.
 
-    Resolving an account does not grant access or prove verified identity.
+    The authenticated PA caller may certify its selected account under its
+    approved identification procedure. This flag supports a bounded internal
+    draft, never authorization to access, publish or close a ticket.
     Only identifier types are retained, never their sensitive values.
     """
     model_config = ConfigDict(extra="forbid")

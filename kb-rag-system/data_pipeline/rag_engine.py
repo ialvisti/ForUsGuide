@@ -1250,6 +1250,10 @@ class RAGEngine:
             from data_pipeline.response_handoff import response_requires_review
 
             question_metadata = self._validate_question_coverage(parsed, collected_data)
+            from data_pipeline.gr_payload_builder import project_verified_participant_facts
+            disclosure = project_verified_participant_facts((collected_data or {}).get("internal_disclosure_context"))
+            if disclosure:
+                question_metadata["verified_participant_facts"] = disclosure
             if response_requires_review(parsed, question_metadata):
                 question_metadata["human_review_required"] = True
             if termination_response_policy_info.get("custody_review_required") or termination_response_policy_info.get("plan_review_required"):
@@ -3422,6 +3426,12 @@ class RAGEngine:
                 response = fixed.get("response_to_participant")
                 if isinstance(response, dict):
                     response["steps"] = []
+                    if signals.get("delivery_or_fee_request") is not True:
+                        points = [item for item in response.get("key_points") or [] if not re.search(
+                            r"\b(?:fees?|charges?|costs?)\b", cls._response_item_text(item),
+                        )]
+                        points.append("Tell us which option you would like to explore, and our team will verify whether your plan permits it and what requirements apply.")
+                        response["key_points"] = cls._dedupe_preserving_order(points)
                 info.update(applied=True, informational_scope_preserved=True)
                 return fixed, info
             return parsed, info
@@ -3536,6 +3546,10 @@ class RAGEngine:
                         if isinstance(item, dict) and item.get("question_index") in partial_indices:
                             item["status"] = "needs_verification"
                     info["partial_retention_verification_required"] = True
+                points = list(response.get("key_points") or [])
+                if partial_indices and not any("which option" in cls._response_item_text(point).lower() for point in points):
+                    points.append("Which option would you like to explore: keeping your funds here, moving all of them, or a partial rollover if your plan permits it?")
+                response["key_points"] = points
             return fixed, info
 
         if signals.get("brokerage_destination_ambiguous"):

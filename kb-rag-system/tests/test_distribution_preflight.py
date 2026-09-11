@@ -545,3 +545,37 @@ def test_employed_options_question_after_statement_is_informational():
 def test_explicit_submission_is_not_erased_by_an_options_question():
     engine = RAGEngine.__new__(RAGEngine)
     assert engine._infer_inquiry_intent('What options do I have? Submit my request now.') == 'transactional_submission'
+
+
+def test_while_employed_options_omit_unasked_transaction_fees_and_invite_choice():
+    engine = RAGEngine.__new__(RAGEngine)
+    context = {'participant_data': {'participant_status': 'Active'}}
+    profile = engine._build_retrieval_profile('I am still employed. What options do I have?', 'distribution', 'LT Trust', '401(k)', context)
+    draft = parsed()
+    draft['outcome'] = 'ambiguous_plan_rules'
+    draft['response_to_participant']['key_points'] = ['A loan or hardship withdrawal may be worth reviewing.', 'Hardship processing fee is $75 and wire fee is $35.']
+    fixed, _ = RAGEngine._apply_termination_response_policy(draft, profile, context)
+    points = str(fixed['response_to_participant']['key_points'])
+    assert '$75' not in points
+    assert 'which option' in points.lower()
+    assert 'plan' in points.lower()
+
+
+def test_options_retain_explicitly_requested_fees():
+    engine = RAGEngine.__new__(RAGEngine)
+    context = {'participant_data': {'participant_status': 'Active'}}
+    profile = engine._build_retrieval_profile('I am still employed. What options do I have and what fees apply?', 'distribution', 'LT Trust', '401(k)', context)
+    draft = parsed()
+    draft['response_to_participant']['key_points'] = ['Hardship processing fee is $75.']
+    fixed, _ = RAGEngine._apply_termination_response_policy(draft, profile, context)
+    assert '$75' in str(fixed['response_to_participant']['key_points'])
+
+
+def test_retaining_funds_answer_invites_preference_without_initiating_transaction():
+    context = facts()
+    context['internal_response_context'] = {'requested_questions': ['Can I keep funds invested?', 'What ongoing fees apply?', 'Can I roll over only part?']}
+    draft = parsed()
+    draft['response_to_participant']['key_points'] = ['1. Keep funds.', '2. Verify ongoing fees.', '3. Verify partial rule.']
+    fixed, _ = RAGEngine._apply_termination_response_policy(draft, {'primary_action': 'retention_options'}, context)
+    assert 'which option' in str(fixed['response_to_participant']['key_points']).lower()
+    assert fixed['response_to_participant']['steps'] == []

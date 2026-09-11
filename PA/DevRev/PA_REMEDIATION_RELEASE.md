@@ -1,6 +1,6 @@
 # Paquete de consumidor PA — candidato local
 
-Implementación aprobada; publicación pendiente. Ningún workflow, prompt remoto, mensaje ni review fue modificado. El manifiesto `../n8n/release-manifest.manifest` vincula siete reemplazos y dos addenda con las versiones y hashes contrastados el 11 de septiembre de 2026. `node PA/n8n/verify-package.js` comprueba integridad y sintaxis sin ejecutar flujos.
+Implementación aprobada; publicación pendiente. Ningún workflow, prompt remoto, mensaje ni review fue modificado. El manifiesto `../n8n/release-manifest.manifest` vincula siete reemplazos, una adición de campo y dos addenda con las versiones y hashes contrastados el 11 de septiembre de 2026. `node PA/n8n/verify-package.js` comprueba integridad y sintaxis sin ejecutar flujos.
 
 ## Camino realmente observado
 
@@ -21,18 +21,24 @@ El editor autorizado n8n ya fue inspeccionado con sesión autenticada. **FUG est
 | Participant Search Fix / salida unresolved | Conservar estado, conteos y tipos de identificadores aportados, sin valores PII. Ausencia de ejecución no equivale a usuario inexistente. |
 | FUG / Knowledge Question | Enviar identity_context en la rama de búsqueda de cuenta fallida. KQ educativo directo conserva propósito general_knowledge en el backend. No se ha probado el bypass educativo en toda la clasificación legacy. |
 | FUG / Stop Unsafe Terminal Result | Convertir resultado succeeded + human_review en paquete interno acotado; estados fallidos o incompatibles siguen fallando. Conectar a un nuevo terminal de nota interna, sin tags de enriquecimiento ni continuación al agente, para evitar bucles. |
-| AGENT-3 y JSON parser | Responder por pregunta, distinguir verificación interna de pregunta al participante, conservar intención y no convertir generalización por privacidad en dato desconocido. No modificar tarifas, plazos ni reglas de privacidad. |
+| AGENT-3 y JSON parser | Responder por pregunta, distinguir verificación interna de pregunta al participante, conservar intención y no convertir generalización por privacidad en dato desconocido. Conservar tarifas y plazos. Aplicar la excepción de privacidad aprobada: sólo nombre propio y cifras verificadas con fuente/fecha; ocultar notas, autores y demás identificadores. |
 | Final / Data extractor | Correlacionar ticketId con transporte, rechazar contrato inválido y mantener recomendación del modelo separada del estado. Sin decisión backend correlacionada independientemente, salida sólo para revisión interna. |
 
 Los fragmentos Code son autocontenidos. knowledge-question-body.js es el **cuerpo** de una expresión: envolver con `{{ (() => { … })() }}` en el parámetro JSON existente. El nuevo terminal está especificado en el manifiesto y usa el contrato y credencial existentes de DevRev; no copiar encabezados con secretos. Las lecturas opcionales de nodos usan `isExecuted`, soportado por la [documentación oficial de n8n](https://github.com/n8n-io/n8n-docs/blob/main/docs/build/code-in-n8n/use-built-in-shortcuts/n8n-metadata.md).
 
 ## Verificación y límites
 
-44 pruebas Node verifican candidatos con entradas sanitizadas, incluyendo fuente baseline que reproduce pérdidas, revisión en preguntas relacionadas, cobertura incompleta, denegación correcta, KQ educativo, identidad ambigua/error, correlación y handoff. Se incorporan a Cloud Build, con imagen Node fijada por digest. Esto no equivale a ejecución publicada de n8n.
+57 pruebas Node verifican candidatos con entradas sanitizadas, incluyendo fuente baseline que reproduce pérdidas, revisión en preguntas relacionadas, cobertura incompleta, denegación correcta, KQ educativo, identidad ambigua/error, correlación y handoff. Se incorporan a Cloud Build, con imagen Node fijada por digest. Esto no equivale a ejecución publicada de n8n.
 
-Se compararon tres simulaciones baseline y tres candidatas de los dos prompts observados: cuatro preguntas, KQ educativo y custodia pendiente. La configuración LLM fue la de ForUsGuide, no una reproducción acreditada del modelo/entorno DevRev. El candidato conserva el orden y evita el checklist de identidad para educación. Permanecen límites: el parser borra nombres y cifras por su política vigente; puede alterar la recomendación solved y el agente aún puede sugerir documentos opcionales en un handoff interno. No declarar resueltos saludo personalizado, conservación de importes ni publicación automática.
+Se compararon tres simulaciones baseline y tres candidatas de los dos prompts observados: cuatro preguntas, KQ educativo y custodia pendiente. La configuración LLM fue la de ForUsGuide, no una reproducción acreditada del modelo/entorno DevRev. El candidato conserva el orden y evita el checklist de identidad para educación. Esas seis salidas se conservan como evidencia anterior a la excepción de privacidad aprobada. El candidato actual incorpora una proyección cerrada de nombre/cifras con fuente y fecha y requiere evidencia explícita de identidad. La simulación candidate-v3 completó cinco casos: positivo conserva saludo/cifras, negativo generaliza valores, custodia no solicita documentos y cuatro preguntas conservan su orden. no se debe declarar conservación efectiva en producción ni publicación automática a partir de esa simulación.
 
 La nota enriquecida contiene señales del backend, pero el transporte final no incluye una decisión independiente confiable. El candidato exige revisión interna; no certifica publicación a partir de texto reescrito por modelos. Si se requiere automatizar cierre/publicación, será necesaria correlación de ejecución fuera del LLM y prueba del consumidor real, dentro de autorización explícita.
+
+### Dependencia para nombres y cifras
+
+El 11 de septiembre el usuario autorizó expresamente la excepción para el candidato. El backend construye `internal_disclosure_context` antes de combinar campos inferidos del ticket; publica únicamente la proyección `metadata.verified_participant_facts`. El formateador conserva esos campos con sus fuentes/fechas. Nombres ajenos, email, notas y autores no forman parte de esa proyección.
+
+El usuario confirmó expresamente que se puede usar la cuenta que identifica el flujo PA. El candidato `handle-ticket-identity.js` agrega `identity_context` al cuerpo de Handle Ticket sólo si Participant Search declara Participant was found y sus IDs de participante/plan coinciden exactamente con Include Ticket data. Si falta una selección, hay IDs inválidos o discrepancia, devuelve null. El flag certifica esa asociación conforme al criterio aprobado; no acredita una autenticación adicional ni concede permiso de envío/cierre. La lectura actual confirma que el campo aún no está publicado. Se probaron el valor de la expresión, su aceptación por el modelo de API y la solicitud/extracción/mapping del nombre hasta el consumidor interno.
 
 ## Aplicación y rollback preparados
 

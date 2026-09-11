@@ -29,7 +29,7 @@
       "baseline": "baselines/format-gr.js",
       "baseline_sha256": "214bf340994f8f165ad8af0996038cac8afaa8899ab32244176ac77ac981bd0a",
       "candidate": "candidates/format-gr.js",
-      "candidate_sha256": "6921076b6882129a367b3c492479662b28a1954816a9ef78d9317d5c49a79662",
+      "candidate_sha256": "211e50da98644da2fc04765a8cc2019a4553dfb8bf291f0f28b62df94aad7d2c",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source"
     },
@@ -39,7 +39,7 @@
       "baseline": "baselines/format-kq.js",
       "baseline_sha256": "7e9a4266d81dbdacdbb4d564fb65bb545cee485c59218457f96144cba3495c69",
       "candidate": "candidates/format-kq.js",
-      "candidate_sha256": "60f782af9cb8e4594d34d14b6fdcd8fe7877a5e7a140cf37e41d621280120fc8",
+      "candidate_sha256": "05e9e2dee7952d22adb4930e56bab583666163a2bb84feeaea2fad21e9a94421",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source"
     },
@@ -97,13 +97,13 @@
   "addenda": [
     {
       "file": "../DevRev/PA_REMEDIATION_ADDENDUM.md",
-      "sha256": "b63ca8e227a0d553dd3254467121cc9565a15e415323a90b344f2e4a5459df76",
+      "sha256": "f0f354ecd5ff205fdea8ac6fb1717a7f87e078aee435e22cbe7f177fe50856c7",
       "target": "DevRev AGENT-3 8.0 Live",
       "original_prompt_sha256": "6859f17f7cc599b9b0ec9ac134f428b1de2ef6973a81297db7338bd411640bc5"
     },
     {
       "file": "PA_PARSER_ADDENDUM.md",
-      "sha256": "d598077defb7bf40380dc139d831c35a78a3ca44252666bef779f6b018d40456",
+      "sha256": "4563449398a47865b63e41729785b8da0dfd010b1389106cfa282e646c87ad79",
       "target": "final / JSON parser AI Agent",
       "original_prompt_sha256": "ce630d3c03e32fcfc51feb698a364b8deef7234594ee1eabd0b5ba9e76801090"
     }
@@ -134,5 +134,20 @@
     "Addenda prepend to current structured prompts; preserve original formatting and privacy rules.",
     "Final input has no independently correlated backend decision; model recommendation remains advisory.",
     "Run controlled workflow integration with external publication disabled before any production traffic."
+  ],
+  "privacy_exception_approved": "2026-09-11: user explicitly approved own verified name and figures with source/date, preserving other restrictions and no messages.",
+  "parameter_additions": [
+    {
+      "workflow": "fug",
+      "node_role_or_observed_name": "Handle Ticket",
+      "parameter": "jsonBody.identity_context",
+      "observed_prior_state": "field absent; confirmed through authenticated read-only editor 2026-09-11",
+      "candidate": "candidates/handle-ticket-identity.js",
+      "candidate_sha256": "b2a9271f450dd8ac39989a93e17805400f7a2cfb3e74e0696a1ac14cd59021ec",
+      "parameter_kind": "expression_value",
+      "wrapping": "Add identity_context field to existing JSON body with value {{ JSON.stringify((() => { <candidate source> })()) }}. Preserve every existing body field, header, authentication and setting.",
+      "rollback": "Remove only the added identity_context field.",
+      "authorization": "User explicitly accepts the account identified by current PA flow as the criterion for own name and verified figures in internal drafts."
+    }
   ]
 }

@@ -17,6 +17,12 @@ steps:
       - |
         set -euo pipefail
         cd /workspace
+        # The Python suite invokes Node for its browser contract tests. Share
+        # this pinned runtime with that step; no application image is changed.
+        mkdir -p /workspace/ci-node/lib
+        cp /usr/local/bin/node /workspace/ci-node/node
+        cp -L /lib/x86_64-linux-gnu/libstdc++.so.6 \
+          /lib/x86_64-linux-gnu/libgcc_s.so.1 /workspace/ci-node/lib/
         node PA/n8n/verify-package.js
         node --test PA/n8n/tests/*.test.cjs
 
@@ -26,11 +32,14 @@ steps:
     env:
       - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
       - 'GCE_METADATA_HOST=127.0.0.1:9'
+      - 'PATH=/workspace/ci-node:/usr/local/bin:/usr/local/sbin:/usr/sbin:/usr/bin:/sbin:/bin'
+      - 'LD_LIBRARY_PATH=/workspace/ci-node/lib'
     args:
       - '-c'
       - |
         set -euo pipefail
         cd /workspace/kb-rag-system
+        node --version
         python -m pip install --no-cache-dir --require-hashes \
           -r requirements-dev.lock
         detect-secrets scan --all-files . \

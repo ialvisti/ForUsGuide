@@ -394,3 +394,28 @@ def test_current_plan_successor_assertion_is_not_an_individual_transfer_or_effec
 ])
 def test_speculative_or_conflicting_successor_assertion_is_not_a_fact(note):
     assert value_for(operational(note), 'servicing_successor_reported') is None
+
+
+def test_verified_disclosure_requires_identity_source_and_date_without_other_pii():
+    from data_pipeline.gr_payload_builder import build_collected_data
+    modules = {'census': {'First Name': 'Alex', 'Last Name': 'PRIVATE_CANARY', 'Primary Email': 'private@example.test'}, 'savings_rate': {'Account Balance': '$500.00', 'Account Balance As Of': '2026-09-01'}}
+    meta = {'extraction_diagnostics': {'modules': {'census': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z'}, 'savings_rate': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z'}}}}
+    identity = {'identity_resolution_status': 'matched', 'identity_verified': True}
+    data = build_collected_data(modules, {}, {}, participant_meta=meta, identity_context=identity)
+    facts = data['internal_disclosure_context']['facts']
+    assert facts['first_name']['value'] == 'Alex'
+    assert facts['account_balance']['value'] == 500
+    assert facts['account_balance']['as_of'] == '2026-09-01'
+    assert 'PRIVATE_CANARY' not in str(facts) and 'private@example.test' not in str(facts)
+    assert 'vested_balance' not in facts
+    unverified = build_collected_data(modules, {}, {}, participant_meta=meta, identity_context={**identity, 'identity_verified': False})
+    assert 'internal_disclosure_context' not in unverified
+
+
+def test_disclosure_does_not_trust_ticket_fields_or_failed_or_undated_scrapes():
+    from data_pipeline.gr_payload_builder import build_collected_data
+    identity = {'identity_resolution_status': 'matched', 'identity_verified': True}
+    data = build_collected_data({'census': {'First Name': 'Alex'}}, {}, {'account_balance': {'value': 500, 'evidence': 'I have 500'}}, identity_context=identity)
+    assert not data.get('internal_disclosure_context')
+    data = build_collected_data({'census': {'First Name': 'Alex'}}, {}, {}, identity_context=identity, participant_meta={'extraction_diagnostics': {'modules': {'census': {'dataState': 'parse_error', 'observedAt': '2026-09-11T18:00:00Z'}}}})
+    assert not data.get('internal_disclosure_context')

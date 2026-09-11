@@ -175,3 +175,48 @@ def test_loan_history_empty_state_survives_prompt_projection():
     from data_pipeline.prompts import _format_internal_preflight
     output = _format_internal_preflight({'loans': {'status': 'empty', 'outstanding_status': 'zero'}})
     assert json.loads(output.split('\n', 1)[1])['loans'] == {'status': 'empty', 'outstanding_status': 'zero'}
+
+@pytest.mark.parametrize('verified', [True, False])
+async def test_verified_disclosure_requests_name_and_reaches_reasoning_only_with_provenance(verified):
+    orch, rag, _ = setup(fields={'participant_data': [{'field': 'account_balance'}]})
+    orch._scrape_all.return_value = (
+        {'census': {'First Name': 'Alex'}, 'savings_rate': {'Account Balance': 500}}, {},
+        {'participant': {'extraction_diagnostics': {'modules': {
+            'census': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z'},
+            'savings_rate': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z'},
+        }}}}, 'ok',
+    )
+    identity = {'identity_resolution_status': 'matched', 'identity_verified': verified,
+                'response_source_reason': 'account_context_required'}
+    ext = ExtractedInquiry('What is my account balance?', 'LT Trust', '401(k)', 'balance')
+    result = await orch._handle_gr(ext, request(identity_context=identity), CLASSIFICATION, 1)
+    modules = {m['key']: m['fields'] for m in result.diagnostics['mapped_modules']}
+    assert ('First Name' in modules['census']) is verified
+    data = rag.generate_response.await_args.kwargs['collected_data']
+    if verified:
+        from data_pipeline.prompts import _format_collected_data
+        facts = data['internal_disclosure_context']['facts']
+        assert facts['first_name']['value'] == 'Alex'
+        assert facts['account_balance']['value'] == 500
+        rendered = _format_collected_data(data)
+        assert 'participant.census.First Name' in rendered
+        assert '2026-09-11T18:00:00Z' in rendered
+    else:
+        assert 'internal_disclosure_context' not in data
+
+async def test_n8n_selected_account_contract_drives_name_request_and_disclosure():
+    import subprocess
+    from pathlib import Path
+    root = Path(__file__).resolve().parents[2]
+    script = "const fs=require('fs'),vm=require('vm');const s=fs.readFileSync(process.argv[1],'utf8');const selected={Result:'Participant was found',userData:{pptId:'111',planId:'222'}};const i=vm.runInNewContext('(function(){'+s+'\\n})()',{$:name=>name==='Participant Search'?{first:()=>({json:selected})}:{item:{json:{userData:{pptId:'111',planId:'222'}}}}});process.stdout.write(JSON.stringify(i));"
+    identity = json.loads(subprocess.check_output(['node', '-e', script, str(root/'PA/n8n/candidates/handle-ticket-identity.js')], text=True))
+    req = request(identity_context=identity)
+    orch, rag, _ = setup()
+    orch._scrape_all.return_value = (
+        {'census': {'First Name': 'Alex'}}, {},
+        {'participant': {'extraction_diagnostics': {'modules': {'census': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z'}}}}}, 'ok',
+    )
+    result = await orch._handle_gr(ExtractedInquiry('What is my account balance?', 'LT Trust', '401(k)', 'balance'), req, CLASSIFICATION, 1)
+    assert any(m['key']=='census' and 'First Name' in m['fields'] for m in result.diagnostics['mapped_modules'])
+    data = rag.generate_response.await_args.kwargs['collected_data']
+    assert data['internal_disclosure_context']['facts']['first_name']['value'] == 'Alex'

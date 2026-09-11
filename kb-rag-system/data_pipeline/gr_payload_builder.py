@@ -697,6 +697,52 @@ def _unknown_source() -> Dict[str, Any]:
             "as_of": None, "observed_at": None}
 
 
+def project_verified_participant_facts(value: Any) -> Dict[str, Any]:
+    """Narrow approved disclosure contract, independent of model assertions."""
+    from data_pipeline.forusbots_catalog import _safe_diagnostic_timestamp
+
+    if not isinstance(value, Mapping) or value.get("identity_verified") is not True or value.get("identity_resolution_status") != "matched":
+        return {}
+    raw = value.get("facts")
+    if not isinstance(raw, Mapping):
+        return {}
+    allowed = {"first_name": "participant.census.First Name"}
+    allowed.update({SAVINGS_MAP[label]: f"participant.savings_rate.{label}" for label in (
+        "Account Balance", "Employee Deferral Balance", "Roth Deferral Balance",
+        "Rollover Balance", "Employer Match Balance", "Employer Match Vested Balance",
+    )})
+    facts: Dict[str, Any] = {}
+    for key, source in allowed.items():
+        entry = raw.get(key)
+        if not isinstance(entry, Mapping) or entry.get("source") != source or entry.get("status") != "known":
+            continue
+        observed = _safe_diagnostic_timestamp(entry.get("observed_at"))
+        as_of = _normalize_lifecycle_date(entry.get("as_of"))
+        if not observed and not as_of:
+            continue
+        item = entry.get("value")
+        if key == "first_name":
+            valid = isinstance(item, str) and 0 < len(item.strip()) <= 80 and all(c.isalpha() or c in " .'-" for c in item)
+        else:
+            valid = type(item) in (int, float) and isfinite(item)
+        if valid:
+            facts[key] = {"value": item, "status": "known", "source": source,
+                          "observed_at": observed, "as_of": as_of}
+    return {"identity_verified": True, "identity_resolution_status": "matched", "facts": facts} if facts else {}
+
+
+def _build_disclosure_context(participant: Mapping[str, Any], preflight: Mapping[str, Any],
+                              meta: Optional[Mapping[str, Any]], identity: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    if not isinstance(identity, Mapping) or identity.get("identity_verified") is not True or identity.get("identity_resolution_status") != "matched":
+        return {}
+    facts = dict(preflight.get("sources") or {})
+    name_evidence = _source_diagnostic(meta, "census", "First Name")
+    if name_evidence.get("data_state") == "ok":
+        facts["first_name"] = {"value": participant.get("first_name"), "status": "known",
+                               "source": "participant.census.First Name", "observed_at": name_evidence.get("observed_at")}
+    return project_verified_participant_facts({**identity, "facts": facts})
+
+
 def _build_preflight_context(participant: Mapping[str, Any],
                              meta: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     sources: Dict[str, Any] = {}
@@ -768,6 +814,7 @@ def build_collected_data(
     company_status_detail: Optional[str] = None,
     participant_meta: Optional[Mapping[str, Any]] = None,
     plan_meta: Optional[Mapping[str, Any]] = None,
+    identity_context: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """collected_data determinístico: {participant_data, plan_data}.
 
@@ -812,6 +859,7 @@ def build_collected_data(
     # Only scraped data can establish preflight facts. Ticket assertions remain
     # participant-reported values and cannot silently satisfy source checks.
     internal_preflight_context = _build_preflight_context(participant, participant_meta)
+    internal_disclosure_context = _build_disclosure_context(participant, internal_preflight_context, participant_meta, identity_context)
 
     # Conceptos derivados en código (nunca por el LLM):
     derived_first_contribution = derive_first_contribution_posted_status(participant)
@@ -847,6 +895,8 @@ def build_collected_data(
 
     collected: Dict[str, Any] = {"participant_data": participant,
                                "internal_preflight_context": internal_preflight_context}
+    if internal_disclosure_context:
+        collected["internal_disclosure_context"] = internal_disclosure_context
     if plan:
         collected["plan_data"] = plan
     if internal_plan_context is not None:

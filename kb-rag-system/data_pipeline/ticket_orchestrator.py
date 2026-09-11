@@ -767,6 +767,7 @@ class TicketOrchestrator:
             company_name=req.company_name, company_status=req.company_status,
             company_status_detail=getattr(req, "company_status_detail", None),
             participant_meta=scrape_meta.get("participant"), plan_meta=scrape_meta.get("plan"),
+            identity_context=req.identity_context.model_dump() if getattr(req, "identity_context", None) is not None else None,
         )
         collected_data["internal_response_context"] = {
             "requested_questions": [
@@ -827,6 +828,8 @@ class TicketOrchestrator:
         """
         text = ext.inquiry.lower()
         topic = ext.topic.lower()
+        identity = getattr(req, "identity_context", None)
+        name_fields = ["First Name"] if identity is not None and identity.identity_verified is True and identity.identity_resolution_status == "matched" else []
         identifier_modules = [{"key": "plan_design", "fields": ["rk_plan_id", "record_keeper_id"]}] if re.search(
             r"\bplan (?:id|identifier|number|code)\b", text,
         ) else []
@@ -840,7 +843,7 @@ class TicketOrchestrator:
             return identifier_modules
         return identifier_modules + [
             {"key": "basic_info", "fields": ["status", "status_as_of", "active"]},
-            {"key": "census", "fields": ["Eligibility Status", "Termination Date", "Rehire Date", "Birth Date", "Crypto Enrollment"]},
+            {"key": "census", "fields": name_fields + ["Eligibility Status", "Termination Date", "Rehire Date", "Birth Date", "Crypto Enrollment"]},
             {"key": "savings_rate", "fields": ["Account Balance", "Account Balance As Of", "Employee Deferral Balance", "Roth Deferral Balance", "Rollover Balance", "Employer Match Balance", "Employer Match Vested Balance", "Loan Balance"]},
             {"key": "loans", "fields": ["Loan History"]},
         ]

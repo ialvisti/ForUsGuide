@@ -27,13 +27,14 @@ class ExtractedInquiryOut(BaseModel):
     record_keeper: Optional[str] = Field(default=None, max_length=100)
     plan_type: Optional[str] = Field(default=None, max_length=50)
     related_inquiries: List[str] = Field(default_factory=list, max_length=10)
+    requested_questions: List[str] = Field(default_factory=list, max_length=12)
 
     @field_validator("topic")
     @classmethod
     def _norm_topic(cls, v: str) -> str:
         return v.strip().lower()
 
-    @field_validator("related_inquiries")
+    @field_validator("related_inquiries", "requested_questions")
     @classmethod
     def _bound_related(cls, v: List[str]) -> List[str]:
         return [s[:1000] for s in v]

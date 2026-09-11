@@ -436,7 +436,7 @@ class TestRequiredDataSafetyNetIntegration:
                 "article_id": "a1",
                 "article_title": "Rollover Article",
                 "content": (
-                    "# Required Data — Must Have (Portal/Profile Data)\n"
+                    "Legacy required fields (unstructured)\n"
                     "### Termination date\n"
                     "**Description:** date terminated.\n"
                     "**Why needed:** eligibility.\n"
@@ -2108,3 +2108,32 @@ class TestEvalFixesF1F2F7:
         )
         assert profile["signals"]["incoming_rollover"] is False
         assert profile["primary_action"] != "incoming_rollover"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('outcome,escalation,expected', [
+    ('blocked_missing_data', False, True), ('ambiguous_plan_rules', False, True),
+    ('can_proceed', True, True), ('blocked_not_eligible', False, False),
+])
+async def test_gr_marks_business_handoff_after_final_answer_even_when_questions_covered(mock_rag_engine, outcome, escalation, expected):
+    from data_pipeline.llm_router import LLMResponse
+    chunk = {'id': 'loan_policy', 'score': 0.9, 'metadata': {
+        'article_id': 'loan_policy', 'article_title': 'Loan policy',
+        'chunk_type': 'business_rules', 'content': 'Plan confirmation may be needed.',
+    }}
+    engine = mock_rag_engine
+    engine._decompose_question = AsyncMock(return_value=['loan eligibility'])
+    engine._search_for_response_parallel_cascade = AsyncMock(return_value=([chunk], {}))
+    engine._add_response_article_bundles = AsyncMock(return_value=([chunk], {'articles_added': []}))
+    engine._build_context_with_diversity_and_tiers = Mock(return_value=('Plan rules.', [chunk], 3, {}))
+    parsed = {'outcome': outcome, 'outcome_reason': 'Policy result.',
+              'response_to_participant': {'opening': 'Plan confirmation may be needed.', 'key_points': [], 'steps': [], 'warnings': []},
+              'questions_to_ask': [], 'escalation': {'needed': escalation, 'reason': None},
+              'guardrails_applied': [], 'data_gaps': [], 'coverage_gaps': [],
+              'question_coverage': [{'question_index': 0, 'status': 'answered', 'answer_reference': 'Plan confirmation may be needed.'}]}
+    engine._call_llm = AsyncMock(return_value=LLMResponse(content=_json.dumps(parsed), usage={}, provider_used='openai', model_used='test'))
+    result = await engine.generate_response('What are the loan rules?', None, '401(k)', 'loan',
+        {'internal_response_context': {'requested_questions': ['What are the loan rules?']}}, 5500)
+    assert result.response['outcome'] == outcome
+    assert result.metadata['incomplete_question_count'] == 0
+    assert result.metadata['human_review_required'] is expected

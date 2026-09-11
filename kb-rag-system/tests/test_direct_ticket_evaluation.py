@@ -615,3 +615,21 @@ def test_direct_provider_failure_is_a_sanitized_durable_evaluation(
     client.app.state.ticket_evaluation_publisher.publish_execution.assert_awaited_once_with(
         invocation_id
     )
+
+
+def test_identity_context_change_cannot_replay_an_old_account_answer(producer_client):
+    client, _backend = producer_client
+    client.app.state.rag_engine.ask_knowledge_question = AsyncMock(return_value=_knowledge_result())
+    request = {'question': 'Where is my account?', 'ticket_id': 'TKT-1234',
+               'identity_context': {'identity_resolution_status': 'matched',
+                                    'response_source_reason': 'general_knowledge'}}
+    headers = {'X-API-Key': 'test-api-key', 'Idempotency-Key': 'identity-context-event-0001'}
+    first = client.post('/api/v1/knowledge-question', json=request, headers=headers)
+    same = client.post('/api/v1/knowledge-question', json=request, headers=headers)
+    request['identity_context'] = {'identity_resolution_status': 'ambiguous',
+                                   'response_source_reason': 'account_ambiguous'}
+    changed = client.post('/api/v1/knowledge-question', json=request, headers=headers)
+    assert first.status_code == same.status_code == 200
+    assert changed.status_code == 409
+    assert changed.json()['detail']['code'] == 'IDEMPOTENCY_PAYLOAD_CONFLICT'
+    client.app.state.rag_engine.ask_knowledge_question.assert_awaited_once()

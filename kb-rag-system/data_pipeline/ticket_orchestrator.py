@@ -172,6 +172,7 @@ class ExtractedInquiry:
     plan_type: str
     topic: str
     related_inquiries: Optional[List[str]] = None
+    requested_questions: Optional[List[str]] = None
 
 
 @dataclass
@@ -464,6 +465,7 @@ class TicketOrchestrator:
                 "record_keeper": it.get("record_keeper"),
                 "plan_type": it.get("plan_type") or _DEFAULT_PLAN_TYPE,
                 "related_inquiries": it.get("related_inquiries") or [],
+                "requested_questions": it.get("requested_questions") or [],
             }
             try:
                 out = ExtractedInquiryOut.model_validate(normalized)
@@ -480,6 +482,7 @@ class TicketOrchestrator:
                 plan_type=_DEFAULT_PLAN_TYPE,
                 topic=out.topic,
                 related_inquiries=out.related_inquiries or None,
+                requested_questions=self._evidenced_questions(out.requested_questions, req) or None,
             ))
         if dropped:
             logger.warning("extract_inquiries: %d items inválidos descartados", dropped)
@@ -612,7 +615,11 @@ class TicketOrchestrator:
             )
             question = f"{question} ({fallback})"
 
-        kq = await self.deps.rag_engine.ask_knowledge_question(question=question)
+        identity_context = getattr(req, "identity_context", None)
+        kq = await self.deps.rag_engine.ask_knowledge_question(
+            question=question,
+            **({"identity_context": identity_context.model_dump()} if identity_context is not None else {}),
+        )
         return InquiryOutcome(
             inquiry=ext.inquiry, topic=ext.topic, route="knowledge_question",
             record_keeper=ext.record_keeper, plan_type=ext.plan_type,
@@ -648,9 +655,10 @@ class TicketOrchestrator:
                 "timeout", "transport", "rate_limit", "server_error",
                 "circuit_open",
             }
-            failure_kind = rd_metadata.get("retrieval_failure_kind")
+            failure_kind = rd_metadata.get("required_data_failure_kind") or rd_metadata.get("retrieval_failure_kind")
             if failure_kind not in transient_kinds | {
-                "client_error", "unknown",
+                "client_error", "unknown", "invalid_json", "schema_rejected",
+                "empty_extraction", "provider_error",
             }:
                 failure_kind = "unknown"
             diag["required_data_failure"] = {
@@ -678,6 +686,26 @@ class TicketOrchestrator:
         extraction_candidates: List[Dict[str, Any]] = []
         if flat_fields:
             modules, extraction_candidates = await self._map_fields(flat_fields, diag)
+        # Conversation requirements have their own evidence boundary. They
+        # must never become a portal module or require the participant to
+        # repeat information already present in the authorized ticket text.
+        conversation_fields = rd_metadata.get("conversation_fields", []) if isinstance(rd_metadata, dict) else []
+        seen = {forusbots_catalog._normalize_slug(str(it.get("field"))) for it in extraction_candidates}
+        if isinstance(conversation_fields, list):
+            for item in conversation_fields[:60]:
+                if not isinstance(item, dict) or item.get("source") not in {"message_text", "agent_input"}:
+                    continue
+                name = item.get("field")
+                if not isinstance(name, str) or not name.strip():
+                    continue
+                slug = forusbots_catalog._normalize_slug(name)
+                if slug not in seen:
+                    extraction_candidates.append(item)
+                    seen.add(slug)
+        case_modules = self._case_modules(ext, req)
+        if case_modules:
+            modules = forusbots_catalog.merge_module_lists(modules, case_modules)
+            diag["case_data_requirements"] = [m["key"] for m in case_modules]
         diag["mapped_modules"] = modules
 
         # This diagnostic block becomes part of the durable per-inquiry
@@ -737,7 +765,16 @@ class TicketOrchestrator:
         collected_data = gr_payload_builder.build_collected_data(
             ppt_modules, plan_modules, extracted,
             company_name=req.company_name, company_status=req.company_status,
+            company_status_detail=getattr(req, "company_status_detail", None),
+            participant_meta=scrape_meta.get("participant"), plan_meta=scrape_meta.get("plan"),
         )
+        collected_data["internal_response_context"] = {
+            "requested_questions": [
+                redact_retrieval_context(q, sensitive_literals=self._participant_sensitive_literals(req))
+                for q in (self._evidenced_questions(ext.requested_questions or [], req) or [ext.inquiry])
+            ],
+            "intent_source": "inquiry_extraction",
+        }
 
         # 4) el body-builder queda como agente de REDACCIÓN: enriquece la
         # inquiry y afina el topic. Nada más de su output se usa.
@@ -769,6 +806,44 @@ class TicketOrchestrator:
             record_keeper=ext.record_keeper, plan_type=ext.plan_type,
             scrape_status=scrape_status, generate_result=gr, diagnostics=diag,
         )
+
+    @staticmethod
+    def _evidenced_questions(questions: List[str], req: Any) -> List[str]:
+        """Keep literal questions from this request, never invented actions."""
+        def normalize(value: str) -> str:
+            return " ".join(value.split()).casefold()
+        text = normalize(f"{req.ticket.email_subject} {req.ticket.email_body}")
+        return list(dict.fromkeys(q.strip() for q in questions[:12]
+                                 if isinstance(q, str) and q.strip() and normalize(q) in text))
+
+    @staticmethod
+    def _case_modules(ext: ExtractedInquiry, req: Any) -> List[Dict[str, Any]]:
+        """Collect a bounded case preflight in the initial durable operation.
+
+        KB articles describe procedures; they cannot establish current plan
+        custody. An account-specific movement/eligibility question therefore
+        also needs plan-side lifecycle facts and participant preflight. This
+        does not introduce a second submit under the same durable receipt.
+        """
+        text = ext.inquiry.lower()
+        topic = ext.topic.lower()
+        identifier_modules = [{"key": "plan_design", "fields": ["rk_plan_id", "record_keeper_id"]}] if re.search(
+            r"\bplan (?:id|identifier|number|code)\b", text,
+        ) else []
+        financial = topic in {
+            "termination_distribution_request", "in_service_withdrawal", "in_service_withdrawal_request",
+            "hardship_withdrawal", "hardship_withdrawal_request", "loan_request",
+            "outgoing_rollover", "outgoing_rollover_request", "distribution_request",
+        } or (topic in {"rollover", "distribution", "withdrawal", "hardship", "loan", "balance"}
+              and bool(re.search(r"\b(?:my|participant|their|account|former|employer)\b", text)))
+        if not financial:
+            return identifier_modules
+        return identifier_modules + [
+            {"key": "basic_info", "fields": ["status", "status_as_of", "active"]},
+            {"key": "census", "fields": ["Eligibility Status", "Termination Date", "Rehire Date", "Birth Date", "Crypto Enrollment"]},
+            {"key": "savings_rate", "fields": ["Account Balance", "Account Balance As Of", "Employee Deferral Balance", "Roth Deferral Balance", "Rollover Balance", "Employer Match Balance", "Employer Match Vested Balance", "Loan Balance"]},
+            {"key": "loans", "fields": ["Loan History"]},
+        ]
 
     @staticmethod
     def _participant_sensitive_literals(req: Any) -> Tuple[str, ...]:

@@ -576,6 +576,19 @@ class IndexStatsResponse(BaseModel):
 # Knowledge Question Models
 # ============================================================================
 
+class IdentityResolutionContext(BaseModel):
+    """Lookup provenance from the authenticated workflow, never from ticket prose.
+
+    Resolving an account does not grant access or prove verified identity.
+    Only identifier types are retained, never their sensitive values.
+    """
+    model_config = ConfigDict(extra="forbid")
+    identity_resolution_status: Literal["matched", "ambiguous", "not_found", "access_error"]
+    response_source_reason: Literal["general_knowledge", "account_not_found", "account_ambiguous", "account_lookup_failed", "account_context_required"]
+    identity_verified: bool = False
+    provided_identifiers: List[Literal["name", "email", "employer", "date_of_birth", "last_four_ssn"]] = Field(default_factory=list, max_length=5)
+
+
 class KnowledgeQuestionRequest(BaseModel):
     """Request para el endpoint /knowledge-question."""
 
@@ -585,6 +598,7 @@ class KnowledgeQuestionRequest(BaseModel):
         max_length=2000,
         description="General knowledge question about 401(k) plans, processes, or rules"
     )
+    identity_context: Optional[IdentityResolutionContext] = None
 
     ticket_id: Optional[str] = Field(
         default=None,
@@ -786,6 +800,7 @@ class HandleTicketRequest(BaseModel):
     """Request para el endpoint end-to-end /api/v1/handle-ticket."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    identity_context: Optional[IdentityResolutionContext] = None
 
     participant_id: str = Field(..., min_length=1, max_length=32,
                                 pattern=r"^[A-Za-z0-9_-]+$",
@@ -843,6 +858,7 @@ class HandleTicketV2Request(BaseModel):
     exclusivamente server-side). ``extra="forbid"`` rechaza ambos con 422."""
 
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+    identity_context: Optional[IdentityResolutionContext] = None
 
     participant_id: str = Field(..., min_length=1, max_length=32,
                                 pattern=r"^[A-Za-z0-9_-]+$")

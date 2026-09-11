@@ -6,6 +6,20 @@
 serviceAccount: 'projects/rag-kb-system/serviceAccounts/ticket-controller-verify@rag-kb-system.iam.gserviceaccount.com'
 
 steps:
+  - name: 'node:22-bookworm-slim@sha256:83f487e0a63425e5b4d146fb5e5be574bcbe1b7b843d3ebafdd95eaf7767a7e5'
+    id: 'pa-consumer-contracts'
+    entrypoint: bash
+    env:
+      - 'GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json'
+      - 'GCE_METADATA_HOST=127.0.0.1:9'
+    args:
+      - '-c'
+      - |
+        set -euo pipefail
+        cd /workspace
+        node PA/n8n/verify-package.js
+        node --test PA/n8n/tests/*.test.cjs
+
   - name: 'python:3.12-slim@sha256:64695412729fbe8cf054511723820c82bbe5a077d4a6b4070cd4a7225d3422ce'
     id: 'python-gates'
     entrypoint: bash

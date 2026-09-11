@@ -243,7 +243,7 @@ def test_verify_local_build_denies_adc_and_metadata_to_every_step_and_smoke() ->
     ).read_text(encoding="utf-8")
 
     step_count = controller.count("\n  - name:")
-    assert step_count == 9
+    assert step_count == 10
     assert controller.count(
         "GOOGLE_APPLICATION_CREDENTIALS=/workspace/ci-no-google-credentials.json"
     ) >= step_count + 3

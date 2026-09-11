@@ -1,0 +1,138 @@
+{
+  "schema_version": 1,
+  "status": "local_candidate_not_published",
+  "observed_at": "2026-09-11",
+  "workflows": {
+    "fug": {
+      "id": "BQvxrc3YiP4ZWbNQ",
+      "name": "FUG",
+      "version": "9e6113af-47cb-43e7-8fbc-37d89c982ce4",
+      "observed_state": "unpublished"
+    },
+    "identity": {
+      "id": "oNbQTCY1iQxtdd54",
+      "name": "Participant Search Fix",
+      "version": "df36189c-f432-408e-b57f-47033e079194",
+      "observed_state": "published"
+    },
+    "final": {
+      "id": "CziwYCQlGgliAuhi",
+      "name": "Decision, Response, Notes",
+      "version": "55d4ee57-eee2-4978-ac16-3f82176385c8",
+      "observed_state": "published"
+    }
+  },
+  "replacements": [
+    {
+      "workflow": "fug",
+      "node_role_or_observed_name": "GR formatter",
+      "baseline": "baselines/format-gr.js",
+      "baseline_sha256": "214bf340994f8f165ad8af0996038cac8afaa8899ab32244176ac77ac981bd0a",
+      "candidate": "candidates/format-gr.js",
+      "candidate_sha256": "6921076b6882129a367b3c492479662b28a1954816a9ef78d9317d5c49a79662",
+      "parameter_kind": "code",
+      "wrapping": "replace jsCode with complete candidate source"
+    },
+    {
+      "workflow": "fug",
+      "node_role_or_observed_name": "KQ formatter",
+      "baseline": "baselines/format-kq.js",
+      "baseline_sha256": "7e9a4266d81dbdacdbb4d564fb65bb545cee485c59218457f96144cba3495c69",
+      "candidate": "candidates/format-kq.js",
+      "candidate_sha256": "60f782af9cb8e4594d34d14b6fdcd8fe7877a5e7a140cf37e41d621280120fc8",
+      "parameter_kind": "code",
+      "wrapping": "replace jsCode with complete candidate source"
+    },
+    {
+      "workflow": "fug",
+      "node_role_or_observed_name": "Knowledge Question",
+      "baseline": "baselines/knowledge-question-body.js",
+      "baseline_sha256": "16c1937ad4b78486ea72cabeaff923b4dd9bfcc23243c8917703c25302989a65",
+      "candidate": "candidates/knowledge-question-body.js",
+      "candidate_sha256": "e90bfffac223259ed1e58141893aaa8f21f12904ed716b4da6e9ecc7d6105515",
+      "parameter_kind": "expression_body",
+      "wrapping": "{{ (() => { <candidate source> })() }}"
+    },
+    {
+      "workflow": "fug",
+      "node_role_or_observed_name": "Stop Unsafe Terminal Result",
+      "baseline": "baselines/internal-handoff.js",
+      "baseline_sha256": "1618fa243a29542d227f098196c1a7d68acdcd18d5878bf0340778f0dc14c417",
+      "candidate": "candidates/internal-handoff.js",
+      "candidate_sha256": "5002459d604d28b4e73ddec2b98808bf23fe222b01ff565d14c43eef8aac3796",
+      "parameter_kind": "code",
+      "wrapping": "replace jsCode with complete candidate source"
+    },
+    {
+      "workflow": "identity",
+      "node_role_or_observed_name": "Validate Match1",
+      "baseline": "baselines/validate-match.js",
+      "baseline_sha256": "abef037687c1e78c47f42c77a1d65ac41620836b761bc57e98c2c7adf09de71a",
+      "candidate": "candidates/validate-match.js",
+      "candidate_sha256": "74337b5b3c9d45d70af3ecc13772a3b2571faf38901b586dc22b3f02478cba4b",
+      "parameter_kind": "code",
+      "wrapping": "replace jsCode with complete candidate source"
+    },
+    {
+      "workflow": "identity",
+      "node_role_or_observed_name": "Code in JavaScript",
+      "baseline": "baselines/identity-unresolved.js",
+      "baseline_sha256": "7d9c3754b59d34a4a19dd06cdd48f71daa24d7d0378b2042ab2273606f1988fe",
+      "candidate": "candidates/identity-unresolved.js",
+      "candidate_sha256": "eaee2db38a60256448afbc95cd9a7be583827a9ee7f255fee47d260332b092c2",
+      "parameter_kind": "code",
+      "wrapping": "replace jsCode with complete candidate source"
+    },
+    {
+      "workflow": "final",
+      "node_role_or_observed_name": "Data extractor",
+      "baseline": "baselines/final-data-extractor.js",
+      "baseline_sha256": "28283c097121c223cdbd75f358514504ccc227e2b5961c46580282d17b5b5737",
+      "candidate": "candidates/final-data-extractor.js",
+      "candidate_sha256": "de838530e6492fceb7077e833388378f472cf5e5afb9ddf1e3eeba9226e14460",
+      "parameter_kind": "code",
+      "wrapping": "replace jsCode with complete candidate source"
+    }
+  ],
+  "addenda": [
+    {
+      "file": "../DevRev/PA_REMEDIATION_ADDENDUM.md",
+      "sha256": "b63ca8e227a0d553dd3254467121cc9565a15e415323a90b344f2e4a5459df76",
+      "target": "DevRev AGENT-3 8.0 Live",
+      "original_prompt_sha256": "6859f17f7cc599b9b0ec9ac134f428b1de2ef6973a81297db7338bd411640bc5"
+    },
+    {
+      "file": "PA_PARSER_ADDENDUM.md",
+      "sha256": "d598077defb7bf40380dc139d831c35a78a3ca44252666bef779f6b018d40456",
+      "target": "final / JSON parser AI Agent",
+      "original_prompt_sha256": "ce630d3c03e32fcfc51feb698a364b8deef7234594ee1eabd0b5ba9e76801090"
+    }
+  ],
+  "new_internal_terminal": {
+    "workflow": "fug",
+    "from": "Stop Unsafe Terminal Result",
+    "to_proposed_name": "Record PA Human Review",
+    "method": "POST",
+    "existing_api_contract": "DevRev timeline-entries.create",
+    "body": {
+      "object": "={{ $json.ticketId }}",
+      "body": "={{ $json.body }}",
+      "visibility": "internal",
+      "type": "timeline_comment"
+    },
+    "credential": "reuse existing authorized DevRev credential; do not copy literal headers",
+    "outgoing_connections": [],
+    "tags": [],
+    "participant_messages": false,
+    "stage_changes": false,
+    "publication_requires_approval": true
+  },
+  "preconditions": [
+    "Re-read current workflow version, node source and prompt hashes. Stop on material drift.",
+    "FUG is unpublished; do not activate as a side effect of editing.",
+    "Use existing authenticated sessions and credentials; preserve permissions.",
+    "Addenda prepend to current structured prompts; preserve original formatting and privacy rules.",
+    "Final input has no independently correlated backend decision; model recommendation remains advisory.",
+    "Run controlled workflow integration with external publication disabled before any production traffic."
+  ]
+}

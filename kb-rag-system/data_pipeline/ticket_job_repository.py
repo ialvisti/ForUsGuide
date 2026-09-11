@@ -1330,6 +1330,7 @@ class TicketJobRepository:
         tenant_id: Optional[str] = None,
         principal_id: Optional[str] = None,
         idempotency_key: Optional[str] = None,
+        context_fingerprint: Optional[str] = None,
     ) -> tuple[str, Optional[Document]]:
         """Atomically reserve or replay a ticket-associated direct RAG call.
 
@@ -1378,6 +1379,11 @@ class TicketJobRepository:
                     "direct invocation idempotency requires a principal"
                 )
 
+        if context_fingerprint is not None and (
+            not isinstance(context_fingerprint, str)
+            or re.fullmatch(r"[0-9a-f]{64}", context_fingerprint) is None
+        ):
+            raise ValueError("direct invocation context fingerprint is invalid")
         normalized_inquiry = inquiry.strip()
         normalized_topic = topic.strip()
         request_fingerprint = fingerprint_request({
@@ -1386,6 +1392,7 @@ class TicketJobRepository:
             "inquiry": normalized_inquiry,
             "topic": normalized_topic,
             "tenant_id": tenant_id,
+            **({"context_fingerprint": context_fingerprint} if context_fingerprint is not None else {}),
         })
         direct_receipt_id: Optional[str] = None
         if idempotency_key is not None:

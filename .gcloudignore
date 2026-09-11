@@ -13,6 +13,14 @@
 !infra/terraform/**
 !PA/
 !PA/**/
+!PA/DevRev/PA_REMEDIATION_ADDENDUM.md
+!PA/DevRev/PA_REMEDIATION_RELEASE.md
+!PA/n8n/*.js
+!PA/n8n/*.md
+!PA/n8n/release-manifest.manifest
+!PA/n8n/baselines/*.js
+!PA/n8n/candidates/*.js
+!PA/n8n/tests/*.cjs
 !PA/Loans/Vanguard: How to Submit a Loan Request.json
 !PA/Loans/LT: 401(k) Loan Complete Guide — Submission, Repayment & Support.json
 !PA/Loans/401(k) Loan Basics and Support Guide.json
@@ -76,6 +84,7 @@ kb-rag-system/rag-testing/**
 !kb-rag-system/rag-testing/
 !kb-rag-system/rag-testing/ground_truth.py
 !kb-rag-system/rag-testing/pa_three_four_star_cases.json
+!kb-rag-system/rag-testing/pa_integral_cases.json
 !kb-rag-system/rag-testing/ticket_differential.py
 !kb-rag-system/rag-testing/ticket_differential_thresholds.json
 kb-rag-system/STRESS_TEST_COMPARISON_REPORT.md

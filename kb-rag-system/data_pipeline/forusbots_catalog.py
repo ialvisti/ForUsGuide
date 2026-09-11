@@ -214,9 +214,9 @@ SLUG_MAP: Dict[str, Tuple[Tuple[str, str], ...]] = {
     # --- savings_rate ---
     "account_balance": (("savings_rate", "Account Balance"),),
     "total_balance": (("savings_rate", "Account Balance"),),
-    # Account Balance IS the participant's total vested balance (no separate
-    # "Vested Balance" field exists). Disambiguation hook may remap to
-    # Employer Match Vested Balance — see map_slug.
+    # The portal exposes total and source balances, not a total vested field.
+    # These aliases request the available components; the consumer must retain
+    # total vested as unknown unless an authoritative value is supplied.
     "vested_balance": (("savings_rate", "Account Balance"),),
     "total_vested_balance": (("savings_rate", "Account Balance"),),
     "account_total_vested_balance": (("savings_rate", "Account Balance"),),
@@ -407,7 +407,11 @@ def map_slug(item: Mapping[str, Any], *, current_year: int) -> Optional[List[Tup
             "match" in text and "vested" in text
         ):
             return [("savings_rate", "Employer Match Vested Balance")]
-        return [("savings_rate", "Account Balance")]
+        return [("savings_rate", field_name) for field_name in (
+            "Account Balance", "Account Balance As Of", "Employee Deferral Balance",
+            "Roth Deferral Balance", "Rollover Balance", "Employer Match Balance",
+            "Employer Match Vested Balance",
+        )]
 
     # Hook: general payroll → historical / explicit years / current year.
     if slug in _PAYROLL_GENERAL_GROUP:
@@ -614,7 +618,7 @@ _PLAN_HISTORY_STATUSES = frozenset({
 })
 _PLAN_HISTORY_CHANGE_FIELDS = frozenset({
     "active", "status", "terminated_status_as_of",
-    "actively_managed_status_as_of",
+    "actively_managed_status_as_of", "pending_termination_status_as_of",
 })
 _PLAN_HISTORY_MAX_ENTRIES = 50
 _PLAN_HISTORY_MAX_NOTES = 50
@@ -688,6 +692,102 @@ def _safe_history_scalar(value: Any) -> Any:
     return _bounded_history_text(value, limit=200)
 
 
+_DATA_STATES = frozenset({
+    "ok", "empty", "missing", "panel_missing", "parse_error", "access_denied", "unavailable",
+})
+_COMPLETENESS_REASONS = frozenset({
+    "entry_limit", "text_limit", "pagination", "pagination_not_exhausted", "parse_error",
+    "panel_missing", "access_denied", "unavailable", "normalization_limit", "unknown",
+    "unread_page_or_loading", "unparsed_records", "note_length_limit",
+    "loan_history_pagination_pending", "loan_history_not_confirmed",
+})
+
+
+def _safe_completeness(value: Any) -> Dict[str, Any]:
+    source = value if isinstance(value, Mapping) else {}
+    result: Dict[str, Any] = {
+        "complete": source.get("complete") if isinstance(source.get("complete"), bool) else None,
+        "truncated": source.get("truncated") if isinstance(source.get("truncated"), bool) else None,
+    }
+    for key in ("observedCount", "returnedCount", "unparsedCount"):
+        count = source.get(key)
+        if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+            result[key] = count
+    if isinstance(source.get("reason"), str) and source["reason"] in _COMPLETENESS_REASONS:
+        result["reason"] = source["reason"]
+    if isinstance(source.get("scope"), str) and source["scope"] in {"visible", "all", "selected_years", "current_year", "requested", "unknown"}:
+        result["scope"] = source["scope"]
+    ordering = source.get("ordering")
+    if ordering in ("recorded_desc_per_source_then_timeline_effective_desc", "unknown"):
+        result["ordering"] = ordering
+    panels = source.get("panels")
+    if isinstance(panels, Mapping):
+        clean_panels: Dict[str, Any] = {}
+        for name in ("notes", "timeline"):
+            panel = panels.get(name)
+            if not isinstance(panel, Mapping):
+                continue
+            clean: Dict[str, Any] = {}
+            for key in ("observedCount", "returnedCount", "eligibleCount"):
+                count = panel.get(key)
+                if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+                    clean[key] = count
+            if isinstance(panel.get("hasNextPage"), bool):
+                clean["hasNextPage"] = panel["hasNextPage"]
+                if clean["hasNextPage"]:
+                    result["complete"] = False
+            clean_panels[name] = clean
+        result["panels"] = clean_panels
+    if result["truncated"] is True:
+        result["complete"] = False
+    return result
+
+
+def _safe_diagnostic_timestamp(value: Any) -> Optional[str]:
+    if not isinstance(value, str):
+        return None
+    # Timestamps have a closed syntax, so an error message cannot be retained.
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?(?:Z|[+-]\d{2}:\d{2}))?", value):
+        return value
+    return None
+
+
+def _normalize_extraction_diagnostics(value: Any) -> Optional[Dict[str, Any]]:
+    if not isinstance(value, Mapping) or not isinstance(value.get("modules"), Mapping):
+        return None
+    modules: Dict[str, Any] = {}
+    for name, raw in value["modules"].items():
+        if name not in _KNOWN_MODULE_KEYS or not isinstance(raw, Mapping):
+            continue
+        state = raw.get("dataState")
+        module: Dict[str, Any] = {
+            "dataState": state if isinstance(state, str) and state in _DATA_STATES else "unavailable",
+            "sourceModule": name,
+            "completeness": _safe_completeness(raw.get("completeness")),
+        }
+        timestamp = _safe_diagnostic_timestamp(raw.get("observedAt"))
+        if timestamp:
+            module["observedAt"] = timestamp
+        fields = raw.get("fields")
+        if isinstance(fields, Mapping):
+            clean_fields: Dict[str, Any] = {}
+            allowed = set(PARTICIPANT_MODULES.get(name, ())) | set(PLAN_MODULES.get(name, ()))
+            for label, field_value in fields.items():
+                if label not in allowed or not isinstance(field_value, Mapping):
+                    continue
+                field_state = field_value.get("dataState")
+                item: Dict[str, Any] = {
+                    "dataState": field_state if isinstance(field_state, str) and field_state in _DATA_STATES else "unavailable",
+                }
+                source_as_of = _safe_diagnostic_timestamp(field_value.get("sourceAsOf"))
+                if source_as_of:
+                    item["sourceAsOf"] = source_as_of
+                clean_fields[label] = item
+            module["fields"] = clean_fields
+        modules[name] = module
+    return {"schemaVersion": 1, "modules": modules}
+
+
 def _normalize_plan_history(value: Any) -> Optional[Dict[str, Any]]:
     """Keep only the closed plan-lifecycle schema emitted by ForUsBots.
 
@@ -700,13 +800,14 @@ def _normalize_plan_history(value: Any) -> Optional[Dict[str, Any]]:
 
     raw_status = value.get("extractionStatus", value.get("extraction_status"))
     extraction_status = (
-        raw_status if raw_status in _PLAN_HISTORY_STATUSES else "parse_error"
+        raw_status if isinstance(raw_status, str) and raw_status in _PLAN_HISTORY_STATUSES else "parse_error"
     )
     normalized: Dict[str, Any] = {
         "schemaVersion": 1,
         "extractionStatus": extraction_status,
         "current": {},
         "entries": [],
+        "completeness": _safe_completeness(value.get("completeness")),
     }
 
     current = value.get("current")
@@ -736,6 +837,8 @@ def _normalize_plan_history(value: Any) -> Optional[Dict[str, Any]]:
                 continue
             entry: Dict[str, Any] = {"source": source}
             for source_key, target_key in (
+                ("recordedAt", "recordedAt"),
+                ("recorded_at", "recordedAt"),
                 ("occurredAt", "occurredAt"),
                 ("occurred_at", "occurredAt"),
                 ("effectiveOn", "effectiveOn"),
@@ -746,7 +849,16 @@ def _normalize_plan_history(value: Any) -> Optional[Dict[str, Any]]:
                 text_value = _bounded_history_text(raw_entry.get(source_key), limit=40)
                 if text_value:
                     entry[target_key] = text_value
-            note = _bounded_history_text(raw_entry.get("note"))
+            raw_note = raw_entry.get("note")
+            note = _bounded_history_text(raw_note)
+            note_truncated = raw_entry.get("noteTruncated") is True or (
+                isinstance(raw_note, str) and len(raw_note) > _PLAN_HISTORY_MAX_TEXT
+            )
+            if note_truncated:
+                entry["noteTruncated"] = True
+                normalized["completeness"].update({
+                    "complete": False, "truncated": True, "reason": "note_length_limit",
+                })
             if note:
                 entry["note"] = note
             safe_changes: List[Dict[str, Any]] = []
@@ -766,6 +878,15 @@ def _normalize_plan_history(value: Any) -> Optional[Dict[str, Any]]:
             entry["changes"] = safe_changes
             normalized["entries"].append(entry)
 
+    if isinstance(entries, list):
+        normalized["completeness"]["returnedCount"] = len(normalized["entries"])
+        if len(entries) > len(normalized["entries"]) or any(
+            isinstance(entry, Mapping) and isinstance(entry.get("note"), str)
+            and len(entry["note"]) > _PLAN_HISTORY_MAX_TEXT for entry in entries
+        ):
+            normalized["completeness"].update({
+                "complete": False, "truncated": True, "reason": "normalization_limit",
+            })
     return normalized
 
 
@@ -806,6 +927,12 @@ def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]
         return {}, {"shape": "empty"}
 
     data = result.get("data")
+    raw_diagnostics = result.get("extractionDiagnostics")
+    if raw_diagnostics is None and isinstance(data, Mapping):
+        raw_diagnostics = data.get("extractionDiagnostics")
+    diagnostics = _normalize_extraction_diagnostics(raw_diagnostics)
+    if diagnostics is not None:
+        meta["extraction_diagnostics"] = diagnostics
 
     # Shape 3: envelope with data.modules list
     if isinstance(data, dict) and isinstance(data.get("modules"), list):
@@ -880,6 +1007,8 @@ def normalize_scrape_result(result: Any) -> Tuple[Dict[str, Any], Dict[str, Any]
     flat = dict(modules_found)
     _attach_plan_extras(flat, result)
     if flat:
-        return flat, {"shape": "flat"}
+        meta["shape"] = "flat"
+        return flat, meta
 
-    return {}, {"shape": "empty"}
+    meta["shape"] = "empty"
+    return {}, meta

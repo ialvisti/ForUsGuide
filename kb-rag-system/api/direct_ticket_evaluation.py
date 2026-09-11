@@ -67,6 +67,7 @@ async def begin_direct_ticket_evaluation(
     route: str,
     inquiry: str,
     topic: str,
+    context_fingerprint: Optional[str] = None,
 ) -> DirectTicketEvaluationReservation:
     """Persist intent before the endpoint invokes the RAG engine."""
     if ticket_id is None:
@@ -93,6 +94,7 @@ async def begin_direct_ticket_evaluation(
                     principal_id if isinstance(principal_id, str) else None
                 ),
                 idempotency_key=idempotency_key,
+                **({"context_fingerprint": context_fingerprint} if context_fingerprint is not None else {}),
             )
         )
     except DirectRagInvocationInProgress as exc:
@@ -171,6 +173,8 @@ def direct_success_entry(
     response: Any,
 ) -> dict[str, Any]:
     """Convert a public response into the existing bounded event input."""
+    from data_pipeline.response_handoff import response_requires_review
+
     if hasattr(response, "model_dump"):
         raw = response.model_dump(mode="python")
     elif isinstance(response, Mapping):
@@ -195,10 +199,11 @@ def direct_success_entry(
         isinstance(metadata, Mapping)
         and metadata.get("error") is not None
     )
+    review_required = response_requires_review(raw.get("response"), metadata)
     entry: dict[str, Any] = {
         "route": route,
         "execution_status": "partial" if degraded else "succeeded",
-        "participant_reply_safe": not degraded,
+        "participant_reply_safe": not degraded and not review_required,
         "degraded": degraded,
         "result": {
             "inquiry": inquiry,
@@ -206,6 +211,8 @@ def direct_success_entry(
             result_key: durable_response,
         },
     }
+    if review_required:
+        entry["human_review_required"] = True
     if degraded:
         raw_failure_kind = (
             metadata.get("retrieval_failure_kind")

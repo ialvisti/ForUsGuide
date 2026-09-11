@@ -83,6 +83,10 @@ def _deps(*, llm, classify_route="knowledge_question", classification=None):
     )
     forusbots = SimpleNamespace(
         scrape_participant=AsyncMock(),
+        scrape_plan=AsyncMock(return_value=SimpleNamespace(
+            job_id="plan-fixture", elapsed_seconds=1,
+            result={"data": {"basic_info": {"status": "actively_managed", "active": True}}},
+        )),
         resume_job=AsyncMock(),
     )
     return OrchestratorDeps(rag_engine=rag, inquiry_router=router,
@@ -565,7 +569,7 @@ class TestGenerateBranch:
         assert '"state"' not in gr_user
         kw = rag.generate_response.await_args.kwargs
         # collected_data ahora es DETERMINÍSTICO (Task 5): scrape + request
-        assert kw["collected_data"] == {
+        assert {key: value for key, value in kw["collected_data"].items() if not key.startswith("internal_")} == {
             "participant_data": {"account_balance": 123},
             "plan_data": {"company_name": "StarWars Inc.",
                           "company_status": "Ongoing"},

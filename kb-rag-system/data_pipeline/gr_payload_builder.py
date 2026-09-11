@@ -17,6 +17,10 @@ Fuentes de collected_data, en orden de precedencia:
 from __future__ import annotations
 
 import re
+import hashlib
+from math import isfinite
+from datetime import date
+from decimal import Decimal, InvalidOperation
 from typing import Any, Dict, List, Mapping, Optional, Tuple
 
 # ---------------------------------------------------------------------------
@@ -147,14 +151,15 @@ _INTERNAL_HISTORY_STATUSES = frozenset({
 _KNOWN_PLAN_STATUSES = frozenset({
     "active", "ongoing", "actively_managed", "terminated", "inactive",
     "implementation", "in_implementation", "frozen", "closed",
-    "deconverted",
+    "deconverted", "pending_termination",
 })
 _US_DATE_RE = re.compile(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b")
 _ISO_DATE_RE = re.compile(r"\b(\d{4})-(\d{2})-(\d{2})\b")
 
 
 def _normalize_lifecycle_date(value: Any) -> Optional[str]:
-    text = str(value or "").strip()
+    text = str(value or "").strip().replace("–", "-").replace("—", "-")
+    text = re.sub(r"\b(\d{4})/(\d{2})/(\d{2})\b", r"\1-\2-\3", text)
     match = _ISO_DATE_RE.search(text)
     if match:
         year, month, day = (int(part) for part in match.groups())
@@ -165,7 +170,10 @@ def _normalize_lifecycle_date(value: Any) -> Optional[str]:
         month, day, year = (int(part) for part in match.groups())
     if not (1900 <= year <= 2200 and 1 <= month <= 12 and 1 <= day <= 31):
         return None
-    return f"{year:04d}-{month:02d}-{day:02d}"
+    try:
+        return date(year, month, day).isoformat()
+    except ValueError:
+        return None
 
 
 def _normalize_plan_status(value: Any) -> Optional[str]:
@@ -189,9 +197,102 @@ def _append_fact(facts: List[str], fact: Optional[str]) -> None:
         facts.append(fact[:240])
 
 
+_UNSAFE_NOTE_RE = re.compile(
+    r"\b(?:if|hypothetical|draft|example|not|never|might|could)\b|"
+    r"ignore\s+(?:all|previous)|(?:system|developer)\s*(?:prompt|message)|"
+    r"(?:tell|instruct)\s+(?:the\s+)?(?:participant|assistant)|"
+    r"(?:email|send|reveal|expose)\s+(?:private|secret|password|credential)", re.I,
+)
+# Closed, source-observed institution vocabulary. This maps an explicit note
+# label to a display value; it does not infer a provider from plan/payroll IDs.
+_SUCCESSOR_RECORDKEEPERS = {"fidelity": "Fidelity", "adp": "ADP"}
+
+
+def _operational_note_facts(entry: Mapping[str, Any], *, record_index: int = 0) -> List[Dict[str, Any]]:
+    note = entry.get("note")
+    if not isinstance(note, str) or _UNSAFE_NOTE_RE.search(note) or entry.get("noteTruncated") is True:
+        return []
+    text = note[:2000]
+    lowered = text.lower()
+    recorded_at = _normalize_lifecycle_date(entry.get("recordedAt", entry.get("occurredAt")))
+    effective_on = _normalize_lifecycle_date(entry.get("effectiveOn"))
+    if effective_on is None:
+        match = re.search(r"effective\s+date\s*:\s*([0-9/–—-]{8,10})", text, re.I)
+        if match:
+            effective_on = _normalize_lifecycle_date(match.group(1))
+    source = entry.get("source")
+    if source not in {"notes", "timeline"}:
+        return []
+    facts: List[Dict[str, Any]] = []
+    # Snapshot-local correlation only: no note text, author or participant ID
+    # contributes to this opaque reference. Separate same-date records differ.
+    record_ref = hashlib.sha256(
+        f"{source}:{record_index}:{recorded_at}:{effective_on}".encode("utf-8")
+    ).hexdigest()[:24]
+
+    def add(kind: str, value: Any) -> None:
+        facts.append({"kind": kind, "value": value, "source": f"plan_history.{source}",
+                      "recorded_at": recorded_at, "effective_on": effective_on,
+                      "record_ref": record_ref})
+
+    # A source-observed past-tense plan assertion identifies a reported servicing
+    # successor, not an individual asset transfer. Keep its effective date unknown
+    # and do not upgrade it to the stronger completed-transfer evidence below.
+    plain_successor = re.search(
+        r"\bplan\s+(?:was\s+|has been\s+)?deconverted\s+to\s+(fidelity|adp)\b",
+        lowered,
+    )
+    if plain_successor and not re.search(
+        r"\b(?:may|will|pending|planned|incorrect|wrong|supposed|mistake)\b|\?", lowered,
+    ) and len(set(re.findall(r"\b(?:fidelity|adp)\b", lowered))) == 1:
+        add("servicing_successor_reported", _SUCCESSOR_RECORDKEEPERS[plain_successor.group(1)])
+        return facts
+
+    # Bind Status to the labeled event, not to another completed task in
+    # the same note. Free narrative cannot confirm a completed transfer.
+    event_matches = list(re.finditer(r"\bevent\s*:\s*([^\n.;]+)", lowered))
+    # Multiple events in one record require review; never borrow the status or
+    # provider from an unrelated event or from instructions in the Notes body.
+    if len(event_matches) != 1:
+        return []
+    event_match = event_matches[0]
+    event = event_match.group(1)
+    is_transition = bool(re.match(r"(?:(?:401\(k\)|401k)\s+)?(?:plan\s+)?(?:deconversion|termination)\b", event))
+    is_deconversion = is_transition and bool(re.search(r"\bdeconversion\b", event))
+    header = re.split(r"\bnotes\s*:", lowered[event_match.start():], maxsplit=1)[0]
+    status_match = re.search(r"\bstatus\s*:\s*(completed|pending|ongoing|cancelled|canceled)\b", header) if is_transition else None
+    transition_status = None
+    if is_transition and status_match:
+        raw = status_match.group(1)
+        transition_status = {"ongoing": "pending", "canceled": "cancelled"}.get(raw, raw)
+        if is_deconversion:
+            add("custody_transition_status", transition_status)
+    # Completed plan termination alone does not establish a custody transfer.
+    # Require the deconversion event plus transfer evidence and explicit provider.
+    transfer_confirmed = (
+        transition_status == "completed" and is_deconversion
+        and bool(re.search(r"assets and records (?:were|have been) transferred", lowered))
+    )
+    if transfer_confirmed:
+        for token, name in _SUCCESSOR_RECORDKEEPERS.items():
+            if re.search(rf"\b{re.escape(token)} is now the new recordkeeper\b", lowered) or re.search(
+                rf"\bnew recordkeeper\s*:\s*{re.escape(token)}(?:[.;\n]|$)", lowered
+            ):
+                add("successor_recordkeeper", name)
+    if is_transition and re.search(
+        r"distributions (?:have been placed |are |remain |)?on hold\b", lowered
+    ):
+        add("distribution_hold", True)
+    elif is_transition and re.search(
+        r"distribution(?:s)? hold (?:has been |was )?(?:lifted|released)\b", lowered
+    ):
+        add("distribution_hold", False)
+    return facts
+
+
 def _facts_from_lifecycle_note(note: Any, event_date: Optional[str]) -> List[str]:
     """Extract a tiny closed fact vocabulary; never return the note itself."""
-    if not isinstance(note, str):
+    if not isinstance(note, str) or _UNSAFE_NOTE_RE.search(note):
         return []
     lowered = note.lower()[:2000]
     facts: List[str] = []
@@ -214,26 +315,27 @@ def _facts_from_lifecycle_note(note: Any, event_date: Optional[str]) -> List[str
 
 def _build_internal_plan_context(
     plan_modules: Mapping[str, Any],
+    plan_meta: Optional[Mapping[str, Any]] = None,
 ) -> Optional[Dict[str, Any]]:
     """Reduce plan notes/history to safe lifecycle facts for reasoning.
 
     Arbitrary note text, authors, and unrecognized changes are intentionally
     discarded. Only closed-vocabulary statuses, booleans, dates and two
-    operational signals (deconversion / last payroll date) survive.
+    operational signals survive with their original source dates.
     """
     history = plan_modules.get("plan_history")
     notes = plan_modules.get("plan_notes")
     basic = plan_modules.get("basic_info")
-    if not isinstance(history, Mapping) and not isinstance(notes, list):
+    if not isinstance(history, Mapping) and not isinstance(notes, list) and not isinstance(basic, Mapping):
         return None
 
     raw_extraction_status = (
         history.get("extractionStatus", history.get("extraction_status"))
-        if isinstance(history, Mapping) else "legacy_notes"
+        if isinstance(history, Mapping) else "legacy_notes" if isinstance(notes, list) else "panel_missing"
     )
     extraction_status = (
         raw_extraction_status
-        if raw_extraction_status in _INTERNAL_HISTORY_STATUSES
+        if isinstance(raw_extraction_status, str) and raw_extraction_status in _INTERNAL_HISTORY_STATUSES
         else "parse_error"
     )
     current: Dict[str, Any] = {}
@@ -242,6 +344,10 @@ def _build_internal_plan_context(
         history_current = {}
     if not isinstance(basic, Mapping):
         basic = {}
+    basic_error = _source_diagnostic(plan_meta, "basic_info", "status").get("data_state")
+    if basic_error in _ERROR_DATA_STATES | _UNAVAILABLE_DATA_STATES:
+        basic = {}
+        history_current = {}
 
     status = _normalize_plan_status(
         history_current.get("status", basic.get("status", basic.get("Status")))
@@ -265,13 +371,20 @@ def _build_internal_plan_context(
         current["status_as_of"] = status_as_of
 
     facts: List[str] = []
+    operational_facts: List[Dict[str, Any]] = []
     entries = history.get("entries") if isinstance(history, Mapping) else None
-    if isinstance(entries, list):
-        for entry in entries[:50]:
+    if isinstance(entries, list) and extraction_status == "ok":
+        for record_index, entry in enumerate(entries[:50]):
             if not isinstance(entry, Mapping):
                 continue
-            event_date = _normalize_lifecycle_date(
-                entry.get("occurredAt", entry.get("effectiveOn"))
+            recorded_date = _normalize_lifecycle_date(
+                entry.get("recordedAt", entry.get("occurredAt"))
+            )
+            effective_date = _normalize_lifecycle_date(entry.get("effectiveOn"))
+            operational_facts.extend(_operational_note_facts(entry, record_index=record_index))
+            effective_label = "snapshot effective" if entry.get("source") == "timeline" else "effective"
+            when = (f"; recorded {recorded_date}" if recorded_date else "") + (
+                f"; {effective_label} {effective_date}" if effective_date else ""
             )
             changes = entry.get("changes")
             if isinstance(changes, list):
@@ -284,7 +397,6 @@ def _build_internal_plan_context(
                         new = _normalize_plan_status(change.get("to"))
                         if new:
                             detail = f" from {old}" if old else ""
-                            when = f" on {event_date}" if event_date else ""
                             _append_fact(
                                 facts, f"Plan status changed{detail} to {new}{when}."
                             )
@@ -296,34 +408,41 @@ def _build_internal_plan_context(
                                 f" from {str(old_active).lower()}"
                                 if old_active is not None else ""
                             )
-                            when = f" on {event_date}" if event_date else ""
                             _append_fact(
                                 facts,
                                 "Plan active flag changed"
                                 f"{detail} to {str(new_active).lower()}{when}.",
                             )
                     elif field_name in {
-                        "terminated_status_as_of", "actively_managed_status_as_of"
+                        "terminated_status_as_of", "actively_managed_status_as_of",
+                        "pending_termination_status_as_of"
                     }:
-                        effective_date = _normalize_lifecycle_date(change.get("to"))
-                        if effective_date:
+                        change_effective_date = _normalize_lifecycle_date(change.get("to"))
+                        if change_effective_date:
                             _append_fact(
                                 facts,
-                                f"Plan lifecycle effective date is {effective_date}.",
+                                f"Plan lifecycle effective date is {change_effective_date}.",
                             )
-            for fact in _facts_from_lifecycle_note(entry.get("note"), event_date):
-                _append_fact(facts, fact)
+            if entry.get("noteTruncated") is not True:
+                for fact in _facts_from_lifecycle_note(entry.get("note"), recorded_date):
+                    _append_fact(facts, fact)
 
     # Legacy v1 note arrays remain accepted, but only recognized facts survive.
-    if isinstance(notes, list):
+    if isinstance(notes, list) and extraction_status == "legacy_notes":
         for note in notes[:50]:
             for fact in _facts_from_lifecycle_note(note, None):
                 _append_fact(facts, fact)
 
+    completeness = {"complete": None, "truncated": None}
+    if isinstance(history, Mapping):
+        from data_pipeline.forusbots_catalog import _safe_completeness
+        completeness = _safe_completeness(history.get("completeness"))
     return {
         "extraction_status": extraction_status,
         "current": current,
         "lifecycle_facts": facts,
+        "operational_facts": operational_facts,
+        "completeness": completeness,
     }
 
 
@@ -384,8 +503,11 @@ def _map_loans(module_data: Mapping[str, Any], participant: Dict[str, Any],
             plan[LOANS_PLAN_MAP[field_name]] = value
             continue
         key = LOANS_MAP.get(field_name)
-        if key == "loan_history" and isinstance(value, str):
-            value = []          # "There's no Loan History..." → lista vacía
+        if key == "loan_history":
+            if isinstance(value, str):
+                value = [] if _EMPTY_LOAN_HISTORY_RE.fullmatch(value.strip()) else None
+            elif not isinstance(value, list):
+                value = None
         if key is None:
             key = snake_case(field_name)
             if key in participant:
@@ -497,6 +619,145 @@ def derive_first_contribution_posted_status(
     return False
 
 
+_EMPTY_LOAN_HISTORY_RE = re.compile(
+    r"There['’]s no Loan History for this Participant\.?", re.I,
+)
+_ERROR_DATA_STATES = frozenset({"panel_missing", "parse_error", "access_denied"})
+_UNAVAILABLE_DATA_STATES = frozenset({"missing", "unavailable"})
+
+
+def _source_diagnostic(meta: Optional[Mapping[str, Any]], module: str,
+                       label: str) -> Dict[str, Any]:
+    """Read only closed extraction metadata, including legacy envelope errors."""
+    source = meta or {}
+    diagnostics = source.get("extraction_diagnostics")
+    modules = diagnostics.get("modules") if isinstance(diagnostics, Mapping) else None
+    module_data = modules.get(module) if isinstance(modules, Mapping) else None
+    result: Dict[str, Any] = {}
+    if isinstance(module_data, Mapping):
+        module_state = module_data.get("dataState")
+        fields = module_data.get("fields")
+        field = fields.get(label) if isinstance(fields, Mapping) else None
+        field_state = field.get("dataState") if isinstance(field, Mapping) else None
+        # A module failure cannot be converted to success by stale field data.
+        result["data_state"] = (
+            module_state if module_state in _ERROR_DATA_STATES else field_state or module_state
+        )
+        result["observed_at"] = module_data.get("observedAt")
+        if isinstance(field, Mapping):
+            result["as_of"] = _normalize_lifecycle_date(field.get("sourceAsOf"))
+        completeness = module_data.get("completeness")
+        if isinstance(completeness, Mapping):
+            result["complete"] = completeness.get("complete")
+    legacy_status = source.get("module_status")
+    if isinstance(legacy_status, Mapping) and legacy_status.get(module) in {
+        "error", "failed", "canceled", "unknown",
+    }:
+        result["data_state"] = "parse_error"
+    return result
+
+
+def _strict_money(value: Any) -> Optional[float]:
+    if value is None or isinstance(value, bool):
+        return None
+    if not isinstance(value, (str, int, float, Decimal)):
+        return None
+    text = str(value).strip()
+    if not re.fullmatch(r"-?\$?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?", text):
+        return None
+    try:
+        amount = Decimal(text.replace("$", "").replace(",", ""))
+        numeric = float(amount)
+        return numeric if amount.is_finite() and isfinite(numeric) else None
+    except (InvalidOperation, ValueError, OverflowError):
+        return None
+
+
+def _typed_source(value: Any, *, module: str, label: str,
+                  meta: Optional[Mapping[str, Any]], as_of: Any = None,
+                  boolean: bool = False) -> Dict[str, Any]:
+    evidence = _source_diagnostic(meta, module, label)
+    data_state = evidence.get("data_state")
+    typed_value: Any = _normalize_active(value) if boolean else _strict_money(value)
+    status = "known" if typed_value is not None else "unknown"
+    if data_state in _ERROR_DATA_STATES:
+        status, typed_value = "error", None
+    elif data_state in _UNAVAILABLE_DATA_STATES:
+        status, typed_value = "unknown", None
+    return {
+        "value": typed_value, "status": status,
+        "source": f"participant.{module}.{label}",
+        "as_of": evidence.get("as_of") or _normalize_lifecycle_date(as_of),
+        "observed_at": evidence.get("observed_at"),
+    }
+
+
+def _unknown_source() -> Dict[str, Any]:
+    return {"value": None, "status": "unknown", "source": None,
+            "as_of": None, "observed_at": None}
+
+
+def _build_preflight_context(participant: Mapping[str, Any],
+                             meta: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
+    sources: Dict[str, Any] = {}
+    for label in ("Account Balance", "Employee Deferral Balance", "Roth Deferral Balance",
+                  "Rollover Balance", "Employer Match Balance", "Employer Match Vested Balance"):
+        key = SAVINGS_MAP[label]
+        sources[key] = _typed_source(
+            participant.get(key), module="savings_rate", label=label, meta=meta,
+            as_of=participant.get("account_balance_as_of") if key == "account_balance" else None,
+        )
+    # Neither absent after-tax nor total vested can be reconstructed by subtracting
+    # asynchronously updated source balances from the account total.
+    sources["after_tax_balance"] = _unknown_source()
+    sources["vested_balance"] = _unknown_source()
+
+    history = participant.get("loan_history")
+    loan_evidence = _source_diagnostic(meta, "loans", "Loan History")
+    loan_balance = _typed_source(participant.get("loan_balance"), module="savings_rate",
+                                 label="Loan Balance", meta=meta)
+    state = loan_evidence.get("data_state")
+    loans: Dict[str, Any] = {
+        "status": "unknown", "outstanding_status": "unknown",
+        "source": "participant.loans.Loan History", "as_of": loan_evidence.get("as_of"),
+        "observed_at": loan_evidence.get("observed_at"),
+        "complete": loan_evidence.get("complete"),
+    }
+    if state in _ERROR_DATA_STATES:
+        loans["status"] = "error"
+    elif state not in _UNAVAILABLE_DATA_STATES and isinstance(history, list):
+        loans["status"] = "known" if history else "empty"
+        balances = [_strict_money(row.get("Outstanding Balance"))
+                    if isinstance(row, Mapping) else None for row in history]
+        if any(balance is not None and balance > 0 for balance in balances):
+            loans["outstanding_status"] = "positive"
+        elif all(balance == 0 for balance in balances) and loans["complete"] is not False:
+            loans["outstanding_status"] = "zero"
+        dates = {_normalize_lifecycle_date(row.get("Balance as of Date"))
+                 for row in history if isinstance(row, Mapping)}
+        if len(dates) == 1 and None not in dates and not loans["as_of"]:
+            loans["as_of"] = next(iter(dates))
+    # Independent current loan balances corroborate positive exposure. A
+    # contradiction with an empty history remains unknown and needs review.
+    if loan_balance["status"] == "known" and loan_balance["value"] > 0:
+        if loans["outstanding_status"] == "zero":
+            loans["outstanding_status"] = "unknown"
+            loans["conflict"] = True
+        elif loans["status"] != "error":
+            loans["outstanding_status"] = "positive"
+            if loans["status"] == "unknown":
+                loans["source"] = loan_balance["source"]
+                loans["as_of"] = loan_balance["as_of"]
+    return {
+        "schema_version": 1, "loans": loans, "sources": sources,
+        "crypto": {
+            "enrollment": _typed_source(participant.get("crypto_enrollment"), module="census",
+                                        label="Crypto Enrollment", meta=meta, boolean=True),
+            "holdings": _unknown_source(),
+        },
+    }
+
+
 def build_collected_data(
     ppt_modules: Optional[Mapping[str, Any]],
     plan_modules: Optional[Mapping[str, Any]],
@@ -504,6 +765,9 @@ def build_collected_data(
     *,
     company_name: Optional[str] = None,
     company_status: Optional[str] = None,
+    company_status_detail: Optional[str] = None,
+    participant_meta: Optional[Mapping[str, Any]] = None,
+    plan_meta: Optional[Mapping[str, Any]] = None,
 ) -> Dict[str, Any]:
     """collected_data determinístico: {participant_data, plan_data}.
 
@@ -538,8 +802,16 @@ def build_collected_data(
                         collision_prefix=snake_case(module_name))
 
     if plan_modules:
-        internal_plan_context = _build_internal_plan_context(plan_modules)
-        _map_plan_modules(plan_modules, plan)
+        internal_plan_context = _build_internal_plan_context(plan_modules, plan_meta)
+        usable_plan_modules = {
+            key: value for key, value in plan_modules.items()
+            if _source_diagnostic(plan_meta, key, "status").get("data_state") not in _ERROR_DATA_STATES | _UNAVAILABLE_DATA_STATES
+        }
+        _map_plan_modules(usable_plan_modules, plan)
+
+    # Only scraped data can establish preflight facts. Ticket assertions remain
+    # participant-reported values and cannot silently satisfy source checks.
+    internal_preflight_context = _build_preflight_context(participant, participant_meta)
 
     # Conceptos derivados en código (nunca por el LLM):
     derived_first_contribution = derive_first_contribution_posted_status(participant)
@@ -553,14 +825,28 @@ def build_collected_data(
             # la extracción de ticket no puede convertirlo en True/False.
             continue
         if key not in participant:
-            participant[key] = entry.get("value")
+            value = entry.get("value")
+            if key == "confirmation_of_review_of_hardship_distribution_guidelines_pdf":
+                evidence = entry.get("evidence")
+                # A literal quote alone could say "not reviewed" or only that
+                # the PDF was sent. Require an affirmative completed review.
+                confirmed = value is True and isinstance(evidence, str) and re.fullmatch(
+                    r"\s*(?:I\s+(?:have\s+)?|(?:the\s+)?participant\s+(?:confirmed\s+(?:they\s+)?(?:have\s+)?)?)"
+                    r"(?:read|reviewed)\s+(?:the\s+)?Hardship Distribution Guidelines(?:\s+PDF)?[.!]?\s*",
+                    evidence, re.I,
+                ) is not None
+                value = True if confirmed else None
+            participant[key] = value
 
     if company_name is not None:
         plan.setdefault("company_name", company_name)
     if company_status is not None:
         plan.setdefault("company_status", company_status)
+    if company_status_detail is not None:
+        plan.setdefault("company_status_detail", company_status_detail)
 
-    collected: Dict[str, Any] = {"participant_data": participant}
+    collected: Dict[str, Any] = {"participant_data": participant,
+                               "internal_preflight_context": internal_preflight_context}
     if plan:
         collected["plan_data"] = plan
     if internal_plan_context is not None:

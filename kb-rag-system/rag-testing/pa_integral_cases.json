@@ -1,0 +1,3236 @@
+{
+  "scope_version": 2,
+  "scope_sha256": "ea43649872abdb713d2ed827320d3c4041b63c3374514b36476c8ee039007127",
+  "count": 34,
+  "excluded_user_data_changed_ticket": "TKT-910160",
+  "cases": [
+    {
+      "ticket_id": "TKT-905915",
+      "review_id": "ac0525ce2c8552bf41ae58b68c4b6b2fec7af23fff0d2ae50a707aeb99d2cd57",
+      "rating": 2,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "01ceac004d60426dc10ea2a6236bae5a9e7a2931ec1a92342624f249aa4cd833",
+          "event_status": "succeeded",
+          "execution_id": "290e63d078374bd29f65849c73753e45-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "290e63d078374bd29f65849c73753e45",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-16T18:59:08.614596Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-16T18:59:08.614596Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "custody",
+      "inquiry": "Where did the funds in my account go?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Investigate the disposition before naming the receiving custodian.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/escalation-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Where did the funds in my account go?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "account_balance",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 0,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Investigate the disposition before naming the receiving custodian."
+      ],
+      "remaining_source_conditions": [
+        "Individual disposition and current custodian remain unverified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-909642",
+      "review_id": "5593b278a481764bf55975d9863aa2d8d53506cbb748ebf18011f85f7be9e1a9",
+      "rating": 2,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "e76baf6182a87a404e547fa87c3db5dbf183644281b947c2f4cdc1e3cad7d8dd",
+          "event_status": "succeeded",
+          "execution_id": "35f91782fafb41bab0750668774989e4-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "35f91782fafb41bab0750668774989e4",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-27T18:33:25.749541Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-27T18:33:25.749541Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts. Corrected the paraphrase to preserve the original four questions (process, sources, delivery, fees); vested balance is a required datum, not a replacement participant question. Receiving instructions existed, but their contents have not been verified and are not simulated as known.",
+      "scenario": "questions",
+      "inquiry": "What is the process and paperwork for a direct rollover? What are the pre-tax, Roth and non-Roth after-tax amounts? Can the rollover be delivered electronically or by check? What fees apply?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Answer four questions separately; verify tax sources and delivery.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "What is the process and paperwork for a direct rollover?",
+        "What are the pre-tax, Roth and non-Roth after-tax amounts?",
+        "Can the rollover be delivered electronically or by check?",
+        "What fees apply?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Answer four questions separately; verify tax sources and delivery.",
+        "Four distinguishable answers in the original process, sources, delivery, fees order.",
+        "Unknown non-Roth after-tax is not zero or a subtraction; state the owner of verification.",
+        "Check and wire with receiving-provider conditions; no ACH guidance for a direct rollover.",
+        "Applicable loan, crypto and final payroll preflight survives a missing-balance handoff.",
+        "No claim to have read the receiving document."
+      ],
+      "remaining_source_conditions": [
+        "Non-Roth after-tax and aggregate vested source are not verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-909652",
+      "review_id": "e9f75424f5667a9d2882dd317e5637bb36d665b0f5db049115d68cf56c762fdb",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 3,
+      "associated_runs": [
+        {
+          "answer_present": false,
+          "attempt": 1,
+          "event_digest": "4cacb71633bca25c48b137fd8012368b63d56b9a2c47eca8b98438d18f32d051",
+          "event_status": "partial",
+          "execution_id": "1615e0d2e9cf4822b7d8d0843291c7e4-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "1615e0d2e9cf4822b7d8d0843291c7e4",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-27T18:57:47.619475Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-27T18:57:47.619475Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "hardship",
+      "inquiry": "Can I take a hardship withdrawal for medical bills?",
+      "human_reply_available": true,
+      "human_reply_count": 5,
+      "human_learning": "Give a grounded hardship answer or explicit technical handoff.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Can I take a hardship withdrawal for medical bills?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "hardship_withdrawal",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Give a grounded hardship answer or explicit technical handoff."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-909919",
+      "review_id": "b529f8325bc9772085f146a454cc0a38e9a0ab10a29997010417de22456b7090",
+      "rating": 2,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "95381929d1c8464714966261c9fea6fa9475d79f3581dde2cd64f7f27137be2a",
+          "event_status": "succeeded",
+          "execution_id": "aff0a48487134ee2bbd496c487a6d796-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "aff0a48487134ee2bbd496c487a6d796",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-28T16:46:04.161302Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-28T16:46:04.161302Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "custody",
+      "inquiry": "Why does my former employer account show no money?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Explain verified zero and investigate cause and destination; do not infer force-out.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Why does my former employer account show no money?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "account_balance",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 0,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Explain verified zero and investigate cause and destination; do not infer force-out."
+      ],
+      "remaining_source_conditions": [
+        "Individual disposition and current custodian remain unverified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-909922",
+      "review_id": "132421c652813f2035eb4658756a2e2727e233df0b69bf15bb3fea5e7d9203ca",
+      "rating": 2,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "324477bae31e80ae599829dc7d98ac3895d78febb4b296f76c632fa294b6bf24",
+          "event_status": "succeeded",
+          "execution_id": "direct_bce5ba89ef2cb8a7418e34b619569975-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_bce5ba89ef2cb8a7418e34b619569975",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-28T16:58:55.258423Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-28T16:58:55.258423Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "I did not request these payroll deductions. Can I stop them and get a refund?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Verify individual automatic enrollment, first deduction and plan window.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I did not request these payroll deductions. Can I stop them and get a refund?"
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Verify individual automatic enrollment, first deduction and plan window."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-910041",
+      "review_id": "f4ba8890d9e7adcc38f1229fe5dc2dfaaee2df7f74c4c6e51414153108a7db1b",
+      "rating": 2,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "fe09c00787062200a31b38d26b51898c06f5e87403db4d36188741b552864fca",
+          "event_status": "succeeded",
+          "execution_id": "direct_77bf4dcd1712fdd58fbfa6a2b6412ce5-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_77bf4dcd1712fdd58fbfa6a2b6412ce5",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-28T20:09:03.027502Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-28T20:09:03.027502Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "I left my employer. What can I do with my 401k?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Locate the account before applying personalized outgoing options.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I left my employer. What can I do with my 401k?"
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Locate the account before applying personalized outgoing options."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-910081",
+      "review_id": "b17ae833ce1b7ebd8d9dfae5905ac02f5b4e7bf72b6f7778b39dbf54ac070cdb",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "0b773388e054de43dbe1b62d8d67cb1127d2004972fdeb0e8baac0c36637e466",
+          "event_status": "succeeded",
+          "execution_id": "direct_c66ffc5d456f4a6180f29f8a5576fff1-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_c66ffc5d456f4a6180f29f8a5576fff1",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-28T22:15:45.952449Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-28T22:15:45.952449Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "access",
+      "inquiry": "My password reset did not work. How can I recover access?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Recognize failed reset; preserve generated KQ separately from delivery evidence.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "My password reset did not work. How can I recover access?"
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "account_access",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)"
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Recognize failed reset; preserve generated KQ separately from delivery evidence."
+      ],
+      "remaining_source_conditions": [
+        "Historical missing UI/delivery was not reproduced"
+      ]
+    },
+    {
+      "ticket_id": "TKT-910097",
+      "review_id": "61c0fa2e6f9bbbb195ccc5efe4ee3b2a395a1773837cb591085fd4c8d61878eb",
+      "rating": 4,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "8bdfde95e359b792d57b29737b8fb5eeb7fa18bf578355c4abcba11a0aeec2e5",
+          "event_status": "succeeded",
+          "execution_id": "eb16884d0a8b463e9bf03f8b29d74bba-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "eb16884d0a8b463e9bf03f8b29d74bba",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-29T00:06:57.973025Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-29T00:06:57.973025Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "form",
+      "inquiry": "I want the form to roll my old 401k into an IRA. How long does it take?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Explain approved form access, eligibility and timing without inventing a new preference rule.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I want the form to roll my old 401k into an IRA. How long does it take?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Explain approved form access, eligibility and timing without inventing a new preference rule."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910129",
+      "review_id": "573705b5f27a7936beb669563c45b8c453fe44fe789723d25428a566d2356b82",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "d4839e502aa7eff5cc5b78c7bcfc89a852075639d1bbcca9ba72d181dfe234e4",
+          "event_status": "succeeded",
+          "execution_id": "65d00cd0e0c447d091bfaa87187d99f7-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "65d00cd0e0c447d091bfaa87187d99f7",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-29T10:08:28.134212Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-29T10:08:28.134212Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts. Corrected inquiry preserves retaining investments, ongoing fees and partial rollover; Active/no termination preserves the relevant historical eligibility condition.",
+      "scenario": "informational",
+      "inquiry": "Can I keep my funds invested here, what fees apply if I stay, and can I roll over only part to a Traditional IRA?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Answer retaining funds, ongoing fees and partial rollover options in order; ask preference without initiating a transaction or assuming the remainder must be cashed out.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Can I keep my funds invested here?",
+        "What fees apply if I stay?",
+        "Can I roll over only part to a Traditional IRA?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Answer retaining funds, ongoing fees and partial rollover options in order; ask preference without initiating a transaction or assuming the remainder must be cashed out."
+      ],
+      "remaining_source_conditions": [
+        "Plan fee schedule for keeping funds must be verified; do not infer ongoing fees equal the distribution fee.",
+        "The documented partial rollover plus cash option does not establish whether a partial rollover can leave funds invested; verify plan permission."
+      ]
+    },
+    {
+      "ticket_id": "TKT-910309",
+      "review_id": "56b8dad988b03a958ae831423df8f933a4d5a340cb9c25d26aedaa8273ca33bf",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "eed1685ea4adeb452afaaef709f6bef6d527644b9f96dd0615ba568c6d1a333b",
+          "event_status": "succeeded",
+          "execution_id": "direct_0b14e2daa57ac120200ceedac3022c4d-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_0b14e2daa57ac120200ceedac3022c4d",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-31T14:38:36.755789Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-31T14:38:36.755789Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "I left the company and want to move my retirement account.",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Resolve the account and employment discrepancy; do not claim a payroll update.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I left the company and want to move my retirement account."
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Resolve the account and employment discrepancy; do not claim a payroll update."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-910381",
+      "review_id": "ec4bc52f238da4958f1c98bc817a566a5a002ccdf4ae1ab0604e48b4303cd882",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": false,
+          "attempt": 1,
+          "event_digest": "103bf4effa6dd76173c4affe59b280a7fa9f03a948859c04425a725da23c931d",
+          "event_status": "partial",
+          "execution_id": "3d2ad404434847968e6d9684d0e92b74-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "3d2ad404434847968e6d9684d0e92b74",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-31T16:47:59.298796Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-31T16:47:59.298796Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "hardship",
+      "inquiry": "Can I request a hardship withdrawal for an eligible expense?",
+      "human_reply_available": true,
+      "human_reply_count": 7,
+      "human_learning": "Obtain required facts or provide explicit handoff instead of an empty answer.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Can I request a hardship withdrawal for an eligible expense?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "hardship_withdrawal",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Obtain required facts or provide explicit handoff instead of an empty answer."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910415",
+      "review_id": "c952fca935891cf54ad9cdb068916ff559a359cef14b7ac7c2962a9527c6412b",
+      "rating": 4,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "87616e11b7942fca7bd3be206075b9c94b4baeba351b7a753c49372fade8b15b",
+          "event_status": "succeeded",
+          "execution_id": "05d24a94ad6443b8b0e80695bcffebfb-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "05d24a94ad6443b8b0e80695bcffebfb",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-31T17:55:38.950227Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-31T17:55:38.950227Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "distribution",
+      "inquiry": "I left my employer and would like a cash distribution. What is the base fee?",
+      "human_reply_available": true,
+      "human_reply_count": 7,
+      "human_learning": "Acknowledge termination and make the approved base charge easy to identify.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I left my employer and would like a cash distribution. What is the base fee?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Acknowledge termination and make the approved base charge easy to identify."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910526",
+      "review_id": "f6aef5213fa687f47d81b84a29fab964dc7e86a7582e031f77694c1121e1758a",
+      "rating": 4,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "e804f64665704121ae8bc06d9f1f5d618cc7ec78d34fab96898dc15d1212f45e",
+          "event_status": "succeeded",
+          "execution_id": "a5cf315db85b4169a2bc2c6a43eae574-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "a5cf315db85b4169a2bc2c6a43eae574",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-31T20:52:34.894773Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-31T20:52:34.894773Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "active_options",
+      "inquiry": "I am still employed. What options do I have to access funds?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Evaluate eligible in-service alternatives and plan rules; do not default to separation.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I am still employed. What options do I have to access funds?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "in_service_withdrawal_options",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Evaluate eligible in-service alternatives and plan rules; do not default to separation."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910571",
+      "review_id": "bb17cc78e57585240691aadc2d903723c92363268bbc8cf3b0c6e74141ce836e",
+      "rating": 3,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "4e1fa1008ad14cee5bcd6dd4c758281df45a54eeffd530294ebb758bd4b980d3",
+          "event_status": "succeeded",
+          "execution_id": "35ed0e4c5ce14633bcdc2670ceea78c2-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "35ed0e4c5ce14633bcdc2670ceea78c2",
+          "lease_epoch": 1,
+          "occurred_at": "2026-08-31T22:39:21.169930Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-08-31T22:39:21.169930Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "loan",
+      "inquiry": "Can I take another loan from my account?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "If the loan is not eligible, do not finish with instructions to apply for a smaller loan.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Can I take another loan from my account?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "loan_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 10000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 9000
+          },
+          "loans": {
+            "Loan History": [
+              {
+                "Start Date": "2025-01-15",
+                "Outstanding Balance": 9000,
+                "Principal": 10000,
+                "Balance as of Date": "2026-07-15"
+              }
+            ],
+            "Maximum Number of Loans": 2
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "If the loan is not eligible, do not finish with instructions to apply for a smaller loan."
+      ],
+      "remaining_source_conditions": [
+        "Highest loan balance and minimum/aggregate eligibility must be verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-910596",
+      "review_id": "a9b35981051db057f26167126083090b63fe7aea5a3feec85b80dcd449f5fc41",
+      "rating": 4,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "81ce6f14573019e11afb227529b3ee629490efe08f06296ca8034920e1c5a2f0",
+          "event_status": "succeeded",
+          "execution_id": "direct_edc07e0bc46dd8551f98fe4fa39cb538-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_edc07e0bc46dd8551f98fe4fa39cb538",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-01T00:33:22.458553Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-01T00:33:22.458553Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "receiver_form",
+      "inquiry": "My receiving employer sent a form for my outgoing rollover. What should I do?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Distinguish receiving-plan acceptance form from the disbursing-plan request; no invented attachment review.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "My receiving employer sent a form for my outgoing rollover. What should I do?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Distinguish receiving-plan acceptance form from the disbursing-plan request; no invented attachment review."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910599",
+      "review_id": "161159c25daa2311f2466c07ac4fd5a1d7cd065085b3433a4ab3714e288b3b35",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "6a89bcabfe4e94fec5ad7d26cf11ef53a1a0b6a04e7e258d6d8bbc9d4cf8b042",
+          "event_status": "succeeded",
+          "execution_id": "c5ce291ea609471bba9d5c1cadabf1a8-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "c5ce291ea609471bba9d5c1cadabf1a8",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-01T00:43:42.561672Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-01T00:43:42.561672Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "successor",
+      "inquiry": "I want to move my former employer account to my new employer plan.",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Recognize completed Fidelity transition; remove legacy ForUsAll execution steps.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I want to move my former employer account to my new employer plan."
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "terminated",
+            "active": false,
+            "status_as_of": "2025-10-02"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "ok",
+            "current": {
+              "status": "terminated",
+              "active": false,
+              "statusAsOf": "2025-10-02"
+            },
+            "entries": [
+              {
+                "source": "notes",
+                "recordedAt": "2025-10-09",
+                "note": "Event: 401(k) Plan Deconversion, Fidelity is now the new recordkeeper. Effective Date: 2025-10-02 Status: Completed. Notes: Assets and records were transferred; ongoing servicing is now under new recordkeeper.",
+                "changes": []
+              }
+            ],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 1,
+              "returnedCount": 1
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Recognize completed Fidelity transition; remove legacy ForUsAll execution steps."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910600",
+      "review_id": "95968654788c5cf3daa1f05049cd61a63a2cf37285ce8a2698b85b412aaba56b",
+      "rating": 4,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "de3877f802bb0bf7b9dc5887c58efe9498ad371cdea23e9890bb3e9f4b93751e",
+          "event_status": "succeeded",
+          "execution_id": "14b9da8516cc4667bb46ae4e682624de-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "14b9da8516cc4667bb46ae4e682624de",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-01T00:44:51.223812Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-01T00:44:51.223812Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "rollover",
+      "inquiry": "I want to roll my former employer account into my current employer plan.",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Use short relevant actions and separate fees, timing and applicable cautions.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I want to roll my former employer account into my current employer plan."
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Use short relevant actions and separate fees, timing and applicable cautions."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910920",
+      "review_id": "b3d6e8740a8d8db60b72ab2a80b6331f75dbce3075fb0d1fba94813c4fb8f627",
+      "rating": 3,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "51a6cbc8e4275eeebbd25d1228c0a508592ad2dd037e9293e5269d82eab5406a",
+          "event_status": "succeeded",
+          "execution_id": "8ec883430c444422bd29ccf13bdb1fd8-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "8ec883430c444422bd29ccf13bdb1fd8",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-01T16:36:59.004940Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-01T16:36:59.004940Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "employment",
+      "inquiry": "I no longer work there. Why does my account say Active?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Reconcile reported separation and recorded status; old payroll is not proof of termination.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I no longer work there. Why does my account say Active?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2022-09-30",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Reconcile reported separation and recorded status; old payroll is not proof of termination."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910949",
+      "review_id": "0f66131b48ed6f62967371611f75cdb26a76e029ccbbcced622609aa98043caa",
+      "rating": 3,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "11b10d0d5c588363ab9414fbc534e372bd8aad64f898918977544930a82ca750",
+          "event_status": "succeeded",
+          "execution_id": "20f4854ed2744dfbbf96c80aa6cdf890-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "20f4854ed2744dfbbf96c80aa6cdf890",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-01T17:04:15.917942Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-01T17:04:15.917942Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "distribution",
+      "inquiry": "How can I cash out my former employer account?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Clear navigation and applicable preflight; employer total is distinct from zero vested amount.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "How can I cash out my former employer account?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Clear navigation and applicable preflight; employer total is distinct from zero vested amount."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-910971",
+      "review_id": "d8e85770924374bea769176d58627f94c942f73d8149f211ddb3e17811ba9443",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "9fc39f0a9b10759b19a0d42a328641f9ed43f54de6db47054e9cb110582723dc",
+          "event_status": "succeeded",
+          "execution_id": "991f7fec50004035b111cab97db0b06f-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "991f7fec50004035b111cab97db0b06f",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-01T17:41:47.686743Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-01T17:41:47.686743Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "terminated_plan",
+      "inquiry": "How do I get a distribution or rollover from my account?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Plan termination takes priority; verify successor instead of inferring ADP from a human message.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "How do I get a distribution or rollover from my account?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 0,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "terminated",
+            "active": false,
+            "status_as_of": "2024-10-24"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "terminated",
+              "active": false,
+              "statusAsOf": "2024-10-24"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Plan termination takes priority; verify successor instead of inferring ADP from a human message."
+      ],
+      "remaining_source_conditions": [
+        "Successor is not corroborated; ADP must not be inferred"
+      ]
+    },
+    {
+      "ticket_id": "TKT-911036",
+      "review_id": "3fdecb976362eb15cf4eeab18260072aa28fc58322752fb725dd6822d32bd9d9",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "c53d26749fe253076414c6d63414115903e1776c9409fa3c04b6fc36a12efd22",
+          "event_status": "succeeded",
+          "execution_id": "direct_c88f3146e278089fd32d678fd9750eb5-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_c88f3146e278089fd32d678fd9750eb5",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-01T20:45:44.699731Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-01T20:45:44.699731Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "I cannot complete MFA to access my account.",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Use available identifiers and approved verification; do not invent or issue a QR.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I cannot complete MFA to access my account."
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Use available identifiers and approved verification; do not invent or issue a QR."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-911736",
+      "review_id": "b219aa0a24d5c69d8ff3652601b0db847373a247e203cf205c761745a20ea297",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "4701366ebfe05a60721e743e30db731fa8933adfbabdbb5ae20becc584320e47",
+          "event_status": "succeeded",
+          "execution_id": "direct_56d533e982c20db3f84c8b66a0de0a80-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_56d533e982c20db3f84c8b66a0de0a80",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-03T20:35:10.841656Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-03T20:35:10.841656Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "Where can I obtain the history of transfers from my old plan?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Resolve identity and plan history before naming a successor for that period.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Where can I obtain the history of transfers from my old plan?"
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Resolve identity and plan history before naming a successor for that period."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-911756",
+      "review_id": "73fc66c3a0eb2200265320cda5260a6dfd8f352667f778a6b96b63204433a534",
+      "rating": 3,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "ad6199d6500b3a0466bddb317cbc5f2a1a25f100310475ead09ea86843168fd6",
+          "event_status": "succeeded",
+          "execution_id": "7c3e268917f54f78b108008c42385e06-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "7c3e268917f54f78b108008c42385e06",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-03T21:37:50.515457Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-03T21:37:50.515457Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "rollover",
+      "inquiry": "I want a direct rollover to an IRA. What happens to an outstanding loan?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Separate loan payoff or offset implications from cash-only withholding; verify crypto positions.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I want a direct rollover to an IRA. What happens to an outstanding loan?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": true
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 9000
+          },
+          "loans": {
+            "Loan History": [
+              {
+                "Start Date": "2025-01-15",
+                "Outstanding Balance": 9000,
+                "Principal": 10000,
+                "Balance as of Date": "2026-07-15"
+              }
+            ]
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Separate loan payoff or offset implications from cash-only withholding; verify crypto positions."
+      ],
+      "remaining_source_conditions": [
+        "Crypto positions and approved sell/settle/core procedure are not verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-911758",
+      "review_id": "1fe50aceb7ba549c4d21c0347a8faf812b895671b428bb110ac373296068cfac",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "f79f963620e5cb273bde07d56886a8bc719b6ece70f08a24a9477ed98c8dcc1c",
+          "event_status": "succeeded",
+          "execution_id": "a461d55e7d5a4a6cb0ea82af2f3be51e-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "a461d55e7d5a4a6cb0ea82af2f3be51e",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-03T21:46:13.420371Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-03T21:46:13.420371Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "employment",
+      "inquiry": "Can I access funds from my former employer plan?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Verified Terminated status must not produce active-only in-service guidance.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Can I access funds from my former employer plan?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Verified Terminated status must not produce active-only in-service guidance."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-911764",
+      "review_id": "05c18e249348308d78e1e3f76357f09d48f2e11526fd81a7d94bcd7461f1e2b5",
+      "rating": 2,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "557d6cbf8db5ecf4c04972a94dcf3f4dc7baf7d0a17b10aed7d5386888488ef7",
+          "event_status": "succeeded",
+          "execution_id": "4fdab3c57cca480c9701b919c44db91a-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "4fdab3c57cca480c9701b919c44db91a",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-03T22:14:08.289714Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-03T22:14:08.289714Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "What part of my account is pre-tax, Roth or non-Roth after-tax?",
+      "human_reply_available": true,
+      "human_reply_count": 2,
+      "human_learning": "Verify account and source composition rather than assuming all funds have one tax character.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "What part of my account is pre-tax, Roth or non-Roth after-tax?"
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Verify account and source composition rather than assuming all funds have one tax character."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified",
+        "Non-Roth after-tax and aggregate vested source are not verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-911797",
+      "review_id": "b41e01204efd7115ef023ab1ac3c467a0a60a6c7eb3b22f1d3f16fc9e9c0afa8",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "d902aad02509c50b6f717f48222010b655424561a68f0f08a122821c1f676498",
+          "event_status": "succeeded",
+          "execution_id": "c5bbf4160a654e18a74da69caa4871b4-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "c5bbf4160a654e18a74da69caa4871b4",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-04T00:01:51.380311Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-04T00:01:51.380311Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identifier",
+      "inquiry": "What is my plan ID for the rollover form?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Supply only the verified recordkeeper identifier; do not substitute portal route ID or a rollover tutorial.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "What is my plan ID for the rollover form?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01",
+            "rk_plan_id": "SYNTHETIC-PLAN-CODE"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Supply only the verified recordkeeper identifier; do not substitute portal route ID or a rollover tutorial."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-911961",
+      "review_id": "496888ad1984cc0d2cb6c41328ae9ff78adaabf640c3f391860f475440b5e5e1",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "b4f1e40e042445ff3c6f13dd123ba4124e0bf7333532c879148427af02a8acf1",
+          "event_status": "succeeded",
+          "execution_id": "direct_c24838d0d404b27d713adf33c8b1bfca-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_c24838d0d404b27d713adf33c8b1bfca",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-04T16:38:22.365244Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-04T16:38:22.365244Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "I am on leave and may return. Can I take a separation distribution?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Leave and possible return do not establish separation; verify the actual employment record.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I am on leave and may return. Can I take a separation distribution?"
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Leave and possible return do not establish separation; verify the actual employment record."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-912043",
+      "review_id": "e179045e8ef9db376adc0b26b1ac5a77b215ac063c508045ca48f2074ada7e6c",
+      "rating": 3,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "554b1d2f79bec30c9e426abf86c1fc009240a14fadd17eec4c33b3795ebce892",
+          "event_status": "succeeded",
+          "execution_id": "2766c1c4c22545bdb4288964468d87c8-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "2766c1c4c22545bdb4288964468d87c8",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-04T20:42:27.696900Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-04T20:42:27.696900Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "distribution",
+      "inquiry": "I want to cash out by ACH. What do I need to check first?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Check loans and crypto without inferring holdings from enrollment or mixing stale balances.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I want to cash out by ACH. What do I need to check first?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": true
+          },
+          "savings_rate": {
+            "Account Balance": 0,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 9000
+          },
+          "loans": {
+            "Loan History": [
+              {
+                "Start Date": "2025-01-15",
+                "Outstanding Balance": 9000,
+                "Principal": 10000,
+                "Balance as of Date": "2026-07-15"
+              }
+            ]
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Check loans and crypto without inferring holdings from enrollment or mixing stale balances."
+      ],
+      "remaining_source_conditions": [
+        "Crypto positions and approved sell/settle/core procedure are not verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-912060",
+      "review_id": "f96f26729881f690e56d5530dd438216bce410fa8cf72007996c13d5079448fd",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "b34450c06bd0c5aa71dc8950978ca328085dfbe7695ba960ae36ede72ca8b514",
+          "event_status": "succeeded",
+          "execution_id": "edc7a7f7ed69483293d0bcf383ef99cb-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "edc7a7f7ed69483293d0bcf383ef99cb",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-04T21:39:18.917612Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-04T21:39:18.917612Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "successor",
+      "inquiry": "Can I cash out my former employer retirement account?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Use the company lifecycle alert to read plan history and recognize the Fidelity transition.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Can I cash out my former employer retirement account?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "terminated",
+            "active": false,
+            "status_as_of": "2025-10-02"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "ok",
+            "current": {
+              "status": "terminated",
+              "active": false,
+              "statusAsOf": "2025-10-02"
+            },
+            "entries": [
+              {
+                "source": "notes",
+                "recordedAt": "2025-10-09",
+                "note": "Event: 401(k) Plan Deconversion, Fidelity is now the new recordkeeper. Effective Date: 2025-10-02 Status: Completed. Notes: Assets and records were transferred; ongoing servicing is now under new recordkeeper.",
+                "changes": []
+              }
+            ],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 1,
+              "returnedCount": 1
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Use the company lifecycle alert to read plan history and recognize the Fidelity transition."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-912180",
+      "review_id": "573f0101a3c4bc0cab7073ab60c934e61828007070cb7f4708f68b8a9b8df0e8",
+      "rating": 4,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "4024cb635b43c0edcfbb45b60b0862eedbc721d1b1329258a7df8fbee4416705",
+          "event_status": "succeeded",
+          "execution_id": "a661c1acc3714a8bafd1c0f452e9568a-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "a661c1acc3714a8bafd1c0f452e9568a",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-06T04:47:35.548249Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-06T04:47:35.548249Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "rollover",
+      "inquiry": "I want a direct rollover by check to a Roth IRA. What needs verification?",
+      "human_reply_available": true,
+      "human_reply_count": 4,
+      "human_learning": "Retain the chosen method, verified greeting and relevant preflight; later cash intent stays separate.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I want a direct rollover by check to a Roth IRA. What needs verification?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "rollover",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": true
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 9000
+          },
+          "loans": {
+            "Loan History": [
+              {
+                "Start Date": "2025-01-15",
+                "Outstanding Balance": 9000,
+                "Principal": 10000,
+                "Balance as of Date": "2026-07-15"
+              }
+            ]
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Retain the chosen method, verified greeting and relevant preflight; later cash intent stays separate."
+      ],
+      "remaining_source_conditions": [
+        "Crypto positions and approved sell/settle/core procedure are not verified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-912262",
+      "review_id": "b279d146138b22c4e619b4cfb6082a329d2b798441e956c596ad1e0c30949982",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": false,
+          "attempt": 1,
+          "event_digest": "94c34f1a9b8d29808538e8d428b5585c9e379219184f363e0f97e35a82961778",
+          "event_status": "partial",
+          "execution_id": "5e8a0949978a4041aee70b9e50c2fc7a-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "5e8a0949978a4041aee70b9e50c2fc7a",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-07T12:41:38.271167Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-07T12:41:38.271167Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "hardship",
+      "inquiry": "Can I get a hardship withdrawal for medical bills?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Must-have fields must survive required-data parsing and reach a grounded response.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/behavior-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Can I get a hardship withdrawal for medical bills?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "hardship_withdrawal",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Active",
+            "Termination Date": null,
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 20000,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "actively_managed",
+            "active": true,
+            "status_as_of": "2025-01-01"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "empty",
+            "current": {
+              "status": "actively_managed",
+              "active": true,
+              "statusAsOf": "2025-01-01"
+            },
+            "entries": [],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 0,
+              "returnedCount": 0
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Must-have fields must survive required-data parsing and reach a grounded response."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-912670",
+      "review_id": "63ed04de6419fc161c9ac6c7724b70e48f80d20f08b3e2be8146c0d43a4d9705",
+      "rating": 1,
+      "review_state": "reviewed",
+      "review_version": 3,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "2eff78e15d87aea2cf85c73bebfb18da86c2e1021b6ae2d60ed2364f843e45c7",
+          "event_status": "succeeded",
+          "execution_id": "151c33e8601c415fb765d4ecb1229ffa-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "151c33e8601c415fb765d4ecb1229ffa",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-08T20:49:01.344588Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-08T20:49:01.344588Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "hold",
+      "inquiry": "My account shows zero. Why can I not move my money?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "State zero explicitly; distinguish a plan distribution hold from unknown disposition in an earlier year.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "My account shows zero. Why can I not move my money?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "account_balance",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 0,
+            "Account Balance As Of": "2023-04-01",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "pending_termination",
+            "active": true,
+            "status_as_of": "2026-03-26"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "ok",
+            "current": {
+              "status": "pending_termination",
+              "active": true,
+              "statusAsOf": "2026-03-26"
+            },
+            "entries": [
+              {
+                "source": "notes",
+                "recordedAt": "2026-03-26",
+                "note": "Event: Plan Termination. Effective date: 2026/03/26 Status: Ongoing. Notes: Distributions have been placed on hold for this plan until testing is finished.",
+                "changes": []
+              }
+            ],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 1,
+              "returnedCount": 1
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "State zero explicitly; distinguish a plan distribution hold from unknown disposition in an earlier year."
+      ],
+      "remaining_source_conditions": [
+        "Individual disposition of earlier zero balance remains unverified"
+      ]
+    },
+    {
+      "ticket_id": "TKT-912731",
+      "review_id": "e16178361e9170fa6485b4c1ecfae18c9b4818c5be13737be9f34a207ca2d58c",
+      "rating": 2,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "f2dc24f0f8054a246fc75d59f8098085b5a488dda8568118ee7de881f4a5662e",
+          "event_status": "succeeded",
+          "execution_id": "38e6d6ac911f4301bfeaa329566093d2-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "38e6d6ac911f4301bfeaa329566093d2",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-09T08:23:47.913440Z",
+          "route": "generate_response"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-09T08:23:47.913440Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "successor",
+      "inquiry": "Why is my balance zero and how can I access the funds?",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Explain the completed plan transition to Fidelity without legacy portal instructions.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "Why is my balance zero and how can I access the funds?"
+      ],
+      "test_input": {
+        "route": "generate_response",
+        "topic": "termination_distribution_request",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "participant_modules": {
+          "census": {
+            "Eligibility Status": "Terminated",
+            "Termination Date": "2026-07-01",
+            "Rehire Date": null,
+            "Birth Date": "1980-01-01",
+            "Crypto Enrollment": false
+          },
+          "savings_rate": {
+            "Account Balance": 0,
+            "Account Balance As Of": "2026-07-15",
+            "Employee Deferral Balance": 14000,
+            "Roth Deferral Balance": 1000,
+            "Employer Match Balance": 5000,
+            "Employer Match Vested Balance": 0,
+            "Rollover Balance": 0,
+            "Loan Balance": 0
+          },
+          "loans": {
+            "Loan History": "There's no Loan History for this Participant"
+          },
+          "payroll": {
+            "Latest Payroll": {
+              "Pay Date": "2026-07-01",
+              "Pre-tax": 100,
+              "Roth": 0,
+              "Employer Match": 25,
+              "Loan": 0
+            }
+          },
+          "mfa": {
+            "MFA Status": "enabled"
+          }
+        },
+        "plan_modules": {
+          "basic_info": {
+            "status": "terminated",
+            "active": false,
+            "status_as_of": "2025-10-02"
+          },
+          "plan_history": {
+            "schemaVersion": 1,
+            "extractionStatus": "ok",
+            "current": {
+              "status": "terminated",
+              "active": false,
+              "statusAsOf": "2025-10-02"
+            },
+            "entries": [
+              {
+                "source": "notes",
+                "recordedAt": "2025-10-09",
+                "note": "Event: 401(k) Plan Deconversion, Fidelity is now the new recordkeeper. Effective Date: 2025-10-02 Status: Completed. Notes: Assets and records were transferred; ongoing servicing is now under new recordkeeper.",
+                "changes": []
+              }
+            ],
+            "notes": [],
+            "completeness": {
+              "complete": true,
+              "truncated": false,
+              "observedCount": 1,
+              "returnedCount": 1
+            }
+          }
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Explain the completed plan transition to Fidelity without legacy portal instructions."
+      ],
+      "remaining_source_conditions": []
+    },
+    {
+      "ticket_id": "TKT-912873",
+      "review_id": "4b09605dd20b6ebea8cb5a764ba5635e7e7bb2a80141d61b5c6c243950e74e19",
+      "rating": 3,
+      "review_state": "reviewed",
+      "review_version": 2,
+      "associated_runs": [
+        {
+          "answer_present": true,
+          "attempt": 1,
+          "event_digest": "c3da0e09c4871baeb30dcb82b73439a8f92d3afdfc0fec0ed868a9d259b4358f",
+          "event_status": "succeeded",
+          "execution_id": "direct_808bdc3f0770532f9ad83d3fe9ef24bb-e1-a1:0",
+          "inquiry_index": 0,
+          "job_id": "direct_808bdc3f0770532f9ad83d3fe9ef24bb",
+          "lease_epoch": 1,
+          "occurred_at": "2026-09-09T15:40:02.837242Z",
+          "route": "knowledge_question"
+        }
+      ],
+      "fixture_kind": "simulation",
+      "historical_cutoff": "2026-09-09T15:40:02.837242Z",
+      "simulation_note": "Paraphrased inquiry and synthetic numeric values preserve the relevant conditions; this is not an original-ticket rerun or proof of current participant facts.",
+      "scenario": "identity",
+      "inquiry": "I want to move my old 401k to my current employer plan.",
+      "human_reply_available": true,
+      "human_reply_count": 1,
+      "human_learning": "Resolve account context first and request only missing approved identifiers.",
+      "evidence_reference": "docs/analysis/2026-09-09-pa-remediation/data-analysis.md",
+      "verification_status": "pending_semantic_replay",
+      "requested_questions": [
+        "I want to move my old 401k to my current employer plan."
+      ],
+      "test_input": {
+        "route": "knowledge_question",
+        "topic": "general",
+        "record_keeper": "LT Trust",
+        "plan_type": "401(k)",
+        "identity_context": {
+          "identity_resolution_status": "not_found",
+          "response_source_reason": "account_not_found",
+          "provided_identifiers": [
+            "name",
+            "employer"
+          ],
+          "identity_verified": false
+        }
+      },
+      "acceptance_checks": [
+        "Response available or explicit technical failure; never silently empty",
+        "Preserve every question and distinguish a generated draft from sent or delivered",
+        "Apply the PA learning only where supported by source evidence",
+        "Resolve account context first and request only missing approved identifiers."
+      ],
+      "remaining_source_conditions": [
+        "Published consumer must supply identity-resolution provenance; the actual account/procedure must be verified"
+      ]
+    }
+  ]
+}

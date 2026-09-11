@@ -1369,6 +1369,8 @@ async def knowledge_question_endpoint(
         route="knowledge_question",
         inquiry=request.question,
         topic="general",
+        **({"context_fingerprint": fingerprint_request(request.identity_context.model_dump())}
+           if request.identity_context is not None else {}),
     )
     if reservation.replay_response is not None:
         return KnowledgeQuestionResponse.model_validate(
@@ -1383,7 +1385,8 @@ async def knowledge_question_endpoint(
         )
 
         result = await engine.ask_knowledge_question(
-            question=request.question
+            question=request.question,
+            **({"identity_context": request.identity_context.model_dump()} if request.identity_context is not None else {}),
         )
 
         logger.info(f"Knowledge question completed | Coverage: {result.confidence_note}")

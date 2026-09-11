@@ -109,9 +109,16 @@ class TestMapSlug:
         assert len(map_slug({"field": "participant_name"}, current_year=YEAR)) == 2
         assert len(map_slug({"field": "address"}, current_year=YEAR)) == 5
 
-    def test_vested_balance_default(self):
-        assert map_slug({"field": "vested_balance"}, current_year=YEAR) == \
-            [("savings_rate", "Account Balance")]
+    def test_vested_balance_requests_available_sources_without_total_equivalence(self):
+        assert map_slug({"field": "vested_balance"}, current_year=YEAR) == [
+            ("savings_rate", "Account Balance"),
+            ("savings_rate", "Account Balance As Of"),
+            ("savings_rate", "Employee Deferral Balance"),
+            ("savings_rate", "Roth Deferral Balance"),
+            ("savings_rate", "Rollover Balance"),
+            ("savings_rate", "Employer Match Balance"),
+            ("savings_rate", "Employer Match Vested Balance"),
+        ]
 
     def test_vested_balance_employer_match_hook(self):
         out = map_slug({"field": "vested_balance",

@@ -495,6 +495,8 @@ def aggregate_states(entries: List[Dict[str, Any]],
     degraded = any(e.get("degraded") for e in entries)
     all_reply_safe = all(e.get("participant_reply_safe") is True for e in entries)
     if all_ok and not degraded and unprocessed == 0:
+        if any(e.get("human_review_required") is True for e in entries):
+            return TicketJobState.SUCCEEDED, NextAction.HUMAN_REVIEW
         if all_reply_safe:
             return TicketJobState.SUCCEEDED, NextAction.SEND_PARTICIPANT_REPLY
         # ``knowledge_only`` puede terminar técnicamente bien después de
@@ -1055,7 +1057,8 @@ def _build_execution_plan(capped: List[Any], classifications: List[Any],
         "inquiries": [
             {"inquiry": e.inquiry, "record_keeper": e.record_keeper,
              "plan_type": e.plan_type, "topic": e.topic,
-             "related_inquiries": e.related_inquiries}
+             "related_inquiries": e.related_inquiries,
+             "requested_questions": getattr(e, "requested_questions", None)}
             for e in capped
         ],
         "classifications": [
@@ -1801,7 +1804,11 @@ def _shadow_sampled(job_id: str) -> bool:
 
 
 def _entry_from_outcome(index: int, outcome: InquiryOutcome) -> Dict[str, Any]:
+    from data_pipeline.response_handoff import response_requires_review
+
     degraded, code = outcome_is_degraded(outcome)
+    metadata = getattr(outcome.generate_result if outcome.generate_result is not None else outcome.knowledge_result, "metadata", None) or {}
+    review_required = response_requires_review(getattr(outcome.generate_result, "response", None), metadata)
     result = outcome_to_inquiry_result(outcome)
     response_block = (
         result.knowledge_answer
@@ -1819,13 +1826,15 @@ def _entry_from_outcome(index: int, outcome: InquiryOutcome) -> Dict[str, Any]:
     entry: Dict[str, Any] = {
         "route": outcome.route,
         "execution_status": "succeeded",
-        "participant_reply_safe": not degraded,
+        "participant_reply_safe": not degraded and not review_required,
         "degraded": degraded,
         "scrape_status": outcome.scrape_status,
         "result": minimize_inquiry_result(result),
     }
     if bounded_chunks:
         entry["evaluation_evidence"] = {"chunks": bounded_chunks}
+    if review_required:
+        entry["human_review_required"] = True
     if degraded and code:
         entry["error"] = {"code": code, "retryable": code in (
             PublicErrorCode.FORUSBOTS_TIMEOUT.value,

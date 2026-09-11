@@ -645,7 +645,8 @@ class RAGEngine:
                     chunks=chunks,
                     budget=self.RD_CONTEXT_BUDGET,
                     prioritize_types=['required_data_must_have', 'eligibility', 'business_rules'],
-                    max_per_article=self.RD_MAX_CHUNKS_PER_ARTICLE
+                    max_per_article=self.RD_MAX_CHUNKS_PER_ARTICLE,
+                    enforce_type_order=True,
                 )
 
             logger.info(f"Context construido: {len(selected_chunks)} chunks, {tokens_used} tokens")
@@ -664,80 +665,84 @@ class RAGEngine:
                 )
             )
 
-            # 4. Generate prompts and call LLM
-            system_prompt, user_prompt = build_required_data_prompt(
-                context=context,
-                inquiry=inquiry,
-                record_keeper=record_keeper,
-                plan_type=plan_type,
-                topic=topic
-            )
-
+            # Required-data sections are a structured KB contract. Interpret
+            # that contract directly when every selected field is valid;
+            # an LLM is only needed for legacy/non-contract chunks.
+            parsed, extraction_metadata = self._required_data_from_chunks(selected_chunks)
+            extraction_attempts: List[Dict[str, Any]] = []
             llm_usage = None
             llm_provider_used: Optional[str] = None
             llm_model_used: Optional[str] = None
-            try:
-                llm_result = await self._call_llm(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    max_tokens=800,
-                    task_type="required_data",
+            llm_response = ""
+            coverage_gaps: List[str] = []
+            if parsed is not None:
+                extraction_metadata["extraction_method"] = "validated_chunk_contract"
+                llm_response = json.dumps(parsed)
+            else:
+                extraction_metadata["extraction_method"] = "llm"
+                system_prompt, user_prompt = build_required_data_prompt(
+                    context=context,
+                    inquiry=inquiry,
+                    record_keeper=record_keeper,
+                    plan_type=plan_type,
+                    topic=topic,
                 )
-                llm_response = llm_result.content
-                llm_usage = llm_result.usage
-                llm_provider_used = llm_result.provider_used
-                llm_model_used = llm_result.model_used
-            except LLMEmptyResponseError:
-                logger.error("LLM returned empty content in required_data")
-                llm_response = json.dumps({"participant_data": [], "plan_data": [], "coverage_gaps": []})
-
-            # 5. Parse LLM response + extract coverage gaps
-            parsed, coverage_gaps = self._parse_required_data_response(llm_response)
-
-            # 5b. Safety net: if rdmh chunks cleared the retrieval gate but the
-            #     LLM emitted empty arrays AND flagged no coverage gaps, the
-            #     primary model silently mis-extracted. Retry once on the
-            #     fallback provider before accepting the empty result.
-            if self._should_retry_required_data(parsed, coverage_gaps, best_rdmh_score):
-                logger.warning(
-                    "Required-data safety retry triggered (score=%.4f, "
-                    "threshold=%.4f)",
-                    best_rdmh_score,
-                    self.RD_RETRIEVAL_MIN_SCORE,
-                )
-                try:
-                    llm_result = await self.router.call(
-                        task_type="required_data",
-                        system_prompt=system_prompt,
-                        user_prompt=user_prompt,
-                        max_tokens=800,
-                        force_fallback=True,
+                failure_kind: Optional[str] = None
+                for attempt in range(2):
+                    attempt_info: Dict[str, Any] = {"attempt": attempt + 1}
+                    try:
+                        if attempt == 0:
+                            llm_result = await self._call_llm(
+                                system_prompt=system_prompt,
+                                user_prompt=user_prompt,
+                                max_tokens=800,
+                                task_type="required_data",
+                            )
+                        else:
+                            llm_result = await self.router.call(
+                                task_type="required_data",
+                                system_prompt=system_prompt,
+                                user_prompt=user_prompt,
+                                max_tokens=800,
+                                force_fallback=True,
+                            )
+                        llm_response = llm_result.content
+                        llm_usage = llm_result.usage
+                        llm_provider_used = llm_result.provider_used
+                        llm_model_used = llm_result.model_used
+                        failure_kind = self._required_data_extraction_failure(llm_response)
+                        attempt_info["response_characters"] = len(llm_response or "")
+                    except LLMEmptyResponseError as exc:
+                        failure_kind = "empty_extraction"
+                        attempt_info["finish_reason"] = exc.finish_reason
+                        llm_usage = exc.usage
+                        llm_provider_used = exc.provider_used
+                        llm_model_used = exc.model_used
+                    except Exception as exc:
+                        failure_kind = "provider_error"
+                        logger.error("Required-data provider failed (error_type=%s)", type(exc).__name__)
+                    attempt_info["failure_kind"] = failure_kind
+                    extraction_attempts.append(attempt_info)
+                    if failure_kind is None:
+                        parsed, coverage_gaps = self._parse_required_data_response(llm_response)
+                        break
+                if failure_kind is not None:
+                    failed = self._build_empty_required_data_response(
+                        "required_data_failed",
+                        retrieval_failure_kind="unknown",
+                        retrieval_retryable=False,
                     )
-                    llm_response = llm_result.content
-                    llm_usage = llm_result.usage
-                    llm_provider_used = llm_result.provider_used
-                    llm_model_used = llm_result.model_used
-                    parsed, coverage_gaps = self._parse_required_data_response(llm_response)
-                except Exception as retry_error:
-                    logger.error(
-                        "Required-data fallback retry failed (error_type=%s)",
-                        type(retry_error).__name__,
-                    )
-
-            # Relevant must-have evidence plus an empty/invalid extraction is
-            # not a valid "no fields required" result.  If the fallback still
-            # cannot resolve it (including a failed fallback call), emit the
-            # same closed sentinel used by other required-data failures so GR
-            # cannot generate a participant-facing answer from missing data.
-            if self._should_retry_required_data(
-                parsed, coverage_gaps, best_rdmh_score
-            ):
-                logger.error("Required-data safety retry exhausted")
-                return self._build_empty_required_data_response(
-                    "required_data_failed",
-                    retrieval_failure_kind="unknown",
-                    retrieval_retryable=False,
-                )
+                    failed.used_chunks = self._serialize_used_chunks(selected_chunks)
+                    failed.source_articles = self._build_source_articles(selected_chunks)
+                    failed.metadata.update({
+                        **extraction_metadata,
+                        "required_data_failure_kind": failure_kind,
+                        "extraction_attempts": extraction_attempts,
+                        "chunks_used": len(selected_chunks),
+                        "context_tokens": tokens_used,
+                    })
+                    return failed
+            assert parsed is not None
 
             # Remove coverage_gaps from required_fields (it's a separate response field)
             required_fields = {k: v for k, v in parsed.items() if k != "coverage_gaps"}
@@ -821,6 +826,8 @@ class RAGEngine:
                     "unique_articles": total_articles,
                     "relevant_articles": relevant_articles,
                     "coverage_gaps": coverage_gaps,
+                    **extraction_metadata,
+                    "extraction_attempts": extraction_attempts,
                     "detected_concepts": advisory_signal.get("detected_concepts", []),
                     "alternative_concepts": advisory_signal.get("alternative_concepts", []),
                 }
@@ -1221,6 +1228,7 @@ class RAGEngine:
                 self._apply_termination_response_policy(
                     parsed=parsed,
                     retrieval_profile=retrieval_profile,
+                    collected_data=collected_data,
                 )
             )
 
@@ -1238,6 +1246,20 @@ class RAGEngine:
                     "outcome",
                     len(stray_questions),
                 )
+
+            from data_pipeline.response_handoff import response_requires_review
+
+            question_metadata = self._validate_question_coverage(parsed, collected_data)
+            if response_requires_review(parsed, question_metadata):
+                question_metadata["human_review_required"] = True
+            if termination_response_policy_info.get("custody_review_required") or termination_response_policy_info.get("plan_review_required"):
+                question_metadata["human_review_required"] = True
+                question_metadata["handoff"] = {
+                    "reason": "plan_servicing_verification" if termination_response_policy_info.get("plan_review_required") else "custody_verification",
+                    "next_action": "Verify the dated plan lifecycle and participant disposition record before approving execution guidance.",
+                    "plan_context": (collected_data or {}).get("internal_plan_context", {}),
+                    "preflight": (collected_data or {}).get("internal_preflight_context", {}),
+                }
 
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
@@ -1291,6 +1313,7 @@ class RAGEngine:
                 used_chunks=used_chunks,
                 coverage_gaps=coverage_gaps,
                 metadata={
+                    **question_metadata,
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
                     "response_tokens": self.token_manager.count_tokens(llm_response),
@@ -1628,9 +1651,42 @@ class RAGEngine:
         ]
         return fixed, {"applied": True, "reason": "unknown_or_inaccessible_email"}
 
+    @staticmethod
+    def _apply_identity_knowledge_policy(parsed: Dict[str, Any], context: Optional[Dict[str, Any]]) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        if context is None:
+            # The KQ endpoint is educational by contract. Callers falling back
+            # after account lookup must provide the typed lookup context.
+            return parsed, {"response_source_reason": "general_knowledge"}
+        if not isinstance(context, dict):
+            return parsed, {}
+        status, reason = context.get("identity_resolution_status"), context.get("response_source_reason")
+        if status not in {"matched", "ambiguous", "not_found", "access_error"}:
+            return parsed, {}
+        if reason not in {"general_knowledge", "account_not_found", "account_ambiguous", "account_lookup_failed", "account_context_required"}:
+            return parsed, {}
+        metadata = {"identity_resolution_status": status, "response_source_reason": reason,
+                    "identity_verified": context.get("identity_verified") is True}
+        identifiers = context.get("provided_identifiers")
+        allowed_identifiers = {"name", "email", "employer", "date_of_birth", "last_four_ssn"}
+        metadata["provided_identifiers"] = list(dict.fromkeys(
+            item for item in identifiers if isinstance(item, str) and item in allowed_identifiers
+        )) if isinstance(identifiers, list) else []
+        if reason == "general_knowledge":
+            return parsed, metadata
+        # This is an account lookup fallback, not a general question. An
+        # approved identity workflow must determine which additional facts
+        # are necessary; do not invent or repeat a security checklist here.
+        fixed = dict(parsed)
+        fixed["answer"] = "Our team needs to verify the account and its current status before providing instructions specific to your request. We will first use the information you have already provided."
+        fixed["key_points"] = []
+        metadata["human_review_required"] = True
+        metadata["handoff"] = {"reason": reason, "next_action": "Resolve the account using available identifiers and the approved verification procedure; ask only for missing information."}
+        return fixed, metadata
+
     async def ask_knowledge_question(
         self,
-        question: str
+        question: str,
+        identity_context: Optional[Dict[str, Any]] = None,
     ) -> KnowledgeQuestionResult:
         """
         Answer a general knowledge question using the KB — no participant data required.
@@ -1693,13 +1749,17 @@ class RAGEngine:
 
             if not chunks:
                 logger.warning("No chunks found for knowledge question")
+                fallback, identity_metadata = self._apply_identity_knowledge_policy({
+                    "answer": "I couldn't find relevant information in the knowledge base to answer this question.",
+                    "key_points": [],
+                }, identity_context)
                 return KnowledgeQuestionResult(
-                    answer="I couldn't find relevant information in the knowledge base to answer this question.",
+                    answer=fallback["answer"],
                     key_points=[],
                     source_articles=[],
                     used_chunks=[],
                     confidence_note="limited_coverage",
-                    metadata={"chunks_used": 0, "model": None, "provider": None, "sub_queries": sub_queries}
+                    metadata={**identity_metadata, "chunks_used": 0, "model": None, "provider": None, "sub_queries": sub_queries}
                 )
 
             # 4. Build context with article diversity
@@ -1757,6 +1817,7 @@ class RAGEngine:
             parsed, account_recovery_policy_info = (
                 self._apply_account_recovery_knowledge_policy(parsed, question)
             )
+            parsed, identity_metadata = self._apply_identity_knowledge_policy(parsed, identity_context)
 
             # 7. Extract LLM-reported coverage gaps
             coverage_gaps = parsed.get("coverage_gaps", [])
@@ -1784,6 +1845,7 @@ class RAGEngine:
                 used_chunks=used_chunks,
                 confidence_note=confidence_note,
                 metadata={
+                    **identity_metadata,
                     "chunks_used": len(selected_chunks),
                     "context_tokens": tokens_used,
                     "response_tokens": self.token_manager.count_tokens(llm_response),
@@ -1994,6 +2056,7 @@ class RAGEngine:
 
         informational_phrases = [
             "what are my options",
+            "what options do i have",
             "what are the options",
             "delivery options",
             "fastest delivery",
@@ -2198,6 +2261,13 @@ class RAGEngine:
             "deposit into my bank", "deposit into their bank",
         ])
         pure_rollover = rollover_intent and not cash_component
+        # Delivery focus must come from the request, not payroll/check fields.
+        selected_delivery = None
+        if (
+            re.search(r"\b(?:rollover|roll over|send(?: it| the funds)?)\b.{0,30}\b(?:by|via)\s+(?:a\s+)?check\b", inquiry or "", re.IGNORECASE)
+            and not re.search(r"\b(?:wire|not|don['’]?t)\b", inquiry or "", re.IGNORECASE)
+        ):
+            selected_delivery = "check"
         delivery_or_fee_request = self._contains_any(profile_text, [
             "delivery",
             "deliver",
@@ -2410,6 +2480,7 @@ class RAGEngine:
             "distribution_intent": distribution_intent,
             "cash_component": cash_component,
             "pure_rollover": pure_rollover,
+            "selected_delivery": selected_delivery,
             "delivery_or_fee_request": delivery_or_fee_request,
             "overnight_request": overnight_request,
             "account_access": account_access,
@@ -2459,6 +2530,48 @@ class RAGEngine:
             collected_data=collected_data,
             assume_termination_on_named_employer=assume_termination_on_named_employer,
         )
+        query_text = (inquiry or "").lower()
+        procedure_requested = bool(re.search(
+            r"\b(?:steps|instructions|process|procedure|submit|initiate)\b|\bhow (?:do|can|to)\b",
+            query_text,
+        ))
+        signals["procedure_requested"] = procedure_requested
+        retaining_funds_question = not procedure_requested and bool(re.search(
+            r"\b(?:keep|leave|retain)\b.{0,50}\b(?:funds|money|invested|account|plan)\b"
+            r"|\b(?:funds|money)\b.{0,40}\bremain\b|\bfees\b.{0,35}\bstay\b",
+            query_text,
+        ))
+        if retaining_funds_question:
+            signals["inquiry_intent"] = "informational_options"
+        identifier_question = bool(re.search(r"\bplan (?:id|identifier|number|code)\b", query_text)) and not procedure_requested
+        question_inventory = ((collected_data or {}).get("internal_response_context") or {}).get("requested_questions")
+        if isinstance(question_inventory, list) and len(question_inventory) > 1:
+            identifier_question = identifier_question and all(
+                isinstance(question, str) and re.search(r"\bplan (?:id|identifier|number|code)\b", question, re.I)
+                for question in question_inventory
+            )
+        if identifier_question:
+            return {
+                "mode": "broad_search", "primary_action": "plan_identifier",
+                "inquiry_intent": "informational_options", "record_keeper": record_keeper,
+                "plan_type": plan_type, "primary_article_id": None,
+                "signals": signals, "excluded_articles": [],
+                "include_references": signals.get("contact_or_reference", False),
+            }
+        custody_question = bool(re.search(
+            r"\bwhere\b.{0,80}\b(?:funds|money)\b"
+            r"|\bwhy\b.{0,120}\b(?:zero|no money|no funds|empty)\b"
+            r"|\b(?:funds|money|balance|account)\b.{0,60}\b(?:missing|disappeared|zero)\b",
+            query_text,
+        ))
+        if custody_question and not signals.get("incoming_rollover"):
+            return {
+                "mode": "broad_search", "primary_action": "custody_investigation",
+                "inquiry_intent": "informational_options", "record_keeper": record_keeper,
+                "plan_type": plan_type, "primary_article_id": None,
+                "signals": signals, "excluded_articles": [],
+                "include_references": signals.get("contact_or_reference", False),
+            }
         record_keeper_text = (record_keeper or "").strip().lower()
         plan_type_text = self._normalize_plan_type(plan_type)
         is_lt_401k = record_keeper_text == "lt trust" and plan_type_text in {
@@ -2467,6 +2580,7 @@ class RAGEngine:
         }
         exact_termination_rollover = (
             is_lt_401k
+            and not retaining_funds_question
             and signals["rollover_intent"]
             and signals["termination_distribution"]
             and not signals["split_rollover"]
@@ -2476,6 +2590,7 @@ class RAGEngine:
         )
         exact_termination_distribution = (
             is_lt_401k
+            and not retaining_funds_question
             and signals["distribution_intent"]
             and signals["termination_distribution"]
             and not signals["force_out"]
@@ -2515,11 +2630,22 @@ class RAGEngine:
             and not signals["rmd"]
             and not signals["loan_signal"]
         )
+        # A named hardship request has its own global procedure. Generic active
+        # options mention hardship, but must not replace its Guidelines/form flow.
+        exact_hardship_request = (
+            self._resolve_topic_filter(topic) == ["hardship_withdrawal"]
+            and signals["employment_state"] != "terminated"
+            and not signals.get("explicit_separation_claim")
+            and not signals["loan_signal"]
+            and not signals["rollover_intent"]
+            and not exact_indirect_rollover_60_day
+        )
         exact_procedure_routing = (
             exact_termination_procedure
             or exact_indirect_rollover_60_day
             or exact_loan_request
             or exact_incoming_rollover
+            or exact_hardship_request
         )
 
         excluded_articles: List[str] = []
@@ -2560,10 +2686,10 @@ class RAGEngine:
         # Fix J/K: when a non-termination exact procedure wins (60-day or
         # loan), explicitly exclude the LT termination article so it does
         # not compete for primary slot.
-        if exact_indirect_rollover_60_day or exact_loan_request:
+        if exact_indirect_rollover_60_day or exact_loan_request or exact_hardship_request:
             exclude(
                 self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID,
-                "Different exact procedure routing (60-day or loan); LT termination is tangential.",
+                "Different exact procedure selected; LT termination is tangential.",
             )
         if not signals["force_out"]:
             for article_id in self.FORCE_OUT_ARTICLE_IDS:
@@ -2623,7 +2749,9 @@ class RAGEngine:
         # Fix J/K (Round 2): primary_article_id is resolved by exact-procedure
         # precedence — 60-day deadline > termination > loan request — so the
         # narrowest-fit procedure wins when multiple signals are plausible.
-        if exact_indirect_rollover_60_day:
+        if retaining_funds_question:
+            primary_article_id = self.GENERAL_POST_TERMINATION_OPTIONS_ARTICLE_ID
+        elif exact_indirect_rollover_60_day:
             primary_article_id = self.MISSED_60_DAY_ARTICLE_ID
         elif exact_termination_rollover or exact_termination_distribution:
             primary_article_id = self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID
@@ -2635,11 +2763,15 @@ class RAGEngine:
             primary_article_id = self.EXACT_TERMINATION_ROLLOVER_ARTICLE_ID
         elif exact_loan_request:
             primary_article_id = self.LT_LOAN_ARTICLE_ID
+        elif exact_hardship_request:
+            primary_article_id = self.HARDSHIP_ARTICLE_ID
         else:
             primary_article_id = None
 
         primary_action = "unknown"
-        if exact_indirect_rollover_60_day:
+        if retaining_funds_question:
+            primary_action = "retention_options"
+        elif exact_indirect_rollover_60_day:
             primary_action = "indirect_rollover_60_day"
         elif exact_termination_rollover:
             primary_action = "termination_rollover"
@@ -2647,6 +2779,8 @@ class RAGEngine:
             primary_action = "termination_distribution"
         elif exact_loan_request:
             primary_action = "loan_request"
+        elif exact_hardship_request:
+            primary_action = "hardship_withdrawal"
         elif exact_incoming_rollover:
             primary_action = "incoming_rollover"
         elif signals["rollover_intent"]:
@@ -2680,7 +2814,7 @@ class RAGEngine:
         return {
             "mode": (
                 "exact_procedure"
-                if exact_procedure_routing
+                if exact_procedure_routing or retaining_funds_question
                 else "broad_search"
             ),
             "primary_action": primary_action,
@@ -3134,6 +3268,43 @@ class RAGEngine:
         parsed["questions_to_ask"] = []
         return stray
 
+    @staticmethod
+    def _validate_question_coverage(parsed: Dict[str, Any], collected_data: Optional[Dict[str, Any]]) -> Dict[str, Any]:
+        """Validate coverage evidence after policies have changed the draft.
+
+        This proves that a claimed answer is present, not that its financial
+        interpretation is correct. Semantic replay remains a separate gate.
+        Missing evidence is an internal review, not a technical retry.
+        """
+        context = (collected_data or {}).get("internal_response_context")
+        questions = context.get("requested_questions") if isinstance(context, dict) else None
+        raw = parsed.pop("question_coverage", None)
+        if not isinstance(questions, list) or not questions:
+            return {}
+        response_text = json.dumps(parsed.get("response_to_participant") or {}, ensure_ascii=False).casefold()
+        entries: Dict[int, Dict[str, Any]] = {}
+        for item in raw if isinstance(raw, list) else []:
+            if not isinstance(item, dict):
+                continue
+            index = item.get("question_index")
+            if type(index) is int and 0 <= index < min(len(questions), 12) and index not in entries:
+                entries[index] = item
+        coverage = []
+        for index in range(min(len(questions), 12)):
+            item = entries.get(index, {})
+            reference = item.get("answer_reference")
+            reference = reference.strip()[:600] if isinstance(reference, str) else ""
+            status = item.get("status")
+            if status not in {"answered", "needs_verification", "not_applicable"} or not reference:
+                status = "needs_verification"
+            if status in {"answered", "not_applicable"} and reference.casefold() not in response_text:
+                status = "needs_verification"
+            coverage.append({"question_index": index, "status": status, "answer_reference": reference})
+        incomplete = sum(item["status"] == "needs_verification" for item in coverage)
+        return {"question_coverage": coverage, "incomplete_question_count": incomplete,
+                "requested_questions": [question[:1000] if isinstance(question, str) else "" for question in questions[:12]],
+                "human_review_required": incomplete > 0}
+
     _TERMINATION_FORM_URL = (
         "https://secure.rightsignature.com/templates/"
         "105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/"
@@ -3154,6 +3325,7 @@ class RAGEngine:
         cls,
         parsed: Dict[str, Any],
         retrieval_profile: Optional[Dict[str, Any]],
+        collected_data: Optional[Dict[str, Any]] = None,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """Enforce the reviewed outgoing-distribution boundaries after the LLM.
 
@@ -3175,19 +3347,196 @@ class RAGEngine:
         }
         if action == "incoming_rollover" or signals.get("incoming_rollover") is True:
             return parsed, info
+        if action == "plan_identifier":
+            fixed = copy.deepcopy(parsed)
+            identifier = ((collected_data or {}).get("plan_data") or {}).get("rk_plan_id")
+            identifier = str(identifier).strip() if type(identifier) in (str, int) else ""
+            known = bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", identifier)) and identifier.lower() not in {"null", "unknown", "none", "n/a"}
+            fixed["response_to_participant"] = {
+                "opening": f"The recordkeeper plan ID for your plan is {identifier}." if known else "Our team needs to verify the recordkeeper plan ID for your plan before providing it for the form.",
+                "key_points": [], "steps": [], "warnings": [],
+            }
+            fixed["outcome"] = "can_proceed" if known else "blocked_missing_data"
+            fixed["outcome_reason"] = "The requested identifier is available in the recordkeeper plan field; no distribution eligibility determination is made." if known else "The recordkeeper plan ID is missing; a portal route ID is not a substitute."
+            fixed["questions_to_ask"] = []
+            fixed["data_gaps"] = [] if known else ["Verified recordkeeper plan ID"]
+            fixed["escalation"] = {"needed": not known, "reason": None if known else "Verify the recordkeeper identifier against the correct plan."}
+            questions = ((collected_data or {}).get("internal_response_context") or {}).get("requested_questions")
+            if isinstance(questions, list) and len(questions) == 1:
+                # This policy answers exactly one factual request from the
+                # authoritative field. Its old model wording is no longer the
+                # coverage reference; unresolved identifiers still need review.
+                fixed["question_coverage"] = [{
+                    "question_index": 0,
+                    "status": "answered" if known else "needs_verification",
+                    "answer_reference": fixed["response_to_participant"]["opening"],
+                }]
+            info.update(applied=True, identifier_answer_only=True)
+            return fixed, info
+        if action == "hardship_withdrawal":
+            participant = (collected_data or {}).get("participant_data") or {}
+            confirmed = participant.get("confirmation_of_review_of_hardship_distribution_guidelines_pdf") is True
+            if confirmed or parsed.get("outcome") == "blocked_not_eligible":
+                return parsed, info
+            fixed = copy.deepcopy(parsed)
+            response = fixed.get("response_to_participant") or {}
+            response["opening"] = "Before we provide the hardship request form, our team needs to confirm that you have reviewed the Hardship Distribution Guidelines."
+            response["steps"] = [{
+                "step_number": 1,
+                "action": "Review the Hardship Distribution Guidelines with our team.",
+                "detail": "Our team needs to provide the Guidelines and confirm your review before sharing the hardship request form.",
+            }]
+            # A link or premature submission instruction may also occur outside
+            # steps. Retain supported explanations, fees and tax caveats only.
+            for section in ("key_points", "warnings"):
+                response[section] = [item for item in response.get(section, []) if not re.search(
+                    r"rightsignature|\b(?:submit|complete|sign|upload)\b|\bform\b|\bportal\b",
+                    cls._response_item_text(item), re.I,
+                )]
+            fixed["response_to_participant"] = response
+            fixed["outcome"] = "blocked_missing_data"
+            fixed["outcome_reason"] = "Procedural review confirmation is missing; this is not a denial of hardship eligibility."
+            fixed["questions_to_ask"] = []
+            fixed["data_gaps"] = list(fixed.get("data_gaps") or []) + ["Confirmed review of the Hardship Distribution Guidelines"]
+            fixed["escalation"] = {"needed": True, "reason": "Provide the approved Guidelines, obtain review confirmation, then share the hardship request form."}
+            info.update(applied=True, guidelines_confirmation_required=True)
+            return fixed, info
+        if action in {"loan_request", "loan"} and parsed.get("outcome") == "blocked_not_eligible":
+            fixed = copy.deepcopy(parsed)
+            response = fixed.get("response_to_participant")
+            if isinstance(response, dict):
+                response["steps"] = []
+            info.update({"applied": True, "ineligible_loan_steps_removed": True})
+            return fixed, info
         if action not in {
             "termination_rollover", "termination_distribution", "rollover",
-            "distribution",
+            "distribution", "custody_investigation", "retention_options",
         }:
             return parsed, info
         if (
             action in {"rollover", "distribution"}
             and signals.get("termination_distribution") is not True
         ):
+            if profile.get("inquiry_intent") == "informational_options" and signals.get("procedure_requested") is False:
+                fixed = copy.deepcopy(parsed)
+                response = fixed.get("response_to_participant")
+                if isinstance(response, dict):
+                    response["steps"] = []
+                info.update(applied=True, informational_scope_preserved=True)
+                return fixed, info
             return parsed, info
 
         fixed = copy.deepcopy(parsed)
         info["applied"] = True
+
+        preflight = (collected_data or {}).get("internal_preflight_context") or {}
+        sources = preflight.get("sources") or {}
+        account = sources.get("account_balance") or {}
+        zero_balance = account.get("status") == "known" and account.get("value") == 0
+
+        lifecycle = (collected_data or {}).get("internal_plan_context") or {}
+        facts = lifecycle.get("operational_facts") or []
+        dated_facts = [fact for fact in facts if isinstance(fact, dict)] if isinstance(facts, list) else []
+        dated_facts.sort(key=lambda f: (str(f.get("effective_on") or f.get("recorded_at") or ""), str(f.get("recorded_at") or "")))
+        latest = {fact.get("kind"): fact for fact in dated_facts if isinstance(fact.get("kind"), str)}
+        hold = latest.get("distribution_hold", {}).get("value") is True
+        transition_fact = latest.get("custody_transition_status", {})
+        successor_fact = latest.get("successor_recordkeeper", {})
+        reported_successor = latest.get("servicing_successor_reported", {})
+        transition = transition_fact.get("value")
+        # A successor and a completed transfer must describe the same event.
+        # Never join independent "latest" facts from different transitions.
+        transition_ref = transition_fact.get("record_ref")
+        successor_ref = successor_fact.get("record_ref")
+        if transition_ref or successor_ref:
+            same_transition = (
+                isinstance(transition_ref, str) and bool(transition_ref)
+                and transition_ref == successor_ref
+            )
+        else:
+            # Compatibility with dated snapshots predating record_ref. The
+            # absence of provenance is not enough to establish correlation.
+            same_transition = bool(transition_fact.get("source")) and bool(transition_fact.get("recorded_at")) and all(
+                transition_fact.get(key) == successor_fact.get(key)
+                for key in ("source", "recorded_at", "effective_on")
+            )
+        successor = successor_fact.get("value") if same_transition else None
+        current = lifecycle.get("current") or {}
+        inactive_plan = current.get("active") is False or current.get("status") in {"terminated", "deconverted", "closed"}
+        if hold or inactive_plan or transition in {"completed", "pending"}:
+            fixed["outcome"] = "blocked_not_eligible" if hold else "blocked_missing_data"
+            if hold:
+                opening = "The plan has a recorded hold on distributions. Our team needs to confirm that the hold has been released before a distribution can proceed."
+            elif (
+                reported_successor.get("value") in ("Fidelity", "ADP")
+                and reported_successor.get("source") == "plan_history.notes"
+                and str(reported_successor.get("recorded_at") or "") >= str(transition_fact.get("recorded_at") or "")
+            ):
+                opening = f"Plan records name {reported_successor['value']} as the successor recordkeeper. Our team needs to verify your account's current servicing details before providing transfer instructions."
+            elif transition == "completed" and successor in ("Fidelity", "ADP"):
+                opening = f"Plan records show a completed transition to {successor}. Our team needs to verify your account's current servicing details before providing transfer instructions."
+            else:
+                opening = "The plan's status requires verification of current servicing before we can provide transfer instructions."
+            if zero_balance:
+                opening = "Your account shows a zero balance. " + opening
+            fixed["outcome_reason"] = "Plan-side lifecycle evidence requires servicing review before participant execution."
+            fixed["response_to_participant"] = {"opening": opening, "key_points": [], "steps": [], "warnings": []}
+            fixed["questions_to_ask"] = []
+            fixed["data_gaps"] = ["Verified current plan servicing and participant disposition"]
+            fixed["escalation"] = {"needed": True, "reason": "Internal plan servicing review; verify lifecycle dates, any distribution hold and the individual account record."}
+            info["plan_review_required"] = True
+            return fixed, info
+
+        if zero_balance:
+            fixed["outcome"] = "blocked_missing_data"
+            fixed["outcome_reason"] = "The account balance is confirmed zero; the disposition and current custodian require internal verification."
+            fixed["response_to_participant"] = {
+                "opening": "Your account shows a zero balance. Our team needs to verify where the funds are held before giving you transfer instructions.",
+                "key_points": [], "steps": [], "warnings": [],
+            }
+            fixed["questions_to_ask"] = []
+            fixed["data_gaps"] = ["Verified disposition and current custodian of the participant's funds"]
+            fixed["escalation"] = {
+                "needed": True,
+                "reason": "Internal custody review: verify the participant's disposition record and current custodian; a zero balance does not prove a force-out or completed transfer.",
+            }
+            info["custody_review_required"] = True
+            return fixed, info
+
+        if action == "custody_investigation":
+            # A custody question alone never starts a withdrawal procedure.
+            return parsed, info
+        if action == "retention_options":
+            response = fixed.get("response_to_participant")
+            if isinstance(response, dict):
+                response["steps"] = []
+                questions = ((collected_data or {}).get("internal_response_context") or {}).get("requested_questions") or []
+                partial_indices = [index for index, question in enumerate(questions[:12]) if isinstance(question, str)
+                                   and re.search(r"\bpartial\b|\bonly (?:a )?part\b|\ba portion\b", question, re.I)]
+                if partial_indices:
+                    # The current payload has no verified rule for retaining
+                    # the remainder. Generic partial cash/distribution support
+                    # does not establish that separate permission.
+                    points = list(response.get("key_points") or [])
+                    for index in partial_indices:
+                        answer = f"{index + 1}. Our team needs to verify whether the plan permits a partial rollover while you leave the rest invested, including any balance requirements and applicable fees. A general partial-distribution option does not confirm this."
+                        position = next((pos for pos, point in enumerate(points) if isinstance(point, str)
+                                         and re.match(rf"^\s*{index + 1}[.)]\s", point)), None)
+                        if position is None:
+                            points.append(answer)
+                        else:
+                            points[position] = answer
+                    response["key_points"] = points
+                    response["opening"] = "We can review your options before you decide whether to move any funds."
+                    fixed["outcome"] = "blocked_missing_data"
+                    fixed["outcome_reason"] = "The informational question about a partial rollover with a retained balance needs a verified plan rule; this does not authorize a transaction."
+                    fixed["data_gaps"] = list(fixed.get("data_gaps") or []) + ["Plan permission, balance requirements and fees for a partial rollover retaining the remainder"]
+                    fixed["escalation"] = {"needed": True, "reason": "Verify the plan-specific partial rollover and retained-balance rules before confirming this option."}
+                    for item in fixed.get("question_coverage") or []:
+                        if isinstance(item, dict) and item.get("question_index") in partial_indices:
+                            item["status"] = "needs_verification"
+                    info["partial_retention_verification_required"] = True
+            return fixed, info
 
         if signals.get("brokerage_destination_ambiguous"):
             fixed["outcome"] = "blocked_missing_data"
@@ -3226,6 +3575,18 @@ class RAGEngine:
             )
             fixed["guardrails_applied"] = cls._dedupe_preserving_order(guardrails)
             info["brokerage_clarification"] = True
+            return fixed, info
+
+        # Informational/factual inquiries keep their ordered answers. The
+        # existence of a rollover keyword does not request a submission flow.
+        if (
+            profile.get("inquiry_intent") == "informational_options"
+            and signals.get("procedure_requested") is False
+        ):
+            response = fixed.get("response_to_participant")
+            if isinstance(response, dict):
+                response["steps"] = []
+            info["informational_scope_preserved"] = True
             return fixed, info
 
         if (
@@ -3322,6 +3683,8 @@ class RAGEngine:
         remove_markers = list(obsolete_markers)
         if signals.get("pure_rollover"):
             remove_markers.extend(pure_rollover_markers)
+            if signals.get("selected_delivery") == "check":
+                remove_markers.extend(("wire", "$35"))
         if not signals.get("overnight_request"):
             remove_markers.extend(("overnight check", "overnight delivery"))
         if signals.get("unknown_email_access"):
@@ -3345,24 +3708,44 @@ class RAGEngine:
 
         def contains_removed_marker(value: Any) -> bool:
             text = cls._response_item_text(value)
+            # Loan offsets are a separate tax component. Keep a grounded
+            # loan-specific warning without importing cash withholding into
+            # the direct rollover. Mixed cash/offset paragraphs still fail
+            # this exception and must be composed as separate components.
+            loan_offset = "loan offset" in text or "loan is offset" in text
+            cash_withholding = "20%" in text or "withholding" in text or "withheld" in text
+            offset_tax_component = loan_offset and not cash_withholding
+            offset_tax_markers = {
+                "taxable distribution", "taxable withdrawal", "federal tax",
+                "irs penalty", "10 percent", "early withdrawal penalty",
+                "early-distribution tax", "additional 10%", "10% tax",
+                "10% early distribution", "early distribution penalty",
+            }
+            applicable_markers = [
+                marker for marker in remove_markers
+                if not (offset_tax_component and marker in offset_tax_markers)
+            ]
             marker_match = any(
                 re.search(r"\bach\b", text) is not None
                 if marker == "ach"
                 else marker in text
-                for marker in remove_markers
+                for marker in applicable_markers
             )
             pure_rollover_pattern_match = (
                 signals.get("pure_rollover") is True
                 and any(re.search(pattern, text) is not None for pattern in (
                     r"\btake\s+(?:the\s+|a\s+|your\s+)?cash\b",
-                    r"\b(?:10|ten)\s*(?:%|percent)\b",
                     r"\btax(?:es)?\b.{0,40}\bwithheld\b",
                     r"\bwithheld\b.{0,40}\btax(?:es)?\b",
                     r"\btaxable\b.{0,30}\bcash\b",
                     r"\bcash\b.{0,30}\btaxable\b",
                 ))
             )
-            return marker_match or pure_rollover_pattern_match
+            percentage_tax_match = (
+                signals.get("pure_rollover") is True and not offset_tax_component
+                and re.search(r"\b(?:10|ten)\s*(?:%|percent)\b", text) is not None
+            )
+            return marker_match or pure_rollover_pattern_match or percentage_tax_match
 
         opening = response.get("opening")
         if contains_removed_marker(opening):
@@ -3394,6 +3777,16 @@ class RAGEngine:
                 return []
             kept: List[Any] = []
             for item in value:
+                if signals.get("pure_rollover") and isinstance(item, str):
+                    # A negative ACH clause is not an ACH instruction. Remove
+                    # only the explicit exclusion, then apply the normal
+                    # filter to any remaining positive or ambiguous mention.
+                    item = re.sub(
+                        r"[;.]?\s*\bACH is not (?:used|available|supported)"
+                        r" (?:for direct rollovers|for a direct rollover)\.?",
+                        "", item, flags=re.IGNORECASE,
+                    )
+                    item = re.sub(r",\s*not ACH\s*,", "", item, flags=re.IGNORECASE)
                 if contains_removed_marker(item):
                     info["removed_items"] += 1
                     continue
@@ -3405,9 +3798,17 @@ class RAGEngine:
         steps = filter_items(response.get("steps"))
 
         required_points: List[tuple[tuple[str, ...], str]] = []
-        if signals.get("pure_rollover"):
+        if signals.get("pure_rollover") and signals.get("selected_delivery") == "check":
+            required_points.extend([
+                (("receiving provider",), "For your direct rollover by check, confirm that the receiving provider accepts each source and obtain its check payee, mailing and account instructions."),
+                (("distribution fee", "processing fee", "request fee"), "The distribution request fee is $75. Standard check delivery has no additional delivery fee."),
+            ])
+            if fixed.get("outcome") == "can_proceed":
+                required_points.append((("1099-r",), "ForUsAll reviews the request within about two business days; after approval, standard checks typically arrive in 2-3 weeks. Form 1099-R is issued by January 31 of the following year."))
+        elif signals.get("pure_rollover"):
             required_points.extend([
                 (("receiving provider",), (
+                    "Direct rollovers can be delivered by check or wire. "
                     "Before submitting, confirm that the receiving provider "
                     "accepts the tax character of each source and whether it "
                     "requires check or wire delivery."
@@ -3430,12 +3831,6 @@ class RAGEngine:
                         "days; after approval, wires typically complete in 1-2 "
                         "weeks and standard checks in 2-3 weeks. Form 1099-R is "
                         "issued by January 31 of the following year."
-                    )),
-                    (("outstanding loan", "final payroll", "crypto"), (
-                        "Before submitting, contact Support about any outstanding "
-                        "loan; wait at least 7 business days after final payroll; "
-                        "and, if Crypto Enrollment is active, contact Support "
-                        "because transfer or liquidation treatment is not defined."
                     )),
                 ])
         elif fixed.get("outcome") == "can_proceed" and (
@@ -3471,6 +3866,52 @@ class RAGEngine:
                 cash_tax_point,
             ))
 
+        preflight_applicable = fixed.get("outcome") == "can_proceed" or (
+            fixed.get("outcome") == "blocked_missing_data"
+            and action in {"termination_distribution", "termination_rollover"}
+            and signals.get("employment_state") == "terminated"
+            and signals.get("termination_date_present") is True
+            and not separation_conflict
+        )
+        if preflight_applicable:
+            if preflight:
+                info["structured_preflight_applied"] = True
+                loans = preflight.get("loans") or {}
+                loan_state = loans.get("outstanding_status", "unknown")
+                if loans.get("status") not in {"known", "empty"}:
+                    loan_state = "unknown"
+                crypto = preflight.get("crypto") or {}
+                holdings = crypto.get("holdings") or {}
+                crypto_zero = holdings.get("status") == "known" and holdings.get("value") == 0
+                # Remove unsupported model conditionals when absence was
+                # actually established, not merely when extraction was empty.
+                def contradicted_preflight(item: Any) -> bool:
+                    text = cls._response_item_text(item)
+                    return (
+                        loan_state == "zero" and any(marker in text for marker in (
+                            "outstanding loan", "loan offset", "loan payoff", "loan balance",
+                        ))
+                    ) or (crypto_zero and "crypto" in text)
+                key_points = [i for i in key_points if not contradicted_preflight(i)]
+                warnings = [i for i in warnings if not contradicted_preflight(i)]
+                preflight_warnings: List[str] = []
+                if loan_state == "positive":
+                    preflight_warnings.append("An outstanding loan is recorded. Contact Support to verify its payoff or offset handling before submitting your distribution request.")
+                elif loan_state == "unknown":
+                    preflight_warnings.append("Your loan status has not been verified. Support needs to confirm whether any outstanding loan affects this request.")
+                if not crypto_zero:
+                    if holdings.get("status") == "known" and isinstance(holdings.get("value"), (int, float)) and holdings["value"] > 0:
+                        preflight_warnings.append("Crypto positions are recorded. Support must verify the applicable transfer requirements before the distribution; enrollment alone does not establish those requirements.")
+                    else:
+                        preflight_warnings.append("Crypto positions have not been verified. Ask Support to verify holdings and the applicable transfer requirements before submitting; enrollment alone does not establish whether you hold crypto.")
+                warnings = cls._dedupe_preserving_order(preflight_warnings + warnings)
+                required_points.append((("final payroll",), "Before submitting, wait at least 7 business days after final payroll."))
+            elif signals.get("pure_rollover") and fixed.get("outcome") == "can_proceed":
+                required_points.append((("outstanding loan", "final payroll", "crypto"), (
+                    "Before submitting, contact Support about any outstanding loan; wait at least 7 business days after final payroll; "
+                    "and, if Crypto Enrollment is active, contact Support because transfer or liquidation treatment is not defined."
+                )))
+
         if signals.get("overnight_request"):
             overnight = (
                 "OverNight Check delivery cannot be selected in the participant "
@@ -3489,11 +3930,48 @@ class RAGEngine:
             ):
                 key_points.append(support)
 
-        # Reviewed facts are deterministic and must survive the six-item cap.
+        requested_questions = ((collected_data or {}).get("internal_response_context") or {}).get("requested_questions")
+        preserve_question_order = isinstance(requested_questions, list) and bool(requested_questions)
+        key_point_limit = 6
+        # Reviewed facts are deterministic and must survive the response cap.
         # Replace any model-authored partial rendition with the complete
         # canonical point, then use remaining capacity for model-specific
         # context.  Incoming rollovers returned before this policy.
-        if required_points:
+        if required_points and preserve_question_order:
+            # Keep each answer in its original position. Replacing a fee or
+            # delivery clause must not promote it ahead of an unrelated source
+            # answer. Add missing reviewed facts after the requested answers.
+            key_points = key_points[:12]
+            for markers, point in required_points:
+                positions = [i for i, item in enumerate(key_points) if any(
+                    marker in cls._response_item_text(item) for marker in markers
+                )]
+                question_pattern = (
+                    r"\b(?:deliver\w*|electronically|check|wire)\b" if "receiving provider" in markers
+                    else r"\b(?:fees?|costs?|charges?)\b" if "$35" in markers
+                    else None
+                )
+                if question_pattern:
+                    targets = [i for i, question in enumerate(requested_questions[:12])
+                               if isinstance(question, str) and re.search(question_pattern, question, re.IGNORECASE)]
+                    # Numbered sections are emitted in participant-question
+                    # order. Do not replace another section merely because it
+                    # also mentions the receiving provider.
+                    if len(targets) == 1:
+                        target = targets[0]
+                        if target < len(key_points) and isinstance(key_points[target], str) and re.match(rf"^{target + 1}[.)]\s", key_points[target]):
+                            positions = [target]
+                if positions:
+                    original_point = key_points[positions[0]]
+                    prefix = re.match(r"^\d{1,2}[.)]\s+[^:]{1,70}:\s*", original_point) if isinstance(original_point, str) else None
+                    if prefix:
+                        point = prefix.group() + point
+                    key_points[positions[0]] = point
+                    key_points = [item for i, item in enumerate(key_points) if i not in positions[1:]]
+                else:
+                    key_points.append(point)
+            key_point_limit = 12 + len(required_points)
+        elif required_points:
             aliases = {
                 marker
                 for markers, _point in required_points
@@ -3559,7 +4037,7 @@ class RAGEngine:
             if isinstance(step, dict):
                 step["step_number"] = index
 
-        response["key_points"] = key_points[:6]
+        response["key_points"] = key_points[:key_point_limit]
         response["warnings"] = warnings[:4]
         response["steps"] = steps[:6]
         fixed["response_to_participant"] = response
@@ -5423,7 +5901,8 @@ class RAGEngine:
         chunks: List[Dict[str, Any]],
         budget: int,
         prioritize_types: Optional[List[str]] = None,
-        max_per_article: int = 6
+        max_per_article: int = 6,
+        enforce_type_order: bool = False,
     ) -> tuple:
         """
         Build context ensuring representation from multiple articles.
@@ -5461,11 +5940,22 @@ class RAGEngine:
         else:
             type_ordered = list(chunks)
 
+        def selection_key(chunk: Dict[str, Any]) -> tuple:
+            kind = chunk['metadata'].get('chunk_type')
+            rank = (prioritize_types.index(kind)
+                    if prioritize_types and kind in prioritize_types else 99)
+            return (rank if enforce_type_order else 0, -chunk.get('score', 0))
+
+        if enforce_type_order:
+            # Required-data contracts must survive the per-article cap even
+            # when a short business rule has a higher semantic-search score.
+            type_ordered.sort(key=selection_key)
+
         # ── Phase 1: Best chunk from each article ──
         article_best: Dict[str, Dict[str, Any]] = {}
         for chunk in chunks:
             aid = chunk['metadata'].get('article_id', 'unknown')
-            if aid not in article_best or chunk.get('score', 0) > article_best[aid].get('score', 0):
+            if aid not in article_best or selection_key(chunk) < selection_key(article_best[aid]):
                 article_best[aid] = chunk
 
         selected = []
@@ -6335,13 +6825,14 @@ class RAGEngine:
             return context, selected_chunks, tokens_used
 
         selected_ids = {
-            c.get("metadata", {}).get("chunk_id") for c in selected_chunks
+            c.get("id") or c.get("metadata", {}).get("chunk_id") for c in selected_chunks
         }
         section_idx = len(selected_chunks)
         parts = [context] if context else []
         for chunk in nice_chunks:
             md = chunk.get("metadata", {})
-            if md.get("chunk_id") in selected_ids:
+            chunk_id = chunk.get("id") or md.get("chunk_id")
+            if chunk_id is not None and chunk_id in selected_ids:
                 continue
             content = md.get("content", "")
             if not content:
@@ -6351,9 +6842,142 @@ class RAGEngine:
                 f"--- Section {section_idx} ({md.get('chunk_type', 'unknown')}) ---\n{content}\n"
             )
             selected_chunks.append(chunk)
+            if chunk_id is not None:
+                selected_ids.add(chunk_id)
             tokens_used += self.token_manager.count_tokens(content)
 
         return "\n".join(parts), selected_chunks, tokens_used
+
+    @staticmethod
+    def _required_data_from_chunks(
+        chunks: List[Dict[str, Any]],
+    ) -> tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        """Read the chunker's explicit field records, never infer from prose.
+
+        A partial/malformed contract is not a successful empty extraction.
+        Conversation-owned fields remain available as metadata but never
+        become a portal scrape request. This is KB schema parsing, not a new
+        source of participant facts.
+        """
+        result: Dict[str, Any] = {"participant_data": [], "plan_data": []}
+        diagnostics: Dict[str, Any] = {
+            "contract_status": "not_present", "conversation_fields": [],
+            "field_provenance": [],
+        }
+        seen: Dict[tuple[str, str], Dict[str, Any]] = {}
+        selected = [c for c in chunks if (c.get("metadata") or {}).get("chunk_type") in {
+            "required_data_must_have", "required_data_nice_to_have",
+        }]
+        if not selected:
+            return None, diagnostics
+        sources = {
+            "participant_profile": "participant_data", "participant_data": "participant_data",
+            "plan_profile": "plan_data", "plan_data": "plan_data",
+            "message_text": "conversation", "agent_input": "conversation",
+        }
+        for chunk in selected:
+            md = chunk.get("metadata") or {}
+            content = md.get("content")
+            required = md.get("chunk_type") == "required_data_must_have"
+            tier = "Must Have" if required else "Nice to Have"
+            if not isinstance(content, str) or not re.match(
+                rf"^# Required Data [—–-] {tier} \(", content
+            ):
+                diagnostics["contract_status"] = "schema_rejected"
+                return None, diagnostics
+            blocks = re.split(r"(?m)^### ", content)[1:]
+            if not blocks:
+                diagnostics["contract_status"] = "empty_extraction"
+                return None, diagnostics
+            for block in blocks:
+                name, _, body = block.partition("\n")
+                name = name.strip()
+                attributes = dict(re.findall(
+                    r"(?m)^\*\*(Description|Why needed|Source):\*\* ([^\n]+)$", body
+                ))
+                source = attributes.get("Source", "").strip()
+                if (
+                    not name or len(name) > 200
+                    or set(attributes) != {"Description", "Why needed", "Source"}
+                    or source not in sources
+                    or any(not v.strip() or v.strip() in {"None", "null"} for v in attributes.values())
+                ):
+                    diagnostics["contract_status"] = "schema_rejected"
+                    return None, diagnostics
+                slug = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+                aliases = {
+                    "participant_age_relative_to_59_5": "birth_date",
+                    "participant_age_relative_to_595": "birth_date",
+                    "outstanding_401_k_loan_status": "loan_history",
+                }
+                slug = aliases.get(slug, slug)
+                if not slug:
+                    diagnostics["contract_status"] = "schema_rejected"
+                    return None, diagnostics
+                if slug.endswith("_date"):
+                    data_type = "date"
+                elif slug.endswith("_balance") or slug in {"amount_needed", "amount_needed_for_the_hardship"}:
+                    data_type = "currency"
+                elif slug == "loan_history":
+                    data_type = "list[text]"
+                elif slug in {"crypto_enrollment", "active", "confirmation_of_review_of_hardship_distribution_guidelines_pdf"}:
+                    data_type = "boolean"
+                elif slug in {"maximum_number_of_loans", "minimum_age"}:
+                    data_type = "number"
+                else:
+                    data_type = "text"
+                field = {
+                    "field": slug, "description": attributes["Description"].strip(),
+                    "why_needed": attributes["Why needed"].strip(),
+                    "data_type": data_type, "required": required,
+                }
+                category = sources[source]
+                key = (category, slug)
+                if key in seen:
+                    seen[key]["required"] = seen[key]["required"] or required
+                    continue
+                provenance = {
+                    "field": slug, "source": source,
+                    "article_id": md.get("article_id"), "chunk_id": chunk.get("id"),
+                }
+                if category == "conversation":
+                    field.update(provenance)
+                    diagnostics["conversation_fields"].append(field)
+                else:
+                    result[category].append(field)
+                    diagnostics["field_provenance"].append(provenance)
+                seen[key] = field
+        diagnostics["contract_status"] = "valid"
+        diagnostics["field_count"] = len(seen)
+        return result, diagnostics
+
+    def _required_data_extraction_failure(self, content: str) -> Optional[str]:
+        if not isinstance(content, str) or not content.strip():
+            return "empty_extraction"
+        try:
+            parsed = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            return "invalid_json"
+        if not isinstance(parsed, dict):
+            return "schema_rejected"
+        gaps = parsed.get("coverage_gaps", [])
+        if self._should_retry_required_data(parsed, gaps, 1.0):
+            # Validate again with a non-empty sentinel so schema and a valid
+            # empty extraction have distinct diagnostics.
+            nonempty = copy.deepcopy(parsed)
+            for category in ("participant_data", "plan_data"):
+                if nonempty.get(category) == []:
+                    nonempty[category] = [{
+                        "field": "contract_check", "description": "Schema check",
+                        "why_needed": "Schema check", "data_type": "text", "required": True,
+                    }]
+            if self._should_retry_required_data(nonempty, gaps, 1.0):
+                return "schema_rejected"
+        if not parsed.get("participant_data") and not parsed.get("plan_data"):
+            return "empty_extraction"
+        if self._should_retry_required_data(parsed, gaps, 1.0):
+            return "schema_rejected"
+        return None
 
     def _parse_required_data_response(
         self, llm_response: str
@@ -6373,6 +6997,8 @@ class RAGEngine:
             )
             parsed = {"participant_data": [], "plan_data": [], "coverage_gaps": []}
 
+        if not isinstance(parsed, dict):
+            parsed = {"participant_data": [], "plan_data": [], "coverage_gaps": []}
         coverage_gaps = parsed.get("coverage_gaps", [])
         if not isinstance(coverage_gaps, list):
             coverage_gaps = []

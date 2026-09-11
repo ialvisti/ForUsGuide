@@ -360,6 +360,7 @@ def test_e2e_manifest_rejects_wrong_digest_or_critical_scan(tmp_path: Path) -> N
     'n8n_workflow/main.json',
     'n8n_workflow/paticipant_search.json',
     'PA/n8n prompts/PROMPT_KNOWLEDGE_QUESTION_BUILDER.md',
+    'PA/n8n prompts/PROMPT_GENERATE_RESPONSE_BODY_BUILDER.md',
 ])
 def test_verification_upload_keeps_required_sanitized_n8n_inputs(required: str) -> None:
     from pathspec import GitIgnoreSpec

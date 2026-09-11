@@ -22,6 +22,7 @@
 !PA/n8n/candidates/*.js
 !PA/n8n/tests/*.cjs
 !PA/n8n prompts/PROMPT_KNOWLEDGE_QUESTION_BUILDER.md
+!PA/n8n prompts/PROMPT_GENERATE_RESPONSE_BODY_BUILDER.md
 !n8n_workflow/
 !n8n_workflow/main.json
 !n8n_workflow/paticipant_search.json

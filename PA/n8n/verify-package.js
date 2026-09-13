@@ -24,6 +24,10 @@ const shared = read('consumer-contract.js');
 for (const name of ['format-gr', 'format-kq']) {
   assert.ok(read('candidates/' + name + '.js').startsWith(shared), name + ': shared contract drift');
 }
+const finalTransport = read('final-transport.js');
+for (const name of ['final-data-extractor', 'final-parser-input']) {
+  assert.ok(read('candidates/' + name + '.js').startsWith(finalTransport), name + ': transport drift');
+}
 assert.deepEqual(manifest.new_internal_terminal.outgoing_connections, []);
 assert.equal(manifest.new_internal_terminal.body.visibility, 'internal');
-console.log('PA package verified: 7 replacements, 1 field addition, 2 addenda; no remote actions.');
+console.log(`PA package verified: ${manifest.replacements.length} replacements, ${manifest.parameter_additions.length} parameter changes, ${manifest.addenda.length} addenda; no remote actions.`);

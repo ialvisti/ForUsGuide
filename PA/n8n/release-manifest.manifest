@@ -89,7 +89,7 @@
       "baseline": "baselines/final-data-extractor.js",
       "baseline_sha256": "28283c097121c223cdbd75f358514504ccc227e2b5961c46580282d17b5b5737",
       "candidate": "candidates/final-data-extractor.js",
-      "candidate_sha256": "de838530e6492fceb7077e833388378f472cf5e5afb9ddf1e3eeba9226e14460",
+      "candidate_sha256": "49a9150e0b50ff2a72c992f26a2d458492f6e4347ad81a485947798bc1aee8e0",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source"
     }
@@ -148,6 +148,32 @@
       "wrapping": "Add identity_context field to existing JSON body with value {{ JSON.stringify((() => { <candidate source> })()) }}. Preserve every existing body field, header, authentication and setting.",
       "rollback": "Remove only the added identity_context field.",
       "authorization": "User explicitly accepts the account identified by current PA flow as the criterion for own name and verified figures in internal drafts."
+    },
+    {
+      "workflow": "final",
+      "node_role_or_observed_name": "JSON parser",
+      "parameter": "text",
+      "observed_prior_state": "User prompt is the raw Webhook body; production execution185815 body is opaque invalid JSON.",
+      "candidate": "candidates/final-parser-input.js",
+      "candidate_sha256": "c070f12a63c1b7220ff825fa960ecdba190c88b5c2060633e2c1a79485754c82",
+      "parameter_kind": "expression_value",
+      "wrapping": "{{ (() => { <candidate source> })() }}",
+      "rollback": "Restore the previously captured text expression."
     }
-  ]
+  ],
+  "transport_correlation": {
+    "emitter": "DevRev workflow70 / Send Info to n8n",
+    "new_header": "x-pa-ticket-id",
+    "value_reference": "Get Ticket > Output > Display Id",
+    "existing_headers_preserved": true,
+    "body_remains_opaque_model_data": true,
+    "consumer": "final-parser-input.js and final-data-extractor.js normalize exactly the same closed envelope",
+    "authorization_semantics": "Correlation only; not sender authentication or permission to publish/close.",
+    "deploy_order": [
+      "Add header to emitter (compatible with baseline consumer).",
+      "Validate parser and extractor with synthetic header and opaque body; no downstream nodes.",
+      "Publish final consumer."
+    ],
+    "rollback": "Restore final consumer first, then remove only new emitter header."
+  }
 }

@@ -1,0 +1,13 @@
+{
+  "observed_at": "2026-09-14T00:21:15.855Z",
+  "source": "Fresh isolated actual n8n JSON parser Execute step; synthetic verified account; final prompt",
+  "system_sha256": "7162a0fd6e63b97c847e72bdbcd33a53eb155030cc6f0d03c19093fe8c5df8d0",
+  "result": {
+    "ticketId": "TKT-SIMULATION",
+    "participant_reply": "Hi Alex,\n\nThank you for reaching out. We know you want a clear breakdown of your 401(k) balance and contribution sources. We reviewed your account and the details of your request.\n\nYour total account balance is **$500** as of September 1, 2026. The contribution source balances we can confirm right now are **$300 in employee deferrals** and **$200 in Roth deferrals**.\n\n**1. What is my total balance?**\n\nYour total account balance is **$500** as of September 1, 2026. This is your total account balance, not a verified vested balance.\n\n**2. What are my contribution sources?**\n\nThe confirmed source balances are:\n\n- Employee deferral balance: **$300**\n- Roth deferral balance: **$200**\n\nThese source balances were observed September 11, 2026. We still need to confirm whether any non-Roth after-tax source applies before treating the source breakdown as complete.\n\n**What this means:**\n\nNo action is needed from you right now. We're going to confirm the remaining source detail and reply here if anything needs correcting or adding.\n\nReply here if you need clarification on any part of the balance breakdown.\n\nThe ForUsAll Team",
+    "set_stage_solved": false,
+    "stage_reason": "Human review is required because next_action is human_review, participant_reply_safe is false, and human_review_required is true. The answer includes verified balance/source values but the contribution-source breakdown is not complete until non-Roth after-tax source status is confirmed.",
+    "internal_notes": "Do not publish without human review. Verified participant identity matched. Supported values: first name Alex from participant.census.First Name observed 2026-09-11T18:00:00Z; account_balance $500 from participant.savings_rate.Account Balance observed 2026-09-11T18:00:00Z, as of 2026-09-01; employee_deferral_balance $300 from participant.savings_rate.Employee Deferral Balance observed 2026-09-11T18:00:00Z; roth_deferral_balance $200 from participant.savings_rate.Roth Deferral Balance observed 2026-09-11T18:00:00Z. Unresolved fact: whether any non-Roth after-tax contribution source applies. Owner: ForUsAll Support/internal verification."
+  },
+  "data_kind": "Synthetic, sanitized values only. Actual isolated n8n Execute-step output; not an original participant execution."
+}

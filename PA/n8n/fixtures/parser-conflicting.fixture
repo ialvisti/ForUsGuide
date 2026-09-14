@@ -1,0 +1,13 @@
+{
+  "observed_at": "2026-09-13T19:17:58.475Z",
+  "source": "Fresh isolated actual n8n JSON parser Execute step; synthetic conflicting account association",
+  "system_sha256": "7162a0fd6e63b97c847e72bdbcd33a53eb155030cc6f0d03c19093fe8c5df8d0",
+  "result": {
+    "ticketId": "TKT-SIMULATION",
+    "participant_reply": "Hello,\n\nThank you for reaching out. We understand you want a clear breakdown of your 401(k) balance and contribution sources. We are reviewing your account and the details of your request.\n\n**1. What is my total balance?**\n\nThe total account balance amount needs confirmation. This is your total account balance, not a verified vested balance.\n\n**2. What are my contribution sources?**\n\nEmployee deferral and Roth deferral source amounts need confirmation. We still need to confirm whether any non-Roth after-tax source applies before treating the source breakdown as complete.\n\nNo action is needed from you right now. We're going to confirm the remaining source detail and reply here if anything needs correcting or adding.\n\nReply here if you need clarification on any part of the balance breakdown.\n\nThe ForUsAll Team",
+    "set_stage_solved": false,
+    "stage_reason": "Identity is conflicted (identity_verified=false; identity_resolution_status=ambiguous; evidence of different account). No personalized values may be published until resolution. The answer includes headings but values must not be disclosed. Human review required. Unresolved fact: whether any non-Roth after-tax contribution source applies.",
+    "internal_notes": "Identity conflict: identity_verified=false; identity_resolution_status=ambiguous. Supported values came from a different account and are NOT verified for this participant. Cannot retain private values. Unresolved fact: whether any non-Roth after-tax contribution source applies. Owner: ForUsAll Support/internal verification."
+  },
+  "data_kind": "Synthetic, sanitized values only. Actual isolated n8n Execute-step output; not an original participant execution."
+}

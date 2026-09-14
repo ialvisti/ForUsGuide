@@ -100,12 +100,6 @@
       "sha256": "f0f354ecd5ff205fdea8ac6fb1717a7f87e078aee435e22cbe7f177fe50856c7",
       "target": "DevRev AGENT-3 8.0 Live",
       "original_prompt_sha256": "6859f17f7cc599b9b0ec9ac134f428b1de2ef6973a81297db7338bd411640bc5"
-    },
-    {
-      "file": "PA_PARSER_ADDENDUM.md",
-      "sha256": "4563449398a47865b63e41729785b8da0dfd010b1389106cfa282e646c87ad79",
-      "target": "final / JSON parser AI Agent",
-      "original_prompt_sha256": "ce630d3c03e32fcfc51feb698a364b8deef7234594ee1eabd0b5ba9e76801090"
     }
   ],
   "new_internal_terminal": {
@@ -131,7 +125,7 @@
     "Re-read current workflow version, node source and prompt hashes. Stop on material drift.",
     "FUG is unpublished; do not activate as a side effect of editing.",
     "Use existing authenticated sessions and credentials; preserve permissions.",
-    "Addenda prepend to current structured prompts; preserve original formatting and privacy rules.",
+    "DevRev addendum prepends to its structured prompt. Final parser uses the full replacement prompt: do not prepend the superseded parser addendum.",
     "Final input has no independently correlated backend decision; model recommendation remains advisory.",
     "Run controlled workflow integration with external publication disabled before any production traffic."
   ],
@@ -175,5 +169,31 @@
       "Publish final consumer."
     ],
     "rollback": "Restore final consumer first, then remove only new emitter header."
-  }
+  },
+  "prompt_replacements": [
+    {
+      "workflow": "final",
+      "node_role_or_observed_name": "JSON parser",
+      "parameter": "systemMessage",
+      "candidate": "candidates/final-parser-system.md",
+      "candidate_sha256": "7162a0fd6e63b97c847e72bdbcd33a53eb155030cc6f0d03c19093fe8c5df8d0",
+      "original_prompt_sha256": "ce630d3c03e32fcfc51feb698a364b8deef7234594ee1eabd0b5ba9e76801090",
+      "superseded_draft_sha256": "87d2aea8e0a04d9a79d89b36543bd79c1f49c11a0a5609378c043bc00103b655",
+      "reason": "Actual isolated n8n replay demonstrated contradictory blanket redaction after prepended addendum. Replace full prompt with one approved privacy policy; retain five-key contract and other restrictions.",
+      "verified_replays": [
+        {
+          "file": "fixtures/parser-verified.fixture",
+          "mode": "verified"
+        },
+        {
+          "file": "fixtures/parser-unverified.fixture",
+          "mode": "unverified"
+        },
+        {
+          "file": "fixtures/parser-conflicting.fixture",
+          "mode": "conflicting"
+        }
+      ]
+    }
+  ]
 }

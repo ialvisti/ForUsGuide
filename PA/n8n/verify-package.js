@@ -20,6 +20,15 @@ for (const item of manifest.parameter_additions || []) {
   new Function('$', source); // Parse the added expression only.
 }
 for (const item of manifest.addenda) assert.equal(hash(read(item.file)), item.sha256, item.file);
+for (const item of manifest.prompt_replacements || []) {
+  assert.equal(hash(read(item.candidate)), item.candidate_sha256, item.candidate);
+  for (const replay of item.verified_replays || []) {
+    const capture = JSON.parse(read(replay.file));
+    assert.equal(capture.system_sha256, item.candidate_sha256, replay.file + ': stale prompt evidence');
+    require('node:child_process').execFileSync(process.execPath,
+      [path.join(root, 'verify-parser-replay.cjs'), path.join(root, replay.file), replay.mode]);
+  }
+}
 const shared = read('consumer-contract.js');
 for (const name of ['format-gr', 'format-kq']) {
   assert.ok(read('candidates/' + name + '.js').startsWith(shared), name + ': shared contract drift');
@@ -30,4 +39,4 @@ for (const name of ['final-data-extractor', 'final-parser-input']) {
 }
 assert.deepEqual(manifest.new_internal_terminal.outgoing_connections, []);
 assert.equal(manifest.new_internal_terminal.body.visibility, 'internal');
-console.log(`PA package verified: ${manifest.replacements.length} replacements, ${manifest.parameter_additions.length} parameter changes, ${manifest.addenda.length} addenda; no remote actions.`);
+console.log(`PA package verified: ${manifest.replacements.length} replacements, ${manifest.parameter_additions.length} parameter changes, ${manifest.addenda.length} addenda, ${(manifest.prompt_replacements || []).length} full prompts; no remote actions.`);

@@ -31,7 +31,8 @@
       "candidate": "candidates/format-gr.js",
       "candidate_sha256": "211e50da98644da2fc04765a8cc2019a4553dfb8bf291f0f28b62df94aad7d2c",
       "parameter_kind": "code",
-      "wrapping": "replace jsCode with complete candidate source"
+      "wrapping": "replace jsCode with complete candidate source",
+      "observed_node_name": "Format data for DevRev Internal notes"
     },
     {
       "workflow": "fug",
@@ -41,7 +42,8 @@
       "candidate": "candidates/format-kq.js",
       "candidate_sha256": "05e9e2dee7952d22adb4930e56bab583666163a2bb84feeaea2fad21e9a94421",
       "parameter_kind": "code",
-      "wrapping": "replace jsCode with complete candidate source"
+      "wrapping": "replace jsCode with complete candidate source",
+      "observed_node_name": "Format Data for DevRev"
     },
     {
       "workflow": "fug",
@@ -119,7 +121,11 @@
     "tags": [],
     "participant_messages": false,
     "stage_changes": false,
-    "publication_requires_approval": true
+    "publication_requires_approval": true,
+    "body_candidate": "candidates/internal-handoff-body.js",
+    "body_candidate_sha256": "e0cdc68ecd1f9d598abf8136dbf4849e84eb2d2b09b72616f2d48c8953bc0b29",
+    "body_wrapping": "{{ (() => { <complete candidate source> })() }}",
+    "observed_credential_reference": "DevRev Production / Header Auth"
   },
   "preconditions": [
     "Re-read current workflow version, node source and prompt hashes. Stop on material drift.",
@@ -195,5 +201,6 @@
         }
       ]
     }
-  ]
+  ],
+  "canonical_workflow_confirmation": "2026-09-13 user: el workflow vigente es FUG. Production/main already approved; deliberate FUG publication authorized."
 }

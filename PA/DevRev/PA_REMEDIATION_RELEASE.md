@@ -46,6 +46,14 @@ El usuario confirmó expresamente que se puede usar la cuenta que identifica el 
 
 ## Aplicación y rollback preparados
 
+### FUG confirmado y prueba real de contratos — 14 septiembre
+
+El usuario confirmó FUG (`BQvxrc3YiP4ZWbNQ`) como workflow vigente; la autorización existente de producción incluye su publicación deliberada. New Prod permanece intacto. El mapping cotejado por código es GR → `Format data for DevRev Internal notes`, KQ → `Format Data for DevRev`. El nodo `Format KQ for DevRev` está desactivado y no se modifica.
+
+El borrador incorpora los cinco cambios de código/parámetros y un terminal `Record PA Human Review` con la credencial guardada `DevRev Production` (Header Auth). Sólo recibe desde `Stop Unsafe Terminal Result`; no tiene salidas. Su cuerpo usa `internal-handoff-body.js` para serializar JSON anidado, comillas y saltos de línea, conservando visibilidad interna. El grafo cambia de 44/48 a 45 nodos/49 conexiones, sin eliminar conexiones anteriores.
+
+Una ejecución aislada real de n8n comprobó 19 condiciones con las cinco fuentes candidatas y entradas sintéticas: identidad coincidente/discrepante, cuatro preguntas, datos verificados/no verificados, bloqueo en pregunta relacionada, tres estados de búsqueda y handoff interno. No ejecutó nodos HTTP ni tickets originales. El nodo temporal se retiró después. Las 64 pruebas Node y el verificador de integridad cubren también la serialización del terminal. Esto acredita contratos en el runtime; quedan pendientes la publicación verificada y los replays completos por observación.
+
 1. Releer versiones, estado y hashes; detenerse ante cambios materiales. Guardar exportación autorizada actual como rollback, sin credenciales en evidencia.
 2. Aplicar contratos compatibles del backend y productor ForUsBots antes de exigir datos nuevos. Mantener permisos/configuración. La KB no cambia y no necesita reindexación para este paquete.
 3. Preparar borradores de los nodos/prompt indicados, conservar formato y credenciales; conectar únicamente el terminal interno nuevo. No activar FUG por editarlo.

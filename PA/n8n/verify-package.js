@@ -39,4 +39,7 @@ for (const name of ['final-data-extractor', 'final-parser-input']) {
 }
 assert.deepEqual(manifest.new_internal_terminal.outgoing_connections, []);
 assert.equal(manifest.new_internal_terminal.body.visibility, 'internal');
+const terminalBody = read(manifest.new_internal_terminal.body_candidate);
+assert.equal(hash(terminalBody), manifest.new_internal_terminal.body_candidate_sha256);
+new Function('$json', terminalBody);
 console.log(`PA package verified: ${manifest.replacements.length} replacements, ${manifest.parameter_additions.length} parameter changes, ${manifest.addenda.length} addenda, ${(manifest.prompt_replacements || []).length} full prompts; no remote actions.`);

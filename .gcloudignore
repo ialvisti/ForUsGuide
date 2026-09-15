@@ -21,6 +21,12 @@
 !PA/n8n/baselines/*.js
 !PA/n8n/candidates/*.js
 !PA/n8n/tests/*.cjs
+# Published parser prompt and sanitized evidence required by verify-package.
+!PA/n8n/candidates/final-parser-system.md
+!PA/n8n/verify-parser-replay.cjs
+!PA/n8n/fixtures/parser-verified.fixture
+!PA/n8n/fixtures/parser-unverified.fixture
+!PA/n8n/fixtures/parser-conflicting.fixture
 !PA/n8n prompts/PROMPT_KNOWLEDGE_QUESTION_BUILDER.md
 !PA/n8n prompts/PROMPT_GENERATE_RESPONSE_BODY_BUILDER.md
 !n8n_workflow/

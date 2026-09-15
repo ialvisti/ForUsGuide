@@ -361,6 +361,11 @@ def test_e2e_manifest_rejects_wrong_digest_or_critical_scan(tmp_path: Path) -> N
     'n8n_workflow/paticipant_search.json',
     'PA/n8n prompts/PROMPT_KNOWLEDGE_QUESTION_BUILDER.md',
     'PA/n8n prompts/PROMPT_GENERATE_RESPONSE_BODY_BUILDER.md',
+    'PA/n8n/candidates/final-parser-system.md',
+    'PA/n8n/verify-parser-replay.cjs',
+    'PA/n8n/fixtures/parser-verified.fixture',
+    'PA/n8n/fixtures/parser-unverified.fixture',
+    'PA/n8n/fixtures/parser-conflicting.fixture',
 ])
 def test_verification_upload_keeps_required_sanitized_n8n_inputs(required: str) -> None:
     from pathspec import GitIgnoreSpec
@@ -368,3 +373,5 @@ def test_verification_upload_keeps_required_sanitized_n8n_inputs(required: str) 
     assert not spec.match_file(required), f'Cloud Build omits required contract input: {required}'
     assert spec.match_file('n8n_workflow/private-export.json')
     assert spec.match_file('PA/n8n prompts/private-workflow.md')
+    assert spec.match_file('PA/n8n/fixtures/private-capture.json')
+    assert spec.match_file('PA/DevRev/PA_AGENT_SYSTEM.md')

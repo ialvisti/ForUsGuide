@@ -60,6 +60,26 @@ def test_confirmed_zero_drops_generic_loan_crypto_conditionals():
     assert "final payroll" in text
 
 
+@pytest.mark.parametrize("rollover", [True, False])
+def test_unknown_crypto_is_owned_by_internal_review(rollover):
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover), facts("unknown", None),
+    )
+    warnings = " ".join(fixed["response_to_participant"]["warnings"])
+    assert "positions have not been verified" in warnings
+    assert "Our team needs to verify" in warnings
+    assert "Ask Support" not in warnings
+    assert "loan status has not been verified" in warnings
+
+
+def test_recorded_loan_treatment_is_owned_by_internal_review():
+    fixed, _ = RAGEngine._apply_termination_response_policy(parsed(), profile(), facts("positive"))
+    warnings = " ".join(fixed["response_to_participant"]["warnings"])
+    assert "outstanding loan is recorded" in warnings
+    assert "Our team needs to verify its payoff or offset handling" in warnings
+    assert "Contact Support" not in warnings
+
+
 def test_loan_offset_warning_survives_pure_rollover_cash_tax_filter():
     response = parsed()
     response["response_to_participant"]["warnings"] = [

@@ -3949,14 +3949,14 @@ class RAGEngine:
                 warnings = [i for i in warnings if not contradicted_preflight(i)]
                 preflight_warnings: List[str] = []
                 if loan_state == "positive":
-                    preflight_warnings.append("An outstanding loan is recorded. Contact Support to verify its payoff or offset handling before submitting your distribution request.")
+                    preflight_warnings.append("An outstanding loan is recorded. Our team needs to verify its payoff or offset handling before your distribution request can be submitted.")
                 elif loan_state == "unknown":
                     preflight_warnings.append("Your loan status has not been verified. Support needs to confirm whether any outstanding loan affects this request.")
                 if not crypto_zero:
                     if holdings.get("status") == "known" and isinstance(holdings.get("value"), (int, float)) and holdings["value"] > 0:
                         preflight_warnings.append("Crypto positions are recorded. Support must verify the applicable transfer requirements before the distribution; enrollment alone does not establish those requirements.")
                     else:
-                        preflight_warnings.append("Crypto positions have not been verified. Ask Support to verify holdings and the applicable transfer requirements before submitting; enrollment alone does not establish whether you hold crypto.")
+                        preflight_warnings.append("Crypto positions have not been verified. Our team needs to verify holdings and the applicable transfer requirements before submission; enrollment alone does not establish whether you hold crypto.")
                 warnings = cls._dedupe_preserving_order(preflight_warnings + warnings)
                 required_points.append((("final payroll",), "Before submitting, wait at least 7 business days after final payroll."))
             elif signals.get("pure_rollover") and fixed.get("outcome") == "can_proceed":

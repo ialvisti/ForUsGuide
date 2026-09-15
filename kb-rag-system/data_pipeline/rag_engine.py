@@ -3850,6 +3850,48 @@ class RAGEngine:
         warnings = filter_items(response.get("warnings"))
         steps = filter_items(response.get("steps"))
 
+        # A blocked outcome is a gate on execution, even when employment and
+        # separation are already known. Model-authored steps used to survive
+        # here unless the block was specifically an employment conflict.
+        if fixed.get("outcome") in {
+            "blocked_missing_data", "blocked_not_eligible", "ambiguous_plan_rules",
+        }:
+            steps = []
+            if fixed["outcome"] == "blocked_not_eligible":
+                pending = "The recorded eligibility conditions prevent this distribution from proceeding. Submission instructions are not available while that block applies."
+            else:
+                pending = "Our team needs to verify the unresolved eligibility requirements before we can confirm this distribution or provide submission instructions."
+            if re.search(
+                r"\byou\s+(?:are eligible|can (?:start|proceed|submit|request|initiate|roll|withdraw|take))\b"
+                r"|\b(?:process|distribution|rollover)\b[^.!?]{0,80}\b(?:is|are) available\b",
+                cls._response_item_text(response.get("opening")),
+            ):
+                response["opening"] = pending
+
+            def is_submission_guidance(item: Any) -> bool:
+                text = cls._response_item_text(item)
+                return any(marker in text for marker in (
+                    cls._TERMINATION_FORM_URL.lower(), "secure.rightsignature.com",
+                    "loans & distributions", "separation of service",
+                )) or re.search(
+                    r"\b(?:submit|complete|start|initiate|sign|log in|enter|select|choose|open|review)\b"
+                    r"[^.!?\n]{0,100}\b(?:request|portal|distribution|rollover|vesting|vested|source information)\b",
+                    text,
+                ) is not None
+
+            held_points: List[Any] = []
+            for item in key_points:
+                if is_submission_guidance(item):
+                    # Retain the question's place instead of deleting its
+                    # process answer or breaking the multi-question inventory.
+                    prefix = re.match(r"^\d{1,2}[.)]\s+[^:]{1,70}:\s*", item) if isinstance(item, str) else None
+                    item = (prefix.group() if prefix else "") + pending
+                    info["removed_items"] += 1
+                held_points.append(item)
+            key_points = cls._dedupe_preserving_order(held_points)
+            warnings = [item for item in warnings if not is_submission_guidance(item)]
+            info["submission_guidance_withheld"] = True
+
         required_points: List[tuple[tuple[str, ...], str]] = []
         if signals.get("pure_rollover") and signals.get("selected_delivery") == "check":
             required_points.extend([

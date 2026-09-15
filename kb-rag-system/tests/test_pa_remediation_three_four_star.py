@@ -119,6 +119,41 @@ class TestKnowledgeContract:
 
 
 class TestAccountRecoveryKnowledgePolicy:
+    @pytest.mark.parametrize('question', [
+        'My ForUsAll password reset did not work.',
+        "My password reset didn't work and I still cannot sign in.",
+        'The participant reports that the password reset failed.',
+        'Resetting my password did not work.',
+        'I reset my password but I still cannot log in.',
+    ])
+    def test_failed_password_reset_advances_to_supported_recovery(self, question):
+        parsed = {'answer': "Start by selecting Forgot your password? and reset it again.",
+                  'key_points': ['Try the password reset first.'], 'coverage_gaps': []}
+        fixed, info = RAGEngine._apply_account_recovery_knowledge_policy(parsed, question)
+        rendered = json.dumps(fixed).lower()
+        assert info == {'applied': True, 'reason': 'password_reset_failed'}
+        assert '844-401-2253' in fixed['answer']
+        assert 'forgot your password?' not in rendered
+        assert 'reset it again' not in rendered
+        assert 'try the password reset first' not in rendered
+        assert 'password or authentication code' in rendered
+        assert 'email on file is unknown' not in rendered
+        assert 'mfa reset is required' not in rendered
+
+    @pytest.mark.parametrize('question', [
+        'How do I reset my password?',
+        'My password reset worked, but my loan request failed.',
+        'I have not tried resetting my password yet.',
+        'I received a password reset email I did not request.',
+        'My password reset failed yesterday, but I can now log in.',
+        'What if the password reset fails?',
+    ])
+    def test_unattempted_successful_or_unrelated_failure_is_not_failed_reset(self, question):
+        parsed = {'answer': 'Existing relevant answer.', 'key_points': [], 'coverage_gaps': []}
+        fixed, info = RAGEngine._apply_account_recovery_knowledge_policy(parsed, question)
+        assert fixed is parsed
+        assert info == {'applied': False}
+
     def test_unknown_email_uses_phone_support_not_self_service_reset(self):
         parsed = {
             "answer": (

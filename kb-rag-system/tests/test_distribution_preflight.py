@@ -137,6 +137,36 @@ def test_numbered_question_sections_survive_canonical_delivery_and_fees():
         assert points[index].startswith(f'{index + 1}. {label}:')
 
 
+@pytest.mark.parametrize('delivery', [
+    '3. Delivery: check or wire are supported. ACH is not a rollover delivery method.',
+    '3. Delivery: choose ACH or wire for this rollover.',
+    None,
+])
+def test_removed_delivery_section_is_restored_at_its_question_position(delivery):
+    """A filtered/omitted answer must not shift source or fee question indexes."""
+    response = parsed(outcome='blocked_missing_data')
+    original = [
+        "1. Process: the receiving provider's paperwork does not replace our request.",
+        '2. Sources: the receiving provider must accept each verified source; non-Roth after-tax needs verification.',
+    ]
+    response['response_to_participant']['key_points'] = original + (
+        [delivery] if delivery is not None else []
+    ) + ['4. Fees: a request fee applies.']
+    context = facts()
+    context['internal_response_context'] = {'requested_questions': [
+        'What paperwork is needed?', 'What are my sources?',
+        'Can it be delivered by check or wire?', 'What fees apply?',
+    ]}
+    fixed, _ = RAGEngine._apply_termination_response_policy(response, profile(), context)
+    points = fixed['response_to_participant']['key_points']
+    assert points[:2] == original
+    assert points[2].startswith('3. Delivery:')
+    assert 'check or wire' in points[2]
+    assert points[3].startswith('4. Fees:')
+    assert '$75' in points[3] and '$35' in points[3]
+    assert not re.search(r'\bach\b', json.dumps(fixed['response_to_participant']), re.I)
+
+
 @pytest.mark.parametrize('inquiry,selected', [
     ('I want a direct rollover by check to a Roth IRA.', 'check'),
     ('Please send the funds by check to my IRA.', 'check'),

@@ -1635,11 +1635,37 @@ class RAGEngine:
         parsed: Dict[str, Any],
         question: str,
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
-        """Use the verified support path when the login email is unavailable."""
-        if not cls._requires_phone_support_for_unknown_email(question):
+        """Advance failed recovery attempts without inventing their cause."""
+        unknown_email = cls._requires_phone_support_for_unknown_email(question)
+        text = re.sub(r"[^a-z0-9]+", " ", (question or "").lower()).strip()
+        recovered = re.search(
+            r"\b(?:can now|now able to|now can) (?:log|sign) in\b", text,
+        ) is not None
+        reset_failed = not recovered and any(re.search(pattern, text) for pattern in (
+            r"\b(?:password reset(?: (?:attempt|process|link))?|resetting (?:my|the|her|his|their) password)"
+            r"(?: (?:still|already|has|had|was|is))? (?:did not work|didn t work|does not work|doesn t work|failed|unsuccessful)\b",
+            r"\breset (?:my|the|her|his|their) password\b.{0,32}\bstill "
+            r"(?:cannot|can t|could not|couldn t|am unable to|unable to) (?:log|sign) in\b",
+        ))
+        if not unknown_email and not reset_failed:
             return parsed, {"applied": False}
 
         fixed = copy.deepcopy(parsed)
+        if reset_failed and not unknown_email:
+            fixed["answer"] = (
+                "Since the password reset did not restore access, call ForUsAll "
+                "Participant Support at 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT, "
+                "for account-access recovery help. If the reset email did not arrive "
+                "and you have not checked spam or junk, check those folders before "
+                "calling. Do not send your password or authentication code in a support message."
+            )
+            fixed["key_points"] = [
+                "Contact Participant Support for help with the unsuccessful password reset.",
+                "Use 844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT.",
+                "If the reset email is missing and you have not checked spam or junk, check those folders.",
+                "Do not send your password or authentication code in a support message.",
+            ]
+            return fixed, {"applied": True, "reason": "password_reset_failed"}
         fixed["answer"] = (
             "If you do not know or cannot access the email on file, call "
             "ForUsAll Participant Support at 844-401-2253, Monday-Friday, "
@@ -3956,6 +3982,9 @@ class RAGEngine:
             # delivery clause must not promote it ahead of an unrelated source
             # answer. Add missing reviewed facts after the requested answers.
             key_points = key_points[:12]
+            original_key_points = response.get("key_points")
+            if not isinstance(original_key_points, list):
+                original_key_points = []
             for markers, point in required_points:
                 positions = [i for i, item in enumerate(key_points) if any(
                     marker in cls._response_item_text(item) for marker in markers
@@ -3968,13 +3997,36 @@ class RAGEngine:
                 if question_pattern:
                     targets = [i for i, question in enumerate(requested_questions[:12])
                                if isinstance(question, str) and re.search(question_pattern, question, re.IGNORECASE)]
-                    # Numbered sections are emitted in participant-question
-                    # order. Do not replace another section merely because it
-                    # also mentions the receiving provider.
+                    # Filtering can remove a whole numbered answer. Locate
+                    # its question number rather than its shifted list index;
+                    # a source/process answer can mention the same provider.
                     if len(targets) == 1:
                         target = targets[0]
-                        if target < len(key_points) and isinstance(key_points[target], str) and re.match(rf"^{target + 1}[.)]\s", key_points[target]):
-                            positions = [target]
+                        numbered = any(
+                            isinstance(item, str) and re.match(r"^\d{1,2}[.)]\s", item)
+                            for item in original_key_points
+                        )
+                        if numbered:
+                            positions = [i for i, item in enumerate(key_points)
+                                         if isinstance(item, str) and re.match(rf"^{target + 1}[.)]\s", item)]
+                            if not positions:
+                                label = "Delivery" if "receiving provider" in markers else "Fees"
+                                prefix_text = f"{target + 1}. {label}: "
+                                # Preserve a surviving section title from the
+                                # original answer, never its filtered body.
+                                for original in original_key_points:
+                                    prefix = re.match(rf"^{target + 1}[.)]\s+[^:]{{1,70}}:\s*", original) if isinstance(original, str) else None
+                                    if prefix:
+                                        prefix_text = prefix.group()
+                                        break
+                                insert_at = len(key_points)
+                                for index, item in enumerate(key_points):
+                                    section = re.match(r"^(\d{1,2})[.)]\s", item) if isinstance(item, str) else None
+                                    if section and int(section.group(1)) > target + 1:
+                                        insert_at = index
+                                        break
+                                key_points.insert(insert_at, prefix_text + point)
+                                continue
                 if positions:
                     original_point = key_points[positions[0]]
                     prefix = re.match(r"^\d{1,2}[.)]\s+[^:]{1,70}:\s*", original_point) if isinstance(original_point, str) else None

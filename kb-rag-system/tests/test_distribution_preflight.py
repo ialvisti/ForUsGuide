@@ -137,6 +137,35 @@ def test_numbered_question_sections_survive_canonical_delivery_and_fees():
         assert points[index].startswith(f'{index + 1}. {label}:')
 
 
+@pytest.mark.parametrize('reference', [
+    RAGEngine._TERMINATION_FORM_URL,
+    f"[secure form]({RAGEngine._TERMINATION_FORM_URL})",
+    '844-401-2253',
+])
+def test_form_support_deduplication_preserves_numbered_procedure_answer(reference):
+    response = parsed(outcome='can_proceed')
+    response['response_to_participant']['key_points'] = [
+        f'1. Process: use the participant portal first; for access problems use {reference}.',
+        '2. Sources: Support must verify non-Roth after-tax from the statement.',
+        '3. Delivery: the receiving provider accepts check or wire.',
+        '4. Fees: fees apply to this request.',
+    ]
+    context = facts()
+    context['internal_response_context'] = {'requested_questions': [
+        'What paperwork is needed?', 'What are my sources?',
+        'What delivery methods are available?', 'What fees apply?',
+    ]}
+    fixed, _ = RAGEngine._apply_termination_response_policy(response, profile(), context)
+    participant = fixed['response_to_participant']
+    for index, label in enumerate(['Process', 'Sources', 'Delivery', 'Fees']):
+        assert participant['key_points'][index].startswith(f'{index + 1}. {label}:')
+    assert 'participant portal first' in participant['key_points'][0]
+    assert '(the secure' not in participant['key_points'][0]
+    rendered = json.dumps(participant)
+    assert rendered.count(RAGEngine._TERMINATION_FORM_URL) == 1
+    assert rendered.count('844-401-2253') == 1
+
+
 @pytest.mark.parametrize('delivery', [
     '3. Delivery: check or wire are supported. ACH is not a rollover delivery method.',
     '3. Delivery: choose ACH or wire for this rollover.',

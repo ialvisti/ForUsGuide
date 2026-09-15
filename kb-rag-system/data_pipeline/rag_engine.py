@@ -4069,17 +4069,29 @@ class RAGEngine:
                     for marker in canonical_markers
                 )
             ]
-            # Keep the same information out of key_points so the participant
-            # sees the form/support path exactly once.
-            key_points = [
-                item for item in key_points
-                if not any(
-                    marker in cls._response_item_text(item)
-                    for marker in (
-                        cls._TERMINATION_FORM_URL.lower(), "844-401-2253",
-                    )
-                )
-            ]
+            # Move duplicate contact references into the canonical steps,
+            # while retaining each numbered answer to the participant's
+            # questions. Dropping the whole item also drops its process answer.
+            contact_references = (
+                (cls._TERMINATION_FORM_URL, "the secure electronic form in the steps below"),
+                ("844-401-2253", "the support number in the steps below"),
+            )
+            deduped_points: List[Any] = []
+            for item in key_points:
+                section = re.match(r"^(\d{1,2})[.)]\s", item) if isinstance(item, str) else None
+                if preserve_question_order and section and 1 <= int(section.group(1)) <= len(requested_questions):
+                    for reference, replacement in contact_references:
+                        # Remove the full Markdown link before replacing a
+                        # bare reference, so its target remains valid Markdown.
+                        item = re.sub(
+                            rf"\[[^\]]*\]\(<?(?:tel:)?{re.escape(reference)}>?\)",
+                            replacement, item, flags=re.IGNORECASE,
+                        )
+                        item = re.sub(re.escape(reference), replacement, item, flags=re.IGNORECASE)
+                    deduped_points.append(item)
+                elif not any(reference.lower() in cls._response_item_text(item) for reference, _ in contact_references):
+                    deduped_points.append(item)
+            key_points = deduped_points
             portal_step = {
                 "step_number": 1,
                 "action": (

@@ -30,7 +30,7 @@
             "MFA"
         ],
         "language": "en-US",
-        "last_updated": "2025-10-16",
+        "last_updated": "2026-09-15",
         "schema_version": "kb_article_v2",
         "transformed_at": "2026-08-13",
         "source_last_updated": "2025-10-16",
@@ -840,8 +840,8 @@
                     "blocking_intent": "execution_only"
                 },
                 {
-                    "data_point": "Account Balance",
-                    "meaning": "The participant's vested 401(k) account balance (the Account Balance field returned by ForUsBots represents the total vested balance). The participant must have at least $2,000 vested to be eligible for a loan.",
+                    "data_point": "Total Vested Balance",
+                    "meaning": "The portion of the participant account owned through vesting. It is not the Account Balance total, which can include unvested amounts. Use only an independently verified total vested value with its source and date.",
                     "example_values": [
                         1000.0,
                         1999.0,
@@ -849,7 +849,7 @@
                         2000.01
                     ],
                     "why_needed": "Required to confirm individual loan eligibility. Does not block explaining the $2,000 minimum vested balance rule and 50%-of-vested-balance cap in general.",
-                    "source_note": "Supported by article section: Prerequisites. Catalog field: savings_rate.Account Balance (total vested balance).",
+                    "source_note": "The current ForUsBots extractor exposes savings_rate.Account Balance as the total account balance, not total vested. A dedicated total vested value is not extracted. Use a dated, authoritative participant or recordkeeper record verified internally; otherwise retain unknown. Available source balances may be collected for context but must not be summed or relabeled as total vested.",
                     "source_type": "participant_profile",
                     "blocking_intent": "eligibility_confirmation"
                 },
@@ -1018,9 +1018,9 @@
                     "agent_note": "MFA status must be enrolled or not enrolled, retrieve from admin/portal systems or chat survey; do not ask participant. If MFA is not enrolled, the RightSignature link can be shared only after confirming the other eligibility criteria."
                 },
                 {
-                    "missing_data_point": "Account Balance",
+                    "missing_data_point": "Total Vested Balance",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots savings_rate.Account Balance, which is the total vested balance). Must have at least $2,000 vested to qualify; do not ask participant."
+                    "agent_note": "Internal verification: the current extractor does not supply Total Vested Balance. Retain unknown until an authoritative dated participant or recordkeeper record is verified. Do not substitute savings_rate.Account Balance, sum asynchronously updated sources, or ask the participant to perform this internal check. Continue general education when appropriate; do not confirm personalized balance-based eligibility or an exact amount."
                 },
                 {
                     "missing_data_point": "Maximum Number of Loans",
@@ -1145,7 +1145,7 @@
                 },
                 {
                     "condition": "Total vested balance is $0.00 or below $2,000.00.",
-                    "missing_data_point": "Account Balance",
+                    "missing_data_point": "Total Vested Balance",
                     "resulting_outcome": "blocked_not_eligible",
                     "ask_participant": null
                 },

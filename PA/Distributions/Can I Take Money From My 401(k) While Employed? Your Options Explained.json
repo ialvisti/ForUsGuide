@@ -28,7 +28,7 @@
             "Advisory Session"
         ],
         "language": "en-US",
-        "last_updated": null,
+        "last_updated": "2026-09-15",
         "schema_version": "kb_article_v2",
         "transformed_at": "2026-03-03",
         "source_last_updated": null,
@@ -113,7 +113,7 @@
                     "If Maximum Number of Loans is 2 or 3, the agent must confirm how many active loans exist to determine whether another loan may be available under the plan limit.",
                     "The agent must check the participant profile for current loan status in the Loans section; if no loan is on file, the profile will say No loan history found.",
                     "If there are active loans, the profile may show Start Date, End Date, Repayment Amount, Principal, Outstanding Balance, and Balance as of Date. The agent must focus on Outstanding Balance to determine active loan amounts.",
-                    "Account balance must be checked internally in the participant profile Savings Rate section under Account Balance. The agent must not share the account balance amount with the participant.",
+                    "Total Vested Balance must be verified internally from an authoritative dated participant or recordkeeper record. The Savings Rate Account Balance is not a substitute. The agent must not share the balance amount with the participant.",
                     "The agent may only tell the participant that a loan may be possible if there is a balance above $2,000 and the plan allows loans based on Maximum Number of Loans."
                 ]
             },
@@ -122,9 +122,9 @@
                 "rules": [
                     "For hardship withdrawals and in-service distributions, the agent must check internally whether the participant has active loans as shown in the Loans section.",
                     "If the participant has an active loan or loans, the participant must leave a contingent amount equal to 2 times the sum of all Outstanding Balance amounts in the account, and may request the remaining amount as a hardship withdrawal or in-service distribution.",
-                    "If the contingent amount is greater than the Account Balance, the participant may not qualify and must contact support to confirm.",
-                    "If the contingent amount is lower than the Account Balance, the participant may qualify and must contact support to confirm.",
-                    "Account balance used for this check must be confirmed internally in the participant profile Savings Rate section under Account Balance, and must not be shared with the participant."
+                    "If the contingent amount is greater than the Total Vested Balance, the participant may not qualify and must contact support to confirm.",
+                    "If the contingent amount is lower than the Total Vested Balance, the participant may qualify and must contact support to confirm.",
+                    "Total Vested Balance used for this check must be verified internally from an authoritative dated participant or recordkeeper record. The Savings Rate Account Balance is not a substitute, and the value must not be shared with the participant."
                 ]
             },
             {
@@ -177,8 +177,8 @@
                 "step_number": 4,
                 "type": "internal-check",
                 "visibility": "agent-only",
-                "description": "Check the participant profile Savings Rate section for Account Balance (Total Vested Balance available) to confirm there is a balance above $2,000 before indicating a loan may be possible.",
-                "notes": "Do not share the Account Balance amount with the participant."
+                "description": "Verify Total Vested Balance internally from an authoritative dated participant or recordkeeper record to confirm it is above $2,000 before indicating a loan may be possible. Savings Rate Account Balance does not establish vested funds.",
+                "notes": "Do not share the Total Vested Balance amount with the participant."
             },
             {
                 "step_number": 5,
@@ -206,7 +206,7 @@
                 "type": "internal-check",
                 "visibility": "agent-only",
                 "description": "For hardship withdrawals or in-service distributions, check internally for active loans and calculate the loan contingent amount as 2 times the sum of all Outstanding Balance amounts.",
-                "notes": "Use Account Balance from the Savings Rate section (Account Balance) for comparison. Do not share amounts with the participant."
+                "notes": "Use an internally verified Total Vested Balance for comparison, with its source and date. Do not substitute Savings Rate Account Balance. Do not share amounts with the participant."
             },
             {
                 "step_number": 9,
@@ -302,7 +302,7 @@
             },
             {
                 "issue": "Participant wants to know whether they meet the $2,000 requirement for the $1,000 minimum loan.",
-                "resolution": "Check Account Balance internally. If it is above $2,000 and the plan allows loans based on Maximum Number of Loans, explain a loan may be possible. Do not share the exact balance value."
+                "resolution": "Check Total Vested Balance internally. If it is above $2,000 and the plan allows loans based on Maximum Number of Loans, explain a loan may be possible. Do not share the exact balance value."
             },
             {
                 "issue": "Participant has active loans and asks if they can still take a hardship withdrawal or in-service distribution.",
@@ -383,8 +383,8 @@
                 "outcome": "Explain that failure to repay may result in the loan being treated as a taxable distribution, and that loans can become taxable if they default when the participant terminates employment and requests the 401(k) funds out through a cash distribution or through a rollover to an IRA or new retirement plan."
             },
             {
-                "scenario": "A participant with an active loan (Outstanding Balance of $15,000) requests a hardship withdrawal. The agent checks and finds the Account Balance is $25,000.",
-                "outcome": "The contingent amount is 2 × $15,000 = $30,000, which exceeds the $25,000 Account Balance. The participant may not qualify for a hardship withdrawal while the active loan exists at this balance level. Advise the participant to contact Participant Support to confirm eligibility. Do not share the Account Balance, Outstanding Balance, or the computed contingent amount with the participant."
+                "scenario": "A participant with an active loan (Outstanding Balance of $15,000) requests a hardship withdrawal. The agent checks and finds the Total Vested Balance is $25,000.",
+                "outcome": "The contingent amount is 2 × $15,000 = $30,000, which exceeds the $25,000 Total Vested Balance. The participant may not qualify for a hardship withdrawal while the active loan exists at this balance level. Advise the participant to contact Participant Support to confirm eligibility. Do not share the Total Vested Balance, Outstanding Balance, or the computed contingent amount with the participant."
             },
             {
                 "scenario": "A participant asks about withdrawing rollover funds but is not sure whether they ever rolled money into the current employer plan.",
@@ -566,8 +566,8 @@
                 "definition": "An internally calculated amount equal to 2 times the sum of all Outstanding Balance amounts for active loans. When a participant with active loans requests a hardship withdrawal or in-service distribution, this amount must remain in the account; the participant may only request the remaining balance above the contingent amount. Support must confirm eligibility."
             },
             {
-                "term": "Account Balance (participant profile field)",
-                "definition": "The Total Vested Balance available shown in the participant profile Savings Rate section under Account Balance. Used internally to confirm whether the balance exceeds $2,000 for loan eligibility and to compare against the contingent amount for hardship or in-service withdrawals. This value must not be shared with the participant."
+                "term": "Total Vested Balance",
+                "definition": "The vested amount owned by the participant, verified from an authoritative dated record. It is not the Savings Rate Account Balance total. Used internally for the existing balance-based eligibility and contingent checks. This value must not be shared with the participant."
             },
             {
                 "term": "Maximum Number of Loans",
@@ -593,7 +593,7 @@
                 "Do not state that rollover source withdrawals are always available; only state they may be available if the participant has rollover assets and depending on plan rules.",
                 "Do not promise a participant can borrow any requested amount from a 401(k) loan; the article caps the loan amount at the lesser of $50,000 or 50% of the vested balance and sets a $1,000 minimum with a $2,000 vested balance requirement for the minimum loan.",
                 "Do not state that a 401(k) loan can never become taxable; the article says failure to repay may cause taxable treatment and that loans can be taxable if they default when the participant terminates employment and requests funds out via cash distribution or rollover.",
-                "Do not share the participant profile Account Balance amount with the participant.",
+                "Do not share the participant profile Total Vested Balance amount with the participant.",
                 "Do not share any loan details from the participant profile, including Start Date, End Date, Repayment Amount, Principal, Outstanding Balance, or Balance as of Date.",
                 "Do not present internal ForUsAll procedure rules as record keeper-specific rules.",
                 "Do not provide the participant with the calculated loan contingent amount or the calculated maximum withdrawal amount; direct them to support to confirm.",
@@ -604,7 +604,7 @@
             "must_do_if_unsure": [
                 "If plan availability for a withdrawal or loan type is unclear, direct the participant to contact the ForUsAll Participant Support Team for eligibility review and next steps.",
                 "If the participant's hardship reason does not clearly match one of the IRS-defined qualifying reasons listed in the article, do not confirm eligibility; advise the participant to contact the ForUsAll Participant Support Team to review whether the reason qualifies.",
-                "If it is unclear whether the participant has active loans, whether Maximum Number of Loans allows another loan, or whether the Account Balance meets the $2,000 threshold, do not confirm loan availability; direct the participant to contact support or verify internally before proceeding.",
+                "If it is unclear whether the participant has active loans, whether Maximum Number of Loans allows another loan, or whether the Total Vested Balance meets the $2,000 threshold, do not confirm loan availability; direct the participant to contact support or verify internally before proceeding.",
                 "If the participant says they have separated but the system shows Eligibility Status 'Active', request their termination/separation date, explain the system is out of sync and we will review it internally, and escalate to Support before offering any active-employee-only option."
             ]
         },
@@ -735,8 +735,8 @@
                     "source_type": "participant_profile"
                 },
                 {
-                    "data_point": "Account Balance",
-                    "meaning": "The participant's vested 401(k) account balance (the Account Balance field returned by ForUsBots represents the total vested balance). Used for 401(k) loan eligibility and loan limit calculations, and to compare against the loan contingent amount for hardship or in-service withdrawals.",
+                    "data_point": "Total Vested Balance",
+                    "meaning": "The portion of the participant account owned through vesting. It is not the Account Balance total, which can include unvested amounts. Use only an independently verified total vested value with its source and date.",
                     "example_values": [
                         0.0,
                         2000.0,
@@ -744,7 +744,7 @@
                         148485.04
                     ],
                     "why_needed": "Loans require an available vested balance; the article provides loan limits based on vested balance and states a $2,000 vested balance is needed to take the $1,000 minimum loan. Also used to evaluate hardship/in-service withdrawal contingent requirements when active loans exist.",
-                    "source_note": "Catalog field: savings_rate.Account Balance (total vested balance). Internal-only; must not be shared with the participant.",
+                    "source_note": "The current ForUsBots extractor exposes savings_rate.Account Balance as the total account balance, not total vested. A dedicated total vested value is not extracted. Use a dated, authoritative participant or recordkeeper record verified internally; otherwise retain unknown. Available source balances may be collected for context but must not be summed or relabeled as total vested.",
                     "source_type": "participant_profile"
                 },
                 {
@@ -817,9 +817,9 @@
                     "agent_note": "No ForUsBots extractor for option-level plan permission. If it cannot be confirmed, treat as ambiguous_plan_rules: explain that availability depends on plan rules and recommend contacting support, but do NOT block general guidance about the option."
                 },
                 {
-                    "missing_data_point": "Account Balance",
+                    "missing_data_point": "Total Vested Balance",
                     "ask_participant": null,
-                    "agent_note": "retrieve from admin/portal systems (ForUsBots savings_rate.Account Balance, which is the total vested balance); do not ask participant. Used for loan eligibility ($2,000 minimum vested) and contingent calculations."
+                    "agent_note": "Internal verification: the current extractor does not supply Total Vested Balance. Retain unknown until an authoritative dated participant or recordkeeper record is verified. Do not substitute savings_rate.Account Balance, sum asynchronously updated sources, or ask the participant to perform this internal check. Continue general education when appropriate; do not confirm personalized balance-based eligibility or an exact amount."
                 },
                 {
                     "missing_data_point": "Loan History",
@@ -858,7 +858,7 @@
                 "For hardship withdrawals: participant has an immediate and serious financial need, has a qualifying hardship under IRS guidelines, and the plan allows hardship withdrawals.",
                 "For rollover source withdrawals: participant has rollover assets in the plan and the plan allows withdrawal of those rollover assets while employed.",
                 "For 401(k) loans: participant is an active employee with an available vested balance and the plan allows loans.",
-                "For loans: Maximum Number of Loans must be greater than 0, the participant must have an Account Balance above $2,000, and the participant must not already have the maximum number of active loans allowed.",
+                "For loans: Maximum Number of Loans must be greater than 0, the participant must have a Total Vested Balance above $2,000, and the participant must not already have the maximum number of active loans allowed.",
                 "For hardship withdrawals and in-service distributions when active loans exist: the participant must leave a contingent amount equal to 2 times the sum of all Outstanding Balance amounts; support must confirm eligibility."
             ],
             "blocking_conditions": [
@@ -866,7 +866,7 @@
                 "For a 401(k) loan request: the participant does not meet the stated minimum vested balance requirement to take the $1,000 minimum loan.",
                 "For loans: Maximum Number of Loans is 0.",
                 "For loans: The participant already has the maximum number of active loans allowed based on Maximum Number of Loans.",
-                "For hardship withdrawals or in-service distributions with active loans: the calculated contingent amount is greater than the Account Balance; support must confirm and the participant may not qualify."
+                "For hardship withdrawals or in-service distributions with active loans: the calculated contingent amount is greater than the Total Vested Balance; support must confirm and the participant may not qualify."
             ],
             "missing_data_conditions": [
                 {
@@ -892,8 +892,8 @@
                 "For a 401(k) loan, the article states the maximum loan amount is the lesser of $50,000 or 50% of the participant's vested balance, with a $1,000 minimum loan amount and a $2,000 vested balance requirement to take the $1,000 minimum loan.",
                 "If the employer plan allows loans, the article states there is no credit check required and that loan interest is repaid to the participant's own account.",
                 "If Maximum Number of Loans is 0, the plan does not allow loans.",
-                "If Maximum Number of Loans is 1, a loan may be possible only if there is no active loan on file and the internal balance check shows an Account Balance above $2,000.",
-                "If Maximum Number of Loans is 2 or 3, a loan may be possible only if the participant has fewer active loans than the plan limit and the internal balance check shows an Account Balance above $2,000.",
+                "If Maximum Number of Loans is 1, a loan may be possible only if there is no active loan on file and the internal balance check shows a Total Vested Balance above $2,000.",
+                "If Maximum Number of Loans is 2 or 3, a loan may be possible only if the participant has fewer active loans than the plan limit and the internal balance check shows a Total Vested Balance above $2,000.",
                 "If the participant has active loans, eligibility for a hardship withdrawal or in-service distribution depends on leaving a required contingent amount tied to outstanding loan balances, and support must confirm.",
                 "Provide general guidance about the four in-service options (in-service distribution, hardship withdrawal, rollover source withdrawal, 401(k) loan), their typical rules, tax considerations, and process, even when the participant's plan allowance, eligibility status, or chosen option is not yet confirmed; only block when the participant is asking to actually start a specific request and a true blocker is unconfirmed."
             ],
@@ -912,7 +912,7 @@
                 "Do not conclude that a participant can borrow more than the stated loan limits (lesser of $50,000 or 50% of vested balance) or that the minimum loan amount can be waived; the article states a $1,000 minimum and a $2,000 vested balance requirement to take the minimum loan.",
                 "Do not conclude that a 401(k) loan can never become taxable; the article states failure to repay may result in the loan being treated as a taxable distribution and notes taxable outcomes tied to default when terminating employment and requesting funds out via cash distribution or rollover.",
                 "Do not conclude that rollover source withdrawals are available without confirming the participant has rollover assets in the plan; the article frames this option as applicable when rollover funds exist and subject to plan rules.",
-                "Do not state or imply specific dollar amounts from the participant profile (Account Balance, Outstanding Balance, or any computed contingent amount).",
+                "Do not state or imply specific dollar amounts from the participant profile (Total Vested Balance, Outstanding Balance, or any computed contingent amount).",
                 "Do not confirm the participant qualifies for a loan without confirming Maximum Number of Loans and active loan count internally.",
                 "Do not confirm the participant qualifies for a hardship withdrawal or in-service distribution with active loans without directing them to support to confirm contingent requirements."
             ]

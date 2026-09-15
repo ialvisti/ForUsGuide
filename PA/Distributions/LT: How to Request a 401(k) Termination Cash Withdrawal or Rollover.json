@@ -15,7 +15,7 @@
       "RightSignature Completed"
     ],
     "language": "en-US",
-    "last_updated": null,
+    "last_updated": "2026-09-15",
     "schema_version": "kb_article_v2",
     "transformed_at": "2026-08-13",
     "source_last_updated": "2025-10-15",
@@ -782,8 +782,8 @@
           "blocking_intent": "execution_only"
         },
         {
-          "data_point": "Account Balance",
-          "meaning": "The participant's vested 401(k) account balance (the Account Balance field returned by ForUsBots represents the total vested balance — the amount the participant owns outright and can withdraw or roll over upon termination of employment).",
+          "data_point": "Total Vested Balance",
+          "meaning": "The portion of the participant account owned through vesting. It is not the Account Balance total, which can include unvested amounts. Use only an independently verified total vested value with its source and date.",
           "example_values": [
             10000.0,
             100000.0,
@@ -793,7 +793,7 @@
             null
           ],
           "why_needed": "To confirm the participant has a vested balance available and tailor the transaction details.",
-          "source_note": "Supported by article section: Prerequisites. Catalog field: savings_rate.Account Balance (total vested balance).",
+          "source_note": "The current ForUsBots extractor exposes savings_rate.Account Balance as the total account balance, not total vested. A dedicated total vested value is not extracted. Use a dated, authoritative participant or recordkeeper record verified internally; otherwise retain unknown. Available source balances may be collected for context but must not be summed or relabeled as total vested.",
           "source_type": "participant_profile",
           "blocking_intent": "eligibility_confirmation"
         },
@@ -923,9 +923,9 @@
           "agent_note": "MFA is required for participant portal access. If the participant cannot enroll MFA or cannot access the portal, provide the RightSignature electronic form directly after eligibility is confirmed."
         },
         {
-          "missing_data_point": "Account Balance",
-          "ask_participant": "Do you have a vested balance available for the distribution or rollover?",
-          "agent_note": "Retrieve from admin/portal systems (ForUsBots savings_rate.Account Balance, which represents the total vested balance)."
+          "missing_data_point": "Total Vested Balance",
+          "ask_participant": null,
+          "agent_note": "Internal verification: the current extractor does not supply Total Vested Balance. Retain unknown until an authoritative dated participant or recordkeeper record is verified. Do not substitute savings_rate.Account Balance, sum asynchronously updated sources, or ask the participant to perform this internal check. Continue general education when appropriate; do not confirm personalized balance-based eligibility or an exact amount."
         },
         {
           "missing_data_point": "Last Payroll date",

@@ -2913,7 +2913,9 @@ class RAGEngine:
             else:
                 text = str(item or "").strip()
                 label = text
-            normalized = re.sub(r"[^a-z0-9$]+", " ", text.lower()).strip()
+            # Classify the requested fact itself. An identity lookup's reason
+            # may mention eligibility facts that are already on file.
+            normalized = re.sub(r"[^a-z0-9$]+", " ", str(label).lower()).strip()
             if not normalized:
                 continue
 
@@ -2964,12 +2966,14 @@ class RAGEngine:
                 "record keeper",
             ])
 
-            if identity_signal:
+            # A substantive eligibility gap stays blocking even when its
+            # explanation mentions delivery, identity or the rollover process.
+            if core_signal:
+                classes["core_eligibility_missing"].append(str(label).strip())
+            elif identity_signal:
                 classes["identity_lookup_missing"].append(str(label).strip())
             elif execution_signal:
                 classes["execution_details_missing"].append(str(label).strip())
-            elif core_signal:
-                classes["core_eligibility_missing"].append(str(label).strip())
             else:
                 classes["other_nonblocking_missing"].append(str(label).strip())
 
@@ -2992,6 +2996,8 @@ class RAGEngine:
         self,
         collected_data: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        from data_pipeline.gr_payload_builder import _strict_money
+
         participant_data = (collected_data or {}).get("participant_data") or {}
         plan_data = (collected_data or {}).get("plan_data") or {}
         profile_text = " ".join([
@@ -3014,16 +3020,21 @@ class RAGEngine:
         if not participant_data.get("termination_date"):
             missing.append("termination date")
 
-        balance_values = [
-            participant_data.get("total_vested_balance"),
-            participant_data.get("vested_balance"),
-            participant_data.get("account_balance"),
-            participant_data.get("balance"),
-        ]
+        sources = ((collected_data or {}).get("internal_preflight_context") or {}).get("sources") or {}
+        if "vested_balance" in sources:
+            # An explicit failed/unknown extraction cannot be replaced with a
+            # legacy value. Account Balance is never evidence of total vested.
+            vested = sources["vested_balance"]
+            balance_values = [vested.get("value")] if isinstance(vested, dict) and vested.get("status") == "known" else []
+        else:
+            balance_values = [
+                participant_data.get("total_vested_balance"),
+                participant_data.get("vested_balance"),
+            ]
         balance = next(
             (
                 amount for amount in (
-                    self._extract_numeric_amount(value) for value in balance_values
+                    _strict_money(value) for value in balance_values
                 )
                 if amount is not None
             ),
@@ -3031,6 +3042,8 @@ class RAGEngine:
         )
         if balance is None:
             missing.append("vested balance")
+        elif balance <= 0:
+            blockers.append("vested balance is not positive")
 
         if "blackout_period" not in plan_data and "blackout" not in plan_data:
             missing.append("blackout status")

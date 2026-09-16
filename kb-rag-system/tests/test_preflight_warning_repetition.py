@@ -90,6 +90,9 @@ def test_current_llm_paraphrase_keeps_tax_caveat_without_a_second_review():
     "ForUsAll does not need to verify loan payoff or whether crypto holdings exist.",
     "ForUsAll must verify your mailing address. You have an outstanding loan and crypto enrollment.",
     "ForUsAll must verify crypto transfer requirements. There is no outstanding loan.",
+    "Your outstanding loan balance is $0. ForUsAll must verify loan treatment before distribution.",
+    "Your outstanding loan has been paid off. ForUsAll must verify loan treatment before distribution.",
+    "ForUsAll must verify loan treatment before distribution if you have an outstanding loan.",
 ])
 def test_incomplete_or_different_statement_does_not_replace_required_checks(point):
     response = apply_review(point)

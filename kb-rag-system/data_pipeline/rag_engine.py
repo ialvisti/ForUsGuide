@@ -3379,10 +3379,19 @@ class RAGEngine:
         if not isinstance(item, str):
             return False
         text = re.sub(r"\s+", " ", item.casefold())
-        if re.search(r"\b(?:no|without|not an?)\s+outstanding\b", text):
+        if re.search(
+            r"\b(?:no|without|not an?)\s+outstanding\b|"
+            r"\b(?:paid off|repaid|zero|no balance)\b|\$0(?:\.0{1,2})?(?![\d.])|"
+            r"\b(?:if|whether)\b[^.!?]{0,80}\b(?:outstanding|loan)\b",
+            text,
+        ):
             return False
         return bool(
-            re.search(r"\boutstanding\b[^.!?]{0,60}\bloan\b", text)
+            re.search(
+                r"\b(?:shows?|records? confirm)\s+(?:an?\s+)?outstanding\b[^.!?]{0,60}\bloan\b|"
+                r"\ban outstanding loan is (?:recorded|on file)\b",
+                text,
+            )
             and re.search(
                 r"\b(?:forusall|our team|support)\s+(?:also\s+)?(?:must|needs? to|will)\s+"
                 r"(?:verify|confirm|review)\s+(?:its|(?:your |the )?loan)\s+"

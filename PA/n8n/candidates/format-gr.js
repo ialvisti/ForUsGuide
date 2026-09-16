@@ -78,9 +78,42 @@ function escapeJSONStringForHTTP(obj) {
 
 
 // ---- inputs ------------------------------------------------------------
-const raw = $input.first().json;
-// /handle-ticket devuelve un array (o un objeto en la ruta inline). Normalizamos.
-const data = Array.isArray(raw) ? raw[0] : raw;
+// Compare the producer's response to the independently accepted execution in
+// this workflow run before copying any response text into a ticket note.
+const correlationFailure = () => {
+  throw new Error('PA execution correlation failed; no ticket write is permitted');
+};
+function oneResponse(raw) {
+  if (Array.isArray(raw)) {
+    if (raw.length !== 1) return correlationFailure();
+    raw = raw[0];
+  }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return correlationFailure();
+  return raw;
+}
+const data = oneResponse($input.first().json);
+const getFields = $('Get fields1').first().json;
+if (typeof getFields?.ticketId !== 'string' || !getFields.ticketId.trim()) correlationFailure();
+let accepted;
+try { accepted = oneResponse($('Handle Ticket').first().json); }
+catch (_) { correlationFailure(); }
+let executionReference;
+const pollFields = ['ticket_job_id', 'ticket_id', 'state', 'next_action', 'created_at', 'completed_at', 'expires_at'];
+if (Object.hasOwn(accepted, 'ticket_job_id') || pollFields.some(key => Object.hasOwn(data, key))) {
+  if (typeof accepted.ticket_job_id !== 'string' || !/^[0-9a-f]{32}$/.test(accepted.ticket_job_id) ||
+      data.ticket_job_id !== accepted.ticket_job_id || data.ticket_id !== getFields.ticketId) correlationFailure();
+  executionReference = {
+    source: 'ticket_job_poll', ticket_id: data.ticket_id, ticket_job_id: data.ticket_job_id,
+    created_at: data.created_at ?? null, completed_at: data.completed_at ?? null, expires_at: data.expires_at ?? null,
+  };
+} else {
+  // v1 can return a KQ response inline. It has no public job reference; accept
+  // only the same response returned by Handle Ticket, never an unrelated body.
+  if (!data.primary || JSON.stringify(data) !== JSON.stringify(accepted)) correlationFailure();
+  executionReference = {source: 'handle_ticket_inline', ticket_id: getFields.ticketId, ticket_job_id: null};
+}
+// Job dates describe execution/retention, not source freshness or whether the
+// last participant clarification was consumed. They grant no new permission.
 // A ticket job carries one selected participant account. Any explicit identity
 // rejection in its enclosing or inquiry metadata vetoes all positive references.
 const rawInquiries = [data.primary, ...(data.related || [])].filter(Boolean);
@@ -93,7 +126,6 @@ const accountIdentityVeto = identityVeto && rawInquiries.some(needsAccountContex
 
 
 
-const getFields = $('Get fields1').first().json;
 const firstContact =
   getFields.caseData?.ticketData?.firstContact ??
   getFields.ticketData?.firstContact ??
@@ -165,6 +197,7 @@ const humanReviewRequired = accountIdentityVeto || data.state !== 'succeeded' ||
 const payload = {
   ticketId: getFields.ticketId,
   ticket_job_id: data.ticket_job_id,
+  execution_reference: executionReference,
   state: data.state,
   next_action: humanReviewRequired ? 'human_review' : 'send_participant_reply',
   participant_reply_safe: !humanReviewRequired,

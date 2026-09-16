@@ -9,7 +9,10 @@ function run(name, input) {
   const source = fs.readFileSync(path.join(sourceDir, name + '.js'), 'utf8');
   const result = vm.runInNewContext('(function(){' + source + '\n})()', {
     $input: {first: () => ({json: input})},
-    $: name => {assert.equal(name, 'Get fields1'); return {first: () => ({json: fields})};},
+    $: name => {
+      if(name === 'Handle Ticket') return {first: () => ({json: {ticket_job_id:'a'.repeat(32)}})};
+      assert.equal(name, 'Get fields1'); return {first: () => ({json: fields})};
+    },
   }, {timeout: 1000});
   const json = JSON.parse(JSON.stringify(result.json));
   // Existing downstream HTTP body expects a JSON string escaped once inside a code fence.
@@ -19,10 +22,10 @@ function run(name, input) {
 const good = () => ({inquiry: 'What are the delivery options?', topic: 'rollover', route: 'generate_response',
  generate_response: {decision:'can_proceed',confidence:0.91,coverage_gaps:[],metadata:{human_review_required:false,requested_questions:['What are the delivery options?'],question_coverage:[{question_index:0,status:'answered',answer_reference:'Check or wire.'}]},
  response: {outcome:'can_proceed',response_to_participant:{opening:'Check or wire.',key_points:[],steps:[],warnings:[]},questions_to_ask:[],escalation:{needed:false}}}});
-const job = () => ({ticket_job_id:'simulation-job',state:'succeeded',next_action:'send_participant_reply',metadata:{fallback:false},primary:good(),related:[],total_inquiries_in_ticket:1});
+const job = () => ({ticket_job_id:'a'.repeat(32),ticket_id:fields.ticketId,state:'succeeded',next_action:'send_participant_reply',metadata:{fallback:false},primary:good(),related:[],total_inquiries_in_ticket:1});
 test('GR retains execution, question order, quality and current publication decision', () => {
  const {payload:p,output:o}=run('format-gr',job());
- assert.equal(p.ticket_job_id,'simulation-job'); assert.equal(p.participant_reply_safe,true);
+ assert.equal(p.ticket_job_id,'a'.repeat(32)); assert.equal(p.participant_reply_safe,true);
  assert.equal(p.next_action,'send_participant_reply'); assert.equal(p.inquiries[0].inquiry_index,0);
  assert.equal(p.inquiries[0].decision,'can_proceed'); assert.equal(p.inquiries[0].confidence,0.91);
  assert.deepEqual(p.inquiries[0].metadata.requested_questions,['What are the delivery options?']);

@@ -29,7 +29,7 @@
       "baseline": "baselines/format-gr.js",
       "baseline_sha256": "214bf340994f8f165ad8af0996038cac8afaa8899ab32244176ac77ac981bd0a",
       "candidate": "candidates/format-gr.js",
-      "candidate_sha256": "211e50da98644da2fc04765a8cc2019a4553dfb8bf291f0f28b62df94aad7d2c",
+      "candidate_sha256": "e5386426a3b40f7ef5c1f16670dc17ea507ab9fa74f536417fb49b366e84a5d1",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source",
       "observed_node_name": "Format data for DevRev Internal notes"
@@ -40,7 +40,7 @@
       "baseline": "baselines/format-kq.js",
       "baseline_sha256": "7e9a4266d81dbdacdbb4d564fb65bb545cee485c59218457f96144cba3495c69",
       "candidate": "candidates/format-kq.js",
-      "candidate_sha256": "05e9e2dee7952d22adb4930e56bab583666163a2bb84feeaea2fad21e9a94421",
+      "candidate_sha256": "e40f1a237b872f8d47a5816ccebe2c431ce4b7ca7cb81e782b7e701448a87750",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source",
       "observed_node_name": "Format Data for DevRev"

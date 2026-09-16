@@ -22,7 +22,11 @@ function projectVerifiedFacts(value) {
   }
   return Object.keys(facts).length ? {identity_verified:true,identity_resolution_status:'matched',facts} : null;
 }
-function projectMetadata(value) {
+function rejectsAccountIdentity(value) {
+  return value?.identity_verified === false ||
+    ['ambiguous', 'not_found', 'access_error'].includes(value?.identity_resolution_status);
+}
+function projectMetadata(value, parentIdentityVeto = false) {
   const m = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = {};
   for (const key of ['human_review_required', 'participant_reply_safe', 'identity_verified', 'fallback']) {
@@ -46,7 +50,7 @@ function projectMetadata(value) {
     out.handoff = {};
     for (const key of ['reason', 'next_action']) if (typeof m.handoff[key] === 'string') out.handoff[key] = m.handoff[key].slice(0, 1000);
   }
-  const facts = projectVerifiedFacts(m.verified_participant_facts);
+  const facts = parentIdentityVeto || rejectsAccountIdentity(m) ? null : projectVerifiedFacts(m.verified_participant_facts);
   if (facts) out.verified_participant_facts = facts;
   return out;
 }
@@ -91,7 +95,7 @@ const payload = {
   key_points: input.key_points,
   confidence_note: input.confidence_note,
   metadata: {
-    ...projectMetadata(input.metadata),
+    ...projectMetadata(input.metadata, rejectsAccountIdentity(input)),
     unique_articles: input.metadata?.unique_articles,
     relevant_articles: input.metadata?.relevant_articles,
     model: input.metadata?.model,

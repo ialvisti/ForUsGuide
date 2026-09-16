@@ -22,7 +22,11 @@ function projectVerifiedFacts(value) {
   }
   return Object.keys(facts).length ? {identity_verified:true,identity_resolution_status:'matched',facts} : null;
 }
-function projectMetadata(value) {
+function rejectsAccountIdentity(value) {
+  return value?.identity_verified === false ||
+    ['ambiguous', 'not_found', 'access_error'].includes(value?.identity_resolution_status);
+}
+function projectMetadata(value, parentIdentityVeto = false) {
   const m = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
   const out = {};
   for (const key of ['human_review_required', 'participant_reply_safe', 'identity_verified', 'fallback']) {
@@ -46,7 +50,7 @@ function projectMetadata(value) {
     out.handoff = {};
     for (const key of ['reason', 'next_action']) if (typeof m.handoff[key] === 'string') out.handoff[key] = m.handoff[key].slice(0, 1000);
   }
-  const facts = projectVerifiedFacts(m.verified_participant_facts);
+  const facts = parentIdentityVeto || rejectsAccountIdentity(m) ? null : projectVerifiedFacts(m.verified_participant_facts);
   if (facts) out.verified_participant_facts = facts;
   return out;
 }
@@ -77,6 +81,16 @@ function escapeJSONStringForHTTP(obj) {
 const raw = $input.first().json;
 // /handle-ticket devuelve un array (o un objeto en la ruta inline). Normalizamos.
 const data = Array.isArray(raw) ? raw[0] : raw;
+// A ticket job carries one selected participant account. Any explicit identity
+// rejection in its enclosing or inquiry metadata vetoes all positive references.
+const rawInquiries = [data.primary, ...(data.related || [])].filter(Boolean);
+const identitySignals = [data, data.metadata, ...rawInquiries.flatMap(iq =>
+  [iq, iq.metadata, iq.generate_response?.metadata, iq.knowledge_answer?.metadata])];
+const identityVeto = identitySignals.some(rejectsAccountIdentity);
+const needsAccountContext = iq => !!iq.generate_response ||
+  iq.knowledge_answer?.metadata?.response_source_reason !== 'general_knowledge';
+const accountIdentityVeto = identityVeto && rawInquiries.some(needsAccountContext);
+
 
 
 const getFields = $('Get fields1').first().json;
@@ -107,7 +121,7 @@ function cleanInquiry(iq, inquiryIndex) {
     out.coverage_gaps = iq.generate_response.coverage_gaps;
     out.data_gaps = r.data_gaps;
     out.outcome_reason = r.outcome_reason;
-    out.metadata = projectMetadata(iq.generate_response.metadata);
+    out.metadata = projectMetadata(iq.generate_response.metadata, identityVeto);
     out.outcome = r.outcome;
     out.response_to_participant = r.response_to_participant; // opening, key_points, steps, warnings
     out.questions_to_ask = r.questions_to_ask;
@@ -122,7 +136,7 @@ function cleanInquiry(iq, inquiryIndex) {
       key_points: iq.knowledge_answer.key_points,
       confidence_note: iq.knowledge_answer.confidence_note,
       coverage_gaps: iq.knowledge_answer.coverage_gaps,
-      metadata: projectMetadata(iq.knowledge_answer.metadata),
+      metadata: projectMetadata(iq.knowledge_answer.metadata, identityVeto),
     };
   }
 
@@ -133,7 +147,7 @@ function cleanInquiry(iq, inquiryIndex) {
   }
 
 
-  out.human_review_required = inquiryRequiresReview(iq);
+  out.human_review_required = (identityVeto && needsAccountContext(iq)) || inquiryRequiresReview(iq);
   out.participant_reply_safe = !out.human_review_required;
   return out;
 }
@@ -145,7 +159,7 @@ const inquiries = [data.primary, ...(data.related || [])]
   .map(cleanInquiry);
 
 
-const humanReviewRequired = data.state !== 'succeeded' || data.next_action !== 'send_participant_reply' ||
+const humanReviewRequired = accountIdentityVeto || data.state !== 'succeeded' || data.next_action !== 'send_participant_reply' ||
   requiresReview(data) || requiresReview(data.metadata) || inquiries.length === 0 ||
   inquiries.some(iq => iq.human_review_required);
 const payload = {
@@ -155,7 +169,7 @@ const payload = {
   next_action: humanReviewRequired ? 'human_review' : 'send_participant_reply',
   participant_reply_safe: !humanReviewRequired,
   human_review_required: humanReviewRequired,
-  metadata: projectMetadata(data.metadata),
+  metadata: projectMetadata(data.metadata, identityVeto),
   responseSource: "Generate-Response",
   total_inquiries_in_ticket: data.total_inquiries_in_ticket,
   inquiries,

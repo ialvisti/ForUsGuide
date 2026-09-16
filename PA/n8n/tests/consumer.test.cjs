@@ -99,3 +99,38 @@ for (const invalid of ['identity','source','date','status','injection','nonfinit
   assert.equal(run('format-gr',x).payload.inquiries[0].metadata.verified_participant_facts,undefined);
  });
 }
+
+for (const conflicting of [{identity_verified:false},{identity_resolution_status:'ambiguous'},{identity_resolution_status:'not_found'},{identity_resolution_status:'access_error'}]) {
+ for (const level of ['job','job_metadata','inquiry','gr_metadata','related_metadata']) {
+  test('GR identity veto withholds fact references and requires review: '+level+' '+JSON.stringify(conflicting),()=>{
+   const x=job();x.primary.generate_response.metadata.verified_participant_facts=verifiedFacts();
+   if(level==='job')Object.assign(x,conflicting);
+   if(level==='job_metadata')Object.assign(x.metadata,conflicting);
+   if(level==='inquiry')Object.assign(x.primary,conflicting);
+   if(level==='gr_metadata')Object.assign(x.primary.generate_response.metadata,conflicting);
+   if(level==='related_metadata'){x.related=[good()];Object.assign(x.related[0].generate_response.metadata,conflicting);x.total_inquiries_in_ticket=2;}
+   const p=run('format-gr',x).payload;
+   assert.equal(p.inquiries[0].metadata.verified_participant_facts,undefined,'Contradictory account evidence must not retain a positive fact reference');
+   assert.equal(p.human_review_required,true);assert.equal(p.participant_reply_safe,false);assert.equal(p.next_action,'human_review');
+   assert.deepEqual(p.inquiries[0].metadata.requested_questions,['What are the delivery options?']);
+  });
+ }
+}
+test('Educational KQ removes contradictory personal facts without inventing an account requirement',()=>{
+ const p=run('format-kq',{answer:'A general explanation.',key_points:[],metadata:{response_source_reason:'general_knowledge',identity_verified:false,verified_participant_facts:verifiedFacts()}}).payload;
+ assert.equal(p.metadata.verified_participant_facts,undefined);
+ assert.equal(p.participant_reply_safe,true);assert.equal(p.metadata.response_source_reason,'general_knowledge');
+});
+test('Absent identity fields alone do not veto correctly sourced facts',()=>{
+ const x=job();x.primary.generate_response.metadata.verified_participant_facts=verifiedFacts();
+ const p=run('format-gr',x).payload;
+ assert.equal(p.inquiries[0].metadata.verified_participant_facts.facts.account_balance.value,500);
+ assert.equal(p.participant_reply_safe,true);
+});
+test('Pure educational result inside a ticket job remains educational despite an unresolved account',()=>{
+ const x=job();x.metadata.identity_verified=false;
+ x.primary={inquiry:'What is a rollover?',route:'knowledge_question',knowledge_answer:{answer:'A general explanation.',key_points:[],metadata:{response_source_reason:'general_knowledge',verified_participant_facts:verifiedFacts()}}};
+ const p=run('format-gr',x).payload;
+ assert.equal(p.participant_reply_safe,true,'A general explanation must not acquire an account-verification prerequisite');
+ assert.equal(p.inquiries[0].knowledge_answer.metadata.verified_participant_facts,undefined);
+});

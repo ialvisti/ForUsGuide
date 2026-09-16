@@ -2238,6 +2238,10 @@ async def get_ticket_status(
     primary = results[0] if results else None
     return TicketStatusResponse(
         ticket_job_id=record.job_id,
+        ticket_id=record.ticket_id,
+        created_at=record.created_at,
+        completed_at=record.completed_at,
+        expires_at=record.expires_at,
         state=record.state.value,
         route_taken=primary.route if primary else None,
         primary=primary,
@@ -2401,10 +2405,12 @@ async def get_ticket_job_v2(
     ]
     return TicketJobStatusV2(
         ticket_job_id=record.job_id,
+        ticket_id=record.ticket_id,
         state=record.state.value,
         created_at=record.created_at,
         started_at=record.started_at,
         completed_at=record.completed_at,
+        expires_at=record.expires_at,
         elapsed_s=_record_elapsed_s(record),
         total_inquiries=record.total_inquiries,
         processed_inquiries=record.processed_inquiries,

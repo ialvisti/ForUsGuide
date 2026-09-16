@@ -784,3 +784,76 @@ class TestParticipantPlanFailClosed:
             f"mismatch participant-plan devolvió {r.status_code}; el contrato "
             "tenant-aware debe producir 403 PARTICIPANT_PLAN_MISMATCH"
         )
+
+class TestPollEvidenceCorrelation:
+    """A model/note reference is only a lookup hint, never proof of ownership."""
+
+    @pytest.mark.parametrize("path", [
+        "/api/v1/tickets/{job_id}",
+        "/api/v2/ticket-jobs/{job_id}",
+    ])
+    @pytest.mark.parametrize("ticket_id", ["TKT-SYNTHETIC-REFERENCE", None])
+    def test_poll_correlation_comes_from_durable_record(self, client, path, ticket_id):
+        from datetime import datetime
+
+        result = _gr_result()
+        result.metadata = {
+            "ticket_id": "TKT-SPOOFED-MODEL-REFERENCE",
+            "created_at": "2000-01-01T00:00:00Z",
+            "expires_at": "2099-01-01T00:00:00Z",
+        }
+        outcome = InquiryOutcome(
+            inquiry="What needs verification?", topic="rollover",
+            route="generate_response", scrape_status="ok", generate_result=result,
+        )
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), outcome))
+        ticket = {
+            "username": "Example Participant", "user_email": "participant@example.test",
+            "email_subject": "Rollover question", "email_body": "What needs verification?",
+            "ticket_id": ticket_id,
+        }
+        accepted = client.post("/api/v1/handle-ticket", json=_body(ticket=ticket))
+        assert accepted.status_code == 202
+        job_id = accepted.json()["ticket_job_id"]
+        polled = client.get(path.format(job_id=job_id))
+        assert polled.status_code == 200
+        body = polled.json()
+        assert body["ticket_job_id"] == job_id
+        assert "ticket_id" in body and body["ticket_id"] == ticket_id
+        for field in ["created_at", "completed_at", "expires_at"]:
+            assert body[field] is not None
+        created, completed, expires = (
+            datetime.fromisoformat(body[key].replace("Z", "+00:00"))
+            for key in ["created_at", "completed_at", "expires_at"]
+        )
+        assert created <= completed < expires
+        assert body["created_at"] != result.metadata["created_at"]
+        assert body["expires_at"] != result.metadata["expires_at"]
+        assert "principal_id" not in body and "request_payload" not in body
+
+    def test_same_ticket_can_have_distinct_correlated_executions(self, client):
+        outcome = InquiryOutcome(
+            inquiry="What needs verification?", topic="rollover",
+            route="generate_response", scrape_status="ok", generate_result=_gr_result(),
+        )
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), outcome))
+        ticket = {
+            "username": "Example Participant", "user_email": "participant@example.test",
+            "email_subject": "Rollover question", "email_body": "What needs verification?",
+            "ticket_id": "TKT-SYNTHETIC-REFERENCE",
+        }
+        bodies = []
+        for event in ["synthetic-initial", "synthetic-followup"]:
+            accepted = client.post(
+                "/api/v1/handle-ticket", json=_body(ticket=ticket),
+                headers={"Idempotency-Key": event},
+            )
+            assert accepted.status_code == 202
+            job_id = accepted.json()["ticket_job_id"]
+            polled = client.get(f"/api/v1/tickets/{job_id}")
+            assert polled.status_code == 200
+            bodies.append(polled.json())
+        assert bodies[0]["ticket_job_id"] != bodies[1]["ticket_job_id"]
+        assert bodies[0]["ticket_id"] == bodies[1]["ticket_id"] == ticket["ticket_id"]
+        # Correlation does not claim that either execution is the latest one.
+        assert all("is_latest" not in body for body in bodies)

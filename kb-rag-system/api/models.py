@@ -933,6 +933,19 @@ class TicketStatusResponse(BaseModel):
     """Respuesta de GET /api/v1/tickets/{ticket_job_id}."""
 
     ticket_job_id: str = Field(...)
+    ticket_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "External ticket reference stored when this job was accepted, "
+            "never reconstructed from generated text. Null means uncorrelated. "
+            "This identifies the job's ticket, not the latest ticket execution."
+        ),
+    )
+    created_at: Optional[datetime] = Field(default=None)
+    completed_at: Optional[datetime] = Field(default=None)
+    expires_at: Optional[datetime] = Field(
+        default=None, description="Result retention limit, not source-data freshness."
+    )
     state: str = Field(
         ...,
         description=(
@@ -1007,10 +1020,21 @@ class TicketJobStatusV2(BaseModel):
 
     schema_version: str = Field(default="2.0")
     ticket_job_id: str = Field(...)
+    ticket_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "External ticket reference stored when this job was accepted, "
+            "never reconstructed from generated text. Null means uncorrelated. "
+            "This identifies the job's ticket, not the latest ticket execution."
+        ),
+    )
     state: TicketJobState = Field(...)
     created_at: Optional[datetime] = Field(default=None)
     started_at: Optional[datetime] = Field(default=None)
     completed_at: Optional[datetime] = Field(default=None)
+    expires_at: Optional[datetime] = Field(
+        default=None, description="Result retention limit, not source-data freshness."
+    )
     elapsed_s: Optional[float] = Field(default=None)
     total_inquiries: Optional[int] = Field(default=None)
     processed_inquiries: int = Field(default=0)

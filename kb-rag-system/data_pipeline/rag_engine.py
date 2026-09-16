@@ -3363,6 +3363,35 @@ class RAGEngine:
         except (TypeError, ValueError):
             return str(item).lower()
 
+    _OUTSTANDING_LOAN_REVIEW = (
+        "An outstanding loan is recorded. Our team needs to verify its payoff "
+        "or offset handling before your distribution request can be submitted."
+    )
+
+    @staticmethod
+    def _contains_pending_loan_review(item: Any) -> bool:
+        """Recognize a narrow equivalent of the canonical preflight check.
+
+        This only removes our repeated sentence, not model warnings or tax
+        consequences. An unrecognized paraphrase keeps the canonical warning.
+        The caller must first establish a known positive loan from preflight.
+        """
+        if not isinstance(item, str):
+            return False
+        text = re.sub(r"\s+", " ", item.casefold())
+        if re.search(r"\b(?:no|without|not an?)\s+outstanding\b", text):
+            return False
+        return bool(
+            re.search(r"\boutstanding\b[^.!?]{0,60}\bloan\b", text)
+            and re.search(
+                r"\b(?:forusall|our team|support)\s+(?:also\s+)?(?:must|needs? to|will)\s+"
+                r"(?:verify|confirm|review)\s+(?:its|(?:your |the )?loan)\s+"
+                r"(?:payoff|offset|treatment|handling)\b[^.!?]{0,180}"
+                r"\bbefore\b[^.!?]{0,80}\b(?:distribution|submission|request|execution)\b",
+                text,
+            )
+        )
+
     @classmethod
     def _apply_termination_response_policy(
         cls,
@@ -3991,7 +4020,7 @@ class RAGEngine:
                 warnings = [i for i in warnings if not contradicted_preflight(i)]
                 preflight_warnings: List[str] = []
                 if loan_state == "positive":
-                    preflight_warnings.append("An outstanding loan is recorded. Our team needs to verify its payoff or offset handling before your distribution request can be submitted.")
+                    preflight_warnings.append(cls._OUTSTANDING_LOAN_REVIEW)
                 elif loan_state == "unknown":
                     preflight_warnings.append("Your loan status has not been verified. Support needs to confirm whether any outstanding loan affects this request.")
                 if not crypto_zero:
@@ -4171,6 +4200,12 @@ class RAGEngine:
                 step["step_number"] = index
 
         response["key_points"] = key_points[:key_point_limit]
+        # Check only the points that survived policy replacement and caps.
+        # Never suppress a check because it existed in discarded model text.
+        if (preflight_applicable and preflight
+                and loans.get("status") == "known" and loan_state == "positive"
+                and any(cls._contains_pending_loan_review(p) for p in response["key_points"])):
+            warnings = [w for w in warnings if w != cls._OUTSTANDING_LOAN_REVIEW]
         response["warnings"] = warnings[:4]
         response["steps"] = steps[:6]
         fixed["response_to_participant"] = response

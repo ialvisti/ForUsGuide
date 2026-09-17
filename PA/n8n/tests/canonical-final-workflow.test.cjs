@@ -47,7 +47,7 @@ function run(code,nodes,input){
  const hostObject=Object.create(Object);hostObject.getPrototypeOf=()=>({});
  return JSON.parse(JSON.stringify(vm.runInNewContext('(function(){'+code+'})()',{
   $:name=>{assert.ok(nodes[name],name+' must have executed');return {first:()=>({json:nodes[name]})};},
-  $input:{first:()=>({json:input})},Object:hostObject,Buffer,Date,
+  $input:{first:()=>({json:input}),all:()=>(Array.isArray(input)?input:[input]).map(json=>({json}))},Object:hostObject,Buffer,Date,
  },{timeout:1000})));
 }
 function response(poll){return {statusCode:200,headers:{'content-type':'application/json'},body:JSON.stringify(poll)};}
@@ -68,6 +68,31 @@ test('Missing header takes the unavailable branch without reading an unexecuted 
  const nodes={'PA Final Reference':{ticketId:ticket,agentResponse:'Synthetic',read_canonical:false,reference_reason:'missing_independent_job_reference'}};
  const out=run(builders.evidenceCode(),nodes,{});
  assert.equal(out[0].json.canonical_evidence.evidence_status,'unavailable');
+});
+test('Generated adapters compose event, authenticated work, paginated source, hash, poll and parser boundary',()=>{
+ const s=state(),snapshot=s.nodes['PA Final Conversation Hash'].snapshot;
+ const selected=run(builders.referenceCode(),{Webhook:event()},{} )[0].json;
+ const work={id:snapshot.work_id,display_id:ticket,type:'ticket',title:snapshot.subject,
+  body:snapshot.initial_message.body,visibility:{label:'external'},created_date:snapshot.initial_message.created_at,
+  created_by:{id:snapshot.initial_message.author_id,type:'rev_user'},custom_fields:{tnt__pa_execution_job:job}};
+ const pages=[{timeline_entries:[],next_cursor:'second'},
+  {timeline_entries:snapshot.messages.map(m=>({id:m.id,object:work.id,type:'timeline_comment',
+   visibility:'external',body:m.body,created_date:m.created_at,modified_date:m.updated_at,
+   created_by:{id:m.author_id,type:'dev_user'}}))}];
+ const nodes={'PA Final Reference':selected,'PA Final Work':{work}};
+ const bound=run(builders.sourceCode(),nodes,pages)[0].json;
+ assert.equal(bound.snapshot.complete,true);assert.equal(bound.snapshot.messages.length,1);
+ assert.equal(bound.snapshot.initial_message.author_role,'participant');
+ bound.digest=require('node:crypto').createHash('sha256').update(bound.preimage).digest('hex');
+ s.poll.conversation_reference=conversationReference(bound.snapshot);
+ const source=run(builders.evidenceCode(),{...nodes,'PA Final Conversation Hash':bound},response(s.poll))[0].json;
+ assert.equal(source.canonical_evidence.evidence_status,'matched');
+ const parserInput=JSON.parse(run(builders.parserInputCode(),{'PA Final Evidence':source},{}));
+ assert.deepEqual(parserInput.canonical_evidence.verified_participant_facts,s.facts);
+ assert.equal(parserInput.ticketId,ticket);
+ // A newer work job is a rejection, never a replacement for the event job.
+ work.custom_fields.tnt__pa_execution_job='b'.repeat(32);
+ assert.throws(()=>run(builders.sourceCode(),nodes,pages),/reference mismatch/);
 });
 test('Final extractor exposes only independently verified facts and cannot authorize sending or closure',()=>{
  const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;

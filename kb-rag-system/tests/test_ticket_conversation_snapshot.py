@@ -152,7 +152,7 @@ def test_python_binding_matches_shared_javascript_fixture():
     from data_pipeline.ticket_conversation import ConversationSnapshot
     value = json.loads((Path(__file__).parents[2] / "PA/n8n/fixtures/conversation-snapshot.fixture").read_text())
     assert ConversationSnapshot.model_validate(value).reference()["digest"] == (
-        "814d1eb1b58a7e448bb538bdbd7b7ce1568c28237062c45eff8742579cee42e6"
+        "814d1eb1b58a7e448bb538bdbd7b7ce1568c28237062c45eff8742579cee42e6"  # pragma: allowlist secret - public synthetic fixture digest
     )
 
 

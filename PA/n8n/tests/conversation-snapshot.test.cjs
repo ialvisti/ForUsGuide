@@ -44,7 +44,7 @@ test('Partial reads keep explicit incomplete flags',()=>{
   assert.equal(reference(value).complete,false);
 });
 test('Shared golden digest agrees with the backend',()=>{
-  assert.equal(reference(fixture()).digest,'814d1eb1b58a7e448bb538bdbd7b7ce1568c28237062c45eff8742579cee42e6');
+  assert.equal(reference(fixture()).digest,'814d1eb1b58a7e448bb538bdbd7b7ce1568c28237062c45eff8742579cee42e6'); // pragma: allowlist secret - public synthetic fixture digest
 });
 test('Absent body edit timestamps stay explicitly unknown',()=>{
   const value=fixture(); value.initial_message.updated_at=null; value.messages[0].updated_at=null;

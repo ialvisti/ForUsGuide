@@ -27,6 +27,7 @@
 !PA/n8n/fixtures/parser-verified.fixture
 !PA/n8n/fixtures/parser-unverified.fixture
 !PA/n8n/fixtures/parser-conflicting.fixture
+!PA/n8n/fixtures/conversation-snapshot.fixture
 !PA/n8n prompts/PROMPT_KNOWLEDGE_QUESTION_BUILDER.md
 !PA/n8n prompts/PROMPT_GENERATE_RESPONSE_BODY_BUILDER.md
 !n8n_workflow/

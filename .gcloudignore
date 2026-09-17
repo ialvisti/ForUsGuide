@@ -18,6 +18,7 @@
 !PA/n8n/*.js
 !PA/n8n/*.md
 !PA/n8n/release-manifest.manifest
+!PA/n8n/conversation-producer.manifest
 !PA/n8n/baselines/*.js
 !PA/n8n/candidates/*.js
 !PA/n8n/tests/*.cjs

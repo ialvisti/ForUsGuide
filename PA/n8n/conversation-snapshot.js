@@ -2,7 +2,6 @@
 
 // Shared wire contract with data_pipeline/ticket_conversation.py. This accepts
 // messages obtained by an authenticated producer, never a digest from an LLM.
-const {createHash} = require('node:crypto');
 const fail = () => { throw new Error('invalid_conversation_snapshot'); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value) &&
   [Object.prototype, null].includes(Object.getPrototypeOf(value));
@@ -35,7 +34,7 @@ function row(m, captured) {
       (instant(m.created_at)>instant(m.updated_at) || instant(m.updated_at)>captured))) fail();
   return [m.id,m.author_id??null,m.author_role,m.visibility,m.created_at,m.updated_at,m.body];
 }
-function conversationReference(snapshot) {
+function canonicalConversation(snapshot) {
   keys(snapshot,['type','schema_version','ticket_id','work_id','subject','captured_at',
     'complete','partial','truncated','initial_message','messages']);
   const s=snapshot;
@@ -53,8 +52,14 @@ function conversationReference(snapshot) {
     a[0]<b[0]?-1:a[0]>b[0]?1:0);
   const preimage=[s.type,s.schema_version,s.ticket_id,s.work_id,s.subject,
     s.complete,s.partial,s.truncated,initial,rows];
+  return JSON.stringify(preimage);
+}
+function conversationReference(s) {
+  // Local verifier only. The n8n adapter must use canonicalConversation plus its built-in
+  // Crypto node (SHA256/HEX), without widening the Code module allowlist.
+  const {createHash}=require('node:crypto');
   return {type:s.type,schema_version:s.schema_version,hash_algorithm:'sha256',
-    digest:createHash('sha256').update(JSON.stringify(preimage),'utf8').digest('hex'),
+    digest:createHash('sha256').update(canonicalConversation(s),'utf8').digest('hex'),
     complete:s.complete,partial:s.partial,truncated:s.truncated};
 }
-module.exports={conversationReference};
+module.exports={conversationReference,canonicalConversation};

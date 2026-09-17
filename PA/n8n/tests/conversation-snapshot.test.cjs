@@ -50,3 +50,10 @@ test('Absent body edit timestamps stay explicitly unknown',()=>{
   const value=fixture(); value.initial_message.updated_at=null; value.messages[0].updated_at=null;
   assert.match(reference(value).digest,/^[a-f0-9]{64}$/);
 });
+test('Canonical encoding can run in the n8n Code sandbox without importing crypto',()=>{
+  const vm=require('node:vm');
+  const encoded=vm.runInNewContext("const module={exports:{}};\n"+fs.readFileSync(file,'utf8')+
+    '\nmodule.exports.canonicalConversation(JSON.parse(serialized));',
+    {Buffer,serialized:JSON.stringify(fixture()),require:()=>{throw new Error('module_disallowed');}});
+  assert.equal(require('node:crypto').createHash('sha256').update(encoded,'utf8').digest('hex'),reference(fixture()).digest);
+});

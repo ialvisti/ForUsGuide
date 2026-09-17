@@ -19,11 +19,13 @@
 !PA/n8n/*.md
 !PA/n8n/release-manifest.manifest
 !PA/n8n/conversation-producer.manifest
+!PA/n8n/canonical-final-consumer.manifest
 !PA/n8n/baselines/*.js
 !PA/n8n/candidates/*.js
 !PA/n8n/tests/*.cjs
 # Published parser prompt and sanitized evidence required by verify-package.
 !PA/n8n/candidates/final-parser-system.md
+!PA/n8n/candidates/canonical-final-parser-system.md
 !PA/n8n/verify-parser-replay.cjs
 !PA/n8n/fixtures/parser-verified.fixture
 !PA/n8n/fixtures/parser-unverified.fixture

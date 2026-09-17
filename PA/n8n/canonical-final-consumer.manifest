@@ -1,0 +1,364 @@
+{
+  "schema_version": 1,
+  "workflow_id": "CziwYCQlGgliAuhi",
+  "baseline_published_version": "e5ae1462-af32-42a2-8316-03430a5e8a4f",
+  "required_backend_commit": "69f614d196b384aa44cf37a4f8fdef5190441b20",
+  "required_producer_version": "0bdde667-7b18-483a-966a-13978e07d529",
+  "required_devrev_field": "tnt__pa_execution_job",
+  "emitter": {
+    "workflow": "workflow-70",
+    "baseline": 28,
+    "expected_candidate": 29,
+    "header": "x-pa-ticket-job-id",
+    "source": "Ticket Updated.Output.PA execution job"
+  },
+  "pins_change": false,
+  "credentials_change": false,
+  "original_write_nodes_change": false,
+  "generated_sources": [
+    {
+      "node": "PA Final Reference",
+      "builder": "referenceCode",
+      "sha256": "738bb67fd03243bbe2302ee67fd84fc2162cc37aba5e67eefba8938b4db4fbc3"
+    },
+    {
+      "node": "PA Final Conversation",
+      "builder": "sourceCode",
+      "sha256": "be4c3f448dd8aff669e40a3178bfc19b8c9d48baa02e9ef2cfd301135c032de9"
+    },
+    {
+      "node": "PA Final Evidence",
+      "builder": "evidenceCode",
+      "sha256": "42a2b7112b5e215d25c396bee8b46637fc9ac3c316cd7db90d92465d6f8c9a9c"
+    },
+    {
+      "node": "JSON parser input expression",
+      "builder": "parserInputCode",
+      "sha256": "fa76f6320e165286aaa983c1124165e7d77ae3309c658177bf8c3faf17eda420"
+    },
+    {
+      "node": "Data extractor",
+      "builder": "extractorCode",
+      "sha256": "bd4b19db0dd7059ecc3b310a561600fa90ccd40c653636ffb320f09d9aac5b4a"
+    }
+  ],
+  "parser_prompt": {
+    "path": "candidates/canonical-final-parser-system.md",
+    "sha256": "d37356ea9ed1c16f53d4ca514174cdc0bddf630e419c3dc7e8eba4105d77c48d"
+  },
+  "native_nodes": [
+    {
+      "name": "PA Has Job Reference?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "af131111-4980-41bc-8098-761090000002",
+              "leftValue": "={{ $json.read_canonical }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      }
+    },
+    {
+      "name": "PA Final Work",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "url": "https://api.devrev.ai/works.get",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "id",
+              "value": "={{ $('PA Final Reference').first().json.ticketId }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "PA Final Timeline",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "parameters": {
+        "method": "POST",
+        "url": "https://api.devrev.ai/timeline-entries.list",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"object\": \"{{ $('PA Final Work').first().json.work.id }}\",\n  \"visibility\": [\"external\"],\n  \"limit\": 100,\n  \"mode\": \"after\"\n}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "type": "body",
+                    "name": "cursor",
+                    "value": "={{ $response.body.next_cursor }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.next_cursor }}",
+              "limitPagesFetched": true,
+              "maxRequests": 10
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "PA Final Conversation Hash",
+      "type": "n8n-nodes-base.crypto",
+      "typeVersion": 1,
+      "parameters": {
+        "type": "SHA256",
+        "value": "={{ $json.preimage }}",
+        "dataPropertyName": "digest"
+      }
+    },
+    {
+      "name": "PA Final ID Token",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "parameters": {
+        "method": "POST",
+        "url": "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/kb-rag-client@rag-kb-system.iam.gserviceaccount.com:generateIdToken",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleApi",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\n  \"audience\": \"https://kb-rag-system-900340137010.us-central1.run.app\",\n  \"includeEmail\": true\n}",
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "PA Final Poll",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "parameters": {
+        "url": "=https://kb-rag-system-900340137010.us-central1.run.app/api/v1/tickets/{{ $('PA Final Reference').first().json.ticket_job_id }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "=Bearer {{ $('PA Final ID Token').item.json.token }}"
+            }
+          ]
+        },
+        "options": {
+          "redirect": {
+            "redirect": {
+              "followRedirects": false
+            }
+          },
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "responseFormat": "text",
+              "outputPropertyName": "body"
+            }
+          }
+        }
+      }
+    }
+  ],
+  "connections": [
+    [
+      "Data extractor",
+      "main",
+      0,
+      "Internal Message",
+      "main",
+      0
+    ],
+    [
+      "If internal comment",
+      "main",
+      0,
+      "Internal Comment",
+      "main",
+      0
+    ],
+    [
+      "If internal comment",
+      "main",
+      1,
+      "Update Ticket",
+      "main",
+      0
+    ],
+    [
+      "Internal Comment",
+      "main",
+      0,
+      "Update Ticket",
+      "main",
+      0
+    ],
+    [
+      "Internal Message",
+      "main",
+      0,
+      "Internal Stages",
+      "main",
+      0
+    ],
+    [
+      "Internal Stages",
+      "main",
+      0,
+      "If internal comment",
+      "main",
+      0
+    ],
+    [
+      "JSON parser",
+      "main",
+      0,
+      "Data extractor",
+      "main",
+      0
+    ],
+    [
+      "OpenAI Chat Model",
+      "ai_languageModel",
+      0,
+      "JSON parser",
+      "ai_languageModel",
+      0
+    ],
+    [
+      "PA Final Conversation Hash",
+      "main",
+      0,
+      "PA Final ID Token",
+      "main",
+      0
+    ],
+    [
+      "PA Final Conversation",
+      "main",
+      0,
+      "PA Final Conversation Hash",
+      "main",
+      0
+    ],
+    [
+      "PA Final Evidence",
+      "main",
+      0,
+      "JSON parser",
+      "main",
+      0
+    ],
+    [
+      "PA Final ID Token",
+      "main",
+      0,
+      "PA Final Poll",
+      "main",
+      0
+    ],
+    [
+      "PA Final Poll",
+      "main",
+      0,
+      "PA Final Evidence",
+      "main",
+      0
+    ],
+    [
+      "PA Final Reference",
+      "main",
+      0,
+      "PA Has Job Reference?",
+      "main",
+      0
+    ],
+    [
+      "PA Final Timeline",
+      "main",
+      0,
+      "PA Final Conversation",
+      "main",
+      0
+    ],
+    [
+      "PA Final Work",
+      "main",
+      0,
+      "PA Final Timeline",
+      "main",
+      0
+    ],
+    [
+      "PA Has Job Reference?",
+      "main",
+      0,
+      "PA Final Work",
+      "main",
+      0
+    ],
+    [
+      "PA Has Job Reference?",
+      "main",
+      1,
+      "PA Final Evidence",
+      "main",
+      0
+    ],
+    [
+      "Webhook",
+      "main",
+      0,
+      "PA Final Reference",
+      "main",
+      0
+    ]
+  ],
+  "publication_authorizes_participant_messages": false,
+  "always_requires_advisor_review": true
+}

@@ -16,15 +16,15 @@
  * `now` is an explicit RFC3339 timestamp supplied by the caller's trusted clock.
  * Neither URLs nor response prose are accepted as reference sources.
  *
- * Proposed conversation reference, currently NOT supplied by the backend:
+ * Conversation reference supplied by the deployed backend from durable input:
  *   {type: 'devrev_conversation_snapshot', schema_version: 1,
  *    hash_algorithm: 'sha256', digest: <64 lowercase hexadecimal digits>,
  *    complete: true, partial: false, truncated: false}
  * Both reference.conversation_reference and poll.conversation_reference must
  * match. The latter must come from the durable accepted input, outside model
- * metadata. A future producer must define a shared canonical encoding covering
- * the actual ordered input messages, their IDs/authorship/visibility/dates,
- * ticket title/body, and bounded-hydration diagnostics before wiring this up.
+ * metadata. conversation-snapshot.js and the backend share canonical encoding
+ * of the ordered input messages, IDs/authorship/visibility/dates, title/body
+ * and bounded-hydration diagnostics.
  * This module does not produce a digest, infer completeness, or select a job.
  * Completeness diagnostics must come from both trusted hydration paths, never
  * from model assertions. Missing/incomplete binding hides all facts. Digest
@@ -61,7 +61,7 @@ const FACT_SOURCES = Object.freeze({
 
 const own = (value, key) => Object.hasOwn(value, key);
 const record = value => value !== null && typeof value === 'object' &&
-  !Array.isArray(value) && [Object.prototype, null].includes(Object.getPrototypeOf(value));
+  !Array.isArray(value) && Object.prototype.toString.call(value) === '[object Object]';
 const jobId = value => typeof value === 'string' && /^[0-9a-f]{32}$/.test(value);
 const ticketId = value => typeof value === 'string' && (
   /^TKT-[A-Za-z0-9-]{1,100}$/.test(value) || /^don:[A-Za-z0-9_.:/+-]{1,252}$/.test(value));

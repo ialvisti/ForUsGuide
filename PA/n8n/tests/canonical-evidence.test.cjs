@@ -306,3 +306,12 @@ test('Identity conflict still vetoes facts if the conflicting inquiry failed', (
   other.generate_response.metadata.identity_verified=false;input.poll.related.push(other);
   denied(input,'identity_veto');
 });
+
+test('n8n hardened object introspection still validates exact JSON evidence',()=>{
+  const fs=require('node:fs'),vm=require('node:vm'),path=require('node:path');
+  const hardenedObject=Object.create(Object);hardenedObject.getPrototypeOf=()=>({});
+  const module={exports:{}};
+  vm.runInNewContext(fs.readFileSync(path.join(__dirname,'../canonical-evidence.js'),'utf8'),{module,Object:hardenedObject});
+  const result=module.exports.validateCanonicalEvidence(fixture());
+  assert.equal(result.evidence_status,'matched');assertGuarded(result);
+});

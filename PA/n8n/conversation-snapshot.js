@@ -4,7 +4,9 @@
 // messages obtained by an authenticated producer, never a digest from an LLM.
 const fail = () => { throw new Error('invalid_conversation_snapshot'); };
 const object = value => value !== null && typeof value === 'object' && !Array.isArray(value) &&
-  [Object.prototype, null].includes(Object.getPrototypeOf(value));
+  // n8n hardens prototype introspection. These are JSON records; the closed
+  // key schema and every nested value are validated below.
+  Object.prototype.toString.call(value) === '[object Object]';
 const text = (value, min, max) => typeof value === 'string' && value.isWellFormed() &&
   Array.from(value).length >= min && Array.from(value).length <= max;
 const devrevId = value => text(value,1,256) && /^don:[A-Za-z0-9_.:/+-]+$/.test(value);

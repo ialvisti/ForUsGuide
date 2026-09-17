@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "workflow_id": "BQvxrc3YiP4ZWbNQ",
+  "baseline_published_version": "938c0fa3-261b-4ddc-80b8-d4f630ca7d71",
+  "required_backend_commit": "69f614d196b384aa44cf37a4f8fdef5190441b9525ed",
+  "required_devrev_field": "tnt__pa_execution_job",
+  "connections_change": false,
+  "pins_change": false,
+  "code_nodes": [
+    {
+      "name": "Obtain the real message from the PPT",
+      "builder": "producerSnapshotCode",
+      "sha256": "a43540187e8135e7bd16bfcdf06297fa63e1bc3bfd5a0b3579c3c11a29636f13"
+    },
+    {
+      "name": "Include Ticket data",
+      "builder": "includeTicketCode",
+      "sha256": "4afac4dea8230c9ae673abedcec48dcd119415e23d2a06c390f7e2581ce13546"
+    }
+  ],
+  "body_transforms": [
+    {
+      "name": "Handle Ticket",
+      "builder": "typedTicketBody"
+    },
+    {
+      "name": "Update Ticket",
+      "builder": "updateJobBody"
+    }
+  ],
+  "timeline": {
+    "name": "Get Timeline Entries",
+    "url": "https://api.devrev.ai/timeline-entries.list",
+    "jsonBody": "={\n  \"object\": \"{{ $('Get tickets from DevRev1').first().json.work.id }}\",\n  \"visibility\": [\"external\"],\n  \"limit\": 100,\n  \"mode\": \"after\"\n}",
+    "options": {
+      "pagination": {
+        "pagination": {
+          "parameters": {
+            "parameters": [
+              {
+                "type": "body",
+                "name": "cursor",
+                "value": "={{ $response.body.next_cursor }}"
+              }
+            ]
+          },
+          "paginationCompleteWhen": "other",
+          "completeExpression": "={{ !$response.body.next_cursor }}",
+          "limitPagesFetched": true,
+          "maxRequests": 10
+        }
+      }
+    }
+  },
+  "publication_authorizes_participant_messages": false
+}

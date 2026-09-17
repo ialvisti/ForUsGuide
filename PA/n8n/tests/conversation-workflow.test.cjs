@@ -70,3 +70,11 @@ test('Status update uses the accepted job and refuses malformed executed respons
   assert.throws(()=>evaluate(()=>({first:()=>({json:bad})})),/reference missing/);
  }
 });
+test('Release manifest binds exact generated code and a valid backend revision',()=>{
+ const manifest=JSON.parse(fs.readFileSync(require('node:path').join(__dirname,'../conversation-producer.manifest')));
+ assert.match(manifest.required_backend_commit,/^[0-9a-f]{40}$/);
+ for(const item of manifest.code_nodes){
+  const generated=require('../conversation-workflow.js')[item.builder]();
+  assert.equal(require('node:crypto').createHash('sha256').update(generated).digest('hex'),item.sha256);
+ }
+});

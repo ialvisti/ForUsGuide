@@ -1114,6 +1114,12 @@ async def _execute(app: Any, repo: TicketJobRepository, job_id: str,
         *,
         invocation_id: Optional[str] = None,
     ) -> TicketJobRecord:
+        # Successful synthesis cannot turn incomplete source history into a
+        # safe participant reply. Keep the review decision outside model text.
+        snapshot = req.ticket.conversation_snapshot
+        if snapshot is not None and not snapshot.complete:
+            entry["participant_reply_safe"] = False
+            entry["human_review_required"] = True
         # Defense in depth: validate the complete control and payload document
         # here, then the repository rebuilds and validates them again inside
         # the transaction immediately before the actual write.

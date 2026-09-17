@@ -28,6 +28,7 @@ from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 from pydantic import ValidationError
 
 from data_pipeline import forusbots_catalog, gr_payload_builder, prompts
+from data_pipeline.ticket_conversation import participant_statements
 from data_pipeline.retrieval_privacy import (
     UnsafeRetrievalQuery,
     redact_retrieval_context,
@@ -349,9 +350,7 @@ def _inject_account_access_guard(
         return extracted
 
     ticket = getattr(req, "ticket", None)
-    subject = getattr(ticket, "email_subject", "") or ""
-    body = getattr(ticket, "email_body", "") or ""
-    signal = _detect_account_access_signal(f"{subject} {body}".lower())
+    signal = _detect_account_access_signal(participant_statements(ticket).lower())
     if not signal:
         return extracted
 
@@ -549,6 +548,7 @@ class TicketOrchestrator:
             "emailBody": ext.inquiry,
             "ticket_messages": {},
         }
+        focused.pop("conversation_snapshot", None)
         agent_input = {"ticketData": focused}
         system, user = prompts.build_kb_question_synthesis_prompt(agent_input)
         diag = self._classifier_diag(classification)
@@ -813,7 +813,7 @@ class TicketOrchestrator:
         """Keep literal questions from this request, never invented actions."""
         def normalize(value: str) -> str:
             return " ".join(value.split()).casefold()
-        text = normalize(f"{req.ticket.email_subject} {req.ticket.email_body}")
+        text = normalize(participant_statements(req.ticket))
         return list(dict.fromkeys(q.strip() for q in questions[:12]
                                  if isinstance(q, str) and q.strip() and normalize(q) in text))
 
@@ -1160,7 +1160,7 @@ class TicketOrchestrator:
         ]
         ticket_data = {
             "emailSubject": req.ticket.email_subject,
-            "emailBody": req.ticket.email_body,
+            "emailBody": participant_statements(req.ticket),
         }
         system, user = prompts.build_ticket_field_extract_prompt(fields_payload, ticket_data)
         try:
@@ -1189,9 +1189,7 @@ class TicketOrchestrator:
         # y saltaría la validación semántica, permitiendo fabricar hechos
         # (P1/P2 del review final).
         allowed_slugs = set(data_types)
-        ticket_text = " ".join(
-            str(t or "") for t in (req.ticket.email_subject, req.ticket.email_body)
-        ).lower()
+        ticket_text = participant_statements(req.ticket).lower()
         extracted: Dict[str, Dict[str, Any]] = {}
         demoted: List[str] = []
         rejected_keys: List[str] = []
@@ -1299,12 +1297,10 @@ class TicketOrchestrator:
     # ------------------------------------------------------------------
 
     def _build_ticket_data(self, req: Any) -> Dict[str, Any]:
-        # Fuente de verdad única: subject + body (Task 1 del plan). El hilo
-        # histórico y el tag ya no existen en runtime; los prompts reciben las
-        # claves con valores neutrales porque su protocolo ya define ese caso
-        # ("empty {} → use emailBody").
+        # Legacy untyped history remains disabled. Attributed conversation
+        # is a separate, validated input with explicit role instructions.
         t = req.ticket
-        return {
+        data = {
             "userId": None,
             "userName": t.username,
             "userEmail": t.user_email,
@@ -1315,6 +1311,10 @@ class TicketOrchestrator:
             "firstContact": t.first_contact,
             "ticket_messages": {},
         }
+        snapshot = getattr(t, "conversation_snapshot", None)
+        if snapshot is not None:
+            data["conversation_snapshot"] = snapshot.model_dump(mode="json")
+        return data
 
     def _build_case_data(self, req: Any) -> Dict[str, Any]:
         return {

@@ -15,6 +15,7 @@ from enum import Enum
 # Enums CERRADOS del job durable: n8n nunca interpreta strings arbitrarios
 # (Tarea 4 Paso 7 — OpenAPI declara los valores exactos).
 from data_pipeline.ticket_job_models import NextAction, TicketJobState
+from data_pipeline.ticket_conversation import ConversationSnapshot
 
 
 # ============================================================================
@@ -762,12 +763,11 @@ class RouteInquiryResponse(BaseModel):
 # ============================================================================
 
 class TicketInput(BaseModel):
-    """Datos del ticket. Fuente de verdad ÚNICA del contenido: ``email_subject``
-    + ``email_body`` (decisión Task 1 del plan de remediación). n8n puede
-    seguir enviando ``ticket_messages``/``tag`` en el wire (``extra="ignore"``
-    los descarta), pero el runtime no los modela ni los pasa a ningún prompt:
-    un hilo histórico sin autoría verificable amplía la superficie de prompt
-    injection y contradecía la documentación."""
+    """Legacy subject/body plus optional attributed conversation input.
+
+    Untyped ticket_messages/tag remain ignored. A conversation_snapshot is
+    validated separately and bound to the same ticket, subject and initial body.
+    """
 
     # extra="ignore" es deliberado (wire-compat con n8n: ticket_messages/tag
     # se aceptan y descartan); los campos modelados sí tienen bounds duros.
@@ -788,6 +788,19 @@ class TicketInput(BaseModel):
     first_contact: Optional[bool] = Field(
         default=None, description="Si es el primer contacto (opcional)"
     )
+
+    conversation_snapshot: Optional[ConversationSnapshot] = None
+
+    @model_validator(mode="after")
+    def _bind_conversation(self) -> "TicketInput":
+        snapshot = self.conversation_snapshot
+        if snapshot is not None and (
+            snapshot.ticket_id != self.ticket_id
+            or snapshot.subject != self.email_subject
+            or snapshot.initial_message.body != (self.email_body or "")
+        ):
+            raise ValueError("conversation snapshot differs from consumed ticket input")
+        return self
 
     @field_validator("user_email")
     @classmethod
@@ -941,6 +954,7 @@ class TicketStatusResponse(BaseModel):
             "This identifies the job's ticket, not the latest ticket execution."
         ),
     )
+    conversation_reference: Optional[Dict[str, Any]] = Field(default=None)
     created_at: Optional[datetime] = Field(default=None)
     completed_at: Optional[datetime] = Field(default=None)
     expires_at: Optional[datetime] = Field(
@@ -1029,6 +1043,7 @@ class TicketJobStatusV2(BaseModel):
         ),
     )
     state: TicketJobState = Field(...)
+    conversation_reference: Optional[Dict[str, Any]] = Field(default=None)
     created_at: Optional[datetime] = Field(default=None)
     started_at: Optional[datetime] = Field(default=None)
     completed_at: Optional[datetime] = Field(default=None)

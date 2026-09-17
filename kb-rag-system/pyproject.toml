@@ -57,6 +57,7 @@ files = [
     "api/rate_limit.py",
     "api/ticket_worker.py",
     "data_pipeline/ticket_job_models.py",
+    "data_pipeline/ticket_conversation.py",
     "data_pipeline/ticket_job_repository.py",
     "data_pipeline/ticket_task_queue.py",
     "data_pipeline/ticket_reconciler.py",

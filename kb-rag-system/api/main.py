@@ -68,6 +68,7 @@ from data_pipeline.ticket_orchestrator import (
     OrchestratorDeps,
     TicketOrchestrator,
 )
+from data_pipeline.ticket_conversation import reference_from_payload
 from data_pipeline.ticket_job_models import (
     TERMINAL_STATES,
     CreateOrGetOutcome,
@@ -2162,6 +2163,7 @@ async def handle_ticket_endpoint(
         and record.next_action == NextAction.SEND_PARTICIPANT_REPLY
         and metadata.get("fallback") is not True
         and all_safe
+        and request.ticket.conversation_snapshot is None
         and not _record_has_generate_response(record)
     )
     if fast_inline:
@@ -2239,6 +2241,9 @@ async def get_ticket_status(
     return TicketStatusResponse(
         ticket_job_id=record.job_id,
         ticket_id=record.ticket_id,
+        conversation_reference=reference_from_payload(
+            record.request_payload, ticket_id=record.ticket_id, created_at=record.created_at,
+        ),
         created_at=record.created_at,
         completed_at=record.completed_at,
         expires_at=record.expires_at,
@@ -2406,6 +2411,9 @@ async def get_ticket_job_v2(
     return TicketJobStatusV2(
         ticket_job_id=record.job_id,
         ticket_id=record.ticket_id,
+        conversation_reference=reference_from_payload(
+            record.request_payload, ticket_id=record.ticket_id, created_at=record.created_at,
+        ),
         state=record.state.value,
         created_at=record.created_at,
         started_at=record.started_at,

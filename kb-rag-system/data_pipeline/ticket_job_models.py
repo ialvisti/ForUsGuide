@@ -208,6 +208,18 @@ def fingerprint_request(payload: Dict[str, Any]) -> str:
     # separately on the first durable job and every replay returns that job.
     volatile = {"idempotency_key", "ticket_handler_mode"}
     clean = {k: v for k, v in payload.items() if k not in volatile}
+    # Additive conversation input must not invalidate retained legacy receipts.
+    # Hydration time may vary on a retry; actual content/authorship may not.
+    if isinstance(clean.get("ticket"), dict):
+        ticket = dict(clean["ticket"])
+        snapshot = ticket.get("conversation_snapshot")
+        if snapshot is None:
+            ticket.pop("conversation_snapshot", None)
+        elif isinstance(snapshot, dict):
+            ticket["conversation_snapshot"] = {
+                k: v for k, v in snapshot.items() if k != "captured_at"
+            }
+        clean["ticket"] = ticket
     return hashlib.sha256(canonical_json(clean).encode("utf-8")).hexdigest()
 
 

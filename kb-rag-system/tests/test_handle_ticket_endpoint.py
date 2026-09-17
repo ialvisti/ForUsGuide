@@ -857,3 +857,33 @@ class TestPollEvidenceCorrelation:
         assert bodies[0]["ticket_id"] == bodies[1]["ticket_id"] == ticket["ticket_id"]
         # Correlation does not claim that either execution is the latest one.
         assert all("is_latest" not in body for body in bodies)
+
+    @pytest.mark.parametrize("path", ["/api/v1/tickets/{job_id}", "/api/v2/ticket-jobs/{job_id}"])
+    def test_conversation_binding_is_from_durable_input_not_generated_metadata(self, client, path):
+        from tests.test_ticket_conversation_snapshot import ticket, snapshot
+
+        result = _gr_result()
+        result.metadata = {"conversation_reference": {"digest": "a" * 64}}
+        outcome = InquiryOutcome(inquiry="What are my options?", topic="rollover",
+                                 route="generate_response", scrape_status="ok", generate_result=result)
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), outcome))
+        accepted = client.post("/api/v1/handle-ticket", json=_body(ticket=ticket()))
+        assert accepted.status_code == 202
+        job_id = accepted.json()["ticket_job_id"]
+        polled = client.get(path.format(job_id=job_id)).json()
+        from api.models import TicketInput
+        expected = TicketInput.model_validate(ticket()).conversation_snapshot.reference()
+        assert polled.get("conversation_reference") == expected
+        assert polled["conversation_reference"]["digest"] != "a" * 64
+        assert "messages" not in polled["conversation_reference"]
+        assert snapshot()["messages"][0]["body"] not in str(polled)
+
+    def test_typed_educational_input_retains_job_handle_even_for_fast_inline(self, client):
+        from tests.test_ticket_conversation_snapshot import ticket
+
+        outcome = InquiryOutcome(inquiry="What are my options?", topic="general",
+                                 route="knowledge_question", knowledge_result=_kq_result())
+        _use_orch(client, FakeOrch([_ext()], _cls("knowledge_question"), outcome))
+        accepted = client.post("/api/v1/handle-ticket", json=_body(ticket=ticket()))
+        assert accepted.status_code == 202
+        assert accepted.json()["ticket_job_id"]

@@ -41,6 +41,22 @@ test('Attachments are not silently treated as consumed text',()=>{
   const value=source();value.pages[0].timeline_entries[0].artifacts=[{id:'don:synthetic:artifact:1'}];
   assert.equal(build(value).complete,false);
 });
+test('A read original-email archive adds no missing content when both alternatives equal its owner body',()=>{
+  const value=source(),entry=value.pages[0].timeline_entries[0],id='don:synthetic:artifact:1';
+  const raw='MIME-Version: 1.0\nContent-Type: multipart/alternative; boundary=b\n\n--b\nContent-Type: text/plain; charset=utf-8\n\nLater question?\n--b\nContent-Type: text/html; charset=utf-8\n\n<div>Later question?</div>\n--b--\n';
+  entry.artifacts=[{id,file:{type:'message/rfc822',size:Buffer.byteLength(raw)}}];
+  value.artifactContents=[{id,raw}];
+  assert.equal(build(value).complete,true);
+  for(const change of [
+    s=>s.artifactContents=[],
+    s=>s.artifactContents[0].id='don:synthetic:artifact:other',
+    s=>s.artifactContents[0].raw=raw.replace('<div>Later question?</div>','<div>Extra instructions</div>'),
+    s=>s.pages[0].timeline_entries[0].artifacts[0].file.type='application/pdf',
+    s=>s.pages[0].timeline_entries[0].artifacts.push({id:'don:synthetic:artifact:2',file:{type:'application/pdf'}}),
+  ]){
+    const copy=structuredClone(value);change(copy);assert.equal(build(copy).complete,false);
+  }
+});
 test('Unknown authors remain unknown',()=>{
   const value=source();value.pages[0].timeline_entries[0].created_by={type:'unrecognized',id:'don:synthetic:user:1'};
   assert.equal(build(value).messages[0].author_role,'unknown');

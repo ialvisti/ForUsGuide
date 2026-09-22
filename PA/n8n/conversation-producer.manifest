@@ -1,21 +1,26 @@
 {
   "schema_version": 1,
   "workflow_id": "BQvxrc3YiP4ZWbNQ",
-  "baseline_published_version": "938c0fa3-261b-4ddc-80b8-d4f630ca7d71",
+  "baseline_published_version": "0bdde667-7b18-483a-966a-13978e07d529",
   "required_backend_commit": "69f614d196b384aa44cf37a4f8fdef5190441b20",
   "required_devrev_field": "tnt__pa_execution_job",
-  "connections_change": false,
+  "connections_change": true,
   "pins_change": false,
   "code_nodes": [
     {
       "name": "Obtain the real message from the PPT",
-      "builder": "producerSnapshotCode",
-      "sha256": "a43540187e8135e7bd16bfcdf06297fa63e1bc3bfd5a0b3579c3c11a29636f13"
+      "builder": "producerHydratedSnapshotCode",
+      "sha256": "6dae1d7db2b6f4ee2ad1af74b796de37ddc02b1e4030ccde1a63b6ea6c0a22f5"
     },
     {
       "name": "Include Ticket data",
       "builder": "includeTicketCode",
       "sha256": "4afac4dea8230c9ae673abedcec48dcd119415e23d2a06c390f7e2581ce13546"
+    },
+    {
+      "name": "PA Producer Email Source",
+      "builder": "producerArtifactInputCode",
+      "sha256": "35ce7e5d7ac41915c95f55a7b3390ef34685ef7518a3b5ef9d86c87c0236f315"
     }
   ],
   "body_transforms": [
@@ -52,5 +57,37 @@
       }
     }
   },
-  "publication_authorizes_participant_messages": false
+  "publication_authorizes_participant_messages": false,
+  "email_collector": {
+    "module": "email-artifact-workflow.js",
+    "builder": "collectorParameters",
+    "node": "PA Producer Email Collector",
+    "type": "n8n-nodes-base.executeWorkflow",
+    "typeVersion": 1.3,
+    "credential_reference_from": "Get tickets from DevRev1",
+    "definition_template_sha256": "e009d7362a71fa09da3df30695a142699886bab07d3902e0246709e7e8d1efd5",
+    "source_sha256": "15343de72f2cb23263ba88fa42c7414bbc2d3f1cfe31a539e2e42b34bed60a96",
+    "download_credentials": false,
+    "download_redirects": false
+  },
+  "connection_replacement": {
+    "remove": [
+      "Get Timeline Entries",
+      "Obtain the real message from the PPT"
+    ],
+    "add": [
+      [
+        "Get Timeline Entries",
+        "PA Producer Email Source"
+      ],
+      [
+        "PA Producer Email Source",
+        "PA Producer Email Collector"
+      ],
+      [
+        "PA Producer Email Collector",
+        "Obtain the real message from the PPT"
+      ]
+    ]
+  }
 }

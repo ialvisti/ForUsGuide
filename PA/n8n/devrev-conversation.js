@@ -4,6 +4,7 @@
 // timeline responses. Its cursor paginator must retain every response in order.
 // This normalizer does not authenticate arbitrary JSON or fetch network URLs.
 const {canonicalConversation}=require('./conversation-snapshot.js');
+const {isRedundantEmailMirror}=require('./devrev-email-mirror.js');
 const invalid=()=>{throw new Error('invalid_devrev_conversation');};
 const object=v=>v!==null && typeof v==='object' && !Array.isArray(v);
 function author(value){
@@ -16,16 +17,33 @@ function date(value){
   // DevRev uses UTC; preserve microseconds rather than rounding via JS Date.
   return value.replace(/\+00:00$/,'Z');
 }
-function snapshotFromDevRev({work,ticketId,pages,capturedAt}){
+function snapshotFromDevRev({work,ticketId,pages,capturedAt,artifactContents=[]}){
   if(!object(work) || work.type!=='ticket' || work.display_id!==ticketId ||
     work.visibility?.label!=='external' ||
     typeof work.title!=='string' || !(work.body==null || typeof work.body==='string') ||
     !Array.isArray(pages) || pages.length<1 || pages.length>10)invalid();
   const messages=[],cursors=new Set();
   let partial=false,truncated=false;
-  // Attachments have not been hydrated into this text contract.
-  const hasAttachments=item=>Array.isArray(item.artifacts) && item.artifacts.length>0;
-  if(hasAttachments(work))partial=true;
+  if(!Array.isArray(artifactContents) || artifactContents.length>10)invalid();
+  const content=new Map();let contentBytes=0;
+  for(const item of artifactContents){
+    if(!object(item) || typeof item.id!=='string' || typeof item.raw!=='string' || content.has(item.id))invalid();
+    contentBytes+=Buffer.byteLength(item.raw,'utf8');
+    if(contentBytes>1048576)invalid();
+    content.set(item.id,item.raw);
+  }
+  const hasUnreadAttachments=item=>{
+    if(item.artifacts==null)return false;
+    if(!Array.isArray(item.artifacts))invalid();
+    return item.artifacts.some(a=>{
+      const raw=object(a)?content.get(a.id):undefined;
+      return !object(a) || a.file?.type!=='message/rfc822' ||
+        !Number.isSafeInteger(a.file?.size) || a.file.size<1 || a.file.size>262144 ||
+        typeof raw!=='string' || Buffer.byteLength(raw,'utf8')!==a.file.size ||
+        !isRedundantEmailMirror(raw,item.body);
+    });
+  };
+  if(hasUnreadAttachments(work))partial=true;
   for(let index=0;index<pages.length;index++){
     const page=pages[index];
     if(!object(page) || !Array.isArray(page.timeline_entries))invalid();
@@ -39,7 +57,7 @@ function snapshotFromDevRev({work,ticketId,pages,capturedAt}){
     for(const entry of page.timeline_entries){
       if(!object(entry) || entry.type!=='timeline_comment' || entry.object!==work.id ||
         entry.visibility!=='external' || typeof entry.body!=='string')invalid();
-      if(hasAttachments(entry))partial=true;
+      if(hasUnreadAttachments(entry))partial=true;
       messages.push({id:entry.id,...author(entry.created_by),visibility:'external',
         created_at:date(entry.created_date),updated_at:entry.modified_date==null?null:date(entry.modified_date),
         body:entry.body});

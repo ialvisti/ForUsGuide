@@ -40,6 +40,20 @@ const snapshot=snapshotFromDevRev({work,ticketId:selected.ticketId,
  pages:$input.all().map(item=>item.json),capturedAt:new Date().toISOString()});
 return [{json:{snapshot,preimage:canonicalConversation(snapshot)}}];
 `;}
+function artifactInputCode(){return validateWorkReference.toString()+`
+const selected=$('PA Final Reference').first().json;
+const work=validateWorkReference(selected,$('PA Final Work').first().json.work);
+return [{json:{work,ticketId:selected.ticketId,pages:$input.all().map(item=>item.json)}}];
+`;}
+function hydratedSourceCode(){return require('./conversation-workflow.js').normalizerCode()+
+ validateWorkReference.toString()+`
+const selected=$('PA Final Reference').first().json;
+const source=$input.first().json;
+validateWorkReference(selected,source.work);
+if(source.ticketId!==selected.ticketId)throw new Error('invalid_devrev_conversation');
+const snapshot=snapshotFromDevRev({...source,capturedAt:new Date().toISOString()});
+return [{json:{snapshot,preimage:canonicalConversation(snapshot)}}];
+`;}
 function evidenceCode(){
  const validator=read('canonical-evidence.js').replace('module.exports = {validateCanonicalEvidence};','return {validateCanonicalEvidence};');
  return 'const {validateCanonicalEvidence}=(()=>{'+validator+'\n})();\n'+decodeCanonicalPoll.toString()+`
@@ -88,4 +102,4 @@ return [{json:{ticketId:source.ticketId,participant_reply:doubleBreaks(parsed.pa
  'Canonical evidence is incomplete or unavailable; generated prose is not factual authority.'}}];
 `;}
 module.exports={selectFinalReference,validateWorkReference,decodeCanonicalPoll,
- referenceCode,sourceCode,evidenceCode,parserInputCode,extractorCode};
+ referenceCode,sourceCode,artifactInputCode,hydratedSourceCode,evidenceCode,parserInputCode,extractorCode};

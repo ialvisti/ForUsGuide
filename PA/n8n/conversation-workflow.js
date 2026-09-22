@@ -6,8 +6,11 @@ const path=require('node:path');
 const read=name=>fs.readFileSync(path.join(__dirname,name),'utf8');
 function codecCode(){return read('conversation-snapshot.js').split('function conversationReference(s)')[0];}
 function normalizerCode(){
-  const source=read('devrev-conversation.js').replace("const {canonicalConversation}=require('./conversation-snapshot.js');",'');
+  const source=read('devrev-conversation.js').replace("const {canonicalConversation}=require('./conversation-snapshot.js');",'')
+    .replace("const {isRedundantEmailMirror}=require('./devrev-email-mirror.js');",'');
+  const mirror=read('devrev-email-mirror.js').replace('module.exports={isRedundantEmailMirror,validateArtifactDownloadUrl};','return {isRedundantEmailMirror};');
   return `const {canonicalConversation}=(()=>{${codecCode()}\nreturn {canonicalConversation};})();\n`+
+    `const {isRedundantEmailMirror}=(()=>{${mirror}\n})();\n`+
     `const {snapshotFromDevRev}=(()=>{${source.replace('module.exports={snapshotFromDevRev};','return {snapshotFromDevRev};')}\n})();\n`;
 }
 function producerSnapshotCode(){return normalizerCode()+`
@@ -16,6 +19,18 @@ const snapshot=snapshotFromDevRev({work:$('Get tickets from DevRev1').first().js
   ticketId:base.ticketId,pages:$input.all().map(item=>item.json),capturedAt:new Date().toISOString()});
 return [{json:{...base,emailSubject:snapshot.subject,emailBody:snapshot.initial_message.body,
   conversation_snapshot:snapshot}}];
+`;}
+function producerArtifactInputCode(){return `
+return [{json:{work:$('Get tickets from DevRev1').first().json.work,
+ ticketId:$('Get relevant tag1').first().json.ticketId,pages:$input.all().map(item=>item.json)}}];
+`;}
+function producerHydratedSnapshotCode(){return normalizerCode()+`
+const base=$('Get relevant tag1').first().json;
+const source=$input.first().json;
+if(source.ticketId!==base.ticketId)throw new Error('invalid_devrev_conversation');
+const snapshot=snapshotFromDevRev({...source,capturedAt:new Date().toISOString()});
+return [{json:{...base,emailSubject:snapshot.subject,emailBody:snapshot.initial_message.body,
+ conversation_snapshot:snapshot}}];
 `;}
 function includeTicketCode(){return `
 function fnv1a64(value){
@@ -61,4 +76,4 @@ function updateJobBody(source){
       return accepted.ticket_job_id;
     })()) }}`);
 }
-module.exports={codecCode,normalizerCode,producerSnapshotCode,includeTicketCode,typedTicketBody,updateJobBody};
+module.exports={codecCode,normalizerCode,producerSnapshotCode,producerArtifactInputCode,producerHydratedSnapshotCode,includeTicketCode,typedTicketBody,updateJobBody};

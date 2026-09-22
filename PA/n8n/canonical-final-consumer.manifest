@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "workflow_id": "CziwYCQlGgliAuhi",
-  "baseline_published_version": "e5ae1462-af32-42a2-8316-03430a5e8a4f",
+  "baseline_published_version": "daa3df52-f7aa-4bba-b55b-84c7bceb010f",
   "required_backend_commit": "69f614d196b384aa44cf37a4f8fdef5190441b20",
   "required_producer_version": "0bdde667-7b18-483a-966a-13978e07d529",
   "required_devrev_field": "tnt__pa_execution_job",
@@ -23,8 +23,8 @@
     },
     {
       "node": "PA Final Conversation",
-      "builder": "sourceCode",
-      "sha256": "be4c3f448dd8aff669e40a3178bfc19b8c9d48baa02e9ef2cfd301135c032de9"
+      "builder": "hydratedSourceCode",
+      "sha256": "3ec324465374b6abbb96304fcaf9848fee3607ef9844e1241f301fc723d8b17c"
     },
     {
       "node": "PA Final Evidence",
@@ -40,6 +40,11 @@
       "node": "Data extractor",
       "builder": "extractorCode",
       "sha256": "bd4b19db0dd7059ecc3b310a561600fa90ccd40c653636ffb320f09d9aac5b4a"
+    },
+    {
+      "node": "PA Final Email Source",
+      "builder": "artifactInputCode",
+      "sha256": "dc29b251b9492a5eda16bbfdc0b72e3dde7ea6365c918f18415568f46e3f358b"
     }
   ],
   "parser_prompt": {
@@ -322,7 +327,7 @@
       "PA Final Timeline",
       "main",
       0,
-      "PA Final Conversation",
+      "PA Final Email Source",
       "main",
       0
     ],
@@ -357,8 +362,37 @@
       "PA Final Reference",
       "main",
       0
+    ],
+    [
+      "PA Final Email Source",
+      "main",
+      0,
+      "PA Final Email Collector",
+      "main",
+      0
+    ],
+    [
+      "PA Final Email Collector",
+      "main",
+      0,
+      "PA Final Conversation",
+      "main",
+      0
     ]
   ],
   "publication_authorizes_participant_messages": false,
-  "always_requires_advisor_review": true
+  "always_requires_advisor_review": true,
+  "required_producer_contract": "typed_conversation_with_verified_email_mirrors_v1",
+  "email_collector": {
+    "module": "email-artifact-workflow.js",
+    "builder": "collectorParameters",
+    "node": "PA Final Email Collector",
+    "type": "n8n-nodes-base.executeWorkflow",
+    "typeVersion": 1.3,
+    "credential_reference_from": "PA Final Work",
+    "definition_template_sha256": "e009d7362a71fa09da3df30695a142699886bab07d3902e0246709e7e8d1efd5",
+    "source_sha256": "15343de72f2cb23263ba88fa42c7414bbc2d3f1cfe31a539e2e42b34bed60a96",
+    "download_credentials": false,
+    "download_redirects": false
+  }
 }

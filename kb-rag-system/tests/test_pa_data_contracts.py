@@ -419,3 +419,166 @@ def test_disclosure_does_not_trust_ticket_fields_or_failed_or_undated_scrapes():
     assert not data.get('internal_disclosure_context')
     data = build_collected_data({'census': {'First Name': 'Alex'}}, {}, {}, identity_context=identity, participant_meta={'extraction_diagnostics': {'modules': {'census': {'dataState': 'parse_error', 'observedAt': '2026-09-11T18:00:00Z'}}}})
     assert not data.get('internal_disclosure_context')
+
+
+# ---------------------------------------------------------------------------
+# Plan identifier disclosure (server-owned, bound to the selected plan)
+# ---------------------------------------------------------------------------
+
+PLAN_MODULES = {
+    'basic_info': {'official_plan_name': 'Synthetic Fixture 401(k) Plan'},
+    'plan_design': {'rk_plan_id': 'RK-0000123', 'record_keeper_id': 'LT Trust'},
+}
+PLAN_META = {'extraction_diagnostics': {'modules': {
+    'basic_info': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z',
+                   'fields': {'official_plan_name': {'dataState': 'ok', 'sourceAsOf': '2026-09-01'}}},
+    'plan_design': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z',
+                    'fields': {'rk_plan_id': {'dataState': 'ok'},
+                               'record_keeper_id': {'dataState': 'ok'}}},
+}}}
+MATCHED = {'identity_resolution_status': 'matched', 'identity_verified': True}
+
+
+def plan_disclosure(**over):
+    kwargs = dict(plan_modules=PLAN_MODULES, ticket_extracted={}, plan_meta=PLAN_META,
+                  identity_context=MATCHED, selected_plan_id='222')
+    kwargs.update(over)
+    plan_modules = kwargs.pop('plan_modules')
+    ticket_extracted = kwargs.pop('ticket_extracted')
+    data = build_collected_data(None, plan_modules, ticket_extracted, **kwargs)
+    return data.get('internal_plan_disclosure_context')
+
+
+def test_plan_facts_project_exact_sources_dates_and_selected_binding():
+    context = plan_disclosure()
+    assert context['plan_id'] == '222'
+    assert context['identity_verified'] is True
+    assert context['identity_resolution_status'] == 'matched'
+    assert context['facts'] == {
+        'legal_plan_name': {'value': 'Synthetic Fixture 401(k) Plan', 'status': 'known',
+                            'source': 'plan.basic_info.official_plan_name',
+                            'observed_at': '2026-09-11T18:00:00Z', 'as_of': '2026-09-01'},
+        'rk_plan_id': {'value': 'RK-0000123', 'status': 'known',
+                       'source': 'plan.plan_design.rk_plan_id',
+                       'observed_at': '2026-09-11T18:00:00Z', 'as_of': None},
+        'record_keeper': {'value': 'LT Trust', 'status': 'known',
+                          'source': 'plan.plan_design.record_keeper_id',
+                          'observed_at': '2026-09-11T18:00:00Z', 'as_of': None},
+    }
+
+
+@pytest.mark.parametrize('override', [
+    {'selected_plan_id': None},
+    {'selected_plan_id': ''},
+    {'selected_plan_id': '0'},
+    {'selected_plan_id': 'PLAN-222'},
+    {'identity_context': None},
+    {'identity_context': {'identity_resolution_status': 'matched', 'identity_verified': False}},
+    {'identity_context': {'identity_resolution_status': 'ambiguous', 'identity_verified': True}},
+])
+def test_plan_facts_need_authenticated_identity_and_a_canonical_selected_plan(override):
+    assert plan_disclosure(**override) is None
+
+
+def test_plan_facts_are_never_selected_by_ticket_text_or_a_fact_plan_id():
+    """Only the separately passed selection binds; no self-asserted association."""
+    modules = {'plan_design': {'record_keeper_id': 'LT Trust', 'plan_id': '999'}}
+    context = plan_disclosure(plan_modules=modules, ticket_extracted={
+        'rk_plan_id': {'value': 'RK-TICKET-CLAIM', 'evidence': 'my plan id is RK-TICKET-CLAIM'},
+        'legal_plan_name': {'value': 'Ticket Asserted Plan', 'evidence': 'Ticket Asserted Plan'},
+    })
+    assert set(context['facts']) == {'record_keeper'}
+    assert context['plan_id'] == '222'
+    assert 'RK-TICKET-CLAIM' not in str(context)
+    assert 'Ticket Asserted Plan' not in str(context)
+
+
+def test_routed_plan_id_is_not_a_recordkeeper_plan_code():
+    modules = {'plan_design': {'record_keeper_id': 'LT Trust'}}
+    context = plan_disclosure(plan_modules=modules)
+    assert 'rk_plan_id' not in context['facts']
+
+
+@pytest.mark.parametrize('state', ['parse_error', 'panel_missing', 'access_denied',
+                                   'missing', 'unavailable', 'unknown'])
+def test_plan_facts_require_a_known_module_and_field_diagnostic(state):
+    meta = json.loads(json.dumps(PLAN_META))
+    meta['extraction_diagnostics']['modules']['plan_design']['fields']['rk_plan_id']['dataState'] = state
+    context = plan_disclosure(plan_meta=meta)
+    assert 'rk_plan_id' not in context['facts']
+    assert context['facts']['legal_plan_name']['value'] == 'Synthetic Fixture 401(k) Plan'
+
+
+def test_plan_facts_require_a_source_observation_or_as_of_date():
+    meta = json.loads(json.dumps(PLAN_META))
+    del meta['extraction_diagnostics']['modules']['plan_design']['observedAt']
+    assert plan_disclosure(plan_meta=meta)['facts'].keys() == {'legal_plan_name'}
+    assert plan_disclosure(plan_meta=None) is None
+
+
+@pytest.mark.parametrize('value', ['', '   ', 'unknown', 'N/A', 'RK 0001 <script>',
+                                   'X' * 40, None, 123, True])
+def test_invalid_plan_identifier_syntax_yields_no_fact(value):
+    modules = {'plan_design': {'rk_plan_id': value, 'record_keeper_id': 'LT Trust'}}
+    assert 'rk_plan_id' not in plan_disclosure(plan_modules=modules)['facts']
+
+
+def test_plan_disclosure_carries_no_other_plan_or_participant_fields():
+    modules = json.loads(json.dumps(PLAN_MODULES))
+    modules['basic_info']['ein'] = 'PRIVATE_CANARY_EIN'
+    modules['plan_design']['participant_site'] = 'https://private.example.test'
+    context = plan_disclosure(plan_modules=modules)
+    assert set(context['facts']) == {'legal_plan_name', 'rk_plan_id', 'record_keeper'}
+    assert 'PRIVATE_CANARY_EIN' not in str(context)
+
+
+def test_plan_disclosure_is_additive_and_leaves_participant_contract_intact():
+    ppt = {'census': {'First Name': 'Alex'}}
+    meta = {'extraction_diagnostics': {'modules': {
+        'census': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z'}}}}
+    data = build_collected_data(ppt, PLAN_MODULES, {}, participant_meta=meta,
+                               plan_meta=PLAN_META, identity_context=MATCHED,
+                               selected_plan_id='222')
+    assert data['internal_disclosure_context']['facts']['first_name']['value'] == 'Alex'
+    assert 'first_name' not in data['internal_plan_disclosure_context']['facts']
+    legacy = build_collected_data(ppt, PLAN_MODULES, {}, participant_meta=meta,
+                                  plan_meta=PLAN_META, identity_context=MATCHED)
+    assert 'internal_plan_disclosure_context' not in legacy
+    assert legacy['internal_disclosure_context']['facts']['first_name']['value'] == 'Alex'
+
+
+@pytest.mark.parametrize(('field', 'invalid'), [
+    ('observed_at', 'not-a-timestamp'),
+    ('as_of', '2025-02-29'),
+])
+def test_plan_projection_rejects_present_invalid_date_even_when_other_date_is_valid(
+        field, invalid):
+    from data_pipeline.gr_payload_builder import project_verified_plan_facts
+
+    entry = {
+        'value': 'RK-0000123',
+        'status': 'known',
+        'source': 'plan.plan_design.rk_plan_id',
+        'observed_at': '2026-09-11T18:00:00Z',
+        'as_of': '2026-09-01',
+    }
+    entry[field] = invalid
+    context = {
+        'plan_id': '222',
+        'identity_verified': True,
+        'identity_resolution_status': 'matched',
+        'facts': {
+            'rk_plan_id': entry,
+            'record_keeper': {
+                'value': 'LT Trust',
+                'status': 'known',
+                'source': 'plan.plan_design.record_keeper_id',
+                'observed_at': '2026-09-11T18:00:00Z',
+                'as_of': None,
+            },
+        },
+    }
+
+    projected = project_verified_plan_facts(context)
+
+    assert set(projected['facts']) == {'record_keeper'}

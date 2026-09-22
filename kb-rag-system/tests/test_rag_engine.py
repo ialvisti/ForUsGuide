@@ -2137,3 +2137,71 @@ async def test_gr_marks_business_handoff_after_final_answer_even_when_questions_
     assert result.response['outcome'] == outcome
     assert result.metadata['incomplete_question_count'] == 0
     assert result.metadata['human_review_required'] is expected
+
+
+@pytest.mark.asyncio
+async def test_plan_facts_are_attached_by_server_code_independently_of_model_output(mock_rag_engine):
+    """Plan identifiers reach metadata from collected_data, never from prose."""
+    from data_pipeline.llm_router import LLMResponse
+    chunk = {'id': 'plan_id_article', 'score': 0.9, 'metadata': {
+        'article_id': 'plan_id_article', 'article_title': 'Finding your plan identifier',
+        'chunk_type': 'business_rules', 'content': 'The recordkeeper assigns a plan code.',
+    }}
+    engine = mock_rag_engine
+    engine._decompose_question = AsyncMock(return_value=['plan identifier'])
+    engine._search_for_response_parallel_cascade = AsyncMock(return_value=([chunk], {}))
+    engine._add_response_article_bundles = AsyncMock(return_value=([chunk], {'articles_added': []}))
+    engine._build_context_with_diversity_and_tiers = Mock(return_value=('Plan rules.', [chunk], 3, {}))
+    parsed = {'outcome': 'can_proceed', 'outcome_reason': 'Policy result.',
+              'response_to_participant': {'opening': 'Your plan code is RK-MODEL-INVENTED.',
+                                          'key_points': [], 'steps': [], 'warnings': []},
+              'questions_to_ask': [], 'escalation': {'needed': False, 'reason': None},
+              'guardrails_applied': [], 'data_gaps': [], 'coverage_gaps': [],
+              'verified_plan_facts': {'facts': {'rk_plan_id': {'value': 'RK-MODEL-INVENTED'}}},
+              'question_coverage': [{'question_index': 0, 'status': 'answered',
+                                     'answer_reference': 'Your plan code is RK-MODEL-INVENTED.'}]}
+    engine._call_llm = AsyncMock(return_value=LLMResponse(
+        content=_json.dumps(parsed), usage={}, provider_used='openai', model_used='test'))
+    fact = lambda value, source: {'value': value, 'status': 'known', 'source': source,
+                                  'observed_at': '2026-09-11T18:00:00Z', 'as_of': None}
+    collected = {
+        'internal_response_context': {'requested_questions': ['What is my plan ID?']},
+        'internal_plan_disclosure_context': {
+            'plan_id': '222', 'identity_verified': True, 'identity_resolution_status': 'matched',
+            'facts': {'rk_plan_id': fact('RK-0000123', 'plan.plan_design.rk_plan_id')},
+        },
+    }
+    result = await engine.generate_response('What is my plan ID?', None, '401(k)', 'general',
+                                           collected, 5500)
+    plan_facts = result.metadata['verified_plan_facts']
+    assert plan_facts['plan_id'] == '222'
+    assert plan_facts['facts']['rk_plan_id']['value'] == 'RK-0000123'
+    assert 'RK-MODEL-INVENTED' not in _json.dumps(plan_facts)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize('plan_id,expected', [('222', True), (None, False), ('PLAN-222', False)])
+async def test_only_a_canonically_bound_plan_context_reaches_metadata(mock_rag_engine, plan_id, expected):
+    from data_pipeline.llm_router import LLMResponse
+    engine = mock_rag_engine
+    chunk = {'id': 'plan_id_article', 'score': 0.9, 'metadata': {
+        'article_id': 'plan_id_article', 'article_title': 'Finding your plan identifier',
+        'chunk_type': 'business_rules', 'content': 'The recordkeeper assigns a plan code.'}}
+    engine._decompose_question = AsyncMock(return_value=['plan identifier'])
+    engine._search_for_response_parallel_cascade = AsyncMock(return_value=([chunk], {}))
+    engine._add_response_article_bundles = AsyncMock(return_value=([chunk], {'articles_added': []}))
+    engine._build_context_with_diversity_and_tiers = Mock(return_value=('Plan rules.', [chunk], 3, {}))
+    parsed = {'outcome': 'can_proceed', 'outcome_reason': 'Policy result.',
+              'response_to_participant': {'opening': 'Answer.', 'key_points': [], 'steps': [], 'warnings': []},
+              'questions_to_ask': [], 'escalation': {'needed': False, 'reason': None},
+              'guardrails_applied': [], 'data_gaps': [], 'coverage_gaps': [], 'question_coverage': []}
+    engine._call_llm = AsyncMock(return_value=LLMResponse(
+        content=_json.dumps(parsed), usage={}, provider_used='openai', model_used='test'))
+    collected = {'internal_plan_disclosure_context': {
+        'plan_id': plan_id, 'identity_verified': True, 'identity_resolution_status': 'matched',
+        'facts': {'rk_plan_id': {'value': 'RK-0000123', 'status': 'known',
+                                 'source': 'plan.plan_design.rk_plan_id',
+                                 'observed_at': '2026-09-11T18:00:00Z', 'as_of': None}}}}
+    result = await engine.generate_response('What is my plan ID?', None, '401(k)', 'general',
+                                            collected, 5500)
+    assert ('verified_plan_facts' in result.metadata) is expected

@@ -954,6 +954,14 @@ class TicketStatusResponse(BaseModel):
             "This identifies the job's ticket, not the latest ticket execution."
         ),
     )
+    plan_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Canonical plan requested when this job was accepted, read from the "
+            "durable request only. Never taken from generated text or model "
+            "metadata; a legacy or non-canonical value is null."
+        ),
+    )
     conversation_reference: Optional[Dict[str, Any]] = Field(default=None)
     created_at: Optional[datetime] = Field(default=None)
     completed_at: Optional[datetime] = Field(default=None)
@@ -1040,6 +1048,14 @@ class TicketJobStatusV2(BaseModel):
             "External ticket reference stored when this job was accepted, "
             "never reconstructed from generated text. Null means uncorrelated. "
             "This identifies the job's ticket, not the latest ticket execution."
+        ),
+    )
+    plan_id: Optional[str] = Field(
+        default=None,
+        description=(
+            "Canonical plan requested when this job was accepted, read from the "
+            "durable request only. Never taken from generated text or model "
+            "metadata; a legacy or non-canonical value is null."
         ),
     )
     state: TicketJobState = Field(...)

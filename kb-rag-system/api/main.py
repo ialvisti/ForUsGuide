@@ -2068,6 +2068,17 @@ async def _wait_for_terminal(
         await asyncio.sleep(0.05)
 
 
+def _plan_id_from_payload(payload: Optional[Dict[str, Any]]) -> Optional[str]:
+    """Report the plan the accepted request selected, never a generated value.
+
+    Only the durable ``request_payload`` is read. A legacy or non-canonical
+    identifier fails closed to null instead of binding plan evidence.
+    """
+    from data_pipeline.gr_payload_builder import canonical_plan_id
+
+    return canonical_plan_id((payload or {}).get("plan_id"))
+
+
 def _record_results(record: TicketJobRecord) -> List[InquiryResult]:
     return [
         InquiryResult.model_validate(e["result"])
@@ -2241,6 +2252,7 @@ async def get_ticket_status(
     return TicketStatusResponse(
         ticket_job_id=record.job_id,
         ticket_id=record.ticket_id,
+        plan_id=_plan_id_from_payload(record.request_payload),
         conversation_reference=reference_from_payload(
             record.request_payload, ticket_id=record.ticket_id, created_at=record.created_at,
         ),
@@ -2411,6 +2423,7 @@ async def get_ticket_job_v2(
     return TicketJobStatusV2(
         ticket_job_id=record.job_id,
         ticket_id=record.ticket_id,
+        plan_id=_plan_id_from_payload(record.request_payload),
         conversation_reference=reference_from_payload(
             record.request_payload, ticket_id=record.ticket_id, created_at=record.created_at,
         ),

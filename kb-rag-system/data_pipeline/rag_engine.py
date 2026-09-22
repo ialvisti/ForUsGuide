@@ -1250,10 +1250,15 @@ class RAGEngine:
             from data_pipeline.response_handoff import response_requires_review
 
             question_metadata = self._validate_question_coverage(parsed, collected_data)
-            from data_pipeline.gr_payload_builder import project_verified_participant_facts
+            from data_pipeline.gr_payload_builder import (
+                project_verified_participant_facts, project_verified_plan_facts,
+            )
             disclosure = project_verified_participant_facts((collected_data or {}).get("internal_disclosure_context"))
             if disclosure:
                 question_metadata["verified_participant_facts"] = disclosure
+            plan_disclosure = project_verified_plan_facts((collected_data or {}).get("internal_plan_disclosure_context"))
+            if plan_disclosure:
+                question_metadata["verified_plan_facts"] = plan_disclosure
             if response_requires_review(parsed, question_metadata):
                 question_metadata["human_review_required"] = True
             if termination_response_policy_info.get("custody_review_required") or termination_response_policy_info.get("plan_review_required"):

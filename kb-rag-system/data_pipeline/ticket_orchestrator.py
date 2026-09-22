@@ -768,6 +768,9 @@ class TicketOrchestrator:
             company_status_detail=getattr(req, "company_status_detail", None),
             participant_meta=scrape_meta.get("participant"), plan_meta=scrape_meta.get("plan"),
             identity_context=req.identity_context.model_dump() if getattr(req, "identity_context", None) is not None else None,
+            # The plan whose durable operation was submitted, not a plan a fact
+            # or the ticket text claims to belong to.
+            selected_plan_id=req.plan_id,
         )
         collected_data["internal_response_context"] = {
             "requested_questions": [

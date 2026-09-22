@@ -731,6 +731,115 @@ def project_verified_participant_facts(value: Any) -> Dict[str, Any]:
     return {"identity_verified": True, "identity_resolution_status": "matched", "facts": facts} if facts else {}
 
 
+# Plan-side disclosure. These three identifiers are PLAN attributes read from the
+# plan scrape; they are not participant account numbers and never identify a
+# receiving account. The routed/internal plan_id only BINDS them — it is never a
+# value, and no plan fact may select the plan it supposedly belongs to.
+_PLAN_FACT_SOURCES: Dict[str, Tuple[str, str]] = {
+    "legal_plan_name": ("basic_info", "official_plan_name"),
+    "rk_plan_id": ("plan_design", "rk_plan_id"),
+    "record_keeper": ("plan_design", "record_keeper_id"),
+}
+_PLAN_FACT_PATTERNS: Dict[str, "re.Pattern[str]"] = {
+    "legal_plan_name": re.compile(r"[A-Za-z0-9][A-Za-z0-9 .,'&()/-]{0,199}"),
+    # Conservative recordkeeper code syntax: no spaces, punctuation or markup.
+    "rk_plan_id": re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,31}"),
+    "record_keeper": re.compile(r"[A-Za-z0-9][A-Za-z0-9 .,'&()/-]{0,99}"),
+}
+_PLAN_FACT_SENTINELS = frozenset({
+    "unknown", "n/a", "na", "none", "null", "-", "--", "tbd",
+    "not available", "not applicable", "pending",
+})
+_CANONICAL_PLAN_ID_RE = re.compile(r"[1-9][0-9]{0,31}")
+
+
+def canonical_plan_id(value: Any) -> Optional[str]:
+    """Only a positive canonical numeric plan identifier can bind plan facts."""
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    return text if _CANONICAL_PLAN_ID_RE.fullmatch(text) else None
+
+
+def project_verified_plan_facts(value: Any) -> Dict[str, Any]:
+    """Narrow plan disclosure contract, bound to a separately selected plan."""
+    from data_pipeline.forusbots_catalog import _safe_diagnostic_timestamp
+
+    if not isinstance(value, Mapping):
+        return {}
+    plan_id = canonical_plan_id(value.get("plan_id"))
+    if plan_id is None or value.get("identity_verified") is not True \
+            or value.get("identity_resolution_status") != "matched":
+        return {}
+    raw = value.get("facts")
+    if not isinstance(raw, Mapping):
+        return {}
+    facts: Dict[str, Any] = {}
+    for key, (module, label) in _PLAN_FACT_SOURCES.items():
+        entry = raw.get(key)
+        source = f"plan.{module}.{label}"
+        if not isinstance(entry, Mapping) or entry.get("source") != source \
+                or entry.get("status") != "known":
+            continue
+        raw_observed = entry.get("observed_at")
+        raw_as_of = entry.get("as_of")
+        observed = _safe_diagnostic_timestamp(raw_observed)
+        as_of = _normalize_lifecycle_date(raw_as_of)
+        # A malformed supplied date is not equivalent to an absent optional
+        # date and cannot borrow validity from the other chronology field.
+        if ("observed_at" in entry and raw_observed is not None and observed is None) \
+                or ("as_of" in entry and raw_as_of is not None and as_of is None):
+            continue
+        if not observed and not as_of:
+            continue
+        item = entry.get("value")
+        if not isinstance(item, str):
+            continue
+        text = item.strip()
+        if text.lower() in _PLAN_FACT_SENTINELS or not _PLAN_FACT_PATTERNS[key].fullmatch(text):
+            continue
+        facts[key] = {"value": text, "status": "known", "source": source,
+                      "observed_at": observed, "as_of": as_of}
+    if not facts:
+        return {}
+    return {"plan_id": plan_id, "identity_verified": True,
+            "identity_resolution_status": "matched", "facts": facts}
+
+
+def _build_plan_disclosure_context(
+    plan_modules: Optional[Mapping[str, Any]],
+    plan_meta: Optional[Mapping[str, Any]],
+    identity: Optional[Mapping[str, Any]],
+    selected_plan_id: Optional[str],
+) -> Dict[str, Any]:
+    """Project plan identifiers from the scrape only, for the selected plan.
+
+    ``selected_plan_id`` is the plan the authenticated caller requested. Ticket
+    text, model output and a plan fact's own ``plan_id`` cannot select a plan.
+    """
+    if not isinstance(identity, Mapping) or identity.get("identity_verified") is not True \
+            or identity.get("identity_resolution_status") != "matched":
+        return {}
+    if canonical_plan_id(selected_plan_id) is None or not isinstance(plan_modules, Mapping):
+        return {}
+    facts: Dict[str, Any] = {}
+    for key, (module, label) in _PLAN_FACT_SOURCES.items():
+        module_data = plan_modules.get(module)
+        if not isinstance(module_data, Mapping) or label not in module_data:
+            continue
+        evidence = _source_diagnostic(plan_meta, module, label)
+        if evidence.get("data_state") != "ok":
+            continue
+        facts[key] = {"value": module_data.get(label), "status": "known",
+                      "source": f"plan.{module}.{label}",
+                      "observed_at": evidence.get("observed_at"),
+                      "as_of": evidence.get("as_of")}
+    return project_verified_plan_facts({
+        "plan_id": selected_plan_id, "identity_verified": True,
+        "identity_resolution_status": "matched", "facts": facts,
+    })
+
+
 def _build_disclosure_context(participant: Mapping[str, Any], preflight: Mapping[str, Any],
                               meta: Optional[Mapping[str, Any]], identity: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     if not isinstance(identity, Mapping) or identity.get("identity_verified") is not True or identity.get("identity_resolution_status") != "matched":
@@ -815,6 +924,7 @@ def build_collected_data(
     participant_meta: Optional[Mapping[str, Any]] = None,
     plan_meta: Optional[Mapping[str, Any]] = None,
     identity_context: Optional[Mapping[str, Any]] = None,
+    selected_plan_id: Optional[str] = None,
 ) -> Dict[str, Any]:
     """collected_data determinístico: {participant_data, plan_data}.
 
@@ -824,6 +934,11 @@ def build_collected_data(
     participant: Dict[str, Any] = {}
     plan: Dict[str, Any] = {}
     internal_plan_context: Optional[Dict[str, Any]] = None
+    # Read the plan scrape before any participant-reported or request value can
+    # land in ``plan``; the disclosure contract must not see merged values.
+    internal_plan_disclosure_context = _build_plan_disclosure_context(
+        plan_modules, plan_meta, identity_context, selected_plan_id,
+    )
 
     for module_name, module_data in (ppt_modules or {}).items():
         if module_name in {"plan_notes", "plan_history"}:
@@ -897,6 +1012,8 @@ def build_collected_data(
                                "internal_preflight_context": internal_preflight_context}
     if internal_disclosure_context:
         collected["internal_disclosure_context"] = internal_disclosure_context
+    if internal_plan_disclosure_context:
+        collected["internal_plan_disclosure_context"] = internal_plan_disclosure_context
     if plan:
         collected["plan_data"] = plan
     if internal_plan_context is not None:

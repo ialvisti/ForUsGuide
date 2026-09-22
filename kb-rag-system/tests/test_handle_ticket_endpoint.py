@@ -887,3 +887,29 @@ class TestPollEvidenceCorrelation:
         accepted = client.post("/api/v1/handle-ticket", json=_body(ticket=ticket()))
         assert accepted.status_code == 202
         assert accepted.json()["ticket_job_id"]
+
+    @pytest.mark.parametrize("path", ["/api/v1/tickets/{job_id}", "/api/v2/ticket-jobs/{job_id}"])
+    def test_poll_plan_id_comes_from_the_durable_request_not_the_generated_result(self, client, path):
+        result = _gr_result()
+        result.metadata = {"plan_id": "999", "verified_plan_facts": {"plan_id": "999"}}
+        result.response = {"outcome": "can_proceed", "plan_id": "888"}
+        outcome = InquiryOutcome(inquiry="What is my plan ID?", topic="general",
+                                 route="generate_response", scrape_status="ok", generate_result=result)
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), outcome))
+        accepted = client.post("/api/v1/handle-ticket", json=_body(plan_id="580"))
+        assert accepted.status_code == 202
+        job_id = accepted.json()["ticket_job_id"]
+        polled = client.get(path.format(job_id=job_id)).json()
+        assert polled["plan_id"] == "580"
+
+    @pytest.mark.parametrize("path", ["/api/v1/tickets/{job_id}", "/api/v2/ticket-jobs/{job_id}"])
+    @pytest.mark.parametrize("plan_id", ["PLAN-580", "0", "abc"])
+    def test_legacy_or_non_canonical_plan_identifier_polls_as_null(self, client, path, plan_id):
+        outcome = InquiryOutcome(inquiry="What is my plan ID?", topic="general",
+                                 route="generate_response", scrape_status="ok",
+                                 generate_result=_gr_result())
+        _use_orch(client, FakeOrch([_ext()], _cls("generate_response"), outcome))
+        accepted = client.post("/api/v1/handle-ticket", json=_body(plan_id=plan_id))
+        assert accepted.status_code == 202
+        polled = client.get(path.format(job_id=accepted.json()["ticket_job_id"])).json()
+        assert polled["plan_id"] is None

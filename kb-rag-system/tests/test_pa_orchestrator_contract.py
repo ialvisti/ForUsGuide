@@ -220,3 +220,22 @@ async def test_n8n_selected_account_contract_drives_name_request_and_disclosure(
     assert any(m['key']=='census' and 'First Name' in m['fields'] for m in result.diagnostics['mapped_modules'])
     data = rag.generate_response.await_args.kwargs['collected_data']
     assert data['internal_disclosure_context']['facts']['first_name']['value'] == 'Alex'
+
+
+async def test_selected_plan_binding_comes_from_the_request_not_from_scraped_plan_facts():
+    orch, rag, _ = setup()
+    orch._scrape_all.return_value = (
+        {}, {'plan_design': {'rk_plan_id': 'RK-0000123', 'record_keeper_id': 'LT Trust',
+                             'plan_id': '999'}},
+        {'plan': {'extraction_diagnostics': {'modules': {'plan_design': {
+            'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z'}}}}}, 'ok',
+    )
+    identity = {'identity_resolution_status': 'matched', 'identity_verified': True,
+                'response_source_reason': 'account_context_required'}
+    ext = ExtractedInquiry('What is my plan ID for the rollover form?', 'LT Trust', '401(k)', 'general')
+    await orch._handle_gr(ext, request(identity_context=identity), CLASSIFICATION, 1)
+    context = rag.generate_response.await_args.kwargs['collected_data']['internal_plan_disclosure_context']
+    assert context['plan_id'] == '222'
+    assert context['facts']['rk_plan_id']['value'] == 'RK-0000123'
+    assert context['facts']['rk_plan_id']['source'] == 'plan.plan_design.rk_plan_id'
+    assert context['facts']['record_keeper']['value'] == 'LT Trust'

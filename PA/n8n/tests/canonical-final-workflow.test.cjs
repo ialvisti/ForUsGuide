@@ -150,3 +150,13 @@ test('A poll without plan metadata leaves plan provenance explicitly null',()=>{
  assert.equal(out.verified_plan_facts,null);
  assert.match(out.internal_notes,/"verified_plan_facts":null/);
 });
+test('Parser system prompt grounds plan-specific fees to canonical evidence, not agent prose',()=>{
+ const prompt=fs.readFileSync(path.join(__dirname,'..','candidates','canonical-final-parser-system.md'),'utf8');
+ assert.match(prompt,/canonical_evidence` never carries a verified fee/);
+ assert.match(prompt,/is a plan-specific figure with no separate canonical evidence, exactly like an unverified plan identifier/);
+ assert.match(prompt,/Do not salvage a withheld plan-specific figure by recasting it as a generic rule/);
+ assert.match(prompt,/that no plan-specific fee or amount without separate canonical evidence was stated as a fact in any field/);
+ // The carve-out for genuinely generic, plan-independent fees/procedures must remain, not a blanket ban on numbers.
+ assert.match(prompt,/remains a preservable generic value under the paragraph below/);
+ assert.match(prompt,/stated as general rules, not as this participant's plan-specific figure/);
+});

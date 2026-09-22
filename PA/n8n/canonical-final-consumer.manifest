@@ -49,7 +49,7 @@
   ],
   "parser_prompt": {
     "path": "candidates/canonical-final-parser-system.md",
-    "sha256": "5b936ef96c870d0a7cd4302afc7a3ba2bd8599fe5f64dabb896a85488371af98"
+    "sha256": "d3e492c1dfa20934284820554f4e828eadb5b2e48b6e8eb59f6cfcc26b7ce6ea"
   },
   "native_nodes": [
     {

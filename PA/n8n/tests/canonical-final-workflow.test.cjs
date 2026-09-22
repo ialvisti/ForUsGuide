@@ -121,3 +121,32 @@ test('Consumer release manifest binds generated source, prompt and immutable tra
  assert.equal(manifest.credentials_change,false);
  assert.equal(manifest.publication_authorizes_participant_messages,false);
 });
+test('Plan identifier evidence reaches provenance and output without changing the model contract',()=>{
+ const s=state();
+ const planFacts={plan_id:'580',identity_verified:true,identity_resolution_status:'matched',
+  facts:{rk_plan_id:{status:'known',value:'RK-0000123',source:'plan.plan_design.rk_plan_id',
+   observed_at:new Date(Date.parse(s.poll.completed_at)-1000).toISOString(),as_of:'2026-09-16'}}};
+ s.poll.plan_id='580';
+ s.poll.primary.generate_response.metadata.verified_plan_facts=planFacts;
+ const source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
+ assert.deepEqual(source.canonical_evidence.verified_plan_facts,planFacts);
+ const parsed={ticketId:ticket,participant_reply:'Synthetic answer',set_stage_solved:true,stage_reason:'Synthetic reason',internal_notes:null};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+ assert.deepEqual(out.verified_plan_facts,planFacts);
+ assert.match(out.internal_notes,/verified_plan_facts/);
+ assert.match(out.internal_notes,/RK-0000123/);
+ for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
+ assert.equal(out.human_review_required,true);
+ const parserInput=JSON.parse(run(builders.parserInputCode(),{'PA Final Evidence':source},{}));
+ assert.deepEqual(parserInput.canonical_evidence.verified_plan_facts,planFacts);
+ assert.deepEqual(Object.keys(parserInput),['ticketId','agentResponse','canonical_evidence']);
+});
+test('A poll without plan metadata leaves plan provenance explicitly null',()=>{
+ const s=state();
+ const source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
+ assert.equal(source.canonical_evidence.verified_plan_facts,null);
+ const parsed={ticketId:ticket,participant_reply:'Synthetic answer',set_stage_solved:false,stage_reason:'Synthetic reason',internal_notes:null};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+ assert.equal(out.verified_plan_facts,null);
+ assert.match(out.internal_notes,/"verified_plan_facts":null/);
+});

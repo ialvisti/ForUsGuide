@@ -1,9 +1,9 @@
 {
   "schema_version": 1,
   "workflow_id": "CziwYCQlGgliAuhi",
-  "baseline_published_version": "daa3df52-f7aa-4bba-b55b-84c7bceb010f",
-  "required_backend_commit": "69f614d196b384aa44cf37a4f8fdef5190441b20",
-  "required_producer_version": "0bdde667-7b18-483a-966a-13978e07d529",
+  "baseline_published_version": "4adc383c-8a02-4144-b7ac-2e383415caa3",
+  "required_backend_commit": "f76472a050e24a14c30372f7dba62c8c5dcc49f2",
+  "required_producer_version": "d893b458-426d-472b-99c8-b53c75b16931",
   "required_devrev_field": "tnt__pa_execution_job",
   "emitter": {
     "workflow": "workflow-70",
@@ -29,7 +29,7 @@
     {
       "node": "PA Final Evidence",
       "builder": "evidenceCode",
-      "sha256": "42a2b7112b5e215d25c396bee8b46637fc9ac3c316cd7db90d92465d6f8c9a9c"
+      "sha256": "c28fdd5a4bee324c1ae4afcacb8bc2c1faae6a605547cc6bdbc3c53899f519e8"
     },
     {
       "node": "JSON parser input expression",
@@ -39,7 +39,7 @@
     {
       "node": "Data extractor",
       "builder": "extractorCode",
-      "sha256": "bd4b19db0dd7059ecc3b310a561600fa90ccd40c653636ffb320f09d9aac5b4a"
+      "sha256": "b67fd1bb8f49a319469090acd6fdfeaaf7e8b415bf88b5014000b9a3f2657f11"
     },
     {
       "node": "PA Final Email Source",
@@ -49,7 +49,7 @@
   ],
   "parser_prompt": {
     "path": "candidates/canonical-final-parser-system.md",
-    "sha256": "d37356ea9ed1c16f53d4ca514174cdc0bddf630e419c3dc7e8eba4105d77c48d"
+    "sha256": "5b936ef96c870d0a7cd4302afc7a3ba2bd8599fe5f64dabb896a85488371af98"
   },
   "native_nodes": [
     {
@@ -394,5 +394,6 @@
     "source_sha256": "15343de72f2cb23263ba88fa42c7414bbc2d3f1cfe31a539e2e42b34bed60a96",
     "download_credentials": false,
     "download_redirects": false
-  }
+  },
+  "required_backend_contract": "durable_plan_id_and_server_verified_plan_facts_v1"
 }

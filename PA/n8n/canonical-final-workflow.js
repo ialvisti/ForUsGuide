@@ -90,13 +90,15 @@ const evidence=source.canonical_evidence;
 if(!evidence || evidence.publication_authorized!==false || evidence.human_review_required!==true)
  throw new Error('Missing independent canonical evidence decision');
 const provenance=JSON.stringify({evidence_status:evidence.evidence_status,reason_codes:evidence.reason_codes,
- execution_reference:evidence.execution_reference??null,verified_participant_facts:evidence.verified_participant_facts});
+ execution_reference:evidence.execution_reference??null,verified_participant_facts:evidence.verified_participant_facts,
+ verified_plan_facts:evidence.verified_plan_facts??null});
 const internal=[parsed.internal_notes,'Independent backend evidence: '+provenance].filter(Boolean).join('\\n\\n');
 const doubleBreaks=str=>str.replace(/\\n/g,'\\n\\u3164\\n\\n');
 return [{json:{ticketId:source.ticketId,participant_reply:doubleBreaks(parsed.participant_reply),
  set_stage_solved:false,stage_reason:'Advisor review is required. '+parsed.stage_reason,
  internal_notes:doubleBreaks(internal),model_recommended_solved:parsed.set_stage_solved,
  canonical_evidence:evidence,verified_participant_facts:evidence.verified_participant_facts,
+ verified_plan_facts:evidence.verified_plan_facts??null,
  human_review_required:true,participant_reply_safe:false,publication_authorized:false,
  verification_reason:evidence.evidence_status==='matched'?'Exact job and conversation matched; generated prose still requires advisor review.':
  'Canonical evidence is incomplete or unavailable; generated prose is not factual authority.'}}];

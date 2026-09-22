@@ -41,6 +41,17 @@
  * compared as an instant. Job expiry is result retention only. Failed answers
  * cannot supply facts; unrelated review requirements do not invalidate facts.
  *
+ * inquiry.generate_response.metadata.verified_plan_facts and the knowledge_answer
+ * equivalent are the only plan-identifier inputs, projected through a separate
+ * three-field allowlist (legal plan name, recordkeeper plan code, recordkeeper).
+ * They require poll.plan_id — the plan of the durable accepted request, never a
+ * generated or metadata-copied value — to equal the container's bound plan_id.
+ * A container naming another plan yields no plan facts and does not disturb the
+ * participant facts. plan_id is NOT part of the closed independent reference,
+ * is not an account number, and is never treated as a recordkeeper plan code.
+ * Plan and participant facts are quarantined independently; an identity veto
+ * still removes both. Evidence may be `matched` on plan facts alone.
+ *
  * Output `matched` means these supplied contracts match; it does not certify
  * authentication, correctness of arbitrary prose, eligibility, or permission.
  * Publication, participant_reply_safe and set_stage_solved remain false even
@@ -58,6 +69,24 @@ const FACT_SOURCES = Object.freeze({
   employer_match_balance: 'participant.savings_rate.Employer Match Balance',
   employer_match_vested_balance: 'participant.savings_rate.Employer Match Vested Balance',
 });
+
+// Plan identifiers are PLAN attributes, projected separately from participant
+// account figures. `poll.plan_id` is the plan the authenticated request selected
+// and is the ONLY thing that may bind them; a plan fact never selects its own
+// plan, and this identifier is not an account number or a recordkeeper code.
+const PLAN_FACT_SOURCES = Object.freeze({
+  legal_plan_name: 'plan.basic_info.official_plan_name',
+  rk_plan_id: 'plan.plan_design.rk_plan_id',
+  record_keeper: 'plan.plan_design.record_keeper_id',
+});
+const PLAN_FACT_PATTERNS = Object.freeze({
+  legal_plan_name: /^[A-Za-z0-9][A-Za-z0-9 .,'&()/-]{0,199}$/,
+  rk_plan_id: /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/,
+  record_keeper: /^[A-Za-z0-9][A-Za-z0-9 .,'&()/-]{0,99}$/,
+});
+const PLAN_FACT_SENTINELS = Object.freeze(['unknown', 'n/a', 'na', 'none', 'null',
+  '-', '--', 'tbd', 'not available', 'not applicable', 'pending']);
+const planId = value => typeof value === 'string' && /^[1-9][0-9]{0,31}$/.test(value);
 
 const own = (value, key) => Object.hasOwn(value, key);
 const record = value => value !== null && typeof value === 'object' &&
@@ -100,13 +129,18 @@ function unavailableEvidence(value) {
     (own(value, 'fallback') && value.fallback !== false);
 }
 
-function result(reasonCodes, facts = {}) {
+function result(reasonCodes, facts = {}, planFacts = {}, boundPlanId = null) {
   const hasFacts = Object.keys(facts).length > 0;
+  const hasPlanFacts = Object.keys(planFacts).length > 0;
   return {
-    evidence_status: hasFacts ? (reasonCodes.length ? 'partial' : 'matched') : 'unavailable',
+    evidence_status: hasFacts || hasPlanFacts ? (reasonCodes.length ? 'partial' : 'matched') : 'unavailable',
     reason_codes: [...new Set(reasonCodes)],
     verified_participant_facts: hasFacts ? {
       identity_verified: true, identity_resolution_status: 'matched', facts,
+    } : null,
+    verified_plan_facts: hasPlanFacts ? {
+      plan_id: boundPlanId, identity_verified: true,
+      identity_resolution_status: 'matched', facts: planFacts,
     } : null,
     publication_authorized: false,
     participant_reply_safe: false,
@@ -157,6 +191,7 @@ function validateCanonicalEvidence(input) {
 
   const signals = [poll];
   const containers = [];
+  const planContainers = [];
   const reasons = [];
   const appendMetadata = owner => {
     if (!own(owner, 'metadata')) return true;
@@ -179,18 +214,20 @@ function validateCanonicalEvidence(input) {
       if (!record(answer) || !appendMetadata(answer)) return result(['invalid_poll']);
       signals.push(answer);
       const metadata = answer.metadata;
-      if (!metadata || !own(metadata, 'verified_participant_facts')) continue;
-      const context = metadata.verified_participant_facts;
-      if (!record(context)) return result(['identity_context_invalid']);
-      // The existing backend projection returns {} when no disclosure facts
-      // apply (for example, a related educational answer). This is absence,
-      // not a conflicting claim about the account selected by another inquiry.
-      if (Object.keys(context).length === 0) continue;
-      signals.push(context);
-      if (inquiryUnavailable || unavailableEvidence(answer) || unavailableEvidence(metadata)) {
-        reasons.push('inquiry_evidence_unavailable');
-      } else {
-        containers.push(context);
+      if (!metadata) continue;
+      const unavailable = inquiryUnavailable || unavailableEvidence(answer) || unavailableEvidence(metadata);
+      for (const [name, sink] of [['verified_participant_facts', containers],
+        ['verified_plan_facts', planContainers]]) {
+        if (!own(metadata, name)) continue;
+        const context = metadata[name];
+        if (!record(context)) return result(['identity_context_invalid']);
+        // The existing backend projection returns {} when no disclosure facts
+        // apply (for example, a related educational answer). This is absence,
+        // not a conflicting claim about the account or plan another inquiry used.
+        if (Object.keys(context).length === 0) continue;
+        signals.push(context);
+        if (unavailable) reasons.push('inquiry_evidence_unavailable');
+        else sink.push(context);
       }
     }
   }
@@ -200,7 +237,8 @@ function validateCanonicalEvidence(input) {
   }
   if (signals.some(value => (own(value, 'identity_verified') && typeof value.identity_verified !== 'boolean') ||
       (own(value, 'identity_resolution_status') && value.identity_resolution_status !== 'matched')) ||
-      containers.some(value => value.identity_verified !== true || value.identity_resolution_status !== 'matched')) {
+      [...containers, ...planContainers].some(value => value.identity_verified !== true ||
+        value.identity_resolution_status !== 'matched')) {
     return result(['identity_context_invalid']);
   }
 
@@ -241,8 +279,69 @@ function validateCanonicalEvidence(input) {
     }
   }
   for (const key of quarantined) delete projected[key];
-  if (Object.keys(projected).length === 0) reasons.push('no_verified_facts');
-  return result(reasons, projected);
+
+  // Plan identifiers bind to the plan this authenticated poll reports for the
+  // job, taken from the durable request. A container naming any other plan is a
+  // cross-plan claim: it contributes nothing, and it does not disturb the
+  // participant facts already projected above.
+  const boundPlanId = planId(poll.plan_id) ? poll.plan_id : null;
+  const planProjected = {};
+  const planSignatures = new Map();
+  const planQuarantined = new Set();
+  for (const context of planContainers) {
+    if (boundPlanId === null) {
+      reasons.push('plan_binding_missing');
+      continue;
+    }
+    if (context.plan_id !== boundPlanId) {
+      reasons.push('plan_binding_mismatch');
+      continue;
+    }
+    if (!record(context.facts)) return result(['invalid_plan_fact'], projected);
+    for (const [key, source] of Object.entries(PLAN_FACT_SOURCES)) {
+      if (!own(context.facts, key)) continue;
+      const entry = context.facts[key];
+      const observed = record(entry) ? entry.observed_at ?? null : null;
+      const asOf = record(entry) ? entry.as_of ?? null : null;
+      const observedInstant = timestamp(observed);
+      const datesValid = (observed === null || observedInstant !== null) &&
+        (asOf === null || calendarDate(asOf)) && (observed !== null || asOf !== null);
+      const text = record(entry) && typeof entry.value === 'string' ? entry.value.trim() : null;
+      const valueValid = text !== null && PLAN_FACT_PATTERNS[key].test(text) &&
+        !PLAN_FACT_SENTINELS.includes(text.toLowerCase());
+      if (!record(entry) || entry.status !== 'known' || entry.source !== source ||
+          !datesValid || !valueValid) {
+        planQuarantined.add(key);
+        reasons.push('invalid_plan_fact');
+        continue;
+      }
+      const asOfInstant = asOf === null ? null : timestamp(`${asOf}T00:00:00Z`);
+      if (asOfInstant !== null && asOfInstant > completed) {
+        planQuarantined.add(key);
+        reasons.push('plan_fact_as_of_after_completion');
+        continue;
+      }
+      if (observedInstant !== null && observedInstant > completed) {
+        planQuarantined.add(key);
+        reasons.push('plan_fact_observed_after_completion');
+        continue;
+      }
+      const signature = JSON.stringify([text, source, asOf, observedInstant?.toString() ?? null]);
+      if (planSignatures.has(key) && planSignatures.get(key) !== signature) {
+        planQuarantined.add(key);
+        reasons.push('plan_fact_conflict');
+        continue;
+      }
+      planSignatures.set(key, signature);
+      planProjected[key] = {value: text, status: 'known', source, observed_at: observed, as_of: asOf};
+    }
+  }
+  for (const key of planQuarantined) delete planProjected[key];
+
+  if (Object.keys(projected).length === 0 && Object.keys(planProjected).length === 0) {
+    reasons.push('no_verified_facts');
+  }
+  return result(reasons, projected, planProjected, boundPlanId);
 }
 
 module.exports = {validateCanonicalEvidence};

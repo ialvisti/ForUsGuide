@@ -315,3 +315,231 @@ test('n8n hardened object introspection still validates exact JSON evidence',()=
   const result=module.exports.validateCanonicalEvidence(fixture());
   assert.equal(result.evidence_status,'matched');assertGuarded(result);
 });
+
+// ---------------------------------------------------------------------------
+// Plan identifier evidence: server-owned, bound to the independently polled plan
+// ---------------------------------------------------------------------------
+
+const planSource = {
+  legal_plan_name: 'plan.basic_info.official_plan_name',
+  rk_plan_id: 'plan.plan_design.rk_plan_id',
+  record_keeper: 'plan.plan_design.record_keeper_id',
+};
+const planFact = (key, value) => ({status: 'known', value, source: planSource[key],
+  observed_at: '2026-09-16T10:59:00Z', as_of: '2026-09-15'});
+const planDisclosure = (planIdValue = '580') => ({plan_id: planIdValue,
+  identity_verified: true, identity_resolution_status: 'matched',
+  facts: {legal_plan_name: planFact('legal_plan_name', 'Synthetic Fixture 401(k) Plan'),
+    rk_plan_id: planFact('rk_plan_id', 'RK-0000123'),
+    record_keeper: planFact('record_keeper', 'LT Trust')}});
+function planFixture(planIdValue = '580') {
+  const input = fixture();
+  input.poll.plan_id = planIdValue;
+  input.poll.primary.generate_response.metadata.verified_plan_facts = planDisclosure(planIdValue);
+  return input;
+}
+const planFactsOf = data => data.poll.primary.generate_response.metadata.verified_plan_facts.facts;
+
+test('Projects the three bound plan identifier fields alongside participant facts', () => {
+  const input = planFixture();
+  planFactsOf(input).ein = {status: 'known', value: 'SYNTHETIC-PRIVATE'};
+  const result = validateCanonicalEvidence(input);
+  assertGuarded(result);
+  assert.equal(result.evidence_status, 'matched');
+  assert.deepEqual(result.reason_codes, []);
+  assert.deepEqual(result.verified_plan_facts, planDisclosure());
+  assert.deepEqual(result.verified_participant_facts, disclosure());
+  assert.doesNotMatch(JSON.stringify(result), /SYNTHETIC-PRIVATE/);
+});
+
+test('Plan facts alone are sufficient evidence without participant figures', () => {
+  const input = planFixture();
+  delete input.poll.primary.generate_response.metadata.verified_participant_facts;
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.evidence_status, 'matched');
+  assert.equal(result.verified_participant_facts, null);
+  assert.deepEqual(result.verified_plan_facts, planDisclosure());
+});
+
+test('Legacy polls without plan metadata keep the seven-field contract unchanged', () => {
+  const result = validateCanonicalEvidence(fixture());
+  assert.equal(result.evidence_status, 'matched');
+  assert.deepEqual(result.verified_participant_facts, disclosure());
+  assert.equal(result.verified_plan_facts, null);
+  assert.deepEqual(Object.keys(result.verified_participant_facts.facts), ['first_name', 'account_balance']);
+});
+
+test('A plan container is not evidence without a valid independently polled plan_id', () => {
+  for (const bad of [undefined, null, '', '0', 'PLAN-580', 580, ' 580']) {
+    const input = planFixture();
+    if (bad === undefined) delete input.poll.plan_id; else input.poll.plan_id = bad;
+    const result = validateCanonicalEvidence(input);
+    assert.equal(result.verified_plan_facts, null);
+    assert.ok(result.reason_codes.includes('plan_binding_missing'), JSON.stringify(result.reason_codes));
+    assert.equal(result.verified_participant_facts.facts.first_name.value, 'Synthetic');
+  }
+});
+
+test('Model metadata cannot supply the polled plan binding', () => {
+  const input = planFixture();
+  delete input.poll.plan_id;
+  input.poll.metadata.plan_id = '580';
+  input.poll.primary.generate_response.response = {plan_id: '580'};
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.verified_plan_facts, null);
+  assert.ok(result.reason_codes.includes('plan_binding_missing'));
+});
+
+test('A cross-plan container exposes no plan facts but keeps participant facts', () => {
+  const input = planFixture('580');
+  input.poll.primary.generate_response.metadata.verified_plan_facts = planDisclosure('999');
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.evidence_status, 'partial');
+  assert.equal(result.verified_plan_facts, null);
+  assert.ok(result.reason_codes.includes('plan_binding_mismatch'));
+  assert.deepEqual(result.verified_participant_facts, disclosure());
+});
+
+test('plan_id is not part of the closed independent reference', () => {
+  const input = planFixture();
+  input.reference.plan_id = '580';
+  denied(input, 'invalid_reference');
+});
+
+for (const [name, edit] of [
+  ['missing value', f => {delete f.value;}],
+  ['numeric identifier object', f => {f.value = 123;}],
+  ['blank identifier', f => {f.value = '   ';}],
+  ['sentinel identifier', f => {f.value = 'unknown';}],
+  ['unsafe identifier syntax', f => {f.value = 'RK <script>';}],
+  ['wrong source', f => {f.source = 'plan.basic_info.official_plan_name';}],
+  ['participant source', f => {f.source = 'participant.census.First Name';}],
+  ['unknown status', f => {f.status = 'unknown';}],
+  ['missing dates', f => {delete f.observed_at; delete f.as_of;}],
+  ['impossible as-of', f => {f.as_of = '2026-02-30';}],
+  ['malformed observation', f => {f.observed_at = 'yesterday';}],
+]) {
+  test('Quarantines only the affected plan field: ' + name, () => {
+    const input = planFixture(); edit(planFactsOf(input).rk_plan_id);
+    const result = validateCanonicalEvidence(input);
+    assertGuarded(result);
+    assert.equal(result.evidence_status, 'partial');
+    assert.ok(result.reason_codes.includes('invalid_plan_fact'));
+    assert.deepEqual(Object.keys(result.verified_plan_facts.facts), ['legal_plan_name', 'record_keeper']);
+  });
+}
+
+test('A plan fact observed after job completion is not available to that job', () => {
+  const input = planFixture();
+  planFactsOf(input).rk_plan_id.observed_at = '2026-09-16T11:00:00.000001Z';
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.evidence_status, 'partial');
+  assert.equal(Object.hasOwn(result.verified_plan_facts.facts, 'rk_plan_id'), false);
+  assert.ok(result.reason_codes.includes('plan_fact_observed_after_completion'));
+});
+
+test('A plan fact as-of date starting after job completion is quarantined', () => {
+  const input = planFixture();
+  planFactsOf(input).rk_plan_id.observed_at = null;
+  planFactsOf(input).rk_plan_id.as_of = '2099-01-01';
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.evidence_status, 'partial');
+  assert.equal(Object.hasOwn(result.verified_plan_facts.facts, 'rk_plan_id'), false);
+  assert.equal(result.verified_plan_facts.facts.legal_plan_name.value,
+    'Synthetic Fixture 401(k) Plan');
+  assert.equal(result.verified_participant_facts.facts.account_balance.value, 123.45);
+  assert.ok(result.reason_codes.includes('plan_fact_as_of_after_completion'));
+});
+
+test('A future plan as-of date is checked even with a valid observation', () => {
+  const input = planFixture();
+  planFactsOf(input).rk_plan_id.as_of = '2099-01-01';
+  const result = validateCanonicalEvidence(input);
+  assert.equal(Object.hasOwn(result.verified_plan_facts.facts, 'rk_plan_id'), false);
+  assert.ok(result.reason_codes.includes('plan_fact_as_of_after_completion'));
+});
+
+test('A plan as-of date on the UTC completion day remains allowed', () => {
+  const input = planFixture();
+  planFactsOf(input).rk_plan_id.observed_at = null;
+  planFactsOf(input).rk_plan_id.as_of = '2026-09-16';
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.evidence_status, 'matched');
+  assert.equal(result.verified_plan_facts.facts.rk_plan_id.value, 'RK-0000123');
+});
+
+test('An invalid leap-day plan as-of date is rejected as invalid', () => {
+  const input = planFixture();
+  planFactsOf(input).rk_plan_id.as_of = '2025-02-29';
+  const result = validateCanonicalEvidence(input);
+  assert.equal(Object.hasOwn(result.verified_plan_facts.facts, 'rk_plan_id'), false);
+  assert.ok(result.reason_codes.includes('invalid_plan_fact'));
+  assert.equal(result.reason_codes.includes('plan_fact_as_of_after_completion'), false);
+});
+
+test('Conflicting plan identifiers across inquiries quarantine that field only', () => {
+  for (const conflict of ['none', 'value', 'date']) {
+    const input = planFixture();
+    const other = inquiry();
+    other.generate_response.metadata.verified_plan_facts = planDisclosure();
+    const f = other.generate_response.metadata.verified_plan_facts.facts.rk_plan_id;
+    if (conflict === 'value') f.value = 'RK-0009999';
+    if (conflict === 'date') f.as_of = '2026-09-14';
+    input.poll.related.push(other);
+    const result = validateCanonicalEvidence(input);
+    if (conflict === 'none') assert.equal(result.evidence_status, 'matched');
+    else {
+      assert.equal(result.evidence_status, 'partial');
+      assert.equal(Object.hasOwn(result.verified_plan_facts.facts, 'rk_plan_id'), false);
+      assert.equal(result.verified_plan_facts.facts.record_keeper.value, 'LT Trust');
+      assert.ok(result.reason_codes.includes('plan_fact_conflict'));
+    }
+  }
+});
+
+test('Identity veto in a plan container removes every class of fact', () => {
+  const input = planFixture();
+  input.poll.primary.generate_response.metadata.verified_plan_facts.identity_verified = false;
+  const result = denied(input, 'identity_veto');
+  assert.equal(result.verified_plan_facts, null);
+});
+
+test('An unmatched plan container is rejected rather than projected', () => {
+  const input = planFixture();
+  input.poll.primary.generate_response.metadata.verified_plan_facts.identity_resolution_status = 'pending';
+  const result = denied(input, 'identity_context_invalid');
+  assert.equal(result.verified_plan_facts, null);
+});
+
+test('A failed inquiry cannot supply plan identifiers', () => {
+  const input = planFixture();
+  input.poll.primary.scrape_status = 'failed';
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.evidence_status, 'unavailable');
+  assert.equal(result.verified_plan_facts, null);
+  assert.ok(result.reason_codes.includes('inquiry_evidence_unavailable'));
+  assert.ok(result.reason_codes.includes('no_verified_facts'));
+});
+
+test('Empty optional plan disclosure is absence, not a conflicting claim', () => {
+  const input = planFixture();
+  input.poll.related.push({route: 'knowledge_question',
+    knowledge_answer: {metadata: {verified_plan_facts: {}}}});
+  assert.equal(validateCanonicalEvidence(input).evidence_status, 'matched');
+});
+
+test('A model-generated plan fact object outside metadata is never evidence', () => {
+  const input = planFixture();
+  input.poll.primary.generate_response.response.verified_plan_facts = planDisclosure();
+  delete input.poll.primary.generate_response.metadata.verified_plan_facts;
+  const result = validateCanonicalEvidence(input);
+  assert.equal(result.verified_plan_facts, null);
+  assert.equal(result.evidence_status, 'matched');
+});
+
+test('Neither class of facts yields no_verified_facts exactly once', () => {
+  const input = planFixture();
+  delete input.poll.primary.generate_response.metadata.verified_participant_facts;
+  delete input.poll.primary.generate_response.metadata.verified_plan_facts;
+  denied(input, 'no_verified_facts');
+});

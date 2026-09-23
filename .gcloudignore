@@ -15,6 +15,7 @@
 !PA/**/
 !PA/DevRev/PA_REMEDIATION_ADDENDUM.md
 !PA/DevRev/PA_REMEDIATION_RELEASE.md
+!PA/DevRev/candidates/pa-agent-system-v11.md
 !PA/n8n/*.js
 !PA/n8n/*.md
 !PA/n8n/release-manifest.manifest

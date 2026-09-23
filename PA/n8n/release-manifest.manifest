@@ -2,6 +2,7 @@
   "schema_version": 1,
   "status": "local_candidate_not_published",
   "observed_at": "2026-09-11",
+  "observation_scope": "Every id, version and observed_state below is the reading captured on observed_at. They are dated historical observations, not attestations of the current live state. No later reading is claimed. Fresh readback before any deployment is mandatory (see preconditions).",
   "workflows": {
     "fug": {
       "id": "BQvxrc3YiP4ZWbNQ",
@@ -29,7 +30,7 @@
       "baseline": "baselines/format-gr.js",
       "baseline_sha256": "214bf340994f8f165ad8af0996038cac8afaa8899ab32244176ac77ac981bd0a",
       "candidate": "candidates/format-gr.js",
-      "candidate_sha256": "6b2b61d694b8aa9e8ee8590da974143fabb18cd810504720b7fd5fbc71d29588",
+      "candidate_sha256": "e0a86fe3d2a518b297bdfc9e637826f373f6368efce63f892e76fd104c8cfa12",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source",
       "observed_node_name": "Format data for DevRev Internal notes"
@@ -40,7 +41,7 @@
       "baseline": "baselines/format-kq.js",
       "baseline_sha256": "7e9a4266d81dbdacdbb4d564fb65bb545cee485c59218457f96144cba3495c69",
       "candidate": "candidates/format-kq.js",
-      "candidate_sha256": "e40f1a237b872f8d47a5816ccebe2c431ce4b7ca7cb81e782b7e701448a87750",
+      "candidate_sha256": "2e877a0c1d1e3ae2b3075a74e1f8eea9a6456978731f7309c333380553c9a40a",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source",
       "observed_node_name": "Format Data for DevRev"
@@ -96,14 +97,7 @@
       "wrapping": "replace jsCode with complete candidate source"
     }
   ],
-  "addenda": [
-    {
-      "file": "../DevRev/PA_REMEDIATION_ADDENDUM.md",
-      "sha256": "f0f354ecd5ff205fdea8ac6fb1717a7f87e078aee435e22cbe7f177fe50856c7",
-      "target": "DevRev AGENT-3 8.0 Live",
-      "original_prompt_sha256": "6859f17f7cc599b9b0ec9ac134f428b1de2ef6973a81297db7338bd411640bc5"
-    }
-  ],
+  "addenda": [],
   "new_internal_terminal": {
     "workflow": "fug",
     "from": "Stop Unsafe Terminal Result",
@@ -128,10 +122,11 @@
     "observed_credential_reference": "DevRev Production / Header Auth"
   },
   "preconditions": [
-    "Re-read current workflow version, node source and prompt hashes. Stop on material drift.",
-    "FUG is unpublished; do not activate as a side effect of editing.",
+    "Mandatory fresh readback: immediately before any deployment re-read the current workflow version, node source and live prompt text/hashes, and store an authorized rollback export. The values recorded here are dated historical observations. Stop on material drift.",
+    "FUG is the canonical workflow and its deliberate publication is authorized (2026-09-13 user); this manifest makes no claim about its current published state or version, which must be re-read. Keep New Prod unchanged.",
     "Use existing authenticated sessions and credentials; preserve permissions.",
-    "DevRev addendum prepends to its structured prompt. Final parser uses the full replacement prompt: do not prepend the superseded parser addendum.",
+    "AGENT-3 and final parser each use one complete replacement prompt; do not prepend superseded addenda.",
+    "AGENT-3 candidate v11 is an unpublished local release candidate. This manifest carries no publication authorization, and the superseded draft9 prompt must not be published.",
     "Final input has no independently correlated backend decision; model recommendation remains advisory.",
     "Run controlled workflow integration with external publication disabled before any production traffic."
   ],
@@ -200,6 +195,22 @@
           "mode": "conflicting"
         }
       ]
+    },
+    {
+      "workflow": "DevRev AGENT-3",
+      "node_role_or_observed_name": "Agent instructions",
+      "parameter": "prompt",
+      "candidate": "../DevRev/candidates/pa-agent-system-v11.md",
+      "candidate_sha256": "3ce2f2615b38cf19a6d57cf6f16685b7b920f80c0762e60243c03a987e216f5e",
+      "candidate_status": "local_candidate_not_published: reviewed offline against local replicas only; never loaded in DevRev Preview and carrying no publication authorization.",
+      "original_prompt_sha256": "6859f17f7cc599b9b0ec9ac134f428b1de2ef6973a81297db7338bd411640bc5",
+      "original_prompt_sha256_label": "Historical baseline: the AGENT-3 v8.0 prompt as observed on 2026-09-11. It is preserved as the established historical record and is NOT an attestation of the current live prompt.",
+      "superseded_draft_sha256": "26de0aefca20a56fad855a4420c9b2e06b2c0b2b1b0b7368ae0d961067c5ccba",
+      "superseded_draft_label": "draft9, the 2026-09-14 full-prompt attempt previously kept at ../DevRev/PA_AGENT_SYSTEM.md. It failed its evaluation and must not be published; the hash is retained only so the superseded artifact stays identifiable.",
+      "rollback": "Before editing, capture the current live AGENT-3 prompt text and its hash and store that export; rollback restores exactly that captured state. No live prompt hash is asserted here and none may be invented.",
+      "reason": "Actual saved draft previews repeatedly showed incompatible legacy rules overriding prepended contracts: unsupported review/work claims, lost question structure. This entry is therefore ONE complete replacement prompt, candidate v11, with no addendum prepended; v11 retains the four output keys and the positive, privacy, multi-question, education and custody cases.",
+      "supersedes": "PA_REMEDIATION_ADDENDUM.md and the prepend-an-addendum approach; the draft9 full-prompt attempt; the unpublished footer and targeted legacy edits. Complete replacement, not an addendum.",
+      "verified_replays": []
     }
   ],
   "canonical_workflow_confirmation": "2026-09-13 user: el workflow vigente es FUG. Production/main already approved; deliberate FUG publication authorized."

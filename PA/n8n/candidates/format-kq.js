@@ -76,6 +76,30 @@ function escapeJSONStringForHTTP(obj) {
   return escaped;
 }
 
+// ---- CD1: nested identity veto, parity with the GR consumer --------------
+// Added AFTER the shared consumer contract (PA/n8n/consumer-contract.js); that
+// prefix stays byte-identical so PA/n8n/verify-package.js still sees both
+// formatters sharing it unchanged.
+//
+// rejectsAccountIdentity reads FLAT keys only, and projectMetadata drops an
+// unknown wrapper entirely, so an identity-unresolved result carried inside
+// `identity_context` (PA/n8n/candidates/identity-unresolved.js, which feeds this
+// request path) used to leave a stale positive reference standing here. The
+// nested negative is authoritative and the conflict fails closed: a nested
+// negative beats a flat positive in the same or any enclosing object. A nested
+// POSITIVE authorizes nothing - the wrapper is still never promoted to a flat
+// verified identity, and it is never shown to the model.
+const NESTED_IDENTITY_KEYS = ['identity_context'];
+function rejectsNestedAccountIdentity(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  return NESTED_IDENTITY_KEYS.some(key => {
+    const nested = value[key];
+    return !!nested && typeof nested === 'object' && !Array.isArray(nested) && rejectsAccountIdentity(nested);
+  });
+}
+const rejectsAnyAccountIdentity = value =>
+  rejectsAccountIdentity(value) || rejectsNestedAccountIdentity(value);
+
 
 const input = $input.first().json;
 const getFields = $('Get fields1').first().json;
@@ -84,6 +108,11 @@ const getFields = $('Get fields1').first().json;
 const firstContact = getFields.caseData?.ticketData?.firstContact;
 
 
+// One identity veto for the whole answer, over the response and its metadata,
+// flat or nested. An educational answer keeps its purpose: a general_knowledge
+// result stays participant-safe under an unresolved account and simply
+// discloses nothing, exactly as the GR consumer treats the same case.
+const identityVeto = [input, input.metadata].some(rejectsAnyAccountIdentity);
 const humanReviewRequired = requiresReview(input) || requiresReview(input.metadata) ||
   input.metadata?.response_source_reason !== 'general_knowledge';
 const payload = {
@@ -95,7 +124,7 @@ const payload = {
   key_points: input.key_points,
   confidence_note: input.confidence_note,
   metadata: {
-    ...projectMetadata(input.metadata, rejectsAccountIdentity(input)),
+    ...projectMetadata(input.metadata, identityVeto),
     unique_articles: input.metadata?.unique_articles,
     relevant_articles: input.metadata?.relevant_articles,
     model: input.metadata?.model,

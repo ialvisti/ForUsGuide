@@ -362,6 +362,7 @@ def test_e2e_manifest_rejects_wrong_digest_or_critical_scan(tmp_path: Path) -> N
     'PA/n8n prompts/PROMPT_KNOWLEDGE_QUESTION_BUILDER.md',
     'PA/n8n prompts/PROMPT_GENERATE_RESPONSE_BODY_BUILDER.md',
     'PA/n8n/candidates/final-parser-system.md',
+    'PA/DevRev/candidates/pa-agent-system-v11.md',
     'PA/n8n/verify-parser-replay.cjs',
     'PA/n8n/fixtures/parser-verified.fixture',
     'PA/n8n/fixtures/parser-unverified.fixture',
@@ -375,3 +376,4 @@ def test_verification_upload_keeps_required_sanitized_n8n_inputs(required: str) 
     assert spec.match_file('PA/n8n prompts/private-workflow.md')
     assert spec.match_file('PA/n8n/fixtures/private-capture.json')
     assert spec.match_file('PA/DevRev/PA_AGENT_SYSTEM.md')
+    assert spec.match_file('PA/DevRev/candidates/private-prompt.md')

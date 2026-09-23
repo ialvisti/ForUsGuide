@@ -22,7 +22,12 @@ function run(name, input) {
 const good = () => ({inquiry: 'What are the delivery options?', topic: 'rollover', route: 'generate_response',
  generate_response: {decision:'can_proceed',confidence:0.91,coverage_gaps:[],metadata:{human_review_required:false,requested_questions:['What are the delivery options?'],question_coverage:[{question_index:0,status:'answered',answer_reference:'Check or wire.'}]},
  response: {outcome:'can_proceed',response_to_participant:{opening:'Check or wire.',key_points:[],steps:[],warnings:[]},questions_to_ask:[],escalation:{needed:false}}}});
-const job = () => ({ticket_job_id:'a'.repeat(32),ticket_id:fields.ticketId,state:'succeeded',next_action:'send_participant_reply',metadata:{fallback:false},primary:good(),related:[],total_inquiries_in_ticket:1});
+// CD4: a succeeded ticket-job poll body carries an authoritative completion
+// instant, and the consumer needs it before it will disclose any verified
+// figure. Every fixture below is that realistic body; the tests that exercise
+// its ABSENCE delete it on purpose and assert the fail-closed behaviour.
+const COMPLETED='2026-09-12T10:05:00Z';
+const job = () => ({ticket_job_id:'a'.repeat(32),ticket_id:fields.ticketId,state:'succeeded',next_action:'send_participant_reply',created_at:'2026-09-12T10:00:00Z',completed_at:COMPLETED,metadata:{fallback:false},primary:good(),related:[],total_inquiries_in_ticket:1});
 test('GR retains execution, question order, quality and current publication decision', () => {
  const {payload:p,output:o}=run('format-gr',job());
  assert.equal(p.ticket_job_id,'a'.repeat(32)); assert.equal(p.participant_reply_safe,true);
@@ -124,12 +129,64 @@ test('Educational KQ removes contradictory personal facts without inventing an a
  assert.equal(p.metadata.verified_participant_facts,undefined);
  assert.equal(p.participant_reply_safe,true);assert.equal(p.metadata.response_source_reason,'general_knowledge');
 });
+// The point of this test is unchanged: the mere ABSENCE of identity_verified /
+// identity_resolution_status on the enclosing levels is not a veto, so a
+// correctly sourced figure still reaches the draft. It now runs over a job body
+// that carries the authoritative completion instant CD4 requires, because that
+// instant - not the absence of identity flags - is what authorizes the date
+// bound. The CD4 negative directly below covers the case where it is missing.
 test('Absent identity fields alone do not veto correctly sourced facts',()=>{
  const x=job();x.primary.generate_response.metadata.verified_participant_facts=verifiedFacts();
+ assert.equal(x.completed_at,COMPLETED,'this test must assert disclosure under a real completion instant');
  const p=run('format-gr',x).payload;
  assert.equal(p.inquiries[0].metadata.verified_participant_facts.facts.account_balance.value,500);
  assert.equal(p.participant_reply_safe,true);
 });
+// CD4. The participant-side counterpart of CD3: without an authoritative
+// completion instant from the correlated job there is nothing to bound
+// observed_at against, so a backdated figure cannot be detected and NOTHING
+// verified is disclosed - participant figures and plan identifiers alike.
+// Failing closed withholds references only. It must not invent a review
+// requirement, so a supported non-personal explanation in the same job keeps
+// working and review status keeps coming from the explicit signals.
+function planFacts(){return {plan_id:'4821',identity_verified:true,identity_resolution_status:'matched',facts:{
+ rk_plan_id:{value:'RK-77821',status:'known',source:'plan.plan_design.rk_plan_id',as_of:'2026-09-01'}}};}
+for (const [variant,apply] of [
+ ['missing',x=>{delete x.completed_at;}],
+ ['malformed',x=>{x.completed_at='2026-09-12';}],
+ ['null',x=>{x.completed_at=null;}],
+]) {
+ test('CD4 '+variant+' completion withholds every verified figure yet keeps supported education',()=>{
+  const x=job();x.plan_id='4821';apply(x);
+  x.metadata.verified_participant_facts=verifiedFacts();
+  x.primary.generate_response.metadata.verified_participant_facts=verifiedFacts();
+  x.primary.generate_response.metadata.verified_plan_facts=planFacts();
+  // The model controls its own metadata; it cannot supply the missing instant.
+  x.primary.generate_response.metadata.completed_at=COMPLETED;
+  x.related=[{inquiry:'What is a rollover?',topic:'rollover',route:'knowledge_question',
+   knowledge_answer:{answer:'A general explanation.',key_points:[],coverage_gaps:[],
+    metadata:{response_source_reason:'general_knowledge',verified_participant_facts:verifiedFacts()}}}];
+  x.total_inquiries_in_ticket=2;
+  const p=run('format-gr',x).payload;
+  assert.equal(p.metadata.verified_participant_facts,undefined,'the payload top level discloses no figure either');
+  assert.equal(p.inquiries[0].metadata.verified_participant_facts,undefined,'an unbounded participant figure is withheld');
+  assert.equal(p.inquiries[0].metadata.verified_plan_facts,undefined,'the plan identifier fails closed the same way');
+  assert.equal(p.inquiries[1].knowledge_answer.metadata.verified_participant_facts,undefined);
+  assert.equal(JSON.stringify(p).includes('500'),false,'no withheld figure survives anywhere in the payload');
+  // Supported non-personal education is untouched by the withholding.
+  assert.equal(p.inquiries[1].knowledge_answer.answer,'A general explanation.');
+  assert.equal(p.inquiries[1].participant_reply_safe,true,'a general explanation owes no account prerequisite');
+  // Explicit review semantics still decide review; the missing instant does not.
+  assert.equal(p.human_review_required,false);assert.equal(p.next_action,'send_participant_reply');
+  assert.deepEqual(p.inquiries[0].metadata.requested_questions,['What are the delivery options?']);
+  assert.equal(p.inquiries[0].metadata.question_coverage[0].status,'answered');
+  const flagged=job();flagged.plan_id='4821';apply(flagged);
+  flagged.primary.generate_response.metadata.human_review_required=true;
+  const q=run('format-gr',flagged).payload;
+  assert.equal(q.human_review_required,true,'an explicit review signal still forces review');
+  assert.equal(q.next_action,'human_review');
+ });
+}
 test('Pure educational result inside a ticket job remains educational despite an unresolved account',()=>{
  const x=job();x.metadata.identity_verified=false;
  x.primary={inquiry:'What is a rollover?',route:'knowledge_question',knowledge_answer:{answer:'A general explanation.',key_points:[],metadata:{response_source_reason:'general_knowledge',verified_participant_facts:verifiedFacts()}}};

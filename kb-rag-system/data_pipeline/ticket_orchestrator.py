@@ -21,14 +21,22 @@ import logging
 import math
 import re
 import uuid
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from typing import Any, Awaitable, Callable, Dict, List, Optional, Tuple
 
 from pydantic import ValidationError
 
-from data_pipeline import forusbots_catalog, gr_payload_builder, prompts
-from data_pipeline.ticket_conversation import participant_statements
+from data_pipeline import (
+    forusbots_catalog,
+    gr_payload_builder,
+    inquiry_semantics,
+    prompts,
+)
+from data_pipeline.ticket_conversation import (
+    participant_message_bodies,
+    participant_statements,
+)
 from data_pipeline.retrieval_privacy import (
     UnsafeRetrievalQuery,
     redact_retrieval_context,
@@ -238,6 +246,20 @@ def _detect_account_access_signal(text: str) -> Optional[str]:
     ):
         reasons.append("received a password-reset email they did not request")
         possible_unauthorized_activity = True
+
+    # TKT-910081: a reset the participant ALREADY TRIED that did not restore
+    # access. The knowledge-question recovery policy and the generate-response
+    # account_access signal share this exact matcher, so a mixed ticket cannot
+    # keep its financial half while the security half is silently folded in.
+    # Deliberately after the unsolicited clause and without
+    # ``possible_unauthorized_activity``: a failed reset is a recovery need,
+    # not evidence of a security incident.
+    # Imported lazily: this module defers its ``rag_engine`` imports so a lean
+    # consumer is not forced to load the retrieval stack at import time.
+    from data_pipeline.rag_engine import mentions_failed_password_reset
+
+    if mentions_failed_password_reset(text):
+        reasons.append("tried a password reset that did not restore access")
 
     # Cannot log in / access the account. "log into"/"log in to"/"sign in"/"log
     # on" are listed explicitly because the word-bounded match does NOT find
@@ -485,7 +507,80 @@ class TicketOrchestrator:
             ))
         if dropped:
             logger.warning("extract_inquiries: %d items inválidos descartados", dropped)
-        return _inject_account_access_guard(extracted, req)
+        return _inject_account_access_guard(
+            self._fold_motive_only_inquiries(extracted, req), req
+        )
+
+    @staticmethod
+    def _fold_motive_only_inquiries(
+        extracted: List[ExtractedInquiry], req: Any
+    ) -> List[ExtractedInquiry]:
+        """Canonicalise the extractor's inquiry list BEFORE anything is routed.
+
+        The extractor is an LLM. On TKT-911797 it turned one message — "I am
+        trying to roll my Roth over to my new 401k. How do I go about getting
+        my account number?" — into two inquiries, and the motive half was then
+        answered with the full termination-distribution procedure. Routing
+        cannot repair that: by the time each inquiry is handled on its own the
+        evidence that the rollover was only the reason for the question is
+        gone.
+
+        The fold is decided against the participant's OWN words, never the
+        paraphrase alone, and only collapses a transaction inquiry when that
+        text contains no request to perform the transaction or to be told how.
+        A genuine mixed request (A6) therefore keeps both inquiries, and the
+        folded text is preserved as context on the survivor rather than
+        dropped.
+        """
+        if len(extracted) < 2:
+            return extracted
+        # Participant-authored bodies only: an agent-editable subject must
+        # not be able to supply the precondition for dropping a request.
+        evidence = participant_message_bodies(getattr(req, "ticket", None))
+        if not inquiry_semantics.requests_own_account_identifier(evidence):
+            return extracted
+        if inquiry_semantics.requests_transaction_action(evidence):
+            return extracted
+        keepers = [
+            index for index, item in enumerate(extracted)
+            if inquiry_semantics.requests_own_account_identifier(item.inquiry)
+        ]
+        if len(keepers) != 1:
+            return extracted
+        keep = keepers[0]
+        folded = [
+            index for index, item in enumerate(extracted)
+            if index != keep
+            and inquiry_semantics.mentions_transaction(item.inquiry)
+            and not inquiry_semantics.requests_own_account_identifier(item.inquiry)
+            and not inquiry_semantics.requests_transaction_action(item.inquiry)
+            # Naming the transaction is not enough: a distinct factual question
+            # about it ("what is the fee to roll it over", "how long does it
+            # take", "is it taxable") asks for something the motive never did,
+            # and requests_transaction_action does not match those. Only a
+            # statement that asks for nothing at all can be the motive of the
+            # survivor, so folding it loses no request. Anything interrogative
+            # stays its own inquiry and gets routed and answered.
+            and inquiry_semantics.is_background_statement(item.inquiry)
+        ]
+        if not folded:
+            return extracted
+        survivor = extracted[keep]
+        related = list(survivor.related_inquiries or [])
+        for index in folded:
+            text = extracted[index].inquiry
+            if text and text not in related:
+                related.append(text)
+        merged = replace(survivor, related_inquiries=related[:12] or None)
+        logger.info(
+            "extract_inquiries: folded %d motive-only inquiry(ies) into the "
+            "identifier request", len(folded),
+        )
+        return [
+            merged if index == keep else item
+            for index, item in enumerate(extracted)
+            if index == keep or index not in folded
+        ]
 
     # ------------------------------------------------------------------
     # Step 2 — classify + branch
@@ -838,9 +933,19 @@ class TicketOrchestrator:
         topic = ext.topic.lower()
         identity = getattr(req, "identity_context", None)
         name_fields = ["First Name"] if identity is not None and identity.identity_verified is True and identity.identity_resolution_status == "matched" else []
-        identifier_modules = [{"key": "plan_design", "fields": ["rk_plan_id", "record_keeper_id"]}] if re.search(
-            r"\bplan (?:id|identifier|number|code)\b", text,
-        ) else []
+        # An own-account identifier request also needs the plan-side identity:
+        # A2 wants the plan named with real provenance, and naming the
+        # recordkeeper plan code is how the answer can say, truthfully, which
+        # identifier it is NOT returning. Both facts stay fail-closed
+        # downstream — an unverified or undated one is simply not disclosed.
+        identifier_requested = bool(
+            re.search(r"\bplan (?:id|identifier|number|code)\b", text)
+        ) or inquiry_semantics.requests_own_account_identifier(text)
+        identifier_modules = [
+            {"key": "plan_design", "fields": ["rk_plan_id", "record_keeper_id"]},
+            # Request label; the scrape answers with ``official_plan_name``.
+            {"key": "basic_info", "fields": ["Legal Plan Name"]},
+        ] if identifier_requested else []
         financial = topic in {
             "termination_distribution_request", "in_service_withdrawal", "in_service_withdrawal_request",
             "hardship_withdrawal", "hardship_withdrawal_request", "loan_request",
@@ -849,12 +954,13 @@ class TicketOrchestrator:
               and bool(re.search(r"\b(?:my|participant|their|account|former|employer)\b", text)))
         if not financial:
             return identifier_modules
-        return identifier_modules + [
+        # ``basic_info`` can appear twice; the union keeps both field lists.
+        return forusbots_catalog.merge_module_lists(identifier_modules, [
             {"key": "basic_info", "fields": ["status", "status_as_of", "active"]},
             {"key": "census", "fields": name_fields + ["Eligibility Status", "Termination Date", "Rehire Date", "Birth Date", "Crypto Enrollment"]},
             {"key": "savings_rate", "fields": ["Account Balance", "Account Balance As Of", "Employee Deferral Balance", "Roth Deferral Balance", "Rollover Balance", "Employer Match Balance", "Employer Match Vested Balance", "Loan Balance"]},
             {"key": "loans", "fields": ["Loan History"]},
-        ]
+        ])
 
     @staticmethod
     def _participant_sensitive_literals(req: Any) -> Tuple[str, ...]:

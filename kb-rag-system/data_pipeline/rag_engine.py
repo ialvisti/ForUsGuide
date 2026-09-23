@@ -30,6 +30,7 @@ from .pinecone_uploader import (
     PineconeRetrievalError,
     PineconeUploader,
 )
+from . import inquiry_semantics
 from .token_manager import TokenManager
 from .llm_router import LLMRouter, LLMResponse, LLMEmptyResponseError
 from collections import defaultdict
@@ -251,6 +252,48 @@ _EXPLICIT_SEPARATION_PHRASES = [
     "i was terminated", "got terminated",
 ]
 
+# TKT-911961: "separation distribution" / "separation from service distribution"
+# is the NAME OF A PRODUCT, not a statement about the participant's employment.
+# Asking about the product (while on leave and possibly returning) must never
+# manufacture a termination, so the noun phrase is removed before any
+# separation token is looked for. Genuine claims ("I separated from service",
+# "no longer work") are untouched because they carry no product noun.
+# Only DISTRIBUTION product nouns are listed. Severance vocabulary
+# ("separation package/paperwork/payment") is genuine separation language and
+# must keep firing the signal, so it is deliberately absent here.
+_SEPARATION_PRODUCT_NAME_RE = re.compile(
+    r"\bseparation(?:\s+from\s+service)?[\s-]+"
+    r"(?:distribution|withdrawal|payout)s?\b"
+)
+
+
+def strip_separation_product_names(text: Optional[str]) -> str:
+    """Lowercase ``text`` with separation-product noun phrases removed."""
+    return _SEPARATION_PRODUCT_NAME_RE.sub(" ", (text or "").lower())
+
+
+# TKT-910081: a password reset the participant ALREADY TRIED that did not
+# restore access. Shared verbatim by the knowledge-question recovery policy,
+# the generate-response ``account_access`` signal and the orchestrator split
+# guard so one sentence cannot route three different ways. Merely mentioning a
+# reset — including an unsolicited reset email — is deliberately excluded, and
+# a participant who reports regaining access is excluded as well.
+_FAILED_PASSWORD_RESET_PATTERNS = (
+    r"\b(?:password reset(?: (?:attempt|process|link))?|resetting (?:my|the|her|his|their) password)"
+    r"(?: (?:still|already|has|had|was|is))? (?:did not work|didn t work|does not work|doesn t work|failed|unsuccessful)\b",
+    r"\breset (?:my|the|her|his|their) password\b.{0,32}\bstill "
+    r"(?:cannot|can t|could not|couldn t|am unable to|unable to) (?:log|sign) in\b",
+)
+_ACCESS_RECOVERED_RE = re.compile(r"\b(?:can now|now able to|now can) (?:log|sign) in\b")
+
+
+def mentions_failed_password_reset(text: Optional[str]) -> bool:
+    """True only when a reset was attempted AND did not restore access."""
+    normalized = re.sub(r"[^a-z0-9]+", " ", (text or "").lower()).strip()
+    if _ACCESS_RECOVERED_RE.search(normalized):
+        return False
+    return any(re.search(pattern, normalized) for pattern in _FAILED_PASSWORD_RESET_PATTERNS)
+
 
 def detect_advisory_concepts(
     inquiry: str,
@@ -338,7 +381,7 @@ def detect_advisory_concepts(
         "moving my",
         "moved my",
     ])
-    separation_signal = _contains_any(text, [
+    separation_signal = _contains_any(strip_separation_product_names(text), [
         "separation",
         "separated",
         "quit",
@@ -1231,6 +1274,17 @@ class RAGEngine:
                     collected_data=collected_data,
                 )
             )
+            # A rollover request carrying an identifier subquestion keeps its
+            # procedure answer, but the identifier itself stays distinct from
+            # the plan code and the receiving account and is never invented.
+            parsed, account_identifier_info = (
+                self._apply_account_identifier_distinctions(
+                    parsed=parsed,
+                    retrieval_profile=retrieval_profile,
+                    collected_data=collected_data,
+                )
+            )
+            termination_response_policy_info["account_identifier"] = account_identifier_info
 
             # Defense-in-depth: a can_proceed answer is a complete first-contact
             # resolution. Any items the LLM left in questions_to_ask are
@@ -1642,16 +1696,7 @@ class RAGEngine:
     ) -> tuple[Dict[str, Any], Dict[str, Any]]:
         """Advance failed recovery attempts without inventing their cause."""
         unknown_email = cls._requires_phone_support_for_unknown_email(question)
-        text = re.sub(r"[^a-z0-9]+", " ", (question or "").lower()).strip()
-        recovered = re.search(
-            r"\b(?:can now|now able to|now can) (?:log|sign) in\b", text,
-        ) is not None
-        reset_failed = not recovered and any(re.search(pattern, text) for pattern in (
-            r"\b(?:password reset(?: (?:attempt|process|link))?|resetting (?:my|the|her|his|their) password)"
-            r"(?: (?:still|already|has|had|was|is))? (?:did not work|didn t work|does not work|doesn t work|failed|unsuccessful)\b",
-            r"\breset (?:my|the|her|his|their) password\b.{0,32}\bstill "
-            r"(?:cannot|can t|could not|couldn t|am unable to|unable to) (?:log|sign) in\b",
-        ))
+        reset_failed = mentions_failed_password_reset(question)
         if not unknown_email and not reset_failed:
             return parsed, {"applied": False}
 
@@ -2420,7 +2465,14 @@ class RAGEngine:
         unknown_email_access = self._requires_phone_support_for_unknown_email(
             profile_text
         )
-        account_access = account_access or unknown_email_access
+        # TKT-910081: the KQ recovery policy already treats a failed reset as an
+        # access blocker. The GR signal must agree, or the same sentence yields
+        # a recovery answer without the account-access support guidance.
+        account_access = (
+            account_access
+            or unknown_email_access
+            or mentions_failed_password_reset(profile_text)
+        )
         guidance_request = self._contains_any(profile_text, [
             "requesting guidance", "guidance on", "next steps", "what steps",
             "steps to", "how do i", "how can i", "what should i do",
@@ -2451,7 +2503,9 @@ class RAGEngine:
         )
         termination_distribution = (
             employment_state == "terminated"
-            or self._contains_any(profile_text, [
+            # TKT-911961: the product name "separation distribution" is stripped
+            # first so asking about it never asserts that the participant left.
+            or self._contains_any(strip_separation_product_names(profile_text), [
                 "left my job",
                 "left his employer",
                 "left her employer",
@@ -2588,6 +2642,67 @@ class RAGEngine:
         if identifier_question:
             return {
                 "mode": "broad_search", "primary_action": "plan_identifier",
+                "inquiry_intent": "informational_options", "record_keeper": record_keeper,
+                "plan_type": plan_type, "primary_article_id": None,
+                "signals": signals, "excluded_articles": [],
+                "include_references": signals.get("contact_or_reference", False),
+            }
+        # A request for the participant's OWN account identifier stays a
+        # factual lookup even when the participant explains a rollover motive.
+        # The extractor restates the inquiry in the third person and keeps the
+        # participant's verbatim wording in requested_questions, so both shapes
+        # are inspected. A destination modifier ("their new employer's account
+        # number") binds the identifier to the receiving account instead, which
+        # is a different fact and keeps its normal routing.
+        identifier_texts = [query_text]
+        if isinstance(question_inventory, list):
+            identifier_texts += [
+                question.lower() for question in question_inventory
+                if isinstance(question, str) and question.strip()
+            ]
+
+        own_account_identifier = inquiry_semantics.requests_own_account_identifier
+        # "How do I go about getting my account number?" is procedural wording
+        # about obtaining the identifier itself, not a request for the
+        # distribution procedure the macro answers.
+        identifier_retrieval = any(
+            inquiry_semantics.requests_identifier_retrieval(text)
+            for text in identifier_texts
+        )
+        # A stated motive ("so I can roll it into ...", "I am trying to roll my
+        # Roth over") is not a request to execute the transaction. An explicit
+        # transactional request alongside the identifier keeps both intents on
+        # the procedure route instead of collapsing into an identifier answer.
+        transaction_requested = any(
+            inquiry_semantics.requests_transaction_action(text)
+            for text in identifier_texts
+        )
+        # A quote that asks nothing and requests nothing is background. It
+        # cannot satisfy the predicate and it must not veto it either — the
+        # bounded answer below still names the motive and stays under review.
+        deciding_texts = [
+            text for text in identifier_texts
+            if not inquiry_semantics.is_background_statement(text)
+        ]
+        transaction_motive_only = (
+            len(deciding_texts) != len(identifier_texts)
+            and any(inquiry_semantics.mentions_transaction(text) for text in identifier_texts)
+        )
+        # Kept on the profile so a mixed rollover+identifier inquiry can still
+        # be held to the identifier distinctions after the draft is generated.
+        signals["account_identifier_requested"] = any(
+            own_account_identifier(text) for text in identifier_texts
+        )
+        account_identifier_question = (
+            bool(deciding_texts)
+            and all(own_account_identifier(text) for text in deciding_texts)
+            and not transaction_requested
+            and (not procedure_requested or identifier_retrieval)
+        )
+        if account_identifier_question:
+            signals["transaction_motive_only"] = transaction_motive_only
+            return {
+                "mode": "broad_search", "primary_action": "participant_account_identifier",
                 "inquiry_intent": "informational_options", "record_keeper": record_keeper,
                 "plan_type": plan_type, "primary_article_id": None,
                 "signals": signals, "excluded_articles": [],
@@ -3359,6 +3474,95 @@ class RAGEngine:
         "a9d83fbb137e5315fbd641bb522b9723"  # pragma: allowlist secret
     )
 
+    _ACCOUNT_IDENTIFIER_PENDING = (
+        "Our team needs to verify your account number in this plan before we "
+        "can provide it."
+    )
+    _ACCOUNT_IDENTIFIER_DISTINCTION = (
+        "Your account number identifies you inside this plan: it is not the "
+        "recordkeeper plan code that identifies the plan, and it is not the "
+        "receiving account at the provider you want to move the funds to."
+    )
+    _ACCOUNT_IDENTIFIER_MOTIVE_NOTE = (
+        "You also told us why you need it. This reply answers only the account "
+        "number question; nothing has been started, submitted or changed on "
+        "your account, and our team is reviewing the rest of your message."
+    )
+
+    @staticmethod
+    def _verified_plan_identity_point(collected_data: Optional[Dict[str, Any]]) -> Optional[str]:
+        """Name the plan from VERIFIED plan facts, or say nothing at all.
+
+        A2 asks for the plan name/ID with correct provenance when available.
+        ``project_verified_plan_facts`` is the only source that carries one: it
+        requires a matched identity, the exact scrape source for the field and
+        an observed/as-of date, and drops anything that fails. With no such
+        fact this returns None and the answer stays silent plan-side, which is
+        also what keeps A3/A5 true — the plan code is never a stand-in for the
+        participant's own account number.
+        """
+        from data_pipeline.gr_payload_builder import project_verified_plan_facts
+
+        disclosure = project_verified_plan_facts(
+            (collected_data or {}).get("internal_plan_disclosure_context")
+        )
+        facts = disclosure.get("facts") if isinstance(disclosure, dict) else None
+        if not isinstance(facts, dict):
+            return None
+        def _fact(key: str) -> tuple[Optional[str], Optional[str]]:
+            entry = facts.get(key)
+            if not isinstance(entry, dict):
+                return None, None
+            return entry.get("value"), (entry.get("as_of") or entry.get("observed_at"))
+
+        name, name_date = _fact("legal_plan_name")
+        code, code_date = _fact("rk_plan_id")
+        keeper, keeper_date = _fact("record_keeper")
+        if not name and not code:
+            return None
+        # Each fact carries its own observation date. Attributing one fact's
+        # date to another would misstate provenance, so a shared date is
+        # rendered once and differing dates are rendered per fact.
+        labelled = [(label, value, date) for label, value, date in (
+            ("the plan name", name, name_date),
+            ("the recordkeeper plan code", code, code_date),
+            ("the recordkeeper", keeper, keeper_date),
+        ) if value]
+        dates = {date for _, _, date in labelled if date}
+        shared = dates.pop() if len(dates) == 1 else None
+
+        if name and code:
+            subject = f"{name} (recordkeeper plan code {code})"
+        elif name:
+            subject = str(name)
+        else:
+            subject = f"the plan with recordkeeper plan code {code}"
+        point = f"Your plan is {subject}"
+        # A2 asks for the recordkeeper itself, not only the plan code it issued.
+        if keeper:
+            point += f", held at {keeper}"
+        if shared:
+            point += f", from the plan record as of {shared}"
+        elif dates:
+            # Differing observation dates: each fact is attributed to its own,
+            # because borrowing one fact's date for another misstates provenance.
+            point += "; from the plan record, " + ", ".join(
+                f"{label} as of {date}" for label, _, date in labelled if date)
+        point += "."
+        if code:
+            point += (" That recordkeeper plan code identifies the plan, not you, "
+                      "so it is not your account number.")
+        return point
+
+    # The participant's own account number, the recordkeeper plan code and the
+    # receiving account at the destination provider are three different facts.
+    # The reading lives in ``inquiry_semantics`` so the orchestrator applies the
+    # same one when it canonicalises the inquiry list before routing.
+    @staticmethod
+    def _requests_own_account_identifier(text: str) -> bool:
+        """True when the text asks for the participant's own account number."""
+        return inquiry_semantics.requests_own_account_identifier(text)
+
     @staticmethod
     def _response_item_text(item: Any) -> str:
         if isinstance(item, str):
@@ -3367,6 +3571,259 @@ class RAGEngine:
             return json.dumps(item, ensure_ascii=False, sort_keys=True).lower()
         except (TypeError, ValueError):
             return str(item).lower()
+
+    @staticmethod
+    def _plan_code_identifier_claim(plan_code: str) -> "re.Pattern[str]":
+        """Matches text that offers ``plan_code`` as the account number.
+
+        The two alternatives are the two orders the claim is written in
+        ("your account number is <code>" / "<code> is your account number").
+        ``[^.]`` keeps a match inside one sentence, so a neighbouring sentence
+        that legitimately names the plan code is never pulled into the match.
+        """
+        code = re.escape(plan_code.lower())
+        return re.compile(
+            r"account\s*(?:number|id|#)\b[^.]{0,60}" + code
+            + r"|" + code + r"[^.]{0,60}account\s*(?:number|id|#)\b"
+        )
+
+    @classmethod
+    def _strike_identifier_claim(
+        cls, text: Any, claim: "re.Pattern[str]",
+    ) -> tuple[str, int]:
+        """Drop only the sentences of ``text`` that make the wrong claim."""
+        sentences = re.split(r"(?<=[.!?])\s+", str(text or ""))
+        kept = [part for part in sentences if not claim.search(part.lower())]
+        return " ".join(kept).strip(), len(sentences) - len(kept)
+
+    @classmethod
+    def _correct_claimed_account_identifier(
+        cls, response: Dict[str, Any], claim: "re.Pattern[str]",
+    ) -> int:
+        """Remove a claimed participant identifier from the whole response.
+
+        A draft that states "your account number is <plan code>" and then
+        denies it hands the reviewer a contradiction whose concrete half is
+        the wrong one, so the claim is struck rather than annotated. The cut
+        is sentence-level: an independent instruction sharing a step or a key
+        point with the claim keeps its own wording, and only an item left with
+        nothing at all is dropped. An opening reduced to nothing falls back to
+        the pending verification, because a blank opening is not a response
+        and inventing the identifier is never the alternative.
+        """
+        corrected = 0
+        opening, removed = cls._strike_identifier_claim(response.get("opening"), claim)
+        if removed:
+            corrected += removed
+            response["opening"] = opening or cls._ACCOUNT_IDENTIFIER_PENDING
+        for field in ("key_points", "warnings"):
+            items = response.get(field)
+            if not isinstance(items, list):
+                continue
+            kept: List[Any] = []
+            for item in items:
+                if not isinstance(item, str):
+                    kept.append(item)
+                    continue
+                text, removed = cls._strike_identifier_claim(item, claim)
+                corrected += removed
+                if text:
+                    kept.append(text)
+            response[field] = kept
+        steps = response.get("steps")
+        if isinstance(steps, list):
+            kept_steps: List[Any] = []
+            for original in steps:
+                if not isinstance(original, dict):
+                    kept_steps.append(original)
+                    continue
+                step = dict(original)
+                action, removed = cls._strike_identifier_claim(step.get("action"), claim)
+                corrected += removed
+                if removed:
+                    if not action:
+                        # The step said nothing except the wrong claim.
+                        continue
+                    step["action"] = action
+                if isinstance(step.get("detail"), str):
+                    detail, removed = cls._strike_identifier_claim(step["detail"], claim)
+                    corrected += removed
+                    if removed:
+                        step["detail"] = detail or None
+                kept_steps.append(step)
+            for index, step in enumerate(kept_steps, start=1):
+                if isinstance(step, dict) and "step_number" in step:
+                    step["step_number"] = index
+            response["steps"] = kept_steps
+        return corrected
+
+    @classmethod
+    def _apply_account_identifier_distinctions(
+        cls,
+        parsed: Dict[str, Any],
+        retrieval_profile: Optional[Dict[str, Any]],
+        collected_data: Optional[Dict[str, Any]] = None,
+    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Hold a requested own-account identifier to its own distinctions.
+
+        A real rollover request that carries an identifier subquestion keeps
+        its procedure answer; what it must not do is satisfy the identifier
+        with the recordkeeper plan code or with the receiving account at the
+        destination provider, or claim the identifier was answered. The pass
+        adds the missing distinction and the specific pending verification,
+        and never supplies an identifier value of its own.
+        """
+        info: Dict[str, Any] = {
+            "applied": False, "plan_code_echoed": False,
+            "identifier_claims_corrected": 0,
+        }
+        profile = retrieval_profile or {}
+        signals = profile.get("signals") or {}
+        if signals.get("account_identifier_requested") is not True:
+            return parsed, info
+        if profile.get("primary_action") == "participant_account_identifier":
+            # Already answered as a bounded identifier lookup.
+            return parsed, info
+        response = parsed.get("response_to_participant")
+        if not isinstance(response, dict):
+            return parsed, info
+
+        fixed = copy.deepcopy(parsed)
+        response = fixed["response_to_participant"]
+        plan_code = ((collected_data or {}).get("plan_data") or {}).get("rk_plan_id")
+        plan_code = str(plan_code).strip() if type(plan_code) in (str, int) else ""
+        rendered = cls._response_item_text(response)
+        if plan_code:
+            claim = cls._plan_code_identifier_claim(plan_code)
+            if claim.search(rendered):
+                # The plan code was offered as the participant's account
+                # number. Detecting that is not enough: the wrong value must
+                # leave the draft before a human ever reads it.
+                info["plan_code_echoed"] = True
+                corrected = cls._correct_claimed_account_identifier(response, claim)
+                info["identifier_claims_corrected"] = corrected
+                if corrected:
+                    # Only claimed when something was actually struck: the
+                    # match above is taken over the whole rendered response and
+                    # can straddle two items that each read correctly alone.
+                    guardrails = list(fixed.get("guardrails_applied") or [])
+                    guardrails.append(
+                        "Removed a drafted claim that the recordkeeper plan "
+                        "code was the participant's own account number."
+                    )
+                    fixed["guardrails_applied"] = cls._dedupe_preserving_order(guardrails)
+
+        points = list(response.get("key_points") or [])
+        points.append(cls._ACCOUNT_IDENTIFIER_DISTINCTION)
+        plan_point = cls._verified_plan_identity_point(collected_data)
+        if plan_point:
+            points.append(plan_point)
+        points.append(cls._ACCOUNT_IDENTIFIER_PENDING)
+        response["key_points"] = cls._dedupe_preserving_order(points)
+
+        gaps = list(fixed.get("data_gaps") or [])
+        gaps.append("Verified participant account number")
+        fixed["data_gaps"] = cls._dedupe_preserving_order(gaps)
+        escalation = fixed.get("escalation")
+        escalation = dict(escalation) if isinstance(escalation, dict) else {}
+        escalation["needed"] = True
+        escalation["reason"] = (
+            escalation.get("reason")
+            or "Verify the participant's own account number on the correct plan and participant record before providing it."
+        )
+        fixed["escalation"] = escalation
+
+        questions = ((collected_data or {}).get("internal_response_context") or {}).get("requested_questions")
+        if isinstance(questions, list) and questions:
+            coverage = fixed.get("question_coverage")
+            coverage = list(coverage) if isinstance(coverage, list) else []
+            by_index = {
+                item.get("question_index"): dict(item)
+                for item in coverage if isinstance(item, dict)
+            }
+            for index, question in enumerate(questions[:12]):
+                if not isinstance(question, str):
+                    continue
+                if not cls._requests_own_account_identifier(question.lower()):
+                    continue
+                entry = by_index.get(index, {"question_index": index})
+                entry["question_index"] = index
+                entry["status"] = "needs_verification"
+                entry["answer_reference"] = cls._ACCOUNT_IDENTIFIER_PENDING
+                by_index[index] = entry
+            if by_index:
+                fixed["question_coverage"] = [
+                    by_index[index] for index in sorted(
+                        key for key in by_index if type(key) is int
+                    )
+                ]
+        info["applied"] = True
+        return fixed, info
+
+    @staticmethod
+    def _preflight_loan_state(preflight: Dict[str, Any]) -> str:
+        """Normalized loan exposure: ``positive`` | ``zero`` | ``unknown``."""
+        loans = preflight.get("loans")
+        if not isinstance(loans, dict):
+            return "unknown"
+        state = loans.get("outstanding_status", "unknown")
+        if loans.get("status") not in {"known", "empty"}:
+            return "unknown"
+        return state if state in {"positive", "zero"} else "unknown"
+
+    @staticmethod
+    def _preflight_obligation_warnings(loan_state: str, holdings: Dict[str, Any]) -> List[str]:
+        """The participant-facing loan/crypto obligations for a preflight state.
+
+        Shared by the submission preflight and the zero-total custody guard so
+        one recorded loan cannot be described two different ways.
+        """
+        obligations: List[str] = []
+        if loan_state == "positive":
+            obligations.append("An outstanding loan is recorded. Our team needs to verify its payoff or offset handling before your distribution request can be submitted.")
+        elif loan_state == "unknown":
+            obligations.append("Your loan status has not been verified. Support needs to confirm whether any outstanding loan affects this request.")
+        holdings = holdings if isinstance(holdings, dict) else {}
+        known_holdings = holdings.get("status") == "known"
+        if known_holdings and holdings.get("value") == 0:
+            return obligations
+        if known_holdings and isinstance(holdings.get("value"), (int, float)) and holdings["value"] > 0:
+            obligations.append("Crypto positions are recorded. Support must verify the applicable transfer requirements before the distribution; enrollment alone does not establish those requirements.")
+        else:
+            obligations.append("Crypto positions have not been verified. Our team needs to verify holdings and the applicable transfer requirements before submission; enrollment alone does not establish whether you hold crypto.")
+        return obligations
+
+    @classmethod
+    def _zero_total_is_contested(cls, preflight: Dict[str, Any]) -> bool:
+        """True when a zero Account Balance is not proof of an empty account.
+
+        TKT-912043: the total is one asynchronously updated source row. A
+        recorded loan, a positive sibling source row, or recorded crypto
+        enrollment with unverified holdings all contradict "the account is
+        empty", and each carries an obligation the participant must not lose.
+        Plain unknown-ness (no loan panel at all) is deliberately NOT treated as
+        a contradiction, so a genuinely empty account keeps its concise answer.
+        """
+        loans = preflight.get("loans")
+        loans = loans if isinstance(loans, dict) else {}
+        if cls._preflight_loan_state(preflight) == "positive" or loans.get("conflict") is True:
+            return True
+        sources = preflight.get("sources")
+        for key, source in (sources if isinstance(sources, dict) else {}).items():
+            if key == "account_balance" or not isinstance(source, dict):
+                continue
+            value = source.get("value")
+            if source.get("status") == "known" and isinstance(value, (int, float)) and value > 0:
+                return True
+        crypto = preflight.get("crypto")
+        crypto = crypto if isinstance(crypto, dict) else {}
+        enrollment = crypto.get("enrollment")
+        enrollment = enrollment if isinstance(enrollment, dict) else {}
+        holdings = crypto.get("holdings")
+        holdings = holdings if isinstance(holdings, dict) else {}
+        enrolled = enrollment.get("status") == "known" and enrollment.get("value") is True
+        holdings_cleared = holdings.get("status") == "known" and holdings.get("value") == 0
+        return enrolled and not holdings_cleared
 
     @classmethod
     def _apply_termination_response_policy(
@@ -3420,6 +3877,49 @@ class RAGEngine:
                     "answer_reference": fixed["response_to_participant"]["opening"],
                 }]
             info.update(applied=True, identifier_answer_only=True)
+            return fixed, info
+        if action == "participant_account_identifier":
+            # The participant asked for their own account number. No verified
+            # source for that identifier exists in the collected record: the
+            # recordkeeper plan code identifies the plan and the receiving
+            # account belongs to the destination provider, so neither can
+            # stand in for it and none of them may be invented here.
+            fixed = copy.deepcopy(parsed)
+            points = [cls._ACCOUNT_IDENTIFIER_DISTINCTION]
+            plan_point = cls._verified_plan_identity_point(collected_data)
+            if plan_point:
+                points.append(plan_point)
+            if signals.get("transaction_motive_only") is True:
+                # The participant explained a rollover motive. It is not being
+                # answered here and it is not being dropped either: the case
+                # goes to review below with the motive named.
+                points.append(cls._ACCOUNT_IDENTIFIER_MOTIVE_NOTE)
+            fixed["response_to_participant"] = {
+                "opening": cls._ACCOUNT_IDENTIFIER_PENDING,
+                "key_points": points,
+                "steps": [], "warnings": [],
+            }
+            fixed["outcome"] = "blocked_missing_data"
+            fixed["outcome_reason"] = (
+                "The participant's own account number is not part of the verified "
+                "record; the recordkeeper plan code and a receiving account number "
+                "are not substitutes."
+            )
+            fixed["questions_to_ask"] = []
+            fixed["data_gaps"] = ["Verified participant account number"]
+            fixed["escalation"] = {
+                "needed": True,
+                "reason": "Verify the participant's own account number on the correct plan and participant record before providing it.",
+            }
+            questions = ((collected_data or {}).get("internal_response_context") or {}).get("requested_questions")
+            if isinstance(questions, list) and questions:
+                fixed["question_coverage"] = [
+                    {"question_index": index, "status": "needs_verification",
+                     "answer_reference": cls._ACCOUNT_IDENTIFIER_PENDING}
+                    for index in range(min(len(questions), 12))
+                ]
+            info.update(applied=True, identifier_answer_only=True,
+                        participant_account_identifier=True)
             return fixed, info
         if action == "hardship_withdrawal":
             participant = (collected_data or {}).get("participant_data") or {}
@@ -3542,11 +4042,40 @@ class RAGEngine:
             return fixed, info
 
         if zero_balance:
+            # TKT-912043: the zero total is one asynchronously updated source
+            # row. When a recorded loan, a positive sibling source row or
+            # recorded crypto enrollment contradicts it, the account is not
+            # proven empty and its obligations must survive the custody guard.
+            # The guard itself still returns here: no draft steps or questions
+            # may survive a blocked custody answer.
+            contested = cls._zero_total_is_contested(preflight)
             fixed["outcome"] = "blocked_missing_data"
-            fixed["outcome_reason"] = "The account balance is confirmed zero; the disposition and current custodian require internal verification."
+            if contested:
+                fixed["outcome_reason"] = "The reported account total is zero but other recorded obligations contradict an empty account; the disposition and current custodian require internal verification."
+                opening = (
+                    "Your account total currently shows zero, but our records also show obligations "
+                    "that a zero total would not explain. Our team needs to verify where your funds "
+                    "are held, and settle those items, before giving you transfer instructions."
+                )
+            else:
+                fixed["outcome_reason"] = "The account balance is confirmed zero; the disposition and current custodian require internal verification."
+                opening = "Your account shows a zero balance. Our team needs to verify where the funds are held before giving you transfer instructions."
+            # Source rows are never restated as current holdings; only the
+            # obligation itself is named, with the same wording the submission
+            # preflight uses.
+            crypto_context = preflight.get("crypto")
+            obligations = cls._preflight_obligation_warnings(
+                cls._preflight_loan_state(preflight),
+                (crypto_context if isinstance(crypto_context, dict) else {}).get("holdings") or {},
+            ) if contested else []
+            if contested and not obligations:
+                # Contested solely by a sibling source row. Name the conflict
+                # itself rather than leaving the opening unsupported; the
+                # amounts stay internal.
+                obligations = ["Recorded source balances do not agree with a zero account total. Our team needs to reconcile them before your request can be submitted."]
             fixed["response_to_participant"] = {
-                "opening": "Your account shows a zero balance. Our team needs to verify where the funds are held before giving you transfer instructions.",
-                "key_points": [], "steps": [], "warnings": [],
+                "opening": opening,
+                "key_points": [], "steps": [], "warnings": obligations,
             }
             fixed["questions_to_ask"] = []
             fixed["data_gaps"] = ["Verified disposition and current custodian of the participant's funds"]
@@ -3554,6 +4083,9 @@ class RAGEngine:
                 "needed": True,
                 "reason": "Internal custody review: verify the participant's disposition record and current custodian; a zero balance does not prove a force-out or completed transfer.",
             }
+            if contested:
+                fixed["escalation"]["reason"] += " The zero total conflicts with recorded loan, source-balance or crypto-enrollment evidence; reconcile them before responding."
+                info["zero_total_conflict"] = True
             info["custody_review_required"] = True
             return fixed, info
 
@@ -3976,10 +4508,7 @@ class RAGEngine:
         if preflight_applicable:
             if preflight:
                 info["structured_preflight_applied"] = True
-                loans = preflight.get("loans") or {}
-                loan_state = loans.get("outstanding_status", "unknown")
-                if loans.get("status") not in {"known", "empty"}:
-                    loan_state = "unknown"
+                loan_state = cls._preflight_loan_state(preflight)
                 crypto = preflight.get("crypto") or {}
                 holdings = crypto.get("holdings") or {}
                 crypto_zero = holdings.get("status") == "known" and holdings.get("value") == 0
@@ -3994,22 +4523,18 @@ class RAGEngine:
                     ) or (crypto_zero and "crypto" in text)
                 key_points = [i for i in key_points if not contradicted_preflight(i)]
                 warnings = [i for i in warnings if not contradicted_preflight(i)]
-                preflight_warnings: List[str] = []
-                if loan_state == "positive":
-                    preflight_warnings.append("An outstanding loan is recorded. Our team needs to verify its payoff or offset handling before your distribution request can be submitted.")
-                elif loan_state == "unknown":
-                    preflight_warnings.append("Your loan status has not been verified. Support needs to confirm whether any outstanding loan affects this request.")
-                if not crypto_zero:
-                    if holdings.get("status") == "known" and isinstance(holdings.get("value"), (int, float)) and holdings["value"] > 0:
-                        preflight_warnings.append("Crypto positions are recorded. Support must verify the applicable transfer requirements before the distribution; enrollment alone does not establish those requirements.")
-                    else:
-                        preflight_warnings.append("Crypto positions have not been verified. Our team needs to verify holdings and the applicable transfer requirements before submission; enrollment alone does not establish whether you hold crypto.")
+                preflight_warnings = cls._preflight_obligation_warnings(loan_state, holdings)
                 warnings = cls._dedupe_preserving_order(preflight_warnings + warnings)
                 required_points.append((("final payroll",), "Before submitting, wait at least 7 business days after final payroll."))
             elif signals.get("pure_rollover") and fixed.get("outcome") == "can_proceed":
+                # TKT-911756: enrollment is not a holdings record. Without a
+                # structured preflight nothing about crypto is established, so
+                # the fallback asks Support to verify holdings instead of
+                # conditioning the participant's next step on enrollment.
                 required_points.append((("outstanding loan", "final payroll", "crypto"), (
                     "Before submitting, contact Support about any outstanding loan; wait at least 7 business days after final payroll; "
-                    "and, if Crypto Enrollment is active, contact Support because transfer or liquidation treatment is not defined."
+                    "and ask Support to verify whether you hold crypto positions and the applicable transfer requirements, because "
+                    "the transfer or liquidation treatment is not defined."
                 )))
 
         if signals.get("overnight_request"):

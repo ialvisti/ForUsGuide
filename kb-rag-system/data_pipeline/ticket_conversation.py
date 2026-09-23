@@ -130,7 +130,24 @@ def participant_statements(ticket: Any) -> str:
     snapshot = getattr(ticket, "conversation_snapshot", None)
     if snapshot is None:
         return f"{getattr(ticket, 'email_subject', '') or ''} {getattr(ticket, 'email_body', '') or ''}"
-    return "\n".join([snapshot.subject, *[
-        m.body for m in [snapshot.initial_message, *snapshot.messages]
-        if m.author_role == "participant"
-    ]])
+    return "\n".join([snapshot.subject, *_participant_bodies(snapshot)])
+
+
+def _participant_bodies(snapshot: Any) -> list[str]:
+    return [m.body for m in [snapshot.initial_message, *snapshot.messages]
+            if m.author_role == "participant"]
+
+
+def participant_message_bodies(ticket: Any) -> str:
+    """Participant-authored bodies only — the subject is deliberately excluded.
+
+    ``participant_statements`` prepends ``snapshot.subject``, which carries no
+    ``author_role`` and is editable by an agent in the source system. That is
+    harmless for retrieval grounding, but a decision that may DROP a request
+    must not be able to take its precondition from text the participant never
+    wrote. Callers that canonicalise the inquiry list use this instead.
+    """
+    snapshot = getattr(ticket, "conversation_snapshot", None)
+    if snapshot is None:
+        return getattr(ticket, "email_body", "") or ""
+    return "\n".join(_participant_bodies(snapshot))

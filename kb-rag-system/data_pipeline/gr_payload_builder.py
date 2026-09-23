@@ -72,6 +72,12 @@ SAVINGS_MAP: Dict[str, str] = {
     "Auto escalation timing": "auto_escalation_timing",
 }
 
+# Claves que el preflight declara desconocidas a propósito porque ningún módulo
+# del scrape las publica. Un label inesperado de savings_rate no mapeado puede
+# colisionar con ellas vía snake_case ("After-Tax Balance" → after_tax_balance) y
+# acabar impreso en Participant Data sin procedencia, contradiciendo al preflight.
+SAVINGS_RESERVED_KEYS = frozenset({"after_tax_balance", "vested_balance"})
+
 # Campos de savings_rate que son de PLAN, no de participante:
 SAVINGS_PLAN_MAP: Dict[str, str] = {
     "Record Keeper": "record_keeper",
@@ -529,7 +535,11 @@ def _map_savings(module_data: Mapping[str, Any], participant: Dict[str, Any],
         if field_name in SAVINGS_PLAN_MAP:
             plan[SAVINGS_PLAN_MAP[field_name]] = value
             continue
-        key = SAVINGS_MAP.get(field_name) or snake_case(field_name)
+        mapped = SAVINGS_MAP.get(field_name)
+        key = mapped or snake_case(field_name)
+        # Solo un label del contrato declarado puede escribir una clave reservada.
+        if mapped is None and key in SAVINGS_RESERVED_KEYS:
+            continue
         participant[key] = value
 
 

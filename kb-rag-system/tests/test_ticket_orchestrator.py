@@ -1715,3 +1715,229 @@ class TestExtractionAllowlist:
         assert "first_contribution_posted_status" not in extracted
         rejected = diag["field_mapping"]["ticket_non_candidate_rejected"]
         assert set(rejected) == {"account_balance", "first_contribution_posted_status"}
+
+
+# ---------------------------------------------------------------------------
+# TKT-911797 — canonical inquiry inventory before routing
+#
+# The failing job split ONE message into TWO inquiries (rollover + own account
+# number) and the rollover half was then answered with the full termination
+# distribution procedure. The LLM here is the usual canned stub, not a live
+# extractor run: what is under test is the deterministic canonicalisation the
+# orchestrator applies to whatever the extractor returns.
+# ---------------------------------------------------------------------------
+
+_SOURCE_BODY = ('Hello, I am trying to roll my Roth over to my new 401k. '
+                'How do I go about getting my account number?')
+_SPLIT_OUTPUT = json.dumps([
+    {"inquiry": "Participant is trying to roll their Roth balance over to their new employer's 401(k).",
+     "topic": "termination_distribution_request",
+     "related_inquiries": ["Participant is requesting their Roth account number."],
+     "requested_questions": ["Hello, I am trying to roll my Roth over to my new 401k."]},
+    {"inquiry": "Participant is requesting their Roth account number.",
+     "topic": "plan_information",
+     "related_inquiries": ["Participant is trying to roll their Roth balance over to their new employer's 401(k)."],
+     "requested_questions": ["How do I go about getting my account number?"]},
+])
+
+
+class TestMotiveOnlyInquiryFold:
+
+    async def test_split_purpose_clause_is_folded_back_before_routing(self):
+        llm = LLMStub({"extract_inquiries": _SPLIT_OUTPUT})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        out = await orch.extract_inquiries(
+            _req(email_subject="Roth Account Number", email_body=_SOURCE_BODY))
+        assert len(out) == 1
+        assert "account number" in out[0].inquiry.lower()
+        # The motive survives as context, and the identifier question stays the
+        # verbatim inventory the coverage check will be held to.
+        assert any("roll" in item.lower() for item in out[0].related_inquiries or [])
+        assert out[0].requested_questions == ["How do I go about getting my account number?"]
+
+    async def test_a6_real_rollover_request_with_an_id_subquestion_keeps_both(self):
+        body = ("I left my job and want to roll over my account. "
+                "Also, what is my account number?")
+        arr = json.dumps([
+            {"inquiry": "Participant left their employer and wants to roll over their balance.",
+             "topic": "termination_distribution_request",
+             "requested_questions": ["I left my job and want to roll over my account."]},
+            {"inquiry": "Participant is requesting their account number.",
+             "topic": "plan_information",
+             "requested_questions": ["Also, what is my account number?"]},
+        ])
+        llm = LLMStub({"extract_inquiries": arr})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        out = await orch.extract_inquiries(_req(email_subject="401k", email_body=body))
+        assert len(out) == 2
+        assert {o.topic for o in out} == {"termination_distribution_request", "plan_information"}
+
+    async def test_fold_keeps_a_distinct_factual_question_about_the_transaction(self):
+        # Naming the transaction is not a motive. "What is the fee to roll it
+        # over?" asks for something the motive never did, and it is not a
+        # request to PERFORM the rollover, so the action predicate does not
+        # catch it. Folding it would silently drop an answerable request --
+        # the exact failure class this canonicalisation exists to prevent.
+        body = ("I am trying to roll my Roth over to my new 401k. "
+                "How do I go about getting my account number? "
+                "What is the fee to roll it over?")
+        arr = json.dumps([
+            {"inquiry": "Participant is trying to roll their Roth over to a new 401(k).",
+             "topic": "termination_distribution_request",
+             "requested_questions": ["I am trying to roll my Roth over to my new 401k."]},
+            {"inquiry": "Participant is requesting their own account number.",
+             "topic": "plan_information",
+             "requested_questions": ["How do I go about getting my account number?"]},
+            {"inquiry": "What is the fee to roll the balance over?",
+             "topic": "fees",
+             "requested_questions": ["What is the fee to roll it over?"]},
+        ])
+        llm = LLMStub({"extract_inquiries": arr})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        out = await orch.extract_inquiries(_req(email_subject="401k", email_body=body))
+        topics = [o.topic for o in out]
+        # The motive-only half still folds; the fee question is still routed.
+        assert "termination_distribution_request" not in topics
+        assert "fees" in topics
+        assert len(out) == 2
+        fee = next(o for o in out if o.topic == "fees")
+        # Its verbatim quote survives, so coverage checks can hold the draft to it.
+        assert fee.requested_questions == ["What is the fee to roll it over?"]
+
+    async def test_fold_keeps_a_reported_question_about_the_transaction(self):
+        # The extractor is required to paraphrase in the third person, so a
+        # question arrives as reported speech: no question mark, no wh-word.
+        # "Participant wants to know if ..." still ASKS for something, and
+        # folding it away would discard its verbatim quote exactly like the
+        # interrogative case above.
+        body = ("I am trying to roll my Roth over to my new 401k. "
+                "How do I go about getting my account number? "
+                "Is my employer match vested?")
+        arr = json.dumps([
+            {"inquiry": "Participant is trying to roll their Roth over to a new 401(k).",
+             "topic": "termination_distribution_request",
+             "requested_questions": ["I am trying to roll my Roth over to my new 401k."]},
+            {"inquiry": "Participant is requesting their own account number.",
+             "topic": "plan_information",
+             "requested_questions": ["How do I go about getting my account number?"]},
+            {"inquiry": "Participant wants to know if their employer match is vested "
+                        "before a rollover.",
+             "topic": "vesting",
+             "requested_questions": ["Is my employer match vested?"]},
+        ])
+        llm = LLMStub({"extract_inquiries": arr})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        out = await orch.extract_inquiries(_req(email_subject="401k", email_body=body))
+        topics = [o.topic for o in out]
+        # The motive-only half still folds; the vesting question is still routed.
+        assert "termination_distribution_request" not in topics
+        assert "vesting" in topics
+        assert len(out) == 2
+        vesting = next(o for o in out if o.topic == "vesting")
+        assert vesting.requested_questions == ["Is my employer match vested?"]
+
+    async def test_fold_never_drops_an_account_access_inquiry(self):
+        body = ("I am trying to roll my Roth over to my new 401k. How do I get my account "
+                "number? I also got a password reset email I never requested.")
+        arr = json.dumps([
+            {"inquiry": "Participant is trying to roll their Roth over to a new 401(k).",
+             "topic": "rollover"},
+            {"inquiry": "Participant is requesting their own account number.",
+             "topic": "plan_information"},
+            {"inquiry": "Participant received an unsolicited password reset email they did not request.",
+             "topic": "account_access"},
+        ])
+        llm = LLMStub({"extract_inquiries": arr})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        out = await orch.extract_inquiries(_req(email_subject="401k", email_body=body))
+        topics = [o.topic for o in out]
+        assert "account_access" in topics
+        assert "rollover" not in topics
+        assert len(out) == 2
+
+    async def test_fold_requires_participant_evidence_not_the_paraphrase_alone(self):
+        # The extractor paraphrase alone cannot authorise the fold: if the
+        # participant's own words request the transaction, both stay.
+        llm = LLMStub({"extract_inquiries": _SPLIT_OUTPUT})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        out = await orch.extract_inquiries(_req(
+            email_subject="Roth Account Number",
+            email_body=("What is my account number? Also, how do I start the rollover "
+                        "to my new 401k?")))
+        assert len(out) == 2
+
+    async def test_fold_ignores_an_agent_editable_subject(self):
+        # The subject line carries no author_role and can be rewritten by an
+        # agent in the source system. It must never supply the own-account
+        # precondition for a decision that DROPS one of the participant's
+        # inquiries: here the body asks only about the rollover.
+        llm = LLMStub({"extract_inquiries": _SPLIT_OUTPUT})
+        deps, *_ = _deps(llm=llm)
+        orch = TicketOrchestrator(deps, _settings())
+        out = await orch.extract_inquiries(_req(
+            email_subject="Participant wants my account number",
+            email_body="I am trying to roll my Roth over to my new 401k."))
+        assert len(out) == 2
+
+    def test_own_account_identifier_collects_the_plan_identity_modules(self):
+        ext = ExtractedInquiry(
+            inquiry="Participant is requesting their Roth account number.",
+            record_keeper="LT Trust", plan_type="401(k)", topic="plan_information")
+        by_key = {m["key"]: m["fields"]
+                  for m in TicketOrchestrator._case_modules(ext, _req())}
+        assert by_key["plan_design"] == ["rk_plan_id", "record_keeper_id"]
+        assert by_key["basic_info"] == ["Legal Plan Name"]
+
+    def test_financial_case_unions_both_basic_info_field_lists(self):
+        ext = ExtractedInquiry(
+            inquiry="Participant wants to roll over their account and needs their account number.",
+            record_keeper="LT Trust", plan_type="401(k)",
+            topic="termination_distribution_request")
+        modules = TicketOrchestrator._case_modules(ext, _req())
+        keys = [m["key"] for m in modules]
+        assert len(keys) == len(set(keys)), "a module key must not be emitted twice"
+        basic = next(m["fields"] for m in modules if m["key"] == "basic_info")
+        for expected in ("Legal Plan Name", "status", "status_as_of", "active"):
+            assert expected in basic
+
+
+class TestFailedPasswordResetSplitGuard:
+    """TKT-910081: a failed reset is an access blocker for the split guard too."""
+
+    def test_failed_password_reset_split_guard(self):
+        sig = _detect_account_access_signal(
+            "My password reset did not work. How can I recover access?"
+        )
+
+        assert sig is not None
+        assert "password reset" in sig
+        assert "did not restore access" in sig
+        # A failed reset is a recovery need, not a security incident.
+        assert "unauthorized activity" not in sig
+        assert "regaining secure access" in sig
+
+    def test_reset_that_still_leaves_the_participant_locked_out_is_detected(self):
+        sig = _detect_account_access_signal(
+            "I reset my password but I still cannot log in."
+        )
+
+        assert sig is not None
+        assert "did not restore access" in sig
+
+    def test_unsolicited_reset_is_not_reported_as_a_failed_attempt(self):
+        sig = _detect_account_access_signal(
+            "I received a password reset email that I did not request."
+        )
+
+        assert sig is not None
+        assert "did not restore access" not in sig
+        assert "possible unauthorized activity" in sig
+
+    def test_plain_reset_question_is_not_an_access_blocker(self):
+        assert _detect_account_access_signal("How do I do a password reset?") is None

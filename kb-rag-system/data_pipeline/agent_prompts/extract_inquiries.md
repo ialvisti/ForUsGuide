@@ -127,6 +127,8 @@ Focus on the participant's CURRENT need, not resolved topics:
 - If a support agent already answered a question and the participant did not follow up on it, that topic is resolved — do not re-extract it.
 - If the participant's latest message introduces NEW questions or follows up on an UNRESOLVED issue, those are the active inquiries.
 - A single message can contain multiple distinct inquiries. Split them if they require different KB articles or topics to answer.
+- A MOTIVE is not an inquiry. When the participant says WHY they need something — "I am trying to roll my Roth over to my new 401k. How do I go about getting my account number?", "I need my account number so I can move it to my new plan", "requesting his account number to transfer it to his new 401k" — the reason is context for the ONE thing they actually asked for. Emit a single inquiry for the actual request and carry the reason inside its `inquiry` text. Do NOT emit a second inquiry for the motive.
+- Split a money-movement request out as its own inquiry only when the participant actually asks for it: they ask how to do it ("how do I start the rollover?"), ask you to do it ("please process my distribution", "send me the forms"), or state they want it done ("I left my job and want to cash out"). A statement that they are already trying to do it, on its own, is background.
 - A security or account-access blocker (cannot log in, activation email not received, invalid/old email on file, an unsolicited password-reset email the participant did NOT request, or an MFA problem) is ALWAYS its own separate inquiry with topic `account_access`. NEVER fold it into a financial or administrative inquiry (cash out, rollover, distribution, contribution change, etc.) in the same ticket — emit it as a separate inquiry and cross-populate `related_inquiries` on each.
 - If the ticket tag is "reopen-customer-response", the participant has replied to a previous support interaction — focus on what their reply is asking or reporting.
 - Very short messages still count as inquiries. "I can not get into my account." is a valid, actionable inquiry (account_access), not a no-op.
@@ -188,6 +190,7 @@ RULES
 9. The record_keeper must be passed through exactly as received from its source field. Do not rename, normalize, or guess a record keeper.
 10. Before finalizing an empty array [], do a self-check: "Did I read emailBody? Did I read emailSubject? Did I read every message in ticket_messages?" If any of those contain a participant request, the output must not be empty.
 11. Never merge a security/account-access blocker with a financial or administrative inquiry. If a ticket contains both (e.g., "I want to cash out and I also got a password-reset email I didn't request"), emit TWO inquiry objects — one with topic `account_access` and one for the financial request — each listing the other text in `related_inquiries`.
+12. Never split a purpose clause into its own inquiry. "so I can roll it over", "to transfer it to my new 401k", "I am trying to roll it over" explain WHY the participant is asking; they are not a second request. Only an actual request to perform the transaction, or to be told how to perform it, is a separate inquiry. A request for the participant's own account number is a factual lookup, and naming a rollover as its reason does not turn it into a distribution request.
 ```
 
 ---
@@ -437,6 +440,63 @@ A security/account-access blocker is ALWAYS its own `account_access` inquiry, ev
   }
 ]
 ```
+
+---
+
+## Example — Motive Clause (must NOT split)
+
+The participant states a reason and asks ONE thing. The rollover is the motive, not a second inquiry. Splitting it makes the pipeline answer with a full distribution procedure the participant never asked for.
+
+### Input
+
+```json
+[
+  {
+    "userData": {
+      "pptId": "158948",
+      "planId": "580",
+      "companyName": "Acme Corp",
+      "companyStatus": "Terminated",
+      "companyStatusDetail": null
+    },
+    "ticketData": {
+      "userId": "don:identity:dvrv-us-1:devo/abc123",
+      "userName": "Jordan Ellis",
+      "userEmail": "jordan.ellis@example.com",
+      "ticketId": "TKT-900300",
+      "emailSubject": "Roth Account Number",
+      "emailBody": "Hello, I am trying to roll my Roth over to my new 401k. How do I go about getting my account number?",
+      "tag": "NOT FOUND",
+      "firstContact": true,
+      "ticket_messages": {}
+    },
+    "forusbots": {
+      "recordKeeper": "LT Trust"
+    }
+  }
+]
+```
+
+### Expected Output
+
+```json
+[
+  {
+    "inquiry": "Participant is asking how to obtain their own Roth account number in this plan; they mention they are trying to roll the Roth balance over to a new employer 401(k), which is the reason for the request and not a separate request to process a rollover.",
+    "record_keeper": "LT Trust",
+    "plan_type": "401(k)",
+    "topic": "plan_information",
+    "related_inquiries": null
+  }
+]
+```
+
+### Why This Output
+
+- **One request.** The only thing asked is "How do I go about getting my account number?".
+- **The rollover is the motive.** "I am trying to roll my Roth over" says why; the participant did not ask how to roll over, did not ask anyone to start it, and did not say they want it processed.
+- **One inquiry, reason included.** The motive stays inside the `inquiry` text so nothing is lost.
+- **Contrast.** "I left my job and want to roll over my account. Also, what is my account number?" DOES split: the participant states they want the rollover done AND asks a separate factual question.
 
 ---
 

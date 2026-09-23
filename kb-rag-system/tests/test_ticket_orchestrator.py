@@ -1265,6 +1265,190 @@ class TestNeedsMoreInfoAndRun:
         assert out.route == "needs_more_info"
         assert out.needs_more_info_message == "¿Puedes dar más detalle?"
 
+    async def test_nmi_unresolved_identity_does_not_reask_transaction_intent(self):
+        llm = LLMStub({})
+        deps, *_ = _deps(
+            llm=llm,
+            classification=_classification(
+                "needs_more_info",
+                user_message=(
+                    "Do you want to move your old 401k into your current employer plan?"
+                ),
+            ),
+        )
+        orch = TicketOrchestrator(deps, _settings())
+        ext = ExtractedInquiry(
+            "I want to move my old 401k to my current employer plan.",
+            "LT Trust",
+            "401(k)",
+            "rollover",
+        )
+        req = _req(
+            identity_context={
+                "identity_resolution_status": "not_found",
+                "response_source_reason": "account_not_found",
+                "identity_verified": False,
+                "provided_identifiers": ["name", "employer"],
+            }
+        )
+        out = await orch.handle_inquiry(ext, req, total_inquiries=1)
+        message = (out.needs_more_info_message or "").lower()
+        assert out.route == "needs_more_info"
+        assert out.diagnostics.get("identity_resolution_status") == "not_found"
+        assert out.diagnostics.get("response_source_reason") == "account_not_found"
+        assert out.diagnostics.get("human_review_required") is True
+        assert "verify the account" in message
+        assert "already provided" in message
+        assert "401k" not in message
+        assert "ssn" not in message
+        assert "social security" not in message
+        assert "provide your name" not in message
+        assert "provide your employer" not in message
+
+    async def test_nmi_general_knowledge_keeps_classifier_message(self):
+        llm = LLMStub({})
+        deps, *_ = _deps(
+            llm=llm,
+            classification=_classification(
+                "needs_more_info",
+                user_message="Could you clarify which rollover type you mean?",
+            ),
+        )
+        orch = TicketOrchestrator(deps, _settings())
+        ext = ExtractedInquiry("What is a direct rollover?", "LT Trust", "401(k)", "general")
+        req = _req(
+            identity_context={
+                "identity_resolution_status": "not_found",
+                "response_source_reason": "general_knowledge",
+                "identity_verified": False,
+                "provided_identifiers": [],
+            }
+        )
+        out = await orch.handle_inquiry(ext, req, total_inquiries=1)
+        assert out.needs_more_info_message == "Could you clarify which rollover type you mean?"
+        assert out.diagnostics.get("human_review_required") is not True
+        assert out.diagnostics.get("response_source_reason") == "general_knowledge"
+
+    async def test_nmi_matched_account_keeps_specific_clarification(self):
+        deps, *_ = _deps(
+            llm=LLMStub({}),
+            classification=_classification(
+                "needs_more_info", user_message="Which receiving plan do you mean?"
+            ),
+        )
+        req = _req(identity_context={
+            "identity_resolution_status": "matched",
+            "response_source_reason": "account_context_required",
+            "identity_verified": True,
+            "provided_identifiers": ["email"],
+        })
+        out = await TicketOrchestrator(deps, _settings()).handle_inquiry(
+            ExtractedInquiry("Move my funds", "LT Trust", "401(k)", "rollover"),
+            req, total_inquiries=1,
+        )
+        assert out.needs_more_info_message == "Which receiving plan do you mean?"
+        assert out.diagnostics.get("human_review_required") is not True
+
+    async def test_kq_insufficient_nmi_applies_unresolved_identity(self):
+        llm = LLMStub({
+            "kb_question_synthesis": '{"question": null, "insufficient_inquiry": true}'
+        })
+        deps, rag, _r, _f = _deps(llm=llm, classify_route="knowledge_question")
+        orch = TicketOrchestrator(deps, _settings())
+        ext = ExtractedInquiry(
+            "I want to move my old 401k to my current employer plan.",
+            "LT Trust",
+            "401(k)",
+            "rollover",
+        )
+        req = _req(
+            identity_context={
+                "identity_resolution_status": "not_found",
+                "response_source_reason": "account_not_found",
+                "identity_verified": False,
+                "provided_identifiers": ["name", "employer"],
+            }
+        )
+        out = await orch.handle_inquiry(ext, req, total_inquiries=1)
+        assert out.route == "needs_more_info"
+        assert out.diagnostics.get("kb_insufficient") is True
+        assert out.diagnostics.get("human_review_required") is True
+        assert "verify the account" in (out.needs_more_info_message or "").lower()
+        rag.ask_knowledge_question.assert_not_awaited()
+
+    @pytest.mark.parametrize(
+        ("status", "reason"),
+        [
+            ("ambiguous", "account_ambiguous"),
+            ("access_error", "account_lookup_failed"),
+        ],
+    )
+    async def test_nmi_unresolved_identity_variants_hand_off(self, status, reason):
+        # not_found is not the only unresolved outcome: an ambiguous match or a
+        # failed lookup is equally unresolved, so the clarification must become a
+        # handoff instead of asking the participant for verification facts.
+        deps, *_ = _deps(
+            llm=LLMStub({}),
+            classification=_classification(
+                "needs_more_info",
+                user_message="Can you confirm the last four digits of your SSN?",
+            ),
+        )
+        req = _req(identity_context={
+            "identity_resolution_status": status,
+            "response_source_reason": reason,
+            "identity_verified": False,
+            "provided_identifiers": ["name", "date_of_birth"],
+        })
+        out = await TicketOrchestrator(deps, _settings()).handle_inquiry(
+            ExtractedInquiry("Move my funds", "LT Trust", "401(k)", "rollover"),
+            req, total_inquiries=1,
+        )
+        message = (out.needs_more_info_message or "").lower()
+        assert out.route == "needs_more_info"
+        assert out.diagnostics.get("identity_resolution_status") == status
+        assert out.diagnostics.get("response_source_reason") == reason
+        assert out.diagnostics.get("human_review_required") is True
+        assert out.diagnostics["handoff"] == {
+            "reason": reason,
+            "next_action": (
+                "Resolve the account using available identifiers and the "
+                "approved verification procedure; ask only for missing "
+                "information."
+            ),
+        }
+        # only identifier types travel, never their values, and the clarifying
+        # question that asked for one is gone.
+        assert out.diagnostics.get("provided_identifiers") == ["name", "date_of_birth"]
+        assert "verify the account" in message
+        assert "ssn" not in message
+        assert "last four" not in message
+        # classifier diagnostics survive the merge (aggregation depends on them)
+        assert out.diagnostics["classifier"]["route"] == "needs_more_info"
+
+    async def test_nmi_caller_certified_but_unresolved_still_hands_off(self):
+        # identity_verified is the caller's certification of its own procedure,
+        # not a resolved account: it must not unlock the transactional re-ask.
+        deps, *_ = _deps(
+            llm=LLMStub({}),
+            classification=_classification(
+                "needs_more_info", user_message="Which employer plan is this for?"
+            ),
+        )
+        req = _req(identity_context={
+            "identity_resolution_status": "ambiguous",
+            "response_source_reason": "account_ambiguous",
+            "identity_verified": True,
+            "provided_identifiers": ["email"],
+        })
+        out = await TicketOrchestrator(deps, _settings()).handle_inquiry(
+            ExtractedInquiry("Move my funds", "LT Trust", "401(k)", "rollover"),
+            req, total_inquiries=1,
+        )
+        assert out.diagnostics.get("human_review_required") is True
+        assert out.diagnostics.get("identity_verified") is True
+        assert out.needs_more_info_message != "Which employer plan is this for?"
+
     async def test_run_ticket_empty_extraction(self):
         llm = LLMStub({"extract_inquiries": "[]"})
         deps, *_ = _deps(llm=llm)

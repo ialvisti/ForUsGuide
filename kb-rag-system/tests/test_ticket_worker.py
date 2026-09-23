@@ -1297,6 +1297,82 @@ class TestAggregatePublicationSafety:
         assert state.value != "succeeded"
         assert next_action.value == "use_legacy_or_human"
 
+    def test_nmi_unresolved_identity_diagnostics_require_human_review(self):
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
+
+        outcome = InquiryOutcome(
+            inquiry="I want to move my old 401k to my current employer plan.",
+            topic="rollover",
+            route="needs_more_info",
+            needs_more_info_message=(
+                "Our team needs to verify the account and its current status "
+                "before providing instructions specific to your request. We "
+                "will first use the information you have already provided."
+            ),
+            diagnostics={
+                "identity_resolution_status": "not_found",
+                "response_source_reason": "account_not_found",
+                "identity_verified": False,
+                "provided_identifiers": ["name", "employer"],
+                "human_review_required": True,
+                "handoff": {
+                    "reason": "account_not_found",
+                    "next_action": (
+                        "Resolve the account using available identifiers and "
+                        "the approved verification procedure; ask only for "
+                        "missing information."
+                    ),
+                },
+            },
+        )
+        entry = _entry_from_outcome(0, outcome)
+        state, next_action = aggregate_states([entry], unprocessed=0)
+        assert entry["human_review_required"] is True
+        assert entry["participant_reply_safe"] is False
+        assert state.value == "succeeded"
+        assert next_action.value == "human_review"
+
+    def test_nmi_identity_handoff_survives_into_durable_entry(self):
+        """The reviewer needs WHY and WHAT NEXT, not just the review flag: the
+        handoff the orchestrator attaches must reach the checkpoint entry."""
+        from api.models import IdentityResolutionContext
+        from api.ticket_worker import _entry_from_outcome, aggregate_states
+        from data_pipeline.ticket_orchestrator import _apply_nmi_identity_policy
+
+        # Build the diagnostics through the real producer so this seam test
+        # cannot drift from the policy it is meant to protect.
+        req = SimpleNamespace(identity_context=IdentityResolutionContext(
+            identity_resolution_status="ambiguous",
+            response_source_reason="account_ambiguous",
+            provided_identifiers=["name"],
+        ))
+        message, diagnostics = _apply_nmi_identity_policy(
+            req,
+            "Which of your accounts do you mean?",
+            {"classifier": {"route": "needs_more_info", "confidence": 0.9}},
+        )
+        outcome = InquiryOutcome(
+            inquiry="I want to move my old 401k.",
+            topic="rollover",
+            route="needs_more_info",
+            needs_more_info_message=message,
+            diagnostics=diagnostics,
+        )
+
+        entry = _entry_from_outcome(0, outcome)
+
+        durable = entry["result"]["diagnostics"]
+        assert durable["handoff"]["reason"] == "account_ambiguous"
+        assert "approved verification procedure" in durable["handoff"]["next_action"]
+        assert durable["identity_resolution_status"] == "ambiguous"
+        assert durable["response_source_reason"] == "account_ambiguous"
+        assert entry["result"]["needs_more_info_message"] == message
+        assert entry["human_review_required"] is True
+        assert entry["participant_reply_safe"] is False
+        assert entry["degraded"] is False   # business outcome, not a failure
+        state, next_action = aggregate_states([entry], unprocessed=0)
+        assert (state.value, next_action.value) == ("succeeded", "human_review")
+
     @pytest.mark.parametrize(
         ("outcome", "expected_code", "result_key"),
         [

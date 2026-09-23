@@ -510,7 +510,7 @@ class TicketOrchestrator:
             return await self._handle_kq(ext, req, classification)
         if route == "generate_response":
             return await self._handle_gr(ext, req, classification, total_inquiries)
-        return self._needs_more_info(ext, classification)
+        return self._needs_more_info(ext, classification, req)
 
     async def run_ticket(self, req: Any) -> List[InquiryOutcome]:
         """Conveniencia para tests/harness: extract → handle each (capped).
@@ -592,11 +592,16 @@ class TicketOrchestrator:
         if synthesis is None or synthesis.insufficient_inquiry or not question:
             # Resultado de NEGOCIO válido: la síntesis funcionó y declaró la
             # inquiry insuficiente — un NMI legítimo sí es publicable.
+            message, nmi_diag = _apply_nmi_identity_policy(
+                req,
+                getattr(classification, "user_message", None) or _DEFAULT_GREETING,
+                {**diag, "kb_insufficient": True},
+            )
             return InquiryOutcome(
                 inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
                 record_keeper=ext.record_keeper, plan_type=ext.plan_type,
-                needs_more_info_message=getattr(classification, "user_message", None) or _DEFAULT_GREETING,
-                diagnostics={**diag, "kb_insufficient": True},
+                needs_more_info_message=message,
+                diagnostics=nmi_diag,
             )
 
         question = redact_retrieval_context(
@@ -863,12 +868,19 @@ class TicketOrchestrator:
             getattr(ticket, "user_email", None),
         )))
 
-    def _needs_more_info(self, ext: ExtractedInquiry, classification: Any) -> InquiryOutcome:
+    def _needs_more_info(
+        self, ext: ExtractedInquiry, classification: Any, req: Any = None
+    ) -> InquiryOutcome:
+        message, diagnostics = _apply_nmi_identity_policy(
+            req,
+            getattr(classification, "user_message", None) or _DEFAULT_GREETING,
+            self._classifier_diag(classification),
+        )
         return InquiryOutcome(
             inquiry=ext.inquiry, topic=ext.topic, route="needs_more_info",
             record_keeper=ext.record_keeper, plan_type=ext.plan_type,
-            needs_more_info_message=getattr(classification, "user_message", None) or _DEFAULT_GREETING,
-            diagnostics=self._classifier_diag(classification),
+            needs_more_info_message=message,
+            diagnostics=diagnostics,
         )
 
     # ------------------------------------------------------------------
@@ -1351,6 +1363,39 @@ class TicketOrchestrator:
 # ============================================================================
 # Helpers
 # ============================================================================
+
+def _identity_context_dump(req: Any) -> Optional[Dict[str, Any]]:
+    identity = getattr(req, "identity_context", None) if req is not None else None
+    if identity is None:
+        return None
+    if hasattr(identity, "model_dump"):
+        dumped = identity.model_dump()
+        return dumped if isinstance(dumped, dict) else None
+    return dict(identity) if isinstance(identity, dict) else None
+
+
+def _apply_nmi_identity_policy(
+    req: Any, message: str, diagnostics: Dict[str, Any]
+) -> Tuple[str, Dict[str, Any]]:
+    """Reuse the KQ identity policy so unresolved lookup never publishes a
+    transactional clarification. Matched/general_knowledge messages stay."""
+    context = _identity_context_dump(req)
+    if context is None or context.get("identity_resolution_status") == "matched":
+        return message, diagnostics
+    # Deferred on purpose: hoisting this would pull the Pinecone/engine
+    # stack into every import of the orchestrator (~1s) for a policy that
+    # only unresolved identities reach. The cached import costs ~0.1us.
+    from data_pipeline.rag_engine import RAGEngine
+
+    fixed, metadata = RAGEngine._apply_identity_knowledge_policy(
+        {"answer": message, "key_points": []},
+        context,
+    )
+    merged = {**diagnostics, **metadata}
+    if metadata.get("human_review_required") is True:
+        return str(fixed.get("answer") or message), merged
+    return message, merged
+
 
 def _flatten_required_fields(required_fields: Any) -> List[Dict[str, Any]]:
     """Flatten the engine's ``required_fields`` (Dict[str, List[item]]) into the

@@ -1814,7 +1814,13 @@ def _entry_from_outcome(index: int, outcome: InquiryOutcome) -> Dict[str, Any]:
 
     degraded, code = outcome_is_degraded(outcome)
     metadata = getattr(outcome.generate_result if outcome.generate_result is not None else outcome.knowledge_result, "metadata", None) or {}
-    review_required = response_requires_review(getattr(outcome.generate_result, "response", None), metadata)
+    diagnostics = outcome.diagnostics or {}
+    review_required = (
+        response_requires_review(
+            getattr(outcome.generate_result, "response", None), metadata
+        )
+        or diagnostics.get("human_review_required") is True
+    )
     result = outcome_to_inquiry_result(outcome)
     response_block = (
         result.knowledge_answer

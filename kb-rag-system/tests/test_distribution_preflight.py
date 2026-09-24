@@ -1632,3 +1632,63 @@ def test_unsolicited_reset_mention_is_not_a_failed_recovery_signal():
     assert mentions_failed_password_reset(
         "My password reset did not work, but I can now log in.",
     ) is False
+
+
+# --- TKT-911961 sibling: the "termination distribution" PRODUCT NAME ---------
+# Same class as the "separation distribution" guard above. A participant on
+# leave with an unknown employment record who asks about the product must not
+# be recorded as having been terminated, nor have a distribution authorized,
+# purely because the product noun phrase carries a bare "termination" token.
+
+
+@pytest.mark.parametrize("inquiry", [
+    "I am on leave and may return. Can I take a termination distribution?",
+    "What is the termination distribution paperwork?",
+    "Please send the termination distribution request form.",
+    "How long does a termination withdrawal take?",
+])
+def test_termination_product_name_is_not_an_employment_claim(inquiry):
+    from data_pipeline.rag_engine import detect_advisory_concepts
+
+    concepts = detect_advisory_concepts(inquiry, "identity", None)
+    assert concepts["separation_signal"] is False
+    assert concepts["explicit_separation_claim"] is False
+    assert "termination_distribution_request" not in concepts["detected_concepts"]
+
+
+def test_termination_product_name_does_not_authorize_a_distribution():
+    """Leave + unknown employment: asking about the product asserts nothing."""
+    engine = RAGEngine.__new__(RAGEngine)
+    signals = engine._infer_retrieval_signals(
+        "I am on leave and may return. Can I take a termination distribution?",
+        "identity", None,
+    )
+    assert signals["termination_distribution"] is False
+    assert signals["employment_state"] == "unknown"
+    assert signals.get("explicit_separation_claim") is not True
+
+
+@pytest.mark.parametrize("inquiry", [
+    # Genuine employment claims keep firing even when the product is named.
+    "I was terminated last month. Can I take a termination distribution?",
+    "I no longer work there. How do I request a termination distribution?",
+    "After my termination, can I roll over my 401(k)?",
+    "My termination date was in June and I want to withdraw.",
+    "I was terminated and need to access funds.",
+])
+def test_genuine_termination_language_still_signals_separation(inquiry):
+    from data_pipeline.rag_engine import detect_advisory_concepts
+
+    assert detect_advisory_concepts(inquiry, None, None)["separation_signal"] is True
+
+
+def test_actual_terminated_record_still_routes_as_termination_distribution():
+    """Control: the system-of-record status, not the product noun, decides."""
+    engine = RAGEngine.__new__(RAGEngine)
+    signals = engine._infer_retrieval_signals(
+        "Can I take a termination distribution?", "identity",
+        {"participant_data": {"employment_status": "Terminated",
+                              "termination_date": "2026-06-30"}},
+    )
+    assert signals["employment_state"] == "terminated"
+    assert signals["termination_distribution"] is True

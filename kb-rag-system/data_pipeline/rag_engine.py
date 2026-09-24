@@ -253,22 +253,27 @@ _EXPLICIT_SEPARATION_PHRASES = [
 ]
 
 # TKT-911961: "separation distribution" / "separation from service distribution"
-# is the NAME OF A PRODUCT, not a statement about the participant's employment.
-# Asking about the product (while on leave and possibly returning) must never
-# manufacture a termination, so the noun phrase is removed before any
-# separation token is looked for. Genuine claims ("I separated from service",
-# "no longer work") are untouched because they carry no product noun.
+# / "termination distribution" is the NAME OF A PRODUCT, not a statement about
+# the participant's employment. Asking about the product (while on leave and
+# possibly returning) must never manufacture a termination, so the noun phrase
+# is removed before any separation token is looked for. Genuine claims ("I
+# separated from service", "I was terminated", "no longer work") are untouched
+# because they carry no product noun.
 # Only DISTRIBUTION product nouns are listed. Severance vocabulary
 # ("separation package/paperwork/payment") is genuine separation language and
 # must keep firing the signal, so it is deliberately absent here.
+# TKT-911961 sibling: the leading noun is phrase-anchored — only the exact
+# "<separation|termination> <distribution|withdrawal|payout>" adjacency is
+# stripped. "after my termination, ...", "my termination date" and "I was
+# terminated" keep their token because no product noun follows.
 _SEPARATION_PRODUCT_NAME_RE = re.compile(
-    r"\bseparation(?:\s+from\s+service)?[\s-]+"
+    r"\b(?:separation(?:\s+from\s+service)?|termination)[\s-]+"
     r"(?:distribution|withdrawal|payout)s?\b"
 )
 
 
 def strip_separation_product_names(text: Optional[str]) -> str:
-    """Lowercase ``text`` with separation-product noun phrases removed."""
+    """Lowercase ``text`` with separation/termination product nouns removed."""
     return _SEPARATION_PRODUCT_NAME_RE.sub(" ", (text or "").lower())
 
 
@@ -381,7 +386,22 @@ def detect_advisory_concepts(
         "moving my",
         "moved my",
     ])
-    separation_signal = _contains_any(strip_separation_product_names(text), [
+    # F7 (eval 2026-06-22): an EXPLICIT, decided/completed claim that the
+    # participant has separated from THIS employer (resigned, fired, laid off, no
+    # longer works here). Deliberately tighter than separation_signal: it excludes
+    # ambiguous/process tokens ("separation", bare "terminated", "quitting") and —
+    # critically — the rollover-source phrases "previous/former EMPLOYER" (which
+    # describe where an INCOMING rollover's money sits, not a self-separation), so
+    # it never collides with the incoming-rollover path (F1). Used to override a
+    # stale "active" system status: withhold active-only options
+    # (hardship/loan/in-service) and route to ask-termination-date + escalate.
+    explicit_separation_claim = _contains_any(text, _EXPLICIT_SEPARATION_PHRASES)
+    # TKT-911961 sibling: the product-name strip must not silently drop a
+    # participant who states a real separation AND names the product ("I no
+    # longer work there. How do I request a termination distribution?"). An
+    # explicit claim carries the signal on its own, so stripping the product
+    # noun can only remove product-only firings.
+    separation_signal = explicit_separation_claim or _contains_any(strip_separation_product_names(text), [
         "separation",
         "separated",
         "quit",
@@ -422,16 +442,6 @@ def detect_advisory_concepts(
         "tuition",
     ]) or _hardship_with_context(text)
     loan_signal = _contains_any(text, ["loan", "borrow", "401(k) loan", "401k loan"])
-    # F7 (eval 2026-06-22): an EXPLICIT, decided/completed claim that the
-    # participant has separated from THIS employer (resigned, fired, laid off, no
-    # longer works here). Deliberately tighter than separation_signal: it excludes
-    # ambiguous/process tokens ("separation", bare "terminated", "quitting") and —
-    # critically — the rollover-source phrases "previous/former EMPLOYER" (which
-    # describe where an INCOMING rollover's money sits, not a self-separation), so
-    # it never collides with the incoming-rollover path (F1). Used to override a
-    # stale "active" system status: withhold active-only options
-    # (hardship/loan/in-service) and route to ask-termination-date + escalate.
-    explicit_separation_claim = _contains_any(text, _EXPLICIT_SEPARATION_PHRASES)
     while_employed_funds_access = active_participant and wants_funds
 
     resolved_topic = resolve_topic_filter(topic) or ([topic_text] if topic_text else [])
@@ -2503,8 +2513,9 @@ class RAGEngine:
         )
         termination_distribution = (
             employment_state == "terminated"
-            # TKT-911961: the product name "separation distribution" is stripped
-            # first so asking about it never asserts that the participant left.
+            # TKT-911961: the product names "separation distribution" and
+            # "termination distribution" are stripped first so asking about one
+            # never asserts that the participant left.
             or self._contains_any(strip_separation_product_names(profile_text), [
                 "left my job",
                 "left his employer",

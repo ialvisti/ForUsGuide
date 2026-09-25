@@ -1333,6 +1333,8 @@ class RAGEngine:
                     "plan_context": (collected_data or {}).get("internal_plan_context", {}),
                     "preflight": (collected_data or {}).get("internal_preflight_context", {}),
                 }
+            if termination_response_policy_info.get("inapplicable_options_unresolved"):
+                question_metadata["human_review_required"] = True
 
             coverage_gaps = parsed.get("coverage_gaps", [])
             if not isinstance(coverage_gaps, list):
@@ -2598,6 +2600,9 @@ class RAGEngine:
             "contact_or_reference": contact_or_reference,
             "is_age_59_5_or_older": age_59_5_status,
             "termination_date_present": termination_date_present,
+            "rollover_source_balance_state": self._typed_rollover_source_balance_state(
+                collected_data
+            ),
             "inquiry_intent": self._infer_inquiry_intent(profile_text),
         }
 
@@ -3475,9 +3480,14 @@ class RAGEngine:
                 status = "needs_verification"
             coverage.append({"question_index": index, "status": status, "answer_reference": reference})
         incomplete = sum(item["status"] == "needs_verification" for item in coverage)
-        return {"question_coverage": coverage, "incomplete_question_count": incomplete,
+        unresolved = parsed.get("inapplicable_options_unresolved")
+        has_unresolved = isinstance(unresolved, list) and bool(unresolved)
+        metadata = {"question_coverage": coverage, "incomplete_question_count": incomplete,
                 "requested_questions": [question[:1000] if isinstance(question, str) else "" for question in questions[:12]],
-                "human_review_required": incomplete > 0}
+                "human_review_required": incomplete > 0 or has_unresolved}
+        if has_unresolved:
+            metadata["inapplicable_options_unresolved"] = unresolved
+        return metadata
 
     _TERMINATION_FORM_URL = (
         "https://secure.rightsignature.com/templates/"
@@ -3836,6 +3846,569 @@ class RAGEngine:
         holdings_cleared = holdings.get("status") == "known" and holdings.get("value") == 0
         return enrolled and not holdings_cleared
 
+    _INSERVICE_OPTION_SUBJECTS = {
+        "hardship": re.compile(r"hardship", re.I),
+        "loan": re.compile(r"\bloan", re.I),
+        "rollover_source": re.compile(r"rollover[-\s]source", re.I),
+        "age_based_in_service": re.compile(r"in[-\s]service distribution", re.I),
+    }
+    _INSERVICE_LIST_INTROS = (
+        re.compile(r"^(?P<prefix>options:)\s*", re.I),
+        re.compile(r"(?P<prefix>.*\bthe main possible options are)\s*", re.I | re.S),
+        re.compile(r"(?P<prefix>.*\bpossible options are)\s*", re.I | re.S),
+        re.compile(r"(?P<prefix>.*\bchoices are)\s*", re.I | re.S),
+        re.compile(r"(?P<prefix>.*\broutes that may exist are)\s*", re.I | re.S),
+        re.compile(r"(?P<prefix>.*\boptions include)\s*", re.I | re.S),
+        re.compile(r"(?P<prefix>.*\bmay take)\s*", re.I | re.S),
+        re.compile(r"(?P<prefix>.*\bcan take)\s*", re.I | re.S),
+    )
+    _INSERVICE_NON_OFFER = re.compile(
+        r"\b(?:not available|generally not available|is not an option|"
+        r"are not available|does not apply|do not apply|may not apply|"
+        r"would typically not|do not qualify|does not qualify|"
+        r"once you reach|when you (?:reach|turn)|after you (?:reach|turn)|"
+        r"may become eligible|become eligible for)\b",
+        re.I,
+    )
+    _INSERVICE_BALANCE_ZERO = re.compile(
+        r"(?:\$\s*0(?:\.0+)?|\b0\.0+\b|"
+        r"\bbalance\b[^.]{0,48}\b(?:zero|0)\b|"
+        r"\b(?:zero|0)\b[^.]{0,48}\bbalance\b)",
+        re.I,
+    )
+    _INSERVICE_SOURCE_ZERO = re.compile(
+        r"(?:rollover[-\s]source.{0,96}(?:\$\s*0(?:\.0+)?|\b0\.0+\b|\bzero\b)|"
+        r"(?:\$\s*0(?:\.0+)?|\b0\.0+\b|\bzero\b).{0,96}rollover[-\s]source)",
+        re.I,
+    )
+    _INSERVICE_ROLLOVER_NON_OFFER_REPLACEMENT = (
+        "A rollover-source withdrawal does not apply to you."
+    )
+    _INSERVICE_LEAF_MAX_DEPTH = 8
+    _INSERVICE_CORRUPT_PROSE = re.compile(
+        r"\bare,|\b;;|distributionss|,\s*;|are\s+;|;\s*\.|"
+        r"\b(?:may|can) take but\b",
+        re.I,
+    )
+    _INSERVICE_CLAUSE_SPLIT = re.compile(r",\s+(?:and|or)\s+", re.I)
+
+    @staticmethod
+    def _typed_rollover_source_balance_state(
+        collected_data: Optional[Dict[str, Any]],
+    ) -> str:
+        sources = ((collected_data or {}).get("internal_preflight_context") or {}).get("sources")
+        sources = sources if isinstance(sources, dict) else {}
+        rollover = sources.get("rollover_balance")
+        rollover = rollover if isinstance(rollover, dict) else {}
+        if rollover.get("status") != "known":
+            return "unknown"
+        value = rollover.get("value")
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            return "unknown"
+        if value == 0:
+            return "known_zero"
+        if value > 0:
+            return "known_positive"
+        return "unknown"
+
+    @classmethod
+    def _inservice_option_applicability(
+        cls, collected_data: Optional[Dict[str, Any]]
+    ) -> Dict[str, str]:
+        state = cls._typed_rollover_source_balance_state(collected_data)
+        if state == "known_zero":
+            rollover = "inapplicable"
+        elif state == "known_positive":
+            rollover = "applicable"
+        else:
+            rollover = "unknown"
+        age_flag = ((collected_data or {}).get("participant_data") or {}).get(
+            "is_age_59_5_or_older"
+        )
+        if age_flag is False:
+            age = "inapplicable"
+        elif age_flag is True:
+            age = "applicable"
+        else:
+            age = "unknown"
+        return {
+            "rollover_source": rollover,
+            "age_based_in_service": age,
+        }
+
+    @classmethod
+    def _option_subjects_in_text(cls, text: str) -> set:
+        return {
+            key
+            for key, pattern in cls._INSERVICE_OPTION_SUBJECTS.items()
+            if pattern.search(text or "")
+        }
+
+    @classmethod
+    def _inservice_item_text(cls, item: Any) -> str:
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            for key in ("text", "content", "point", "value", "key_point"):
+                value = item.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value
+            return " ".join(
+                value for value in item.values()
+                if isinstance(value, str) and value.strip()
+            )
+        return cls._response_item_text(item)
+
+    @classmethod
+    def _is_inservice_non_offer_note(cls, text: str) -> bool:
+        return bool(cls._INSERVICE_NON_OFFER.search(text or ""))
+
+    @classmethod
+    def _has_inservice_source_zero_figure(cls, text: str) -> bool:
+        return bool(text) and bool(cls._INSERVICE_SOURCE_ZERO.search(text))
+
+    @classmethod
+    def _inservice_source_zero_clause(cls, text: str) -> bool:
+        return cls._has_inservice_source_zero_figure(text) or (
+            "rollover_source" in cls._option_subjects_in_text(text)
+            and bool(cls._INSERVICE_BALANCE_ZERO.search(text))
+        )
+
+    @classmethod
+    def _truthful_rollover_non_offer(cls, text: str) -> str:
+        if cls._is_inservice_non_offer_note(text) and re.search(
+            r"\bis not an option\b", text or "", re.I
+        ):
+            return "A rollover-source withdrawal is not an option."
+        return cls._INSERVICE_ROLLOVER_NON_OFFER_REPLACEMENT
+
+    @classmethod
+    def _strip_inservice_known_zero_disclosure(cls, text: str) -> str:
+        """Keep a non-offer, drop an account-specific source zero figure."""
+        if not isinstance(text, str) or not text.strip():
+            return text
+        if not cls._inservice_source_zero_clause(text):
+            return text
+        kept_sentences: List[str] = []
+        changed = False
+        for sentence in cls._split_inservice_sentences(text):
+            if not cls._inservice_source_zero_clause(sentence):
+                kept_sentences.append(sentence)
+                continue
+            clauses = [
+                part.strip()
+                for part in re.split(r"\s*;\s*", sentence)
+                if part.strip()
+            ]
+            kept_clauses = [
+                clause for clause in clauses
+                if not cls._inservice_source_zero_clause(clause)
+            ]
+            if kept_clauses:
+                rebuilt = "; ".join(kept_clauses)
+                if not rebuilt.endswith((".", "!", "?")):
+                    rebuilt += "."
+                if (
+                    cls._is_inservice_non_offer_note(rebuilt)
+                    and not cls._inservice_source_zero_clause(rebuilt)
+                    and not re.search(r"your (?:current )?balance is", rebuilt, re.I)
+                ):
+                    kept_sentences.append(rebuilt)
+                    changed = True
+                    continue
+            subjects = cls._option_subjects_in_text(sentence)
+            if (
+                "rollover_source" in subjects
+                and cls._is_inservice_non_offer_note(sentence)
+            ):
+                kept_sentences.append(cls._truthful_rollover_non_offer(sentence))
+                changed = True
+                continue
+            return text
+        stripped = " ".join(kept_sentences).strip()
+        if (
+            changed
+            and stripped
+            and not cls._inservice_source_zero_clause(stripped)
+            and not re.search(r"your (?:current )?balance is", stripped, re.I)
+        ):
+            return stripped
+        if (
+            stripped
+            and cls._is_inservice_non_offer_note(stripped)
+            and not cls._inservice_source_zero_clause(stripped)
+            and not re.search(r"your (?:current )?balance is", stripped, re.I)
+        ):
+            return stripped
+        return text
+
+    @classmethod
+    def _split_inservice_sentences(cls, text: str) -> List[str]:
+        return [part.strip() for part in re.split(r"(?<=[.!?])\s+", text.strip()) if part.strip()]
+
+    @classmethod
+    def _inservice_text_leaves(cls, item: Any, depth: int = 0) -> tuple[List[str], bool]:
+        if depth > cls._INSERVICE_LEAF_MAX_DEPTH:
+            return [], True
+        if isinstance(item, str):
+            return ([item] if item.strip() else []), False
+        if isinstance(item, dict):
+            leaves: List[str] = []
+            truncated = False
+            for value in item.values():
+                child_leaves, child_truncated = cls._inservice_text_leaves(
+                    value, depth + 1
+                )
+                leaves.extend(child_leaves)
+                truncated = truncated or child_truncated
+            return leaves, truncated
+        if isinstance(item, (list, tuple)):
+            leaves: List[str] = []
+            truncated = False
+            for value in item:
+                child_leaves, child_truncated = cls._inservice_text_leaves(
+                    value, depth + 1
+                )
+                leaves.extend(child_leaves)
+                truncated = truncated or child_truncated
+            return leaves, truncated
+        return [], False
+
+    @classmethod
+    def _offered_inapplicable_subjects(cls, text: str, inapplicable: set) -> set:
+        offered: set = set()
+        if not text or not inapplicable:
+            return offered
+        for sentence in cls._split_inservice_sentences(text):
+            units = [
+                part.strip()
+                for part in re.split(r"\s*;\s*", sentence)
+                if part.strip()
+            ] or [sentence]
+            for unit in units:
+                all_subjects = cls._option_subjects_in_text(unit)
+                subjects = all_subjects & inapplicable
+                if not subjects:
+                    continue
+                if cls._is_inservice_non_offer_note(unit):
+                    if len(subjects) == 1 and all_subjects == subjects:
+                        continue
+                    offered |= subjects
+                    continue
+                offered |= subjects
+        return offered
+
+    @classmethod
+    def _offered_inapplicable_subjects_in_item(cls, item: Any, inapplicable: set) -> set:
+        offered: set = set()
+        if not inapplicable:
+            return offered
+        leaves, truncated = cls._inservice_text_leaves(item)
+        if truncated:
+            blob = cls._response_item_text(item)
+            blob_subjects = cls._option_subjects_in_text(blob) & inapplicable
+            return blob_subjects or set(inapplicable)
+        if not leaves:
+            blob = cls._response_item_text(item)
+            return cls._offered_inapplicable_subjects(blob, inapplicable)
+        for leaf in leaves:
+            offered |= cls._offered_inapplicable_subjects(leaf, inapplicable)
+        return offered
+
+    @classmethod
+    def _split_inservice_list_tail(cls, remainder: str) -> tuple[str, str]:
+        if ";" not in remainder:
+            return remainder, ""
+        if "," in remainder:
+            head, tail = remainder.split(";", 1)
+            if not cls._option_subjects_in_text(tail):
+                return head.strip(), ";" + tail
+            return remainder, ""
+        parts = remainder.split(";")
+        if parts and not cls._option_subjects_in_text(parts[-1]):
+            return ";".join(parts[:-1]).strip(), ";" + parts[-1]
+        return remainder, ""
+
+    @classmethod
+    def _split_inservice_option_list(cls, list_text: str) -> List[str]:
+        text = list_text.strip()
+        if not text:
+            return []
+        if ";" in text and "," not in text:
+            parts = [part.strip() for part in text.split(";") if part.strip()]
+        elif "," in text:
+            parts = []
+            for chunk in re.split(r",\s*", text):
+                chunk = re.sub(r"^(?:or|and)\s+", "", chunk.strip(), flags=re.I)
+                if not chunk:
+                    continue
+                parts.extend(
+                    piece.strip()
+                    for piece in re.split(r"\s+(?:or|and)\s+", chunk, flags=re.I)
+                    if piece.strip()
+                )
+        else:
+            parts = [
+                piece.strip()
+                for piece in re.split(r"\s+(?:or|and)\s+", text, flags=re.I)
+                if piece.strip()
+            ]
+        cleaned = [
+            re.sub(r"^(?:or|and)\s+", "", part, flags=re.I).strip(" .")
+            for part in parts
+        ]
+        return [part for part in cleaned if part]
+
+    @classmethod
+    def _join_inservice_option_list(
+        cls, items: List[str], style: str, conjunction: str
+    ) -> str:
+        if not items:
+            return ""
+        if len(items) == 1:
+            return items[0]
+        if style == "semicolon":
+            return "; ".join(items)
+        if len(items) == 2:
+            return f"{items[0]} {conjunction} {items[1]}"
+        return f"{', '.join(items[:-1])}, {conjunction} {items[-1]}"
+
+    @classmethod
+    def _try_rewrite_inservice_enumeration(
+        cls, text: str, inapplicable: set
+    ) -> Optional[str]:
+        match = None
+        for pattern in cls._INSERVICE_LIST_INTROS:
+            found = pattern.search(text)
+            if found:
+                match = found
+                break
+        if not match:
+            return None
+        prefix = match.group("prefix")
+        remainder = text[match.end():]
+        list_text, tail = cls._split_inservice_list_tail(remainder)
+        ended_with_period = list_text.rstrip().endswith(".")
+        items = cls._split_inservice_option_list(list_text)
+        if len(items) < 2:
+            return None
+        classified = [
+            (item, cls._option_subjects_in_text(item)) for item in items
+        ]
+        if any(not subjects for _, subjects in classified):
+            return None
+        kept = [
+            item for item, subjects in classified
+            if not (subjects and subjects <= inapplicable)
+        ]
+        if kept == items:
+            return None
+        if not kept:
+            return None
+        # Contrastive leftovers ("but a loan is not available") are clauses,
+        # not option-list items. Refuse rather than glue them onto a verb prefix.
+        if any(
+            cls._is_inservice_non_offer_note(item)
+            or re.match(
+                r"(?:but|however|though|although)\b", item, flags=re.I
+            )
+            for item in kept
+        ):
+            return None
+        conjunction = "or" if re.search(r"\bor\b", list_text, re.I) else "and"
+        style = "semicolon" if (";" in list_text and "," not in list_text) else "comma"
+        joined = cls._join_inservice_option_list(kept, style, conjunction)
+        rebuilt = f"{prefix} {joined}".strip()
+        if tail:
+            rebuilt = rebuilt.rstrip(".; ") + tail
+        elif ended_with_period and not rebuilt.endswith("."):
+            rebuilt += "."
+        return rebuilt
+
+    @classmethod
+    def _try_rewrite_inservice_clauses(
+        cls, text: str, inapplicable: set
+    ) -> Optional[str]:
+        sentences = cls._split_inservice_sentences(text)
+        kept_sentences: List[str] = []
+        changed = False
+        for sentence in sentences:
+            subjects = cls._option_subjects_in_text(sentence)
+            targets = subjects & inapplicable
+            if not targets:
+                kept_sentences.append(sentence)
+                continue
+            if cls._is_inservice_non_offer_note(sentence) and subjects <= inapplicable:
+                kept_sentences.append(
+                    cls._strip_inservice_known_zero_disclosure(sentence)
+                )
+                continue
+            if subjects <= inapplicable:
+                changed = True
+                continue
+            clauses = [
+                clause.strip()
+                for clause in cls._INSERVICE_CLAUSE_SPLIT.split(sentence)
+                if clause.strip()
+            ]
+            if len(clauses) < 2:
+                return None
+            kept_clauses: List[str] = []
+            for clause in clauses:
+                clause_subjects = cls._option_subjects_in_text(clause)
+                if clause_subjects and clause_subjects <= inapplicable:
+                    if cls._is_inservice_non_offer_note(clause):
+                        kept_clauses.append(clause)
+                    else:
+                        changed = True
+                    continue
+                kept_clauses.append(clause)
+            if not kept_clauses:
+                changed = True
+                continue
+            if len(kept_clauses) == len(clauses):
+                return None
+            rebuilt = kept_clauses[0]
+            if rebuilt and rebuilt[0].islower():
+                rebuilt = rebuilt[0].upper() + rebuilt[1:]
+            if not rebuilt.endswith((".", "!", "?")):
+                rebuilt += "."
+            kept_sentences.append(rebuilt)
+            changed = True
+        if not changed:
+            return None
+        return " ".join(kept_sentences).strip()
+
+    @classmethod
+    def _rewrite_inapplicable_inservice_option_text(
+        cls, text: str, inapplicable: set
+    ) -> str:
+        """Drop or rebuild inapplicable option offers. Unproven edits are refused."""
+        if not isinstance(text, str) or not inapplicable:
+            return text
+        if "rollover_source" in inapplicable:
+            text = cls._strip_inservice_known_zero_disclosure(text)
+        subjects = cls._option_subjects_in_text(text)
+        targets = subjects & inapplicable
+        if not targets:
+            return text
+        if subjects <= inapplicable and cls._is_inservice_non_offer_note(text):
+            return cls._strip_inservice_known_zero_disclosure(text)
+        if subjects <= inapplicable:
+            return ""
+        rewritten = cls._try_rewrite_inservice_enumeration(text, inapplicable)
+        if rewritten is None:
+            rewritten = cls._try_rewrite_inservice_clauses(text, inapplicable)
+        if rewritten is None:
+            return text
+        rewritten = re.sub(r"\s+", " ", rewritten).strip()
+        if not rewritten:
+            return ""
+        if cls._INSERVICE_CORRUPT_PROSE.search(rewritten):
+            return text
+        if cls._offered_inapplicable_subjects(rewritten, inapplicable):
+            return text
+        if "rollover_source" in inapplicable and cls._inservice_source_zero_clause(rewritten):
+            rewritten = cls._strip_inservice_known_zero_disclosure(rewritten)
+            if cls._inservice_source_zero_clause(rewritten):
+                return text
+        original_applicable = subjects - inapplicable
+        if original_applicable - cls._option_subjects_in_text(rewritten):
+            return text
+        return rewritten
+
+    @classmethod
+    def _rewrite_inapplicable_inservice_option_item(
+        cls, item: Any, inapplicable: set
+    ) -> Any:
+        if isinstance(item, str):
+            return cls._rewrite_inapplicable_inservice_option_text(item, inapplicable)
+        if isinstance(item, dict):
+            updated = copy.deepcopy(item)
+            saw_option_text = False
+            all_dropped = True
+            changed = False
+            for key, value in list(updated.items()):
+                if not isinstance(value, str) or not cls._option_subjects_in_text(value):
+                    continue
+                saw_option_text = True
+                rewritten = cls._rewrite_inapplicable_inservice_option_text(
+                    value, inapplicable
+                )
+                if rewritten == "":
+                    updated[key] = rewritten
+                    changed = True
+                    continue
+                all_dropped = False
+                if rewritten != value:
+                    updated[key] = rewritten
+                    changed = True
+            if not saw_option_text:
+                return item
+            if all_dropped and changed:
+                return ""
+            return updated if changed else item
+        return item
+
+    @staticmethod
+    def _dedupe_inservice_key_points(points: List[Any]) -> List[Any]:
+        seen = set()
+        deduped: List[Any] = []
+        for item in points:
+            if isinstance(item, str):
+                key = item.strip().lower()
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(item)
+            elif isinstance(item, dict):
+                try:
+                    key = json.dumps(item, ensure_ascii=False, sort_keys=True)
+                except (TypeError, ValueError):
+                    key = str(item)
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped.append(item)
+            else:
+                deduped.append(item)
+        return deduped
+
+    @classmethod
+    def _sync_coverage_after_inservice_option_rewrite(
+        cls,
+        fixed: Dict[str, Any],
+        original_to_updated: Dict[str, str],
+        inapplicable: set,
+    ) -> None:
+        coverage = fixed.get("question_coverage")
+        if not isinstance(coverage, list):
+            return
+        for item in coverage:
+            if not isinstance(item, dict):
+                continue
+            reference = item.get("answer_reference")
+            if not isinstance(reference, str) or not reference.strip():
+                continue
+            if reference in original_to_updated:
+                updated = original_to_updated[reference]
+            else:
+                updated = cls._rewrite_inapplicable_inservice_option_text(
+                    reference, inapplicable
+                )
+            if updated == "":
+                item["status"] = "needs_verification"
+                continue
+            if updated == reference:
+                continue
+            enumeration = cls._try_rewrite_inservice_enumeration(
+                reference, inapplicable
+            )
+            if enumeration is None:
+                item["status"] = "needs_verification"
+                continue
+            item["answer_reference"] = updated
+
     @classmethod
     def _apply_termination_response_policy(
         cls,
@@ -3985,8 +4558,65 @@ class RAGEngine:
                         points = [item for item in response.get("key_points") or [] if not re.search(
                             r"\b(?:fees?|charges?|costs?)\b", cls._response_item_text(item),
                         )]
+                        applicability = cls._inservice_option_applicability(collected_data)
+                        inapplicable = {
+                            name for name, state in applicability.items()
+                            if state == "inapplicable"
+                        }
+                        if inapplicable:
+                            rewritten_points: List[Any] = []
+                            original_to_updated: Dict[str, str] = {}
+                            for item in points:
+                                updated = cls._rewrite_inapplicable_inservice_option_item(
+                                    item, inapplicable
+                                )
+                                if isinstance(item, str):
+                                    original_to_updated[item] = (
+                                        updated if isinstance(updated, str) else item
+                                    )
+                                if updated == "":
+                                    if isinstance(item, str):
+                                        original_to_updated[item] = ""
+                                    continue
+                                rewritten_points.append(updated)
+                            points = rewritten_points
+                            offered = set()
+                            for item in points:
+                                offered |= cls._offered_inapplicable_subjects_in_item(
+                                    item, inapplicable
+                                )
+                            if "rollover_source" in inapplicable:
+                                for item in points:
+                                    leaves, truncated = cls._inservice_text_leaves(item)
+                                    if truncated:
+                                        offered.add("rollover_source")
+                                        continue
+                                    for leaf in leaves:
+                                        if cls._inservice_source_zero_clause(leaf):
+                                            offered.add("rollover_source")
+                                            break
+                            unique_removed = sorted(name for name in inapplicable if name not in offered)
+                            unresolved = sorted(offered)
+                            cls._sync_coverage_after_inservice_option_rewrite(
+                                fixed, original_to_updated, inapplicable
+                            )
+                            if unresolved:
+                                info["inapplicable_options_unresolved"] = unresolved
+                                fixed["inapplicable_options_unresolved"] = unresolved
+                            if unique_removed:
+                                info["inapplicable_options_removed"] = unique_removed
+                                guardrails = list(fixed.get("guardrails_applied") or [])
+                                for name in unique_removed:
+                                    guardrails.append(
+                                        "Did not present inapplicable "
+                                        f"{name.replace('_', ' ')} as an available "
+                                        "in-service option."
+                                    )
+                                fixed["guardrails_applied"] = cls._dedupe_preserving_order(
+                                    guardrails
+                                )
                         points.append("Tell us which option you would like to explore, and our team will verify whether your plan permits it and what requirements apply.")
-                        response["key_points"] = cls._dedupe_preserving_order(points)
+                        response["key_points"] = cls._dedupe_inservice_key_points(points)
                 info.update(applied=True, informational_scope_preserved=True)
                 return fixed, info
             return parsed, info

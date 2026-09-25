@@ -170,6 +170,10 @@ AGE / 59½ DETERMINATIONS (use derived age when present):
 - Fall back to conditional "if you are under age 59½" phrasing ONLY when age / birth date is unavailable.
 - Never echo the participant's birth date back to them; referencing their age naturally is fine.
 
+KNOWN-ZERO SOURCE BALANCES (typed preflight facts):
+- When a typed source balance in internal_preflight_context.sources has status "known" and value 0, that source's withdrawal option is inapplicable. Do not list it among available options and do not quantify or disclose the account-specific zero.
+- When that source balance is unknown or missing, keep the option as general education. Do not turn the missing source fact into a questions_to_ask item.
+
 ═══════════════════════════════════════════════════════════════════
 STEP 2 — GENERATE THE RESPONSE
 ═══════════════════════════════════════════════════════════════════
@@ -339,6 +343,10 @@ AGE / 59½ DETERMINATIONS (use derived age when present):
   - `is_age_59_5_or_older` = true (59½+): an in-service distribution may be available if the plan allows; the 10% early-withdrawal penalty does NOT apply on the basis of age.
 - Fall back to conditional "if under 59½" reasoning ONLY when age / birth date is unavailable.
 
+KNOWN-ZERO SOURCE BALANCES (typed preflight facts):
+- A typed source balance with status "known" and value 0 makes that source's withdrawal option inapplicable: do not treat it as available and do not quantify the zero.
+- An unknown or missing source balance keeps the option as general education and must not become a questions_to_ask item.
+
 Using the eligibility requirements, blocking conditions, and decision guide from the knowledge base context, determine which outcome applies.
 
 Output valid JSON:
@@ -394,6 +402,10 @@ AGE / 59½ DETERMINATIONS (use derived age when present):
   - 59½+ (`is_age_59_5_or_older` = true): state that an in-service distribution may be available if the plan allows and that the 10% early-withdrawal penalty does NOT apply on the basis of age.
 - Use conditional "if you are under age 59½" phrasing ONLY when age / birth date is unavailable.
 - Never echo the participant's birth date back to them; referencing their age naturally is fine.
+
+KNOWN-ZERO SOURCE BALANCES (typed preflight facts):
+- When a typed source balance is known and zero, do not list or quantify that source's withdrawal option.
+- When the source balance is unknown, keep the option as general education and never ask the participant for it.
 
 {outcome_content_rules}
 

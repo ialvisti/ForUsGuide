@@ -179,42 +179,96 @@ function planFactDates(entry) {
     observed === null ? -Infinity : Date.parse(observed),
     asOf === null ? -Infinity : Date.parse(asOf + 'T00:00:00Z'))};
 }
-// Every projected plan fact of one job, keyed by field, so that two inquiries
-// disagreeing about the same identifier quarantine it everywhere instead of
-// disclosing whichever copy happened to be read first.
+function isPlanRecord(value) {
+  return value !== null && typeof value === 'object' && !Array.isArray(value) &&
+    Object.prototype.toString.call(value) === '[object Object]';
+}
+// A present verified_plan_facts value fails this job's identity when it is not
+// a record, or when a nonempty record is not exactly identity_verified true and
+// identity_resolution_status matched. {} is absence, as is a missing property.
+// Identity is decided before plan binding, so a cross-plan container with a bad
+// identity still fails the job. The caller reuses the existing identity veto.
+function planContainerIdentityRejected(value) {
+  if (!isPlanRecord(value)) return true;
+  if (Object.keys(value).length === 0) return false;
+  return value.identity_verified !== true || value.identity_resolution_status !== 'matched';
+}
+function presentPlanContainers(sites) {
+  const containers = [];
+  for (const metadata of sites) {
+    if (!isPlanRecord(metadata) || !Object.hasOwn(metadata, 'verified_plan_facts')) continue;
+    containers.push(metadata.verified_plan_facts);
+  }
+  return containers;
+}
+// Identity-matched container for this bound plan whose facts are missing or not
+// a record. That drops the whole plan projection and keeps participant facts.
+// A cross-plan container is ignored before its facts are read. Empty facts {}
+// is a valid mapping and is not a shape failure.
+function samePlanFactsShapeInvalid(value, boundPlanId) {
+  if (!boundPlanId || !isPlanRecord(value) || Object.keys(value).length === 0) return false;
+  if (value.identity_verified !== true || value.identity_resolution_status !== 'matched') return false;
+  if (value.plan_id !== boundPlanId) return false;
+  return !isPlanRecord(value.facts);
+}
+// A container may contribute plan facts only when it names the caller's bound
+// plan and its identity is already matched. The bound plan id is never taken
+// from the container. A cross-plan container yields nothing and does not
+// disturb a field an eligible container stated. A present container whose
+// identity is not exactly matched is rejected earlier, through the job's
+// identity veto. CD3: without an authoritative completion instant there is
+// nothing to bound the observation against.
+function planContainerEligible(value, boundPlanId, completedAt) {
+  if (completedAt === null || completedAt === undefined) return false;
+  if (!boundPlanId || !value || typeof value !== 'object' || Array.isArray(value)) return false;
+  if (value.identity_verified !== true || value.identity_resolution_status !== 'matched') return false;
+  if (!value.facts || typeof value.facts !== 'object' || Array.isArray(value.facts)) return false;
+  if (value.plan_id !== boundPlanId) return false;
+  return true;
+}
+// null means this occurrence is present but fails the existing source, date,
+// value, or sentinel guard, so the field is quarantined for the whole job.
+function planFactOccurrence(entry, key, source, completedAt) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+  if (entry.status !== 'known' || entry.source !== source) return null;
+  const dates = planFactDates(entry);
+  if (!dates || dates.latest > completedAt) return null;
+  const text = typeof entry.value === 'string' ? entry.value.trim() : null;
+  if (text === null || !PLAN_FACT_PATTERNS[key].test(text) ||
+      PLAN_FACT_SENTINELS.includes(text.toLowerCase())) return null;
+  return {value: text, status: 'known', source, observed_at: dates.observed, as_of: dates.asOf};
+}
+// Every plan-fact occurrence of one job, keyed by field. Two eligible
+// inquiries that disagree quarantine that field everywhere, and so does an
+// invalid occurrence of it (wrong source, a date after completion, a sentinel
+// or any other existing guard). A same-plan container whose facts are missing
+// or not a record quarantines every allowed plan key. A field that is simply
+// absent, repeated with the same valid value, or carried in an empty facts
+// mapping is not quarantined. Cross-plan containers are not scanned.
 function planFactSignatures(containers, boundPlanId, completedAt) {
-  const seen = new Map(), conflicting = new Set();
+  const seen = new Map(), quarantined = new Set();
   for (const context of containers) {
-    for (const [key, entry] of Object.entries(projectPlanFactEntries(context, boundPlanId, completedAt))) {
-      const signature = JSON.stringify(entry);
-      if (seen.has(key) && seen.get(key) !== signature) conflicting.add(key);
+    if (samePlanFactsShapeInvalid(context, boundPlanId)) {
+      for (const key of Object.keys(PLAN_FACT_SOURCES)) quarantined.add(key);
+      continue;
+    }
+    if (!planContainerEligible(context, boundPlanId, completedAt)) continue;
+    for (const [key, source] of Object.entries(PLAN_FACT_SOURCES)) {
+      if (!Object.hasOwn(context.facts, key)) continue;
+      const projected = planFactOccurrence(context.facts[key], key, source, completedAt);
+      const signature = projected === null ? null : JSON.stringify(projected);
+      if (signature === null || (seen.has(key) && seen.get(key) !== signature)) quarantined.add(key);
       else seen.set(key, signature);
     }
   }
-  return conflicting;
+  return quarantined;
 }
 function projectPlanFactEntries(value, boundPlanId, completedAt) {
   const facts = {};
-  // CD3. The date-bound validation is never skipped: with no authoritative
-  // completion instant from the correlated job there is nothing to bound the
-  // observation against, so the disclosure fails closed rather than relaxing.
-  if (completedAt === null || completedAt === undefined) return facts;
-  if (!boundPlanId || !value || typeof value !== 'object' || Array.isArray(value)) return facts;
-  if (value.identity_verified !== true || value.identity_resolution_status !== 'matched') return facts;
-  if (!value.facts || typeof value.facts !== 'object' || Array.isArray(value.facts)) return facts;
-  // A container naming another plan is a cross-plan claim: it yields nothing.
-  if (value.plan_id !== boundPlanId) return facts;
+  if (!planContainerEligible(value, boundPlanId, completedAt)) return facts;
   for (const [key, source] of Object.entries(PLAN_FACT_SOURCES)) {
-    const entry = value.facts[key];
-    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) continue;
-    if (entry.status !== 'known' || entry.source !== source) continue;
-    const dates = planFactDates(entry);
-    if (!dates) continue;
-    if (dates.latest > completedAt) continue;
-    const text = typeof entry.value === 'string' ? entry.value.trim() : null;
-    if (text === null || !PLAN_FACT_PATTERNS[key].test(text) ||
-        PLAN_FACT_SENTINELS.includes(text.toLowerCase())) continue;
-    facts[key] = {value: text, status: 'known', source, observed_at: dates.observed, as_of: dates.asOf};
+    const projected = planFactOccurrence(value.facts[key], key, source, completedAt);
+    if (projected) facts[key] = projected;
   }
   return facts;
 }
@@ -313,7 +367,14 @@ if (Object.hasOwn(accepted, 'ticket_job_id') || pollFields.some(key => Object.ha
 const rawInquiries = [data.primary, ...(data.related || [])].filter(Boolean);
 const identitySignals = [data, data.metadata, ...rawInquiries.flatMap(iq =>
   [iq, iq.metadata, iq.generate_response?.metadata, iq.knowledge_answer?.metadata])];
-const identityVeto = identitySignals.some(rejectsAnyAccountIdentity);
+// Same metadata sites this consumer projects, including poll metadata, which
+// canonical does not read. Present plan values are validated here; they are
+// not dropped before that check. A malformed one reuses the identity veto.
+const planMetadataSites = [data.metadata, ...rawInquiries.flatMap(iq =>
+  [iq.generate_response?.metadata, iq.knowledge_answer?.metadata])];
+const presentPlanFacts = presentPlanContainers(planMetadataSites);
+const identityVeto = identitySignals.some(rejectsAnyAccountIdentity) ||
+  presentPlanFacts.some(planContainerIdentityRejected);
 const needsAccountContext = iq => !!iq.generate_response ||
   iq.knowledge_answer?.metadata?.response_source_reason !== 'general_knowledge';
 const accountIdentityVeto = identityVeto && rawInquiries.some(needsAccountContext);
@@ -364,8 +425,7 @@ const factContainerMetadata = identityVeto ? [] :
     [iq.generate_response?.metadata, iq.knowledge_answer?.metadata])]
     .filter(metadata => metadata && typeof metadata === 'object' && !Array.isArray(metadata));
 const quarantinedPlanFacts = planFactSignatures(
-  factContainerMetadata.map(metadata => metadata.verified_plan_facts).filter(Boolean),
-  boundPlanId, jobCompletedAt);
+  identityVeto ? [] : presentPlanFacts, boundPlanId, jobCompletedAt);
 const quarantinedParticipantFacts = participantFactSignatures(
   factContainerMetadata.map(metadata => metadata.verified_participant_facts).filter(Boolean),
   jobCompletedAt);

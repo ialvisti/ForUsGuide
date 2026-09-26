@@ -30,7 +30,7 @@
       "baseline": "baselines/format-gr.js",
       "baseline_sha256": "214bf340994f8f165ad8af0996038cac8afaa8899ab32244176ac77ac981bd0a",
       "candidate": "candidates/format-gr.js",
-      "candidate_sha256": "e0a86fe3d2a518b297bdfc9e637826f373f6368efce63f892e76fd104c8cfa12",
+      "candidate_sha256": "2e02be8fb44c1c64df445eaa104e22a4d69099dfeeeff8153f4455c986de1fc2",
       "parameter_kind": "code",
       "wrapping": "replace jsCode with complete candidate source",
       "observed_node_name": "Format data for DevRev Internal notes"

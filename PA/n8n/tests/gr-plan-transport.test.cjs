@@ -421,3 +421,484 @@ test('CD6 an inline KQ response carries no job binding', () => {
   assert.equal(Object.hasOwn(payload, 'plan_id'), false,
     'the inline path has no correlated poll body and therefore no completion instant');
 });
+
+// --- whole-job plan quarantine includes invalid occurrences ----------------
+// canonical-evidence.js quarantines a plan field across the job when any
+// eligible occurrence of it is invalid. These cases are the root counterexamples
+// (wrong source, future observed_at, sentinel) in both inquiry orders, judged
+// by validateCanonicalEvidence rather than by a local reimplementation.
+const conversationDigest = () => ({type: 'devrev_conversation_snapshot', schema_version: 1,
+  hash_algorithm: 'sha256', digest: 'c'.repeat(64), complete: true, partial: false, truncated: false});
+function canonicalOf(poll) {
+  const conversation_reference = conversationDigest();
+  return validateCanonicalEvidence({
+    reference: {ticket_id: TICKET, ticket_job_id: JOB, conversation_reference},
+    poll: Object.assign(clone(poll), {conversation_reference}),
+    now: '2026-09-12T11:00:00Z',
+  });
+}
+function planProjections(payload) {
+  const spots = [['top_level', payload.metadata]];
+  for (const [index, inquiry] of payload.inquiries.entries()) {
+    if (inquiry.metadata) spots.push([`inquiry_${index}`, inquiry.metadata]);
+    if (inquiry.knowledge_answer?.metadata) spots.push([`inquiry_${index}_knowledge`, inquiry.knowledge_answer.metadata]);
+  }
+  return spots;
+}
+// Two inquiries plus a top-level copy of the same bound container. `edit` mutates
+// one inquiry's rk_plan_id. `invalidFirst` swaps which inquiry carries that edit.
+function pairedPlanJob(edit, invalidFirst = false) {
+  const x = job();
+  const valid = planFacts();
+  const edited = planFacts();
+  edit(edited.facts.rk_plan_id);
+  x.metadata.verified_plan_facts = planFacts();
+  x.primary.generate_response.metadata.verified_plan_facts = invalidFirst ? edited : valid;
+  const second = inquiry();
+  second.generate_response.metadata.verified_plan_facts = invalidFirst ? valid : edited;
+  x.related = [second];
+  x.total_inquiries_in_ticket = 2;
+  return x;
+}
+function assertPlanProjectionMatchesCanonical(payload, canonical) {
+  assert.ok(canonical.verified_plan_facts, canonical.reason_codes.join(','));
+  for (const [where, metadata] of planProjections(payload)) {
+    assert.deepEqual(metadata.verified_plan_facts, canonical.verified_plan_facts,
+      `${where} must match the canonical plan projection`);
+  }
+}
+
+for (const [name, edit, reason] of [
+  ['wrong source', entry => { entry.source = 'wrong.source'; }, 'invalid_plan_fact'],
+  ['future observed_at', entry => { entry.observed_at = '2026-09-12T10:06:00Z'; }, 'plan_fact_observed_after_completion'],
+  ['sentinel value', entry => { entry.value = 'unknown'; }, 'invalid_plan_fact'],
+]) {
+  for (const invalidFirst of [false, true]) {
+    test(`BD1 an invalid plan occurrence quarantines that field everywhere: ${name}, invalid inquiry ${invalidFirst ? 'first' : 'second'}`, () => {
+      const x = pairedPlanJob(edit, invalidFirst);
+      const canonical = canonicalOf(x);
+      const payload = run(x);
+      assert.ok(canonical.reason_codes.includes(reason), canonical.reason_codes.join(','));
+      assert.equal(Object.hasOwn(canonical.verified_plan_facts.facts, 'rk_plan_id'), false,
+        'canonical withholds the field for the whole job');
+      assert.equal(canonical.verified_plan_facts.facts.legal_plan_name.value, 'Acme Industries 401(k) Plan');
+      assertPlanProjectionMatchesCanonical(payload, canonical);
+      assert.equal(JSON.stringify(payload).includes('RK-77821'), false,
+        'the valid copy must not survive in any inquiry or the top-level metadata');
+      assert.equal(JSON.stringify(payload).includes('wrong.source'), false);
+      assert.equal(payload.plan_id, PLAN, 'the job binding stays the polled plan id');
+      assert.equal(payload.human_review_required, false);
+      assert.equal(payload.participant_reply_safe, true);
+      assert.equal(payload.next_action, 'send_participant_reply');
+    });
+  }
+}
+
+test('BD1 identical valid plan facts repeated across inquiries stay disclosed', () => {
+  const x = pairedPlanJob(() => {});
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.equal(canonical.evidence_status, 'matched', canonical.reason_codes.join(','));
+  assert.equal(canonical.verified_plan_facts.facts.rk_plan_id.value, 'RK-77821');
+  assertPlanProjectionMatchesCanonical(payload, canonical);
+  assert.equal(payload.human_review_required, false);
+  assert.equal(payload.participant_reply_safe, true);
+});
+
+test('BD1 a valid conflict still quarantines only that plan field', () => {
+  const x = pairedPlanJob(entry => { entry.value = 'RK-00000'; });
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.ok(canonical.reason_codes.includes('plan_fact_conflict'), canonical.reason_codes.join(','));
+  assert.equal(Object.hasOwn(canonical.verified_plan_facts.facts, 'rk_plan_id'), false);
+  assert.equal(canonical.verified_plan_facts.facts.legal_plan_name.value, 'Acme Industries 401(k) Plan');
+  assertPlanProjectionMatchesCanonical(payload, canonical);
+  assert.equal(JSON.stringify(payload).includes('RK-77821'), false);
+  assert.equal(JSON.stringify(payload).includes('RK-00000'), false);
+  assert.equal(payload.human_review_required, false);
+  assert.equal(payload.participant_reply_safe, true);
+  assert.equal(payload.next_action, 'send_participant_reply');
+});
+
+test('BD1 missing completed_at still discloses no plan field', () => {
+  const x = pairedPlanJob(() => {});
+  delete x.completed_at;
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.equal(canonical.verified_plan_facts, null);
+  assert.ok(canonical.reason_codes.includes('job_timestamps_invalid'));
+  for (const [where, metadata] of planProjections(payload)) {
+    assert.equal(metadata.verified_plan_facts, undefined, where);
+  }
+  assert.equal(Object.hasOwn(payload, 'plan_id'), false);
+  assert.equal(JSON.stringify(payload).includes('RK-77821'), false);
+  assert.equal(payload.human_review_required, false);
+  assert.equal(payload.participant_reply_safe, true);
+});
+
+test('BD1 an identity veto still discloses no plan field', () => {
+  const x = pairedPlanJob(() => {});
+  x.metadata.identity_resolution_status = 'not_found';
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.equal(canonical.verified_plan_facts, null);
+  assert.ok(canonical.reason_codes.includes('identity_veto'));
+  for (const [where, metadata] of planProjections(payload)) {
+    assert.equal(metadata.verified_plan_facts, undefined, where);
+  }
+  assert.equal(Object.hasOwn(payload, 'plan_id'), false);
+  assert.equal(JSON.stringify(payload).includes('RK-77821'), false);
+  assert.equal(payload.human_review_required, true);
+  assert.equal(payload.participant_reply_safe, false);
+  assert.equal(payload.next_action, 'human_review');
+});
+
+test('BD1 a cross-plan invalid container neither authorizes nor disturbs the bound field', () => {
+  const x = job();
+  x.primary.generate_response.metadata.verified_plan_facts = planFacts();
+  const second = inquiry();
+  const foreign = planFacts('9999');
+  foreign.facts.rk_plan_id.value = 'RK-FOREIGN';
+  foreign.facts.rk_plan_id.source = 'wrong.source';
+  second.generate_response.metadata.verified_plan_facts = foreign;
+  x.related = [second];
+  x.total_inquiries_in_ticket = 2;
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.ok(canonical.reason_codes.includes('plan_binding_mismatch'), canonical.reason_codes.join(','));
+  assert.equal(canonical.reason_codes.includes('invalid_plan_fact'), false,
+    'a cross-plan container is not an occurrence of the bound plan');
+  assert.equal(canonical.verified_plan_facts.facts.rk_plan_id.value, 'RK-77821');
+  assert.deepEqual(payload.inquiries[0].metadata.verified_plan_facts, canonical.verified_plan_facts);
+  assert.equal(payload.inquiries[1].metadata.verified_plan_facts, undefined,
+    'the cross-plan container discloses nothing');
+  assert.equal(JSON.stringify(payload).includes('RK-FOREIGN'), false);
+  assert.equal(JSON.stringify(payload).includes('wrong.source'), false);
+  assert.equal(payload.plan_id, PLAN);
+});
+
+// A present plan container whose identity is not exactly verified and matched
+// fails the whole job. The comparison is validateCanonicalEvidence on THIS job,
+// in both inquiry orders — not on a different single-inquiry job.
+for (const unmatchedFirst of [false, true]) {
+  test(`BD1 an unmatched plan container fails the same job closed, unmatched inquiry ${unmatchedFirst ? 'first' : 'second'}`, () => {
+    const x = job();
+    const good = planFacts();
+    const unmatched = planFacts();
+    unmatched.identity_resolution_status = 'pending';
+    unmatched.facts.rk_plan_id.value = 'RK-UNMATCHED';
+    x.primary.generate_response.metadata.verified_participant_facts = participantFacts();
+    x.primary.generate_response.metadata.verified_plan_facts = unmatchedFirst ? unmatched : good;
+    const second = inquiry();
+    second.generate_response.metadata.verified_participant_facts = participantFacts();
+    second.generate_response.metadata.verified_plan_facts = unmatchedFirst ? good : unmatched;
+    x.related = [second];
+    x.total_inquiries_in_ticket = 2;
+    const canonical = canonicalOf(x);
+    const payload = run(x);
+    assert.ok(canonical.reason_codes.includes('identity_context_invalid'), canonical.reason_codes.join(','));
+    assert.equal(canonical.verified_plan_facts, null);
+    assert.equal(canonical.verified_participant_facts, null);
+    assertPlanIdentityVeto(payload);
+    assert.equal(JSON.stringify(payload).includes('RK-UNMATCHED'), false);
+  });
+}
+
+function kqInquiry() {
+  return {inquiry: 'Who keeps the records?', topic: 'plan_information', route: 'knowledge_question',
+    knowledge_answer: {answer: 'Your plan record.', key_points: [], coverage_gaps: [],
+      metadata: {response_source_reason: 'account_context_required', human_review_required: false}}};
+}
+function containerMetadata(iq) {
+  return iq.knowledge_answer ? iq.knowledge_answer.metadata : iq.generate_response.metadata;
+}
+function projectedMetadata(inquiry) {
+  return inquiry.metadata || inquiry.knowledge_answer.metadata;
+}
+// `build` may edit the container and return undefined, or return a replacement
+// value (including null) when the present property itself is the malformation.
+function containerFrom(build) {
+  const container = planFacts();
+  container.facts.rk_plan_id.value = 'RK-UNMATCHED';
+  const replaced = build(container);
+  return replaced === undefined ? container : replaced;
+}
+function withRecordKeeper(container) {
+  container.facts.record_keeper = {value: 'LT Trust', status: 'known',
+    source: 'plan.plan_design.record_keeper_id', observed_at: null, as_of: '2026-09-01'};
+  return container;
+}
+function twoInquiryJob(primaryRoute, relatedRoute, primaryPlan, relatedPlan, {assignPrimary = true, assignRelated = true} = {}) {
+  const x = job();
+  x.primary = primaryRoute === 'kq' ? kqInquiry() : inquiry();
+  x.related = [relatedRoute === 'kq' ? kqInquiry() : inquiry()];
+  x.total_inquiries_in_ticket = 2;
+  const primaryMeta = containerMetadata(x.primary);
+  const relatedMeta = containerMetadata(x.related[0]);
+  primaryMeta.verified_participant_facts = participantFacts();
+  relatedMeta.verified_participant_facts = participantFacts();
+  if (assignPrimary) primaryMeta.verified_plan_facts = primaryPlan;
+  if (assignRelated) relatedMeta.verified_plan_facts = relatedPlan;
+  return x;
+}
+function assertNoPlanValues(payload) {
+  for (const [where, metadata] of planProjections(payload)) {
+    assert.equal(metadata.verified_plan_facts, undefined, where);
+  }
+  const text = JSON.stringify(payload);
+  assert.equal(text.includes('RK-77821'), false);
+  assert.equal(text.includes('RK-UNMATCHED'), false);
+  assert.equal(text.includes('Acme Industries'), false);
+  assert.equal(text.includes('LT Trust'), false);
+}
+function assertPlanIdentityVeto(payload) {
+  assertNoPlanValues(payload);
+  assert.equal(JSON.stringify(payload).includes('Jordan'), false,
+    'an identity failure removes participant facts too');
+  assert.equal(Object.hasOwn(payload, 'plan_id'), false);
+  assert.equal(payload.human_review_required, true);
+  assert.equal(payload.participant_reply_safe, false);
+  assert.equal(payload.next_action, 'human_review');
+}
+function assertFactsShapeClosed(payload, canonical, {reviewStaysClear = true} = {}) {
+  assert.equal(canonical.verified_plan_facts, null);
+  assert.ok(canonical.reason_codes.includes('invalid_plan_fact'), canonical.reason_codes.join(','));
+  assert.equal(canonical.reason_codes.includes('identity_context_invalid'), false);
+  assert.equal(canonical.reason_codes.includes('identity_veto'), false);
+  assert.equal(canonical.verified_participant_facts.facts.first_name.value, 'Jordan');
+  assertNoPlanValues(payload);
+  for (const [index, inquiry] of payload.inquiries.entries()) {
+    assert.deepEqual(projectedMetadata(inquiry).verified_participant_facts,
+      canonical.verified_participant_facts, `inquiry ${index} keeps the canonical participant facts`);
+  }
+  assert.equal(payload.plan_id, PLAN, 'a facts-shape failure does not remove the polled plan binding');
+  if (reviewStaysClear) {
+    assert.equal(payload.human_review_required, false);
+    assert.equal(payload.participant_reply_safe, true);
+    assert.equal(payload.next_action, 'send_participant_reply');
+  }
+}
+
+for (const [name, build, reason] of [
+  ['identity_verified false', v => { v.identity_verified = false; }, 'identity_veto'],
+  ['string identity_verified', v => { v.identity_verified = 'true'; }, 'identity_context_invalid'],
+  ['missing identity fields', v => { delete v.identity_verified; delete v.identity_resolution_status; }, 'identity_context_invalid'],
+  ['null container', () => null, 'identity_context_invalid'],
+  ['array container', () => [], 'identity_context_invalid'],
+  ['string container', () => 'nope', 'identity_context_invalid'],
+]) {
+  for (const badFirst of [false, true]) {
+    test(`BD1 a malformed plan identity fails the same job closed: ${name}, bad inquiry ${badFirst ? 'first' : 'second'}`, () => {
+      const bad = containerFrom(build);
+      const x = twoInquiryJob('gr', 'gr', badFirst ? bad : planFacts(), badFirst ? planFacts() : bad);
+      const canonical = canonicalOf(x);
+      const payload = run(x);
+      assert.ok(canonical.reason_codes.includes(reason), canonical.reason_codes.join(','));
+      assert.equal(canonical.verified_plan_facts, null);
+      assert.equal(canonical.verified_participant_facts, null);
+      assertPlanIdentityVeto(payload);
+    });
+  }
+}
+
+for (const [primaryRoute, relatedRoute] of [['gr', 'kq'], ['kq', 'gr']]) {
+  for (const badFirst of [false, true]) {
+    test(`BD1 malformed plan identity crosses ${primaryRoute}/${relatedRoute}, bad inquiry ${badFirst ? 'first' : 'second'}`, () => {
+      const bad = containerFrom(v => { v.identity_resolution_status = 'pending'; });
+      const x = twoInquiryJob(primaryRoute, relatedRoute, badFirst ? bad : planFacts(), badFirst ? planFacts() : bad);
+      const canonical = canonicalOf(x);
+      const payload = run(x);
+      assert.ok(canonical.reason_codes.includes('identity_context_invalid'), canonical.reason_codes.join(','));
+      assert.equal(canonical.verified_plan_facts, null);
+      assert.equal(canonical.verified_participant_facts, null);
+      assertNoPlanValues(payload);
+      assert.equal(JSON.stringify(payload).includes('Jordan'), false);
+      assert.equal(Object.hasOwn(payload, 'plan_id'), false);
+      assert.equal(payload.human_review_required, true);
+      assert.equal(payload.participant_reply_safe, false);
+    });
+  }
+}
+
+test('BD1 a cross-plan container with a malformed identity still fails the job closed', () => {
+  const bad = containerFrom(v => { v.plan_id = '9999'; v.identity_resolution_status = 'pending'; });
+  const x = twoInquiryJob('gr', 'gr', planFacts(), bad);
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.ok(canonical.reason_codes.includes('identity_context_invalid'), canonical.reason_codes.join(','));
+  assert.equal(canonical.verified_plan_facts, null);
+  assert.equal(canonical.verified_participant_facts, null);
+  assertPlanIdentityVeto(payload);
+});
+
+test('BD1 a non-record plan container on poll metadata fails closed ahead of canonical', () => {
+  const x = job();
+  x.metadata.verified_plan_facts = null;
+  x.metadata.verified_participant_facts = participantFacts();
+  x.primary.generate_response.metadata.verified_plan_facts = planFacts();
+  x.primary.generate_response.metadata.verified_participant_facts = participantFacts();
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.equal(canonical.evidence_status, 'matched', canonical.reason_codes.join(','));
+  assert.equal(canonical.verified_plan_facts.facts.rk_plan_id.value, 'RK-77821',
+    'canonical ignores poll metadata; this scan is intentionally stricter');
+  assertPlanIdentityVeto(payload);
+});
+
+test('BD1 a general-knowledge answer keeps its purpose when its plan container is not a record', () => {
+  const x = job();
+  x.primary = {inquiry: 'What is a rollover?', route: 'knowledge_question',
+    knowledge_answer: {answer: 'A general explanation.', key_points: [],
+      metadata: {response_source_reason: 'general_knowledge', verified_plan_facts: null,
+        verified_participant_facts: participantFacts()}}};
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.ok(canonical.reason_codes.includes('identity_context_invalid'), canonical.reason_codes.join(','));
+  assert.equal(canonical.verified_plan_facts, null);
+  assert.equal(canonical.verified_participant_facts, null);
+  assert.equal(payload.inquiries[0].knowledge_answer.metadata.verified_plan_facts, undefined);
+  assert.equal(payload.inquiries[0].knowledge_answer.metadata.verified_participant_facts, undefined);
+  assert.equal(Object.hasOwn(payload, 'plan_id'), false);
+  assert.equal(payload.participant_reply_safe, true,
+    'a general explanation must not acquire an account-verification prerequisite');
+  assert.equal(payload.human_review_required, false);
+  assert.equal(JSON.stringify(payload).includes('Jordan'), false);
+});
+
+for (const [name, assignFacts] of [
+  ['missing facts', container => { delete container.facts; }],
+  ['null facts', container => { container.facts = null; }],
+  ['array facts', container => { container.facts = []; }],
+  ['string facts', container => { container.facts = 'nope'; }],
+]) {
+  for (const badFirst of [false, true]) {
+    test(`BD1 a same-plan facts shape failure drops every plan key: ${name}, bad inquiry ${badFirst ? 'first' : 'second'}`, () => {
+      const bad = planFacts();
+      assignFacts(bad);
+      const good = withRecordKeeper(planFacts());
+      const x = twoInquiryJob('gr', 'gr', badFirst ? bad : good, badFirst ? good : bad);
+      const canonical = canonicalOf(x);
+      const payload = run(x);
+      assertFactsShapeClosed(payload, canonical);
+    });
+  }
+}
+
+for (const [primaryRoute, relatedRoute] of [['gr', 'kq'], ['kq', 'gr']]) {
+  for (const badFirst of [false, true]) {
+    test(`BD1 facts shape failure crosses ${primaryRoute}/${relatedRoute}, bad inquiry ${badFirst ? 'first' : 'second'}`, () => {
+      const bad = planFacts();
+      delete bad.facts;
+      const x = twoInquiryJob(primaryRoute, relatedRoute,
+        badFirst ? bad : withRecordKeeper(planFacts()), badFirst ? withRecordKeeper(planFacts()) : bad);
+      const canonical = canonicalOf(x);
+      const payload = run(x);
+      assertFactsShapeClosed(payload, canonical, {reviewStaysClear: false});
+      assert.equal(JSON.stringify(payload).includes('Jordan'), true);
+    });
+  }
+}
+
+test('BD1 a same-plan facts shape failure on poll metadata withholds every plan key and keeps participant facts', () => {
+  const x = job();
+  const bad = planFacts();
+  bad.facts = null;
+  x.metadata.verified_plan_facts = bad;
+  x.primary.generate_response.metadata.verified_plan_facts = withRecordKeeper(planFacts());
+  x.primary.generate_response.metadata.verified_participant_facts = participantFacts();
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.equal(canonical.verified_plan_facts.facts.record_keeper.value, 'LT Trust',
+    'canonical ignores poll metadata and would still project the inquiry');
+  assert.equal(canonical.verified_participant_facts.facts.first_name.value, 'Jordan');
+  assert.equal(payload.metadata.verified_plan_facts, undefined);
+  assert.equal(grMeta(payload).verified_plan_facts, undefined);
+  assert.deepEqual(grMeta(payload).verified_participant_facts, canonical.verified_participant_facts);
+  assert.equal(JSON.stringify(payload).includes('LT Trust'), false);
+  assert.equal(JSON.stringify(payload).includes('RK-77821'), false);
+  assert.equal(payload.plan_id, PLAN);
+  assert.equal(payload.human_review_required, false);
+  assert.equal(payload.participant_reply_safe, true);
+});
+
+for (const [name, assignFacts] of [
+  ['missing facts', container => { delete container.facts; }],
+  ['string facts', container => { container.facts = 'nope'; }],
+]) {
+  test(`BD1 a cross-plan container with ${name} does not disturb the bound plan or participant facts`, () => {
+    const foreign = planFacts('9999');
+    assignFacts(foreign);
+    const x = twoInquiryJob('gr', 'gr', withRecordKeeper(planFacts()), foreign);
+    const canonical = canonicalOf(x);
+    const payload = run(x);
+    assert.ok(canonical.reason_codes.includes('plan_binding_mismatch'), canonical.reason_codes.join(','));
+    assert.equal(canonical.reason_codes.includes('invalid_plan_fact'), false);
+    assert.equal(canonical.verified_plan_facts.facts.rk_plan_id.value, 'RK-77821');
+    assert.equal(canonical.verified_plan_facts.facts.record_keeper.value, 'LT Trust');
+    assert.deepEqual(payload.inquiries[0].metadata.verified_plan_facts, canonical.verified_plan_facts);
+    assert.equal(payload.inquiries[1].metadata.verified_plan_facts, undefined);
+    assert.deepEqual(payload.inquiries[0].metadata.verified_participant_facts, canonical.verified_participant_facts);
+    assert.deepEqual(payload.inquiries[1].metadata.verified_participant_facts, canonical.verified_participant_facts);
+    assert.equal(payload.plan_id, PLAN);
+    assert.equal(payload.human_review_required, false);
+  });
+}
+
+for (const emptyFirst of [false, true]) {
+  test(`BD1 an empty plan container is absence, empty inquiry ${emptyFirst ? 'first' : 'second'}`, () => {
+    const x = twoInquiryJob('gr', 'gr', emptyFirst ? {} : planFacts(), emptyFirst ? planFacts() : {});
+    const canonical = canonicalOf(x);
+    const payload = run(x);
+    assert.equal(canonical.evidence_status, 'matched', canonical.reason_codes.join(','));
+    assert.equal(canonical.verified_plan_facts.facts.rk_plan_id.value, 'RK-77821');
+    assert.deepEqual(projectedMetadata(payload.inquiries[emptyFirst ? 1 : 0]).verified_plan_facts,
+      canonical.verified_plan_facts);
+    assert.equal(projectedMetadata(payload.inquiries[emptyFirst ? 0 : 1]).verified_plan_facts, undefined);
+    assert.equal(payload.human_review_required, false);
+    assert.equal(payload.plan_id, PLAN);
+  });
+  test(`BD1 a missing plan container property is absence, missing inquiry ${emptyFirst ? 'first' : 'second'}`, () => {
+    const x = twoInquiryJob('gr', 'gr', planFacts(), planFacts(),
+      emptyFirst ? {assignPrimary: false} : {assignRelated: false});
+    const canonical = canonicalOf(x);
+    const payload = run(x);
+    assert.equal(canonical.evidence_status, 'matched', canonical.reason_codes.join(','));
+    assert.deepEqual(projectedMetadata(payload.inquiries[emptyFirst ? 1 : 0]).verified_plan_facts,
+      canonical.verified_plan_facts);
+    assert.equal(projectedMetadata(payload.inquiries[emptyFirst ? 0 : 1]).verified_plan_facts, undefined);
+    assert.equal(payload.human_review_required, false);
+  });
+  test(`BD1 empty facts {} do not quarantine a sibling field, empty inquiry ${emptyFirst ? 'first' : 'second'}`, () => {
+    const emptyFacts = planFacts();
+    emptyFacts.facts = {};
+    const x = twoInquiryJob('gr', 'gr', emptyFirst ? emptyFacts : planFacts(), emptyFirst ? planFacts() : emptyFacts);
+    const canonical = canonicalOf(x);
+    const payload = run(x);
+    assert.equal(canonical.evidence_status, 'matched', canonical.reason_codes.join(','));
+    assert.equal(canonical.reason_codes.includes('invalid_plan_fact'), false);
+    assert.equal(canonical.verified_plan_facts.facts.rk_plan_id.value, 'RK-77821');
+    assert.deepEqual(projectedMetadata(payload.inquiries[emptyFirst ? 1 : 0]).verified_plan_facts,
+      canonical.verified_plan_facts);
+    assert.equal(projectedMetadata(payload.inquiries[emptyFirst ? 0 : 1]).verified_plan_facts, undefined);
+    assert.deepEqual(projectedMetadata(payload.inquiries[0]).verified_participant_facts,
+      canonical.verified_participant_facts);
+    assert.equal(payload.human_review_required, false);
+    assert.equal(payload.participant_reply_safe, true);
+  });
+}
+
+test('BD1 a plan field missing from one container stays disclosed from the container that has it', () => {
+  const partial = planFacts();
+  delete partial.facts.rk_plan_id;
+  const x = twoInquiryJob('gr', 'gr', planFacts(), partial);
+  const canonical = canonicalOf(x);
+  const payload = run(x);
+  assert.equal(canonical.evidence_status, 'matched', canonical.reason_codes.join(','));
+  assert.equal(canonical.verified_plan_facts.facts.rk_plan_id.value, 'RK-77821');
+  assert.deepEqual(payload.inquiries[0].metadata.verified_plan_facts, canonical.verified_plan_facts);
+  assert.equal(payload.inquiries[1].metadata.verified_plan_facts.facts.legal_plan_name.value,
+    'Acme Industries 401(k) Plan');
+  assert.equal(payload.inquiries[1].metadata.verified_plan_facts.facts.rk_plan_id, undefined);
+  assert.equal(payload.human_review_required, false);
+  assert.equal(payload.participant_reply_safe, true);
+});

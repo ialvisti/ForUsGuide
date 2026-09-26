@@ -4591,11 +4591,21 @@ class RAGEngine:
             return parsed, info
         if action == "plan_identifier":
             fixed = copy.deepcopy(parsed)
-            identifier = ((collected_data or {}).get("plan_data") or {}).get("rk_plan_id")
-            identifier = str(identifier).strip() if type(identifier) in (str, int) else ""
-            known = bool(re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", identifier)) and identifier.lower() not in {"null", "unknown", "none", "n/a"}
+            from data_pipeline.gr_payload_builder import project_verified_plan_facts
+
+            disclosure = project_verified_plan_facts(
+                (collected_data or {}).get("internal_plan_disclosure_context")
+            )
+            entry = (disclosure.get("facts") or {}).get("rk_plan_id") or {}
+            identifier = entry.get("value")
+            as_of = entry.get("as_of") or entry.get("observed_at")
+            known = bool(identifier and as_of)
             fixed["response_to_participant"] = {
-                "opening": f"The recordkeeper plan ID for your plan is {identifier}." if known else "Our team needs to verify the recordkeeper plan ID for your plan before providing it for the form.",
+                "opening": (
+                    f"The recordkeeper plan ID for your plan is {identifier}, from the plan record as of {as_of}."
+                    if known
+                    else "Our team needs to verify the recordkeeper plan ID for your plan before providing it for the form."
+                ),
                 "key_points": [], "steps": [], "warnings": [],
             }
             fixed["outcome"] = "can_proceed" if known else "blocked_missing_data"

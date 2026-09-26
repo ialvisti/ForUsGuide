@@ -306,20 +306,26 @@ def test_plan_identifier_question_is_not_replaced_by_rollover_context():
     response = parsed()
     response["response_to_participant"]["key_points"] = ["Your verified recordkeeper plan ID is [PLAN_CODE]."]
     context = facts()
-    context['plan_data'] = {'rk_plan_id': 'SYNTHETIC-PLAN-CODE'}
+    context['internal_plan_disclosure_context'] = _plan_disclosure(rk_plan_id='SYNTHETIC-PLAN-CODE')
     fixed, _ = RAGEngine._apply_termination_response_policy(response, actual_profile, context)
-    assert 'SYNTHETIC-PLAN-CODE' in fixed['response_to_participant']['opening']
+    assert fixed['response_to_participant']['opening'] == (
+        'The recordkeeper plan ID for your plan is SYNTHETIC-PLAN-CODE, '
+        'from the plan record as of 2026-09-01.'
+    )
     assert fixed['response_to_participant']['steps'] == []
 
 
 def test_plan_identifier_answer_does_not_grow_into_a_distribution_tutorial():
     context = facts()
-    context['plan_data'] = {'rk_plan_id': 'SYNTHETIC-PLAN-CODE'}
+    context['internal_plan_disclosure_context'] = _plan_disclosure(rk_plan_id='SYNTHETIC-PLAN-CODE')
     draft = parsed()
     draft['response_to_participant'] = {'opening': 'You are terminated and may roll over eligible funds.',
         'key_points': ['$75 distribution fee and $35 wire fee.'], 'steps': [{'action': 'Submit a rollover.'}], 'warnings': ['Verify bank details.']}
     fixed, _ = RAGEngine._apply_termination_response_policy(draft, {'primary_action': 'plan_identifier'}, context)
-    assert fixed['response_to_participant']['opening'] == 'The recordkeeper plan ID for your plan is SYNTHETIC-PLAN-CODE.'
+    assert fixed['response_to_participant']['opening'] == (
+        'The recordkeeper plan ID for your plan is SYNTHETIC-PLAN-CODE, '
+        'from the plan record as of 2026-09-01.'
+    )
     assert fixed['response_to_participant']['steps'] == []
     assert '$75' not in json.dumps(fixed['response_to_participant'])
 
@@ -586,7 +592,7 @@ def test_retention_without_partial_question_preserves_supported_answer():
 
 def test_authoritative_plan_identifier_rewrite_updates_coverage_reference():
     context = facts()
-    context['plan_data'] = {'rk_plan_id': 'SYNTHETIC-PLAN-CODE'}
+    context['internal_plan_disclosure_context'] = _plan_disclosure(rk_plan_id='SYNTHETIC-PLAN-CODE')
     context['internal_response_context'] = {'requested_questions': ['What is my plan ID for the rollover form?']}
     draft = parsed()
     draft['question_coverage'] = [{'question_index': 0, 'status': 'answered', 'answer_reference': 'Use SYNTHETIC-PLAN-CODE as the plan ID for your rollover form.'}]
@@ -605,6 +611,201 @@ def test_missing_plan_identifier_keeps_coverage_unresolved():
     draft['question_coverage'] = [{'question_index': 0, 'status': 'answered', 'answer_reference': 'Use ROUTE-ONLY.'}]
     fixed, _ = RAGEngine._apply_termination_response_policy(draft, {'primary_action': 'plan_identifier'}, context)
     assert RAGEngine._validate_question_coverage(fixed, context)['human_review_required'] is True
+
+
+_PLAN_ID_REFUSAL = (
+    'Our team needs to verify the recordkeeper plan ID for your plan before providing it for the form.'
+)
+_LEAKED_PLAN_CODE = 'LT99887'
+_PORTAL_ONLY_ID = '9081726354'
+
+
+def _plan_identifier_leak_context(disclosure):
+    """Raw plan_data still carries a code; only a verified disclosure may answer."""
+    context = facts()
+    context['plan_data'] = {'rk_plan_id': _LEAKED_PLAN_CODE, 'plan_id': _PORTAL_ONLY_ID}
+    if disclosure is not None:
+        context['internal_plan_disclosure_context'] = disclosure
+    return context
+
+
+def _defective_plan_disclosure(case):
+    if case == 'absent_disclosure':
+        return None
+    disclosure = _plan_disclosure(rk_plan_id=_LEAKED_PLAN_CODE)
+    fact = disclosure['facts']['rk_plan_id']
+    if case == 'unverified_identity':
+        disclosure['identity_verified'] = False
+    elif case == 'unmatched_identity':
+        disclosure['identity_resolution_status'] = 'unmatched'
+    elif case == 'missing_selected_plan':
+        disclosure.pop('plan_id')
+    elif case == 'invalid_source':
+        fact['source'] = 'plan_data.rk_plan_id'
+    elif case == 'missing_dates':
+        fact['as_of'] = None
+        fact['observed_at'] = None
+    elif case == 'malformed_dates':
+        fact['as_of'] = '2025-02-29'
+        fact['observed_at'] = 'not-a-timestamp'
+    elif case == 'sentinel':
+        fact['value'] = 'unknown'
+    else:
+        raise AssertionError(case)
+    return disclosure
+
+
+@pytest.mark.parametrize('case', [
+    'absent_disclosure',
+    'unverified_identity',
+    'unmatched_identity',
+    'missing_selected_plan',
+    'invalid_source',
+    'missing_dates',
+    'malformed_dates',
+    'sentinel',
+])
+def test_plan_identifier_refuses_unverified_plan_data_code(case):
+    """The literal plan code in plan_data is not a verified disclosure."""
+    context = _plan_identifier_leak_context(_defective_plan_disclosure(case))
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        parsed(), {'primary_action': 'plan_identifier'}, context)
+    rendered = json.dumps(fixed['response_to_participant'])
+    assert _LEAKED_PLAN_CODE not in rendered
+    assert _PORTAL_ONLY_ID not in rendered
+    assert fixed['response_to_participant']['opening'] == _PLAN_ID_REFUSAL
+    assert fixed['outcome'] == 'blocked_missing_data'
+    assert fixed['outcome_reason'] == (
+        'The recordkeeper plan ID is missing; a portal route ID is not a substitute.'
+    )
+    assert fixed['data_gaps'] == ['Verified recordkeeper plan ID']
+    assert fixed['escalation'] == {
+        'needed': True,
+        'reason': 'Verify the recordkeeper identifier against the correct plan.',
+    }
+
+
+def test_verified_selected_plan_identifier_uses_its_own_date():
+    """A verified rk_plan_id is answered with that code and its own as-of date."""
+    disclosure = _plan_disclosure(
+        legal_plan_name='Synthetic Fixture 401(k) Plan',
+        rk_plan_id='LT99887',
+        record_keeper='LT Trust',
+    )
+    disclosure['facts']['legal_plan_name']['as_of'] = '2024-03-15'
+    disclosure['facts']['legal_plan_name']['observed_at'] = '2024-03-15T00:00:00Z'
+    disclosure['facts']['record_keeper']['as_of'] = '2025-06-01'
+    disclosure['facts']['record_keeper']['observed_at'] = '2025-06-01T00:00:00Z'
+    context = facts()
+    context['plan_data'] = {'rk_plan_id': 'UNVERIFIED-PLAN-CODE', 'plan_id': _PORTAL_ONLY_ID}
+    context['internal_plan_disclosure_context'] = disclosure
+    context['internal_response_context'] = {
+        'requested_questions': ['What is my plan ID for the rollover form?'],
+    }
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), {'primary_action': 'plan_identifier'}, context)
+    opening = fixed['response_to_participant']['opening']
+    assert opening == (
+        'The recordkeeper plan ID for your plan is LT99887, '
+        'from the plan record as of 2026-09-01.'
+    )
+    rendered = json.dumps(fixed['response_to_participant'])
+    assert '2024-03-15' not in rendered
+    assert '2025-06-01' not in rendered
+    assert 'UNVERIFIED-PLAN-CODE' not in rendered
+    assert _PORTAL_ONLY_ID not in rendered
+    assert fixed['outcome'] == 'can_proceed'
+    assert fixed['escalation']['needed'] is False
+    assert info['identifier_answer_only'] is True
+    assert fixed['question_coverage'][0]['status'] == 'answered'
+    assert fixed['question_coverage'][0]['answer_reference'] == opening
+
+
+# The fixtures above are hand-built in the shape of a disclosure context. The
+# cases below assemble it through the production builder instead, so the branch
+# is pinned to what the real scrape/identity/selected-plan path hands it.
+_SCRAPED_PLAN_CODE = 'RK-0000123'
+_SCRAPED_PLAN_MODULES = {
+    'basic_info': {'official_plan_name': 'Synthetic Fixture 401(k) Plan'},
+    'plan_design': {'rk_plan_id': _SCRAPED_PLAN_CODE, 'record_keeper_id': 'LT Trust'},
+}
+_SCRAPED_PLAN_META = {'extraction_diagnostics': {'modules': {
+    'basic_info': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z',
+                   'fields': {'official_plan_name': {'dataState': 'ok', 'sourceAsOf': '2026-09-01'}}},
+    'plan_design': {'dataState': 'ok', 'observedAt': '2026-09-11T18:00:00Z',
+                    'fields': {'rk_plan_id': {'dataState': 'ok'},
+                               'record_keeper_id': {'dataState': 'ok'}}},
+}}}
+_MATCHED_IDENTITY = {'identity_resolution_status': 'matched', 'identity_verified': True}
+
+
+def _scraped_collected_data(**overrides):
+    """collected_data exactly as the production builder assembles it."""
+    from data_pipeline.gr_payload_builder import build_collected_data
+
+    kwargs = dict(plan_meta=_SCRAPED_PLAN_META, identity_context=_MATCHED_IDENTITY,
+                  selected_plan_id='222')
+    kwargs.update(overrides)
+    return build_collected_data(None, _SCRAPED_PLAN_MODULES, {}, **kwargs)
+
+
+def test_builder_backed_plan_identifier_answers_with_the_scraped_code_and_its_own_date():
+    """The plan scrape dates rk_plan_id by module observation only.
+
+    ``plan_design.rk_plan_id`` carries no ``sourceAsOf``, so the builder leaves
+    ``as_of`` empty and the answer falls back to the observed timestamp. That
+    full timestamp, not the calendar date the hand-built fixtures supply, is
+    what a participant reads on this path.
+    """
+    collected = _scraped_collected_data()
+    fact = collected['internal_plan_disclosure_context']['facts']['rk_plan_id']
+    assert (fact['as_of'], fact['observed_at']) == (None, '2026-09-11T18:00:00Z')
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), {'primary_action': 'plan_identifier'}, collected)
+    assert fixed['response_to_participant']['opening'] == (
+        'The recordkeeper plan ID for your plan is RK-0000123, '
+        'from the plan record as of 2026-09-11T18:00:00Z.'
+    )
+    assert fixed['outcome'] == 'can_proceed'
+    assert fixed['escalation']['needed'] is False
+    assert info['identifier_answer_only'] is True
+
+
+def test_builder_backed_unmatched_identity_keeps_the_scraped_code_unsaid():
+    """A plan scrape that succeeded still fills plan_data for an unmatched identity."""
+    collected = _scraped_collected_data(
+        identity_context={'identity_resolution_status': 'ambiguous',
+                          'identity_verified': True})
+    assert collected['plan_data']['rk_plan_id'] == _SCRAPED_PLAN_CODE
+    assert 'internal_plan_disclosure_context' not in collected
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        parsed(), {'primary_action': 'plan_identifier'}, collected)
+    assert _SCRAPED_PLAN_CODE not in json.dumps(fixed['response_to_participant'])
+    assert fixed['response_to_participant']['opening'] == _PLAN_ID_REFUSAL
+    assert fixed['outcome'] == 'blocked_missing_data'
+    assert fixed['escalation']['needed'] is True
+
+
+@pytest.mark.parametrize('override', [
+    {'identity_context': None},
+    {'identity_context': {'identity_resolution_status': 'matched',
+                          'identity_verified': False}},
+    {'selected_plan_id': None},
+    {'selected_plan_id': 'PLAN-222'},
+    {'plan_meta': None},
+    {'plan_meta': {'extraction_diagnostics': {'modules': {'plan_design': {
+        'dataState': 'parse_error', 'observedAt': '2026-09-11T18:00:00Z'}}}}},
+])
+def test_builder_backed_plan_identifier_refuses_without_the_upstream_binding(override):
+    """Selected-plan binding lives upstream; unbound plan facts stay unsaid."""
+    collected = _scraped_collected_data(**override)
+    assert not collected.get('internal_plan_disclosure_context')
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        parsed(), {'primary_action': 'plan_identifier'}, collected)
+    assert _SCRAPED_PLAN_CODE not in json.dumps(fixed['response_to_participant'])
+    assert fixed['response_to_participant']['opening'] == _PLAN_ID_REFUSAL
+    assert fixed['outcome'] == 'blocked_missing_data'
+    assert fixed['data_gaps'] == ['Verified recordkeeper plan ID']
 
 
 def test_employed_options_question_after_statement_is_informational():

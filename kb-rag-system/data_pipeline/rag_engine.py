@@ -300,6 +300,77 @@ def mentions_failed_password_reset(text: Optional[str]) -> bool:
     return any(re.search(pattern, normalized) for pattern in _FAILED_PASSWORD_RESET_PATTERNS)
 
 
+# Words that may stand in front of an asserted departure without changing it
+# into something else: greetings and plain affirmative discourse markers. The
+# list is a positive boundary, not a blacklist — anything outside it (``if``,
+# ``suppose``, ``it is not true that``, ``your records say`` …) governs the
+# clause, so the assertion is not recognized.
+_DEPARTURE_CLAUSE_OPENERS = frozenset({
+    "actually", "additionally", "afternoon", "also", "and", "but", "evening",
+    "fyi", "good", "hello", "hey", "hi", "morning", "note", "ok", "okay",
+    "please", "plus", "so", "thank", "thanks", "there", "well", "yeah",
+    "yep", "yes", "you",
+})
+
+
+def _asserts_completed_employer_departure(text: Optional[str]) -> bool:
+    """Affirmative first-person ``I left my employer``.
+
+    A contiguous phrase is not by itself an assertion, so this requires the
+    phrase to *open* its own sentence: everything in front of it has to be an
+    ordinary affirmative opener (``hi``, ``yes``, ``also`` …). An
+    unrecognized prefix is rejected rather than enumerated, which is why a
+    conditional (``if``, ``if, for example,``, ``suppose``, ``unless``), an
+    external negation (``it is not true that``) and a reporting clause
+    (``I did not say``, ``your records say``) all fail without a per-phrase
+    rule. The tokens also have to be contiguous, so ``not`` / ``never`` /
+    ``haven't`` and the previous/former/prior-employer qualifiers cannot
+    match, and future ``plan to leave`` wording uses a different verb. Case,
+    punctuation and whitespace are normalized; a past-time suffix
+    (``… last year``) still matches.
+    """
+    raw = (text or "").lower().replace("'", "").replace("’", "").replace("`", "")
+    for sentence in re.split(r"[.!?]+", raw):
+        normalized = re.sub(r"[^a-z0-9]+", " ", sentence).strip()
+        match = re.search(r"\bi left my employer\b", normalized)
+        if not match:
+            continue
+        opener = normalized[: match.start()].split()
+        if all(word in _DEPARTURE_CLAUSE_OPENERS for word in opener):
+            return True
+    return False
+
+
+def _infer_incoming_rollover_signal(text: str, topic: Optional[str]) -> bool:
+    """Detect an incoming rollover from an external account into the current plan.
+
+    Shared predicate. ``RAGEngine._infer_incoming_rollover_signal`` delegates
+    here so advisory concepts and retrieval use the same direction test.
+    """
+    if (topic or "").lower().strip() == "incoming_rollover":
+        return True
+    external_source = _contains_any(text, [
+        "fidelity", "vanguard", "schwab", "empower", "principal", "merrill",
+        "t. rowe", "tiaa", "calsavers", "ira at", "401k at", "401(k) at",
+        "previous employer", "prior employer", "former employer", "old employer",
+        "old 401", "previous 401", "prior 401", "another provider",
+    ])
+    incoming_destination = _contains_any(text, [
+        "into my current", "into her current", "into their current",
+        "into your current", "into the current", "current account",
+        "into my forusall", "into this plan", "into my plan", "into the plan",
+        "incoming rollover", "rollover contribution", "roll into", "roll it into",
+        "consolidate", "bring it here", "move it here", "transfer into",
+        "transfer it into",
+    ])
+    outgoing_payment = _contains_any(text, [
+        "check payable to", "fbo", "send check", "send the check", "wire to",
+        "payable to my", "to my schwab", "to my fidelity", "to my vanguard",
+        "to my ira", "into my ira", "to my external", "rollover out",
+    ])
+    return external_source and incoming_destination and not outgoing_payment
+
+
 def detect_advisory_concepts(
     inquiry: str,
     topic: Optional[str],
@@ -395,7 +466,10 @@ def detect_advisory_concepts(
     # it never collides with the incoming-rollover path (F1). Used to override a
     # stale "active" system status: withhold active-only options
     # (hardship/loan/in-service) and route to ask-termination-date + escalate.
-    explicit_separation_claim = _contains_any(text, _EXPLICIT_SEPARATION_PHRASES)
+    explicit_separation_claim = _contains_any(text, _EXPLICIT_SEPARATION_PHRASES) or (
+        _asserts_completed_employer_departure(text)
+        and not _infer_incoming_rollover_signal(text, topic)
+    )
     # TKT-911961 sibling: the product-name strip must not silently drop a
     # participant who states a real separation AND names the product ("I no
     # longer work there. How do I request a termination distribution?"). An
@@ -2247,28 +2321,7 @@ class RAGEngine:
         the direction logic in gr_body_build.md: an external source is named,
         ForUsAll is the destination, and there is no outgoing payment instruction.
         Robust to third-person phrasing because the inquiry is paraphrased."""
-        if (topic or "").lower().strip() == "incoming_rollover":
-            return True
-        external_source = self._contains_any(text, [
-            "fidelity", "vanguard", "schwab", "empower", "principal", "merrill",
-            "t. rowe", "tiaa", "calsavers", "ira at", "401k at", "401(k) at",
-            "previous employer", "prior employer", "former employer", "old employer",
-            "old 401", "previous 401", "prior 401", "another provider",
-        ])
-        incoming_destination = self._contains_any(text, [
-            "into my current", "into her current", "into their current",
-            "into your current", "into the current", "current account",
-            "into my forusall", "into this plan", "into my plan", "into the plan",
-            "incoming rollover", "rollover contribution", "roll into", "roll it into",
-            "consolidate", "bring it here", "move it here", "transfer into",
-            "transfer it into",
-        ])
-        outgoing_payment = self._contains_any(text, [
-            "check payable to", "fbo", "send check", "send the check", "wire to",
-            "payable to my", "to my schwab", "to my fidelity", "to my vanguard",
-            "to my ira", "into my ira", "to my external", "rollover out",
-        ])
-        return external_source and incoming_destination and not outgoing_payment
+        return _infer_incoming_rollover_signal(text, topic)
 
     def _infer_retrieval_signals(
         self,
@@ -2565,6 +2618,9 @@ class RAGEngine:
         # date) even if the scrape still shows active or status is unknown.
         explicit_separation_claim = self._contains_any(
             profile_text, _EXPLICIT_SEPARATION_PHRASES
+        ) or (
+            _asserts_completed_employer_departure(profile_text)
+            and not incoming_rollover_signal
         )
         separation_conflicts_active = (
             explicit_separation_claim and employment_state == "active"

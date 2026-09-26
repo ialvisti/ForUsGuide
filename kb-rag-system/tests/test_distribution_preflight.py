@@ -1893,3 +1893,170 @@ def test_actual_terminated_record_still_routes_as_termination_distribution():
     )
     assert signals["employment_state"] == "terminated"
     assert signals["termination_distribution"] is True
+
+
+# --- First-person "I left my employer" (literal cash-distribution fee inquiry)
+# The phrase is not in the explicit-separation list. A substring add would also
+# promote negations, hypotheticals, and prior-employer claims, so these tests
+# hit the real advisory, retrieval, and response surfaces.
+
+_LEFT_EMPLOYER_LITERAL = (
+    "I left my employer and would like a cash distribution. What is the base fee?"
+)
+_LEFT_EMPLOYER_INCOMING = (
+    "I left my employer last year. I want to roll my old 401(k) into my "
+    "current ForUsAll plan."
+)
+_LEFT_EMPLOYER_NONCLAIMS = [
+    "If I left my employer, what is the base fee?",
+    "I have not left my employer. What is the base fee?",
+    "I haven't left my employer. What is the base fee?",
+    "I never left my employer. What is the base fee?",
+    "What if I left my employer?",
+    "I left my previous employer. What is the base fee?",
+    "I left my former employer. What is the base fee?",
+    "I left my prior employer. What is the base fee?",
+    "I plan to leave my employer and would like a cash distribution.",
+    # A contiguous phrase is not an assertion: the words in front of it can
+    # negate it, report it, or make it hypothetical. Anything other than a
+    # plain affirmative opener governs the clause and must not claim a
+    # departure (independent review 2026-09-26).
+    "It is not true that I left my employer. I am still working.",
+    "If, for example, I left my employer, could I withdraw?",
+    "If instead I left my employer, what is the base fee?",
+    "Suppose I left my employer, what is the base fee?",
+    "Assuming I left my employer, what is the base fee?",
+    "Unless I left my employer, what is the base fee?",
+    "I did not say I left my employer. What is the base fee?",
+    "Your records wrongly say I left my employer. I am still employed.",
+    "Does it matter whether I left my employer?",
+]
+
+
+def _left_employer_profile(inquiry, context, topic="distribution"):
+    engine = RAGEngine.__new__(RAGEngine)
+    profile = engine._build_retrieval_profile(
+        inquiry, topic, "LT Trust", "401(k)", context,
+    )
+    return engine, profile
+
+
+@pytest.mark.parametrize("inquiry", [
+    _LEFT_EMPLOYER_LITERAL,
+    "I   LEFT\nmy   employer and would like a cash distribution. What is the base fee?",
+    "Please confirm. I left my employer and would like a cash distribution. What is the base fee?",
+    "I left my employer last year and would like a cash distribution. What is the base fee?",
+    # Ordinary affirmative openers stay recognized after the boundary fix.
+    "Hi, I left my employer and would like a cash distribution. What is the base fee?",
+    "Yes, I left my employer and would like a cash distribution. What is the base fee?",
+])
+def test_left_my_employer_affirmative_sets_advisory_explicit_and_separation(inquiry):
+    from data_pipeline.rag_engine import detect_advisory_concepts
+
+    concepts = detect_advisory_concepts(inquiry, "distribution", _HARDSHIP_ACTIVE_CONTEXT)
+    assert concepts["explicit_separation_claim"] is True
+    assert concepts["separation_signal"] is True
+
+
+def test_left_my_employer_active_record_conflicts_and_excludes_hardship_path():
+    engine, profile = _left_employer_profile(_LEFT_EMPLOYER_LITERAL, _HARDSHIP_ACTIVE_CONTEXT)
+    signals = profile["signals"]
+    assert signals["explicit_separation_claim"] is True
+    assert signals["separation_conflicts_active"] is True
+    assert signals["termination_distribution"] is True
+    assert profile["employment_state"] == "active"
+    assert profile["separation_status_conflict"] is True
+    assert profile["primary_action"] == "termination_distribution"
+    assert profile["primary_action"] != "hardship_withdrawal"
+    assert engine.HARDSHIP_ARTICLE_ID in profile["excluded_articles"]
+    assert engine.IN_SERVICE_ARTICLE_ID in profile["excluded_articles"]
+    assert engine.LT_LOAN_ARTICLE_ID in profile["excluded_articles"]
+
+
+def test_left_my_employer_unknown_record_keeps_claim_without_active_conflict():
+    engine = RAGEngine.__new__(RAGEngine)
+    signals = engine._infer_retrieval_signals(
+        _LEFT_EMPLOYER_LITERAL, "distribution", None,
+    )
+    assert signals["explicit_separation_claim"] is True
+    assert signals["termination_distribution"] is True
+    assert signals["employment_state"] == "unknown"
+    assert signals["separation_conflicts_active"] is False
+
+
+def test_left_my_employer_terminated_record_stays_terminated_without_false_conflict():
+    engine = RAGEngine.__new__(RAGEngine)
+    signals = engine._infer_retrieval_signals(
+        _LEFT_EMPLOYER_LITERAL, "distribution",
+        {"participant_data": {"employment_status": "Terminated"}},
+    )
+    assert signals["explicit_separation_claim"] is True
+    assert signals["employment_state"] == "terminated"
+    assert signals["separation_conflicts_active"] is False
+
+
+@pytest.mark.parametrize("inquiry", _LEFT_EMPLOYER_NONCLAIMS)
+def test_left_my_employer_nonclaims_do_not_set_explicit_or_active_conflict(inquiry):
+    from data_pipeline.rag_engine import detect_advisory_concepts
+
+    concepts = detect_advisory_concepts(inquiry, "distribution", _HARDSHIP_ACTIVE_CONTEXT)
+    assert concepts["explicit_separation_claim"] is False
+    engine, profile = _left_employer_profile(inquiry, _HARDSHIP_ACTIVE_CONTEXT)
+    assert profile["signals"]["explicit_separation_claim"] is not True
+    assert profile["signals"]["separation_conflicts_active"] is not True
+    assert profile["separation_status_conflict"] is not True
+    assert profile["employment_state"] == "active"
+    assert engine.HARDSHIP_ARTICLE_ID not in profile["excluded_articles"]
+
+
+@pytest.mark.parametrize("topic", ["incoming_rollover", "rollover"])
+def test_left_my_employer_incoming_rollover_does_not_become_an_explicit_claim(topic):
+    from data_pipeline.rag_engine import detect_advisory_concepts
+
+    concepts = detect_advisory_concepts(
+        _LEFT_EMPLOYER_INCOMING, topic, _HARDSHIP_ACTIVE_CONTEXT,
+    )
+    assert concepts["explicit_separation_claim"] is False
+    engine, profile = _left_employer_profile(
+        _LEFT_EMPLOYER_INCOMING, _HARDSHIP_ACTIVE_CONTEXT, topic=topic,
+    )
+    assert profile["signals"]["incoming_rollover"] is True
+    assert profile["signals"]["explicit_separation_claim"] is not True
+    assert profile["signals"]["separation_conflicts_active"] is not True
+    assert profile["signals"]["termination_distribution"] is not True
+    assert profile["employment_state"] == "active"
+    assert profile["primary_action"] != "termination_distribution"
+    assert profile["primary_action"] != "termination_rollover"
+    if topic == "rollover":
+        assert profile["primary_action"] == "incoming_rollover"
+        assert profile["rollover_mode"] == "incoming"
+        assert engine.HARDSHIP_ARTICLE_ID not in profile["excluded_articles"]
+
+
+def test_left_my_employer_active_conflict_profile_keeps_separation_gate():
+    """The profile built from the literal Active conflict must keep the
+    existing separation gate: no hardship or loan request instructions, and
+    no invented termination date or sponsor SLA."""
+    _engine, profile = _left_employer_profile(
+        _LEFT_EMPLOYER_LITERAL, _HARDSHIP_ACTIVE_CONTEXT,
+    )
+    draft = parsed(outcome="blocked_missing_data", outcome_reason="Need review.")
+    draft["response_to_participant"]["steps"] = [
+        {"step_number": 1, "action": "Complete the hardship request form."},
+        {"step_number": 2, "action": "Submit the loan request."},
+    ]
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        draft, profile, _HARDSHIP_ACTIVE_CONTEXT,
+    )
+    blob = json.dumps(fixed).lower()
+    assert info.get("guidelines_confirmation_required") is not True
+    assert info.get("separation_conflict_trimmed") is True
+    assert fixed["response_to_participant"]["steps"] == []
+    assert "hardship" not in blob
+    assert "loan request" not in blob
+    assert "hardship distribution guidelines" not in blob
+    assert re.search(r"\b20\d{2}-\d{2}-\d{2}\b", blob) is None
+    assert "12-24" not in blob
+    assert "12–24" not in blob
+    assert "24 hour" not in blob
+    assert "24h" not in blob

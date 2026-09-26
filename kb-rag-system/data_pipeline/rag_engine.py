@@ -3866,6 +3866,7 @@ class RAGEngine:
         r"\b(?:not available|generally not available|is not an option|"
         r"are not available|does not apply|do not apply|may not apply|"
         r"would typically not|do not qualify|does not qualify|"
+        r"not applicable|isn['’]t applicable|"
         r"once you reach|when you (?:reach|turn)|after you (?:reach|turn)|"
         r"may become eligible|become eligible for)\b",
         re.I,
@@ -4116,6 +4117,23 @@ class RAGEngine:
         return offered
 
     @classmethod
+    def _inservice_present_inapplicable_subjects(cls, item: Any, inapplicable: set) -> set:
+        """Names still present in one participant field.
+
+        A truncated leaf walk cannot prove absence, so every inapplicable name
+        stays present and bookkeeping must not claim it was removed.
+        """
+        if not inapplicable:
+            return set()
+        leaves, truncated = cls._inservice_text_leaves(item)
+        if truncated:
+            return set(inapplicable)
+        present: set = set()
+        for leaf in leaves or [cls._response_item_text(item)]:
+            present |= cls._option_subjects_in_text(leaf) & inapplicable
+        return present
+
+    @classmethod
     def _split_inservice_list_tail(cls, remainder: str) -> tuple[str, str]:
         if ";" not in remainder:
             return remainder, ""
@@ -4174,6 +4192,28 @@ class RAGEngine:
         return f"{', '.join(items[:-1])}, {conjunction} {items[-1]}"
 
     @classmethod
+    def _explicitly_requested_inservice_options(
+        cls, collected_data: Optional[Dict[str, Any]]
+    ) -> set:
+        """In-service options named by the participant.
+
+        Only requested questions count. Assistant prose does not, and the
+        subject patterns do not treat a generic rollover word as rollover-source.
+        """
+        questions = (
+            ((collected_data or {}).get("internal_response_context") or {}).get(
+                "requested_questions"
+            )
+        )
+        if not isinstance(questions, list):
+            return set()
+        requested: set = set()
+        for question in questions:
+            if isinstance(question, str) and question.strip():
+                requested |= cls._option_subjects_in_text(question)
+        return requested
+
+    @classmethod
     def _try_rewrite_inservice_enumeration(
         cls, text: str, inapplicable: set
     ) -> Optional[str]:
@@ -4226,9 +4266,122 @@ class RAGEngine:
         return rebuilt
 
     @classmethod
-    def _try_rewrite_inservice_clauses(
-        cls, text: str, inapplicable: set
+    def _finish_inservice_sentence(cls, text: str) -> str:
+        rebuilt = text.strip()
+        if rebuilt and rebuilt[0].islower():
+            rebuilt = rebuilt[0].upper() + rebuilt[1:]
+        if rebuilt and not rebuilt.endswith((".", "!", "?")):
+            rebuilt += "."
+        return rebuilt
+
+    @classmethod
+    def _reduce_unsolicited_inservice_clauses(
+        cls, segment: str, inapplicable: set, retain: set
     ) -> Optional[str]:
+        """Drop unsolicited inapplicable clauses. None keeps the segment."""
+        subjects = cls._option_subjects_in_text(segment)
+        targets = subjects & inapplicable
+        if not targets:
+            return None
+        if subjects <= inapplicable and subjects <= retain:
+            stripped = cls._strip_inservice_known_zero_disclosure(segment)
+            return None if stripped == segment else stripped
+        clauses = [
+            clause.strip()
+            for clause in cls._INSERVICE_CLAUSE_SPLIT.split(segment)
+            if clause.strip()
+        ]
+        # Omit only a minimal option clause. A sibling clause is not option
+        # content just because this segment names an inapplicable option.
+        if len(clauses) < 2 and (
+            subjects <= inapplicable
+            and not (subjects & retain)
+            and (
+                len(subjects) == 1
+                or not cls._is_inservice_non_offer_note(segment)
+            )
+        ):
+            return ""
+        if len(clauses) < 2:
+            return None
+        conjunctions = [
+            "or" if "or" in match.group(0).casefold() else "and"
+            for match in cls._INSERVICE_CLAUSE_SPLIT.finditer(segment)
+        ]
+        kept_clauses: List[tuple[str, Optional[str]]] = []
+        changed = False
+        for index, clause in enumerate(clauses):
+            leading = conjunctions[index - 1] if index else None
+            clause_subjects = cls._option_subjects_in_text(clause)
+            if clause_subjects and clause_subjects <= inapplicable:
+                if clause_subjects <= retain:
+                    kept_clauses.append((clause, leading))
+                else:
+                    changed = True
+                continue
+            kept_clauses.append((clause, leading))
+        if not changed or len(kept_clauses) == len(clauses):
+            return None
+        if not kept_clauses:
+            return ""
+        rendered = [kept_clauses[0][0].rstrip(".").strip()]
+        for clause, leading in kept_clauses[1:]:
+            rendered.append(f"{leading or 'and'} {clause.rstrip('.').strip()}")
+        joined = rendered[0] if len(rendered) == 1 else ", ".join(rendered)
+        return cls._finish_inservice_sentence(joined)
+
+    @staticmethod
+    def _as_inservice_segment(reduced: str, original: str) -> str:
+        """Return a reduced unit in the shape of the segment it replaces.
+
+        The clause reducer finishes its result as a standalone sentence. Inside
+        a semicolon list that terminal period and forced capital belong to the
+        rejoin, not to the source, and would emit ".;" mid-sentence.
+        """
+        shaped = reduced.strip()
+        if not shaped:
+            return shaped
+        if shaped.endswith(".") and not original.rstrip().endswith("."):
+            shaped = shaped[:-1].rstrip()
+        if shaped and original[:1].islower() and shaped[:1].isupper():
+            shaped = shaped[:1].lower() + shaped[1:]
+        return shaped
+
+    @classmethod
+    def _reduce_unsolicited_inservice_sentence(
+        cls, sentence: str, inapplicable: set, retain: set
+    ) -> Optional[str]:
+        """Drop unsolicited inapplicable semicolon units. None keeps the sentence."""
+        segments = (
+            [part.strip() for part in re.split(r"\s*;\s*", sentence) if part.strip()]
+            if ";" in sentence
+            else [sentence]
+        )
+        kept_segments: List[str] = []
+        changed = False
+        for segment in segments:
+            reduced = cls._reduce_unsolicited_inservice_clauses(
+                segment, inapplicable, retain
+            )
+            if reduced is None:
+                kept_segments.append(segment)
+                continue
+            changed = True
+            if reduced:
+                kept_segments.append(
+                    cls._as_inservice_segment(reduced, segment)
+                )
+        if not changed:
+            return None
+        if not kept_segments:
+            return ""
+        return cls._finish_inservice_sentence("; ".join(kept_segments))
+
+    @classmethod
+    def _try_rewrite_inservice_clauses(
+        cls, text: str, inapplicable: set, retain: Optional[set] = None
+    ) -> Optional[str]:
+        retain = set(retain or ())
         sentences = cls._split_inservice_sentences(text)
         kept_sentences: List[str] = []
         changed = False
@@ -4238,75 +4391,62 @@ class RAGEngine:
             if not targets:
                 kept_sentences.append(sentence)
                 continue
-            if cls._is_inservice_non_offer_note(sentence) and subjects <= inapplicable:
-                kept_sentences.append(
-                    cls._strip_inservice_known_zero_disclosure(sentence)
-                )
+            if subjects <= inapplicable and subjects <= retain:
+                stripped = cls._strip_inservice_known_zero_disclosure(sentence)
+                if stripped != sentence:
+                    changed = True
+                kept_sentences.append(stripped)
                 continue
-            if subjects <= inapplicable:
-                changed = True
+            reduced = cls._reduce_unsolicited_inservice_sentence(
+                sentence, inapplicable, retain
+            )
+            if reduced is None:
+                # This sentence cannot be split safely. Keep scanning later ones.
+                kept_sentences.append(sentence)
                 continue
-            clauses = [
-                clause.strip()
-                for clause in cls._INSERVICE_CLAUSE_SPLIT.split(sentence)
-                if clause.strip()
-            ]
-            if len(clauses) < 2:
-                return None
-            kept_clauses: List[str] = []
-            for clause in clauses:
-                clause_subjects = cls._option_subjects_in_text(clause)
-                if clause_subjects and clause_subjects <= inapplicable:
-                    if cls._is_inservice_non_offer_note(clause):
-                        kept_clauses.append(clause)
-                    else:
-                        changed = True
-                    continue
-                kept_clauses.append(clause)
-            if not kept_clauses:
-                changed = True
-                continue
-            if len(kept_clauses) == len(clauses):
-                return None
-            rebuilt = kept_clauses[0]
-            if rebuilt and rebuilt[0].islower():
-                rebuilt = rebuilt[0].upper() + rebuilt[1:]
-            if not rebuilt.endswith((".", "!", "?")):
-                rebuilt += "."
-            kept_sentences.append(rebuilt)
             changed = True
+            if reduced:
+                kept_sentences.append(reduced)
         if not changed:
             return None
         return " ".join(kept_sentences).strip()
 
     @classmethod
     def _rewrite_inapplicable_inservice_option_text(
-        cls, text: str, inapplicable: set
+        cls,
+        text: str,
+        inapplicable: set,
+        retain: Optional[set] = None,
     ) -> str:
-        """Drop or rebuild inapplicable option offers. Unproven edits are refused."""
+        """Omit unsolicited inapplicable options. Unproven edits are refused.
+
+        A non-offer note is not permission to keep the option in participant
+        text. A truthful denial stays only when the inquiry named that option.
+        Text is reduced to sentences and clauses before omission. Only a
+        minimal option clause with no surviving remainder becomes empty.
+        """
         if not isinstance(text, str) or not inapplicable:
             return text
+        retain = set(retain or ())
         if "rollover_source" in inapplicable:
             text = cls._strip_inservice_known_zero_disclosure(text)
         subjects = cls._option_subjects_in_text(text)
         targets = subjects & inapplicable
         if not targets:
             return text
-        if subjects <= inapplicable and cls._is_inservice_non_offer_note(text):
+        if subjects <= inapplicable and subjects <= retain:
             return cls._strip_inservice_known_zero_disclosure(text)
-        if subjects <= inapplicable:
-            return ""
         rewritten = cls._try_rewrite_inservice_enumeration(text, inapplicable)
         if rewritten is None:
-            rewritten = cls._try_rewrite_inservice_clauses(text, inapplicable)
+            rewritten = cls._try_rewrite_inservice_clauses(
+                text, inapplicable, retain
+            )
         if rewritten is None:
             return text
         rewritten = re.sub(r"\s+", " ", rewritten).strip()
         if not rewritten:
             return ""
         if cls._INSERVICE_CORRUPT_PROSE.search(rewritten):
-            return text
-        if cls._offered_inapplicable_subjects(rewritten, inapplicable):
             return text
         if "rollover_source" in inapplicable and cls._inservice_source_zero_clause(rewritten):
             rewritten = cls._strip_inservice_known_zero_disclosure(rewritten)
@@ -4319,10 +4459,13 @@ class RAGEngine:
 
     @classmethod
     def _rewrite_inapplicable_inservice_option_item(
-        cls, item: Any, inapplicable: set
+        cls, item: Any, inapplicable: set, retain: Optional[set] = None
     ) -> Any:
+        retain = set(retain or ())
         if isinstance(item, str):
-            return cls._rewrite_inapplicable_inservice_option_text(item, inapplicable)
+            return cls._rewrite_inapplicable_inservice_option_text(
+                item, inapplicable, retain
+            )
         if isinstance(item, dict):
             updated = copy.deepcopy(item)
             saw_option_text = False
@@ -4333,7 +4476,7 @@ class RAGEngine:
                     continue
                 saw_option_text = True
                 rewritten = cls._rewrite_inapplicable_inservice_option_text(
-                    value, inapplicable
+                    value, inapplicable, retain
                 )
                 if rewritten == "":
                     updated[key] = rewritten
@@ -4346,6 +4489,14 @@ class RAGEngine:
             if not saw_option_text:
                 return item
             if all_dropped and changed:
+                for value in updated.values():
+                    if isinstance(value, str):
+                        continue
+                    leaves, truncated = cls._inservice_text_leaves(value)
+                    if truncated or any(
+                        cls._option_subjects_in_text(leaf) for leaf in leaves
+                    ):
+                        return updated
                 return ""
             return updated if changed else item
         return item
@@ -4380,7 +4531,9 @@ class RAGEngine:
         fixed: Dict[str, Any],
         original_to_updated: Dict[str, str],
         inapplicable: set,
+        retain: Optional[set] = None,
     ) -> None:
+        retain = set(retain or ())
         coverage = fixed.get("question_coverage")
         if not isinstance(coverage, list):
             return
@@ -4394,7 +4547,7 @@ class RAGEngine:
                 updated = original_to_updated[reference]
             else:
                 updated = cls._rewrite_inapplicable_inservice_option_text(
-                    reference, inapplicable
+                    reference, inapplicable, retain
                 )
             if updated == "":
                 item["status"] = "needs_verification"
@@ -4564,11 +4717,32 @@ class RAGEngine:
                             if state == "inapplicable"
                         }
                         if inapplicable:
+                            retain = cls._explicitly_requested_inservice_options(
+                                collected_data
+                            )
+                            opening = response.get("opening")
+                            if isinstance(opening, str):
+                                response["opening"] = (
+                                    cls._rewrite_inapplicable_inservice_option_text(
+                                        opening, inapplicable, retain
+                                    )
+                                )
+                            raw_warnings = response.get("warnings")
+                            if isinstance(raw_warnings, list):
+                                rewritten_warnings: List[Any] = []
+                                for item in raw_warnings:
+                                    updated = cls._rewrite_inapplicable_inservice_option_item(
+                                        item, inapplicable, retain
+                                    )
+                                    if updated == "":
+                                        continue
+                                    rewritten_warnings.append(updated)
+                                response["warnings"] = rewritten_warnings
                             rewritten_points: List[Any] = []
                             original_to_updated: Dict[str, str] = {}
                             for item in points:
                                 updated = cls._rewrite_inapplicable_inservice_option_item(
-                                    item, inapplicable
+                                    item, inapplicable, retain
                                 )
                                 if isinstance(item, str):
                                     original_to_updated[item] = (
@@ -4580,13 +4754,22 @@ class RAGEngine:
                                     continue
                                 rewritten_points.append(updated)
                             points = rewritten_points
-                            offered = set()
-                            for item in points:
+                            containers: List[Any] = []
+                            if isinstance(response.get("opening"), str):
+                                containers.append(response["opening"])
+                            containers.extend(points)
+                            if isinstance(response.get("warnings"), list):
+                                containers.extend(response["warnings"])
+                            offered: set = set()
+                            present: set = set()
+                            for item in containers:
                                 offered |= cls._offered_inapplicable_subjects_in_item(
                                     item, inapplicable
                                 )
-                            if "rollover_source" in inapplicable:
-                                for item in points:
+                                present |= cls._inservice_present_inapplicable_subjects(
+                                    item, inapplicable
+                                )
+                                if "rollover_source" in inapplicable:
                                     leaves, truncated = cls._inservice_text_leaves(item)
                                     if truncated:
                                         offered.add("rollover_source")
@@ -4595,10 +4778,12 @@ class RAGEngine:
                                         if cls._inservice_source_zero_clause(leaf):
                                             offered.add("rollover_source")
                                             break
-                            unique_removed = sorted(name for name in inapplicable if name not in offered)
+                            unique_removed = sorted(
+                                name for name in inapplicable if name not in present
+                            )
                             unresolved = sorted(offered)
                             cls._sync_coverage_after_inservice_option_rewrite(
-                                fixed, original_to_updated, inapplicable
+                                fixed, original_to_updated, inapplicable, retain
                             )
                             if unresolved:
                                 info["inapplicable_options_unresolved"] = unresolved

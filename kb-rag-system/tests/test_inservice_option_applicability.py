@@ -15,6 +15,7 @@ from __future__ import annotations
 import copy
 import json
 import re
+from types import SimpleNamespace
 from typing import Any, Dict
 from unittest.mock import AsyncMock, Mock, patch
 
@@ -376,7 +377,8 @@ def test_rv3_deleted_second_question_is_not_reanchored(engine):
     ).casefold()
 
 
-def test_rv4_accurate_denial_is_preserved(engine):
+def test_rv4_unsolicited_accurate_denial_is_omitted(engine):
+    """BD2: an age denial the inquiry did not name is omitted."""
     collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
     parsed, _ = _apply_custom(engine, collected, [
         "Because you are under age 59½, an age-based in-service distribution "
@@ -384,12 +386,13 @@ def test_rv4_accurate_denial_is_preserved(engine):
         "A 401(k) loan may be available if the plan allows loans.",
     ])
     joined = " ".join(_string_points(parsed))
-    assert AGE_IN_SERVICE.search(joined)
-    assert re.search(r"not available", joined, re.I)
+    assert not AGE_IN_SERVICE.search(joined)
+    assert not re.search(r"not available", joined, re.I)
     assert re.search(r"\bloan", joined, re.I)
 
 
-def test_rv4_future_eligibility_note_is_preserved(engine):
+def test_rv4_unsolicited_future_eligibility_note_is_omitted(engine):
+    """BD2: an unsolicited future-eligibility note still names the option."""
     collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
     parsed, _ = _apply_custom(engine, collected, [
         "Once you reach 59½ you may become eligible for an in-service "
@@ -397,8 +400,8 @@ def test_rv4_future_eligibility_note_is_preserved(engine):
         "Hardship withdrawals require an immediate and serious financial need.",
     ])
     joined = " ".join(_string_points(parsed))
-    assert AGE_IN_SERVICE.search(joined)
-    assert re.search(r"once you reach", joined, re.I)
+    assert not AGE_IN_SERVICE.search(joined)
+    assert not re.search(r"once you reach", joined, re.I)
     assert re.search(r"hardship", joined, re.I)
 
 
@@ -452,6 +455,7 @@ def test_rewrite_is_deterministic_across_hash_seeds(engine):
 
 
 def test_procedure_requested_path_does_not_rewrite_options(engine):
+    """R9: a procedure request leaves the option text untouched."""
     collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
     profile = _profile(engine, collected)
     profile.setdefault("signals", {})["procedure_requested"] = True
@@ -534,8 +538,8 @@ def test_rv5_nested_list_item_is_visible_to_honesty_scan(engine):
         assert validated.get("human_review_required") is True, validated
 
 
-def test_h2_non_offer_keeps_unavailability_without_zero_figure(engine):
-    """Known-zero non-offer may stay truthful without an account-specific figure."""
+def test_h2_unsolicited_non_offer_is_omitted_without_zero_figure(engine):
+    """BD2: an unsolicited known-zero denial is omitted, and no zero figure remains."""
     collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
     non_offer = (
         "A rollover-source withdrawal does not apply to you; your rollover "
@@ -548,7 +552,8 @@ def test_h2_non_offer_keeps_unavailability_without_zero_figure(engine):
     ])
     points = _string_points(parsed)
     joined = " ".join(points)
-    assert re.search(r"does not apply", joined, re.I), points
+    assert not ROLLOVER_SOURCE.search(joined), points
+    assert not re.search(r"does not apply", joined, re.I), points
     assert re.search(r"hardship", joined, re.I)
     assert re.search(r"\bloan", joined, re.I)
     assert not re.search(r"\$\s*0(?:\.0+)?\b|\b0\.0+\b|\bbalance on file is zero\b", joined, re.I), points
@@ -764,7 +769,8 @@ def test_known_zero_non_offer_does_not_keep_source_figure(engine, non_offer):
         coverage=CLEAN_HARDSHIP_COVERAGE,
     )
     joined = json.dumps(parsed["response_to_participant"]["key_points"], ensure_ascii=False)
-    assert re.search(r"does not apply|is not an option", joined, re.I), joined
+    assert not ROLLOVER_SOURCE.search(joined), joined
+    assert not re.search(r"does not apply|is not an option", joined, re.I), joined
     assert re.search(r"hardship", joined, re.I)
     assert re.search(r"\bloan", joined, re.I)
     assert not re.search(r"\$\s*0(?:\.0+)?\b|\b0\.0+\b", joined), joined
@@ -787,7 +793,8 @@ def test_known_zero_strip_preserves_unrelated_fee_figure(engine):
     joined = json.dumps(parsed["response_to_participant"]["key_points"], ensure_ascii=False)
     assert "$50" in joined
     assert not re.search(r"\$\s*0(?:\.0+)?\b|\b0\.0+\b", joined), joined
-    assert re.search(r"does not apply", joined, re.I)
+    assert not re.search(r"does not apply", joined, re.I)
+    assert not ROLLOVER_SOURCE.search(joined)
 
 
 # --- Honesty blockers: one inapplicable subject; truncation must fail open. --
@@ -940,3 +947,918 @@ def test_genuine_may_take_enumeration_still_drops_inapplicable_options(engine):
     validated = engine._validate_question_coverage(parsed, collected)
     assert validated.get("incomplete_question_count") == 0, validated
     assert validated.get("human_review_required") is False, validated
+
+
+# --- BD2: omit unsolicited inapplicable options; denial wording is not a license. ---
+C590_LIVE_KEY_POINTS = [
+    "1. Options: At age 46, a standard age-based in-service distribution is "
+    "generally not available; the options worth reviewing are a hardship "
+    "withdrawal, if you have an IRS-approved hardship and the plan allows it, "
+    "and a 401(k) loan, if the plan and participant-level loan checks allow "
+    "it. A rollover-source withdrawal is not applicable based on current "
+    "source information.",
+    "Hardship withdrawals must be limited to the amount necessary to meet the "
+    "financial need and must fit one of the IRS safe-harbor reasons: "
+    "unreimbursed medical expenses, next-12-month post-secondary education "
+    "expenses, purchase of a primary residence, preventing eviction or "
+    "foreclosure on a primary residence, qualifying funeral or burial "
+    "expenses, or qualifying casualty-damage repairs to a primary residence.",
+    "For a 401(k) loan, the plan must allow loans, the maximum number of loans "
+    "must be greater than zero, you must be under the plan’s active-loan "
+    "limit, and the vested balance requirement must be met; if allowed, there "
+    "is no credit check and repayment is through payroll deductions.",
+    "Eligible hardship sources and any available amount are plan-specific, "
+    "including whether employer match sources can be used.",
+]
+UNSOLICITED_DENIAL_PHRASINGS = [
+    "A rollover-source withdrawal does not apply to you.",
+    "A rollover-source withdrawal is not an option.",
+    "A rollover-source withdrawal is not available.",
+    "A rollover-source withdrawal is not applicable.",
+    "A rollover-source withdrawal isn't applicable.",
+    "A rollover-source withdrawal does not apply given current source information.",
+]
+APPLICABLE_OPTION_LIST = (
+    "The main possible options are a hardship withdrawal or a 401(k) loan."
+)
+
+
+def _participant_visible(parsed) -> str:
+    response = parsed["response_to_participant"]
+    return " ".join([
+        response.get("opening") or "",
+        json.dumps(response.get("key_points") or [], ensure_ascii=False),
+        json.dumps(response.get("warnings") or [], ensure_ascii=False),
+    ])
+
+
+def test_r1_c590_unsolicited_rollover_denial_is_omitted(engine):
+    """R1: the captured c590 denial is unsolicited, so rollover-source leaves
+    opening, key points, and warnings. Hardship and loan, both explanations,
+    the active-status opening, the numeric marker, and the invite stay."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, info = _apply_custom(engine, collected, C590_LIVE_KEY_POINTS)
+    response = parsed["response_to_participant"]
+    points = _string_points(parsed)
+    joined = " ".join(points)
+    visible = _participant_visible(parsed)
+    assert not ROLLOVER_SOURCE.search(visible), visible
+    assert not AGE_IN_SERVICE.search(visible), visible
+    assert "active employee" in (response.get("opening") or "").casefold()
+    assert points[0].startswith("1. "), points[0]
+    assert "safe-harbor" in points[1], points[1]
+    assert "maximum number of loans" in points[2], points[2]
+    assert _options_named(points) == {"hardship", "loan"}, points
+    assert re.search(r"hardship", joined, re.I), points
+    assert re.search(r"\bloan", joined, re.I), points
+    assert any("which option" in point.casefold() for point in points), points
+    assert info.get("inapplicable_options_removed") == [
+        "age_based_in_service",
+        "rollover_source",
+    ], info
+    assert info.get("inapplicable_options_unresolved") in (None, []), info
+    assert parsed.get("inapplicable_options_unresolved") in (None, []), parsed
+
+
+def test_r4_unsolicited_denial_phrasings_share_one_participant_outcome(engine):
+    """R4: six denial wordings of an unsolicited rollover-source option produce
+    the same participant-visible text, and none of them names the option."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    outcomes = []
+    for phrase in UNSOLICITED_DENIAL_PHRASINGS:
+        parsed, _info = _apply_custom(engine, collected, [
+            APPLICABLE_OPTION_LIST,
+            phrase,
+        ])
+        response = parsed["response_to_participant"]
+        visible = {
+            "opening": response.get("opening"),
+            "key_points": response.get("key_points"),
+            "warnings": response.get("warnings"),
+        }
+        outcomes.append(visible)
+        assert not ROLLOVER_SOURCE.search(json.dumps(visible, ensure_ascii=False)), phrase
+    assert outcomes[1:] == [outcomes[0]] * (len(outcomes) - 1), outcomes
+
+
+def test_r7_first_sentence_refusal_still_evaluates_later_sentences(engine):
+    """R7: a first sentence that cannot be clause-split must not block a later
+    unsolicited inapplicable sentence."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    first = (
+        "A hardship withdrawal and a rollover-source withdrawal can both be "
+        "discussed with the plan."
+    )
+    later = (
+        "A rollover-source withdrawal is not applicable based on current "
+        "source information."
+    )
+    parsed, _info = _apply_custom(engine, collected, [f"{first} {later}"])
+    joined = " ".join(_string_points(parsed))
+    assert later not in joined, joined
+    assert "not applicable" not in joined.casefold(), joined
+    assert re.search(r"hardship", joined, re.I), joined
+    assert first in joined, joined
+
+
+def test_r10_removed_names_are_absent_from_every_participant_field(engine):
+    """R10: a name in inapplicable_options_removed is absent from opening,
+    key points, and warnings together."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    draft = _draft()
+    draft["response_to_participant"]["opening"] = (
+        "An age-based in-service distribution is not available to you."
+    )
+    draft["response_to_participant"]["warnings"] = [
+        "A rollover-source withdrawal is not applicable based on current "
+        "source information."
+    ]
+    draft["response_to_participant"]["key_points"] = [APPLICABLE_OPTION_LIST]
+    parsed, info = engine._apply_termination_response_policy(
+        parsed=draft,
+        retrieval_profile=_profile(engine, collected),
+        collected_data=collected,
+    )
+    visible = _participant_visible(parsed)
+    removed = info.get("inapplicable_options_removed") or []
+    assert removed == ["age_based_in_service", "rollover_source"], removed
+    assert not AGE_IN_SERVICE.search(visible), visible
+    assert not ROLLOVER_SOURCE.search(visible), visible
+
+
+def test_r2_known_positive_rollover_source_is_not_suppressed(engine):
+    """R2: a known-positive rollover source stays in the option list."""
+    collected = _collected(rollover=KNOWN_POSITIVE, age_59_5=False)
+    parsed, info = _apply_custom(engine, collected, [
+        "The main possible options are a hardship withdrawal, a 401(k) loan, "
+        "or a rollover-source withdrawal.",
+    ])
+    joined = " ".join(_string_points(parsed))
+    assert ROLLOVER_SOURCE.search(joined), joined
+    assert "rollover_source" not in (info.get("inapplicable_options_removed") or [])
+    assert "rollover_source" not in (info.get("inapplicable_options_unresolved") or [])
+
+
+def test_r3_unknown_rollover_source_is_not_suppressed_or_zeroed(engine):
+    """R3: unknown source stays an option and is not turned into a question or a zero."""
+    collected = _collected(rollover=UNKNOWN, age_59_5=False)
+    parsed, info = _apply_custom(engine, collected, [
+        "The main possible options are a hardship withdrawal, a 401(k) loan, "
+        "or a rollover-source withdrawal.",
+    ])
+    joined = " ".join(_string_points(parsed))
+    assert ROLLOVER_SOURCE.search(joined), joined
+    assert parsed["questions_to_ask"] == []
+    assert not re.search(r"\$\s*0(?:\.0+)?\b|\bbalance on file is zero\b|\bzero\b", joined, re.I), joined
+    assert "rollover_source" not in (info.get("inapplicable_options_removed") or [])
+    assert "rollover_source" not in (info.get("inapplicable_options_unresolved") or [])
+
+
+def test_r5_explicit_rollover_source_request_keeps_truthful_denial(engine):
+    """R5: naming rollover-source keeps the denial, including the c590 wording."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, info = _apply_custom(
+        engine,
+        collected,
+        [
+            "A rollover-source withdrawal is not applicable based on current "
+            "source information.",
+            "A 401(k) loan may be available if the plan allows loans.",
+        ],
+        questions=[
+            "Is a rollover-source withdrawal available while I am employed?"
+        ],
+    )
+    joined = " ".join(_string_points(parsed))
+    assert ROLLOVER_SOURCE.search(joined), joined
+    assert re.search(r"not applicable", joined, re.I), joined
+    assert re.search(r"\bloan", joined, re.I), joined
+    assert "rollover_source" not in (info.get("inapplicable_options_unresolved") or [])
+    assert "rollover_source" not in (info.get("inapplicable_options_removed") or [])
+
+
+def test_r5_explicit_age_based_request_keeps_truthful_denial(engine):
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, info = _apply_custom(
+        engine,
+        collected,
+        [
+            "Because you are under age 59½, an age-based in-service distribution "
+            "is not available to you.",
+            "A 401(k) loan may be available if the plan allows loans.",
+        ],
+        questions=["Is an age-based in-service distribution available to me?"],
+    )
+    joined = " ".join(_string_points(parsed))
+    assert AGE_IN_SERVICE.search(joined), joined
+    assert re.search(r"not available", joined, re.I), joined
+    assert re.search(r"\bloan", joined, re.I), joined
+    assert "age_based_in_service" not in (info.get("inapplicable_options_unresolved") or [])
+    assert "age_based_in_service" not in (info.get("inapplicable_options_removed") or [])
+
+
+def test_r5_explicit_request_keeps_future_eligibility_note(engine):
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    note = (
+        "Once you reach 59½ you may become eligible for an in-service "
+        "distribution if the plan allows it."
+    )
+    parsed, _info = _apply_custom(
+        engine,
+        collected,
+        [note, "Hardship withdrawals require an immediate and serious financial need."],
+        questions=["When would an in-service distribution become available?"],
+    )
+    joined = " ".join(_string_points(parsed))
+    assert note in joined, joined
+    assert re.search(r"hardship", joined, re.I)
+
+
+def test_r5_generic_rollover_word_does_not_keep_rollover_source_denial(engine):
+    """A generic rollover word is not an explicit rollover-source request."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, _info = _apply_custom(
+        engine,
+        collected,
+        [
+            "A rollover-source withdrawal is not applicable based on current "
+            "source information.",
+            APPLICABLE_OPTION_LIST,
+        ],
+        questions=["What rollover choices do I have while I am employed?"],
+    )
+    joined = " ".join(_string_points(parsed))
+    assert not ROLLOVER_SOURCE.search(joined), joined
+    assert re.search(r"hardship", joined, re.I)
+    assert re.search(r"\bloan", joined, re.I)
+
+
+def test_r5_assistant_prose_does_not_count_as_an_explicit_request(engine):
+    """The draft may name the option; only the inquiry keeps the denial."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, _info = _apply_custom(engine, collected, [
+        "A rollover-source withdrawal does not apply to you.",
+        APPLICABLE_OPTION_LIST,
+    ])
+    joined = " ".join(_string_points(parsed))
+    assert not ROLLOVER_SOURCE.search(joined), joined
+
+
+@pytest.mark.parametrize(
+    "non_offer",
+    [
+        "A rollover-source withdrawal does not apply to you because your "
+        "rollover source balance on file is $0.00.",
+        "A rollover-source withdrawal is not an option, since your rollover "
+        "source balance is $0.00.",
+        "A rollover-source withdrawal is not applicable because your rollover "
+        "source balance on file is $0.00.",
+        "A rollover-source withdrawal isn't applicable; your rollover source "
+        "balance on file is $0.00.",
+    ],
+)
+def test_r5_explicit_request_keeps_denial_without_zero_figure(engine, non_offer):
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, info = _apply_custom(
+        engine,
+        collected,
+        [APPLICABLE_OPTION_LIST, non_offer, HARDSHIP_ANCHOR],
+        questions=["Can I take a rollover-source withdrawal?"],
+        coverage=CLEAN_HARDSHIP_COVERAGE,
+    )
+    joined = json.dumps(parsed["response_to_participant"]["key_points"], ensure_ascii=False)
+    assert re.search(r"does not apply|is not an option|not applicable|isn't applicable", joined, re.I), joined
+    assert ROLLOVER_SOURCE.search(joined)
+    assert re.search(r"hardship", joined, re.I)
+    assert re.search(r"\bloan", joined, re.I)
+    assert not re.search(r"\$\s*0(?:\.0+)?\b|\b0\.0+\b", joined), joined
+    assert "your current balance is" not in joined.casefold()
+    assert "rollover_source" not in (info.get("inapplicable_options_unresolved") or [])
+    validated = engine._validate_question_coverage(parsed, collected)
+    assert validated.get("human_review_required") is False, validated
+
+
+def test_r6_c590_removal_keeps_a_conjunction_and_clean_prose(engine):
+    """R6: dropping the unsolicited options leaves a grammatical list."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, _info = _apply_custom(engine, collected, C590_LIVE_KEY_POINTS)
+    joined = " ".join(_string_points(parsed))
+    assert re.search(
+        r"hardship withdrawal, if you have an IRS-approved hardship and the "
+        r"plan allows it, and a 401\(k\) loan",
+        joined,
+        re.I,
+    ), joined
+    assert not type(engine)._INSERVICE_CORRUPT_PROSE.search(joined), joined
+    assert ";;" not in joined
+    assert not re.search(r",\s+and\s*[.]", joined), joined
+
+
+def test_r8_known_zero_omission_does_not_disclose_a_zero_figure(engine):
+    """R8: omitting the unsolicited option does not leave an account zero."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, _info = _apply_custom(engine, collected, [
+        APPLICABLE_OPTION_LIST,
+        "A rollover-source withdrawal is not applicable because your rollover "
+        "source balance on file is zero.",
+        "Your rollover-source balance on file is $0.",
+    ])
+    joined = " ".join(_string_points(parsed))
+    assert not ROLLOVER_SOURCE.search(joined), joined
+    assert "$0" not in joined
+    assert "balance on file is zero" not in joined.casefold()
+    assert not re.search(r"\b0\.0+\b", joined)
+
+
+def test_r11_age_based_bookkeeping_follows_the_rollover_omission_rule(engine):
+    """R11: under 59½, age-based stays out of the offered set. Removal is
+    claimed only when the name is gone from participant text."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, info = _apply_custom(engine, collected, C590_LIVE_KEY_POINTS)
+    visible = _participant_visible(parsed)
+    assert "age_based_in_service" not in (info.get("inapplicable_options_unresolved") or [])
+    assert not info.get("inapplicable_options_unresolved")
+    removed = info.get("inapplicable_options_removed") or []
+    if "age_based_in_service" in removed:
+        assert not AGE_IN_SERVICE.search(visible), visible
+    else:
+        assert AGE_IN_SERVICE.search(visible), visible
+
+
+def _apply_points(engine, collected, key_points, *, profile=None, questions=None, draft_over=None):
+    draft = _draft()
+    draft["response_to_participant"]["key_points"] = copy.deepcopy(key_points)
+    if questions is not None:
+        collected = copy.deepcopy(collected)
+        collected.setdefault("internal_response_context", {})
+        collected["internal_response_context"]["requested_questions"] = questions
+    if draft_over:
+        for key, value in draft_over.items():
+            if key == "response_to_participant":
+                draft["response_to_participant"].update(value)
+            else:
+                draft[key] = copy.deepcopy(value)
+    return engine._apply_termination_response_policy(
+        parsed=draft,
+        retrieval_profile=profile or _profile(engine, collected),
+        collected_data=collected,
+    )
+
+
+def test_b1_untracked_tax_penalty_and_fee_clauses_survive(engine):
+    """B1: dropping an inapplicable clause must keep later tax, penalty, and fee prose."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    tax = (
+        "A hardship withdrawal may be available, and an age-based in-service "
+        "distribution is not available, and taxes and penalties may apply to "
+        "any distribution."
+    )
+    fee = (
+        "A hardship withdrawal may be available, and an age-based in-service "
+        "distribution is not available, and your plan may charge a processing fee."
+    )
+    parsed, _info = _apply_points(engine, collected, [tax])
+    joined = " ".join(_string_points(parsed))
+    assert (
+        "A hardship withdrawal may be available, and taxes and penalties may "
+        "apply to any distribution."
+        in joined
+    ), joined
+    assert not AGE_IN_SERVICE.search(joined), joined
+    # A fee key point is removed before this rewriter when the request is not
+    # about fees. The evidenced loss is inside the rewriter itself.
+    rewritten_fee = type(engine)._rewrite_inapplicable_inservice_option_text(
+        fee, {"rollover_source", "age_based_in_service"}
+    )
+    assert (
+        "A hardship withdrawal may be available, and your plan may charge a "
+        "processing fee."
+        == rewritten_fee
+    ), rewritten_fee
+    assert not AGE_IN_SERVICE.search(rewritten_fee), rewritten_fee
+
+
+def test_root_three_clause_omission_keeps_hardship_and_loan(engine):
+    """Root counterexample: omit the unsolicited rollover denial and keep both offers."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    sentence = (
+        "A rollover-source withdrawal does not apply, and a hardship "
+        "withdrawal may be available, and a 401(k) loan may be available."
+    )
+    parsed, info = _apply_points(engine, collected, [sentence])
+    joined = " ".join(_string_points(parsed))
+    assert not ROLLOVER_SOURCE.search(joined), joined
+    assert (
+        "A hardship withdrawal may be available, and a 401(k) loan may be available."
+        in joined
+    ), joined
+    assert "rollover_source" in (info.get("inapplicable_options_removed") or []), info
+    assert "rollover_source" not in (info.get("inapplicable_options_unresolved") or [])
+
+
+def test_b2_pure_multi_option_inapplicable_offer_is_omitted(engine):
+    """B2: a sentence that only offers two inapplicable options is omitted."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    offer = (
+        "You may take a rollover-source withdrawal or an age-based in-service "
+        "distribution at any time."
+    )
+    parsed, info = _apply_points(engine, collected, [offer, APPLICABLE_OPTION_LIST])
+    points = _string_points(parsed)
+    joined = " ".join(points)
+    assert offer not in joined, joined
+    assert not ROLLOVER_SOURCE.search(joined), joined
+    assert not AGE_IN_SERVICE.search(joined), joined
+    assert re.search(r"hardship", joined, re.I), joined
+    assert re.search(r"\bloan", joined, re.I), joined
+    removed = info.get("inapplicable_options_removed") or []
+    assert "rollover_source" in removed, info
+    assert "age_based_in_service" in removed, info
+    assert info.get("inapplicable_options_unresolved") in (None, []), info
+
+
+def test_r12_internal_notes_survive_participant_omission(engine):
+    """R12: omission changes participant text and leaves internal notes intact."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    reason = (
+        "General information about accessing funds while employed. "
+        "A rollover-source withdrawal is not applicable."
+    )
+    gaps = ["Plan loan limit is an internal gap."]
+    escalation = {"needed": False, "reason": None}
+    parsed, info = _apply_points(
+        engine,
+        collected,
+        C590_LIVE_KEY_POINTS,
+        draft_over={
+            "outcome_reason": reason,
+            "data_gaps": gaps,
+            "escalation": escalation,
+            "guardrails_applied": ["Source check stayed an internal control."],
+        },
+    )
+    visible = _participant_visible(parsed)
+    assert not ROLLOVER_SOURCE.search(visible), visible
+    assert parsed["outcome_reason"] == reason
+    assert parsed["data_gaps"] == gaps
+    assert parsed["escalation"] == escalation
+    guardrails = parsed.get("guardrails_applied") or []
+    assert "Source check stayed an internal control." in guardrails
+    assert (
+        "Did not present inapplicable age based in service as an available "
+        "in-service option."
+    ) in guardrails
+    assert (
+        "Did not present inapplicable rollover source as an available "
+        "in-service option."
+    ) in guardrails
+    assert info.get("inapplicable_options_unresolved") in (None, [])
+
+
+def test_r13_numeric_marker_stays_with_the_surviving_sentence(engine):
+    """R13: the captured numeric marker stays on the surviving offer sentence."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, _info = _apply_points(engine, collected, C590_LIVE_KEY_POINTS)
+    first = _string_points(parsed)[0]
+    assert first.startswith("1. The options worth reviewing are "), first
+    assert "not available" not in first.casefold(), first
+    assert not ROLLOVER_SOURCE.search(first), first
+    assert not AGE_IN_SERVICE.search(first), first
+
+
+def test_r14_semicolon_keeps_the_surviving_offer(engine):
+    """R14: a semicolon-fused denial drops, and the valid offer stays."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    sentence = (
+        "An age-based in-service distribution is not available; a 401(k) loan "
+        "may be available if the plan allows loans."
+    )
+    parsed, info = _apply_points(engine, collected, [sentence])
+    joined = " ".join(_string_points(parsed))
+    assert "A 401(k) loan may be available if the plan allows loans." in joined, joined
+    assert not AGE_IN_SERVICE.search(joined), joined
+    assert "age_based_in_service" in (info.get("inapplicable_options_removed") or [])
+    assert info.get("inapplicable_options_unresolved") in (None, []), info
+
+
+def test_r15_ambiguous_escalation_still_requires_human_review(engine):
+    """R15: clearing unresolved options does not clear native ambiguous review."""
+    from data_pipeline.response_handoff import response_requires_review
+
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    parsed, info = _apply_points(
+        engine,
+        collected,
+        C590_LIVE_KEY_POINTS,
+        draft_over={
+            "outcome": "ambiguous_plan_rules",
+            "escalation": {"needed": True, "reason": "plan rules unresolved"},
+            "question_coverage": [{
+                "question_index": 0,
+                "status": "answered",
+                "answer_reference": C590_LIVE_KEY_POINTS[1],
+            }],
+        },
+    )
+    assert parsed["outcome"] == "ambiguous_plan_rules"
+    assert parsed["escalation"] == {"needed": True, "reason": "plan rules unresolved"}
+    assert info.get("inapplicable_options_unresolved") in (None, []), info
+    metadata = engine._validate_question_coverage(parsed, collected)
+    assert metadata.get("incomplete_question_count") == 0, metadata
+    assert metadata.get("human_review_required") is False, metadata
+    assert response_requires_review(parsed, metadata) is True
+
+
+def _questions_through_evidence(
+    questions, *, participant_body, advisor_body=None, inquiry=None, sensitive=()
+):
+    """Build requested_questions the way the orchestrator does, without editing it."""
+    from data_pipeline.retrieval_privacy import redact_retrieval_context
+    from data_pipeline.ticket_orchestrator import TicketOrchestrator
+
+    if advisor_body is None:
+        ticket = SimpleNamespace(
+            email_subject="Access while employed",
+            email_body=participant_body,
+            conversation_snapshot=None,
+        )
+    else:
+        ticket = SimpleNamespace(
+            conversation_snapshot=SimpleNamespace(
+                subject="Access while employed",
+                initial_message=SimpleNamespace(
+                    author_role="participant", body=participant_body
+                ),
+                messages=[SimpleNamespace(author_role="advisor", body=advisor_body)],
+            )
+        )
+    evidenced = TicketOrchestrator._evidenced_questions(
+        questions, SimpleNamespace(ticket=ticket)
+    )
+    chosen = evidenced or [inquiry if inquiry is not None else participant_body]
+    return [
+        redact_retrieval_context(question, sensitive_literals=sensitive)
+        for question in chosen
+    ]
+
+
+def test_b4_evidenced_questions_and_redaction_drive_explicit_requests(engine):
+    """B4: participant evidence, generic rollover wording, and assistant-only text."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    denial = (
+        "A rollover-source withdrawal is not applicable based on current "
+        "source information."
+    )
+    named = "Can I take a rollover-source withdrawal? Reply to pat.sample@example.com"
+    named_questions = _questions_through_evidence(
+        [named], participant_body=named, sensitive=("pat.sample@example.com",)
+    )
+    assert any("rollover-source" in question for question in named_questions)
+    assert all("pat.sample@example.com" not in question for question in named_questions)
+    named_parsed, named_info = _apply_points(
+        engine, collected, [denial, APPLICABLE_OPTION_LIST], questions=named_questions
+    )
+    named_joined = " ".join(_string_points(named_parsed))
+    assert ROLLOVER_SOURCE.search(named_joined), named_joined
+    assert re.search(r"not applicable", named_joined, re.I), named_joined
+    assert "pat.sample@example.com" not in named_joined
+    assert "rollover_source" not in (named_info.get("inapplicable_options_removed") or [])
+
+    generic = "What rollover choices do I have while I am employed?"
+    generic_questions = _questions_through_evidence([generic], participant_body=generic)
+    assert generic_questions == [generic]
+    generic_parsed, _generic_info = _apply_points(
+        engine,
+        collected,
+        [denial, APPLICABLE_OPTION_LIST],
+        questions=generic_questions,
+    )
+    generic_joined = " ".join(_string_points(generic_parsed))
+    assert not ROLLOVER_SOURCE.search(generic_joined), generic_joined
+    assert re.search(r"hardship", generic_joined, re.I)
+
+    assistant = "Can I take a rollover-source withdrawal?"
+    participant = "What options do I have while I am employed?"
+    assistant_questions = _questions_through_evidence(
+        [assistant],
+        participant_body=participant,
+        advisor_body=assistant,
+        inquiry=participant,
+    )
+    assert assistant_questions == [participant]
+    assistant_parsed, _assistant_info = _apply_points(
+        engine,
+        collected,
+        [denial, APPLICABLE_OPTION_LIST],
+        questions=assistant_questions,
+    )
+    assistant_joined = " ".join(_string_points(assistant_parsed))
+    assert not ROLLOVER_SOURCE.search(assistant_joined), assistant_joined
+
+
+def test_d3_empty_opening_preserves_the_substantive_answer(engine):
+    """D3: an omitted opening may be empty while the substantive answer stays."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    substantive = "The main possible options are a hardship withdrawal or a 401(k) loan."
+    parsed, info = _apply_points(
+        engine,
+        collected,
+        [substantive],
+        draft_over={
+            "response_to_participant": {
+                "opening": "An age-based in-service distribution is not available to you.",
+                "warnings": [
+                    "A rollover-source withdrawal is not applicable based on "
+                    "current source information."
+                ],
+            }
+        },
+    )
+    response = parsed["response_to_participant"]
+    points = _string_points(parsed)
+    assert response.get("opening") == ""
+    assert substantive in points, points
+    assert re.search(r"hardship", " ".join(points), re.I)
+    assert re.search(r"\bloan", " ".join(points), re.I)
+    assert "eligible" not in (response.get("opening") or "").casefold()
+    assert not ROLLOVER_SOURCE.search(_participant_visible(parsed))
+    assert not AGE_IN_SERVICE.search(_participant_visible(parsed))
+    assert info.get("inapplicable_options_unresolved") in (None, []), info
+
+
+INVITE = (
+    "Tell us which option you would like to explore, and our team will verify "
+    "whether your plan permits it and what requirements apply."
+)
+# Each source names an inapplicable option and substantive non-option prose,
+# and names no applicable option. Survival is structural: the prose is not an
+# option clause.
+F1_POLICY_CASES = [
+    pytest.param(
+        "key_points",
+        "An age-based in-service distribution is not available, and taxes and "
+        "penalties may apply to any distribution.",
+        "Taxes and penalties may apply to any distribution.",
+        "age_based_in_service",
+        "An age-based in-service distribution is not available",
+        id="key_points-denial-then-tax-comma-and",
+    ),
+    pytest.param(
+        "key_points",
+        "Taxes and penalties may apply to any distribution, and an age-based "
+        "in-service distribution is not available.",
+        "Taxes and penalties may apply to any distribution.",
+        "age_based_in_service",
+        "an age-based in-service distribution is not available",
+        id="key_points-tax-then-denial-comma-and",
+    ),
+    pytest.param(
+        "warnings",
+        "An age-based in-service distribution is not available, or a 10% "
+        "early-withdrawal penalty may apply.",
+        "A 10% early-withdrawal penalty may apply.",
+        "age_based_in_service",
+        "An age-based in-service distribution is not available",
+        id="warnings-denial-then-penalty-comma-or",
+    ),
+    pytest.param(
+        "warnings",
+        "A 10% early-withdrawal penalty may apply, or an age-based in-service "
+        "distribution is not available.",
+        "A 10% early-withdrawal penalty may apply.",
+        "age_based_in_service",
+        "an age-based in-service distribution is not available",
+        id="warnings-penalty-then-denial-comma-or",
+    ),
+    pytest.param(
+        "opening",
+        "An age-based in-service distribution is not available; taxes and "
+        "penalties may apply to any distribution.",
+        "Taxes and penalties may apply to any distribution.",
+        "age_based_in_service",
+        "An age-based in-service distribution is not available",
+        id="opening-denial-then-tax-semicolon",
+    ),
+    pytest.param(
+        "opening",
+        "Taxes and penalties may apply to any distribution; an age-based "
+        "in-service distribution is not available.",
+        "Taxes and penalties may apply to any distribution.",
+        "age_based_in_service",
+        "an age-based in-service distribution is not available",
+        id="opening-tax-then-denial-semicolon",
+    ),
+    pytest.param(
+        "key_points",
+        "An age-based in-service distribution is not available. Taxes and "
+        "penalties may apply to any distribution.",
+        "Taxes and penalties may apply to any distribution.",
+        "age_based_in_service",
+        "An age-based in-service distribution is not available.",
+        id="key_points-denial-then-tax-sentence",
+    ),
+    pytest.param(
+        "warnings",
+        "Taxes and penalties may apply to any distribution. An age-based "
+        "in-service distribution is not available.",
+        "Taxes and penalties may apply to any distribution.",
+        "age_based_in_service",
+        "An age-based in-service distribution is not available.",
+        id="warnings-tax-then-denial-sentence",
+    ),
+    pytest.param(
+        "opening",
+        "You are an active employee. An age-based in-service distribution is "
+        "not available to you.",
+        "You are an active employee.",
+        "age_based_in_service",
+        "An age-based in-service distribution is not available to you.",
+        id="opening-active-status-then-denial",
+    ),
+    pytest.param(
+        "opening",
+        "An age-based in-service distribution is not available to you. You are "
+        "an active employee.",
+        "You are an active employee.",
+        "age_based_in_service",
+        "An age-based in-service distribution is not available to you.",
+        id="opening-denial-then-active-status",
+    ),
+    pytest.param(
+        "key_points",
+        "A rollover-source withdrawal does not apply, and taxes and penalties "
+        "may apply to any distribution.",
+        "Taxes and penalties may apply to any distribution.",
+        "rollover_source",
+        "A rollover-source withdrawal does not apply",
+        id="key_points-rollover-denial-then-tax-comma-and",
+    ),
+]
+
+
+@pytest.mark.parametrize(
+    ("field", "source", "expected", "target", "omitted"),
+    F1_POLICY_CASES,
+)
+def test_f1_non_option_prose_survives_without_an_applicable_option(
+    engine, field, source, expected, target, omitted,
+):
+    """F1: a string with no applicable option still keeps non-option prose."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    if field == "key_points":
+        parsed, info = _apply_points(
+            engine,
+            collected,
+            [source],
+            draft_over={
+                "response_to_participant": {"opening": "", "warnings": []},
+            },
+        )
+    elif field == "opening":
+        parsed, info = _apply_points(
+            engine,
+            collected,
+            [APPLICABLE_OPTION_LIST],
+            draft_over={
+                "response_to_participant": {"opening": source, "warnings": []},
+            },
+        )
+    else:
+        parsed, info = _apply_points(
+            engine,
+            collected,
+            [APPLICABLE_OPTION_LIST],
+            draft_over={
+                "response_to_participant": {"opening": "", "warnings": [source]},
+            },
+        )
+    response = parsed["response_to_participant"]
+    if field == "key_points":
+        assert response["key_points"] == [expected, INVITE], response["key_points"]
+        assert response["opening"] == ""
+        assert response["warnings"] == []
+    elif field == "opening":
+        assert response["opening"] == expected, response["opening"]
+        assert response["key_points"] == [APPLICABLE_OPTION_LIST, INVITE]
+        assert response["warnings"] == []
+    else:
+        assert response["warnings"] == [expected], response["warnings"]
+        assert response["opening"] == ""
+        assert response["key_points"] == [APPLICABLE_OPTION_LIST, INVITE]
+    visible = _participant_visible(parsed)
+    mark = AGE_IN_SERVICE if target == "age_based_in_service" else ROLLOVER_SOURCE
+    assert not mark.search(visible), visible
+    assert omitted not in visible, visible
+    assert expected in visible
+    assert info.get("inapplicable_options_removed") == [
+        "age_based_in_service",
+        "rollover_source",
+    ], info
+    assert info.get("inapplicable_options_unresolved") in (None, []), info
+    assert any(
+        f"inapplicable {target.replace('_', ' ')}" in note.casefold()
+        for note in (parsed.get("guardrails_applied") or [])
+    )
+
+
+F1_FEE_CASES = [
+    pytest.param(
+        "An age-based in-service distribution is not available, and your plan "
+        "may charge a processing fee.",
+        "Your plan may charge a processing fee.",
+        id="fee-denial-then-fee-comma-and",
+    ),
+    pytest.param(
+        "Your plan may charge a processing fee, or an age-based in-service "
+        "distribution is not available.",
+        "Your plan may charge a processing fee.",
+        id="fee-fee-then-denial-comma-or",
+    ),
+    pytest.param(
+        "An age-based in-service distribution is not available; your plan may "
+        "charge a processing fee.",
+        "Your plan may charge a processing fee.",
+        id="fee-denial-then-fee-semicolon",
+    ),
+    pytest.param(
+        "Your plan may charge a processing fee. An age-based in-service "
+        "distribution is not available.",
+        "Your plan may charge a processing fee.",
+        id="fee-fee-then-denial-sentence",
+    ),
+]
+
+
+@pytest.mark.parametrize(("source", "expected"), F1_FEE_CASES)
+def test_f1_fee_prose_survives_at_the_helper_boundary(engine, source, expected):
+    """Fee prose is locked on the rewriter. The informational fee gate is separate."""
+    rewritten = type(engine)._rewrite_inapplicable_inservice_option_text(
+        source, {"rollover_source", "age_based_in_service"}
+    )
+    assert rewritten == expected, rewritten
+    assert not AGE_IN_SERVICE.search(rewritten), rewritten
+    assert "not available" not in rewritten.casefold()
+
+
+# A reduced semicolon unit is a segment, not a sentence. The F1 reduction made
+# this rejoin reachable: base kept the whole string and the prior patch deleted
+# it, so neither shape could expose the punctuation.
+F1_SEMICOLON_REJOIN_CASES = [
+    pytest.param(
+        "an age-based in-service distribution is not available, and fees may "
+        "apply; taxes may apply.",
+        "Fees may apply; taxes may apply.",
+        id="semicolon-rejoin-clause-unit-first",
+    ),
+    pytest.param(
+        "a rollover-source withdrawal does not apply, and fees may apply; "
+        "taxes may apply.",
+        "Fees may apply; taxes may apply.",
+        id="semicolon-rejoin-rollover-clause-unit-first",
+    ),
+    pytest.param(
+        "taxes may apply; an age-based in-service distribution is not "
+        "available, and fees may apply; charges may apply.",
+        "Taxes may apply; fees may apply; charges may apply.",
+        id="semicolon-rejoin-clause-unit-middle",
+    ),
+    pytest.param(
+        "taxes may apply to any distribution; an age-based in-service "
+        "distribution is not available, and fees may apply.",
+        "Taxes may apply to any distribution; fees may apply.",
+        id="semicolon-rejoin-clause-unit-last",
+    ),
+]
+
+
+@pytest.mark.parametrize(("source", "expected"), F1_SEMICOLON_REJOIN_CASES)
+def test_f1_semicolon_rejoin_keeps_segment_shape(engine, source, expected):
+    """A reduced semicolon unit must not carry a sentence period or capital."""
+    rewritten = type(engine)._rewrite_inapplicable_inservice_option_text(
+        source, {"rollover_source", "age_based_in_service"}
+    )
+    assert ".;" not in rewritten, rewritten
+    assert rewritten == expected, rewritten
+    assert not AGE_IN_SERVICE.search(rewritten), rewritten
+    assert not ROLLOVER_SOURCE.search(rewritten), rewritten
+
+
+def test_f1_semicolon_rejoin_artefact_is_absent_from_participant_text(engine):
+    """The rejoin artefact must not reach participant-visible text."""
+    collected = _collected(rollover=KNOWN_ZERO, age_59_5=False)
+    source = (
+        "an age-based in-service distribution is not available, and fees may "
+        "apply; taxes may apply."
+    )
+    parsed, info = _apply_points(
+        engine,
+        collected,
+        [APPLICABLE_OPTION_LIST],
+        draft_over={"response_to_participant": {"opening": source, "warnings": []}},
+    )
+    response = parsed["response_to_participant"]
+    assert response["opening"] == "Fees may apply; taxes may apply.", response["opening"]
+    visible = _participant_visible(parsed)
+    assert ".;" not in visible, visible
+    assert not AGE_IN_SERVICE.search(response["opening"]), response["opening"]
+    assert info.get("inapplicable_options_unresolved") in (None, []), info

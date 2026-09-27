@@ -1,12 +1,85 @@
 """A generated draft is not proof that every question is safe to publish."""
 
+import json as _json
 from types import SimpleNamespace
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 
 from api.ticket_worker import _entry_from_outcome, aggregate_states
 from data_pipeline.rag_engine import RAGEngine
 from data_pipeline.ticket_orchestrator import InquiryOutcome
+
+_EXISTING_PLAN_NEXT_ACTION = (
+    "Verify the dated plan lifecycle and participant disposition record before approving execution guidance."
+)
+_SUPPORT_PLAN_NEXT_ACTION = (
+    "Route this case to Support to verify current plan servicing and the individual account record before providing withdrawal instructions."
+)
+
+
+def _terminated_plan_collected(*, hold=False):
+    facts = []
+    if hold:
+        facts.append({
+            "kind": "distribution_hold", "value": True, "source": "plan_history.notes",
+            "recorded_at": "2026-03-26", "effective_on": "2026-03-26",
+        })
+    return {
+        "participant_data": {"employment_status": "Active"},
+        "internal_plan_context": {
+            "current": {"status": "Terminated", "active": False, "status_as_of": "2024-10-24"},
+            "operational_facts": facts,
+        },
+        "internal_preflight_context": {
+            "schema_version": 1,
+            "loans": {"status": "unknown", "outstanding_status": "unknown"},
+            "sources": {
+                "account_balance": {"status": "known", "value": 0},
+                "vested_balance": {"status": "unknown", "value": None},
+            },
+            "crypto": {
+                "enrollment": {"status": "unknown", "value": None},
+                "holdings": {"status": "unknown", "value": None},
+            },
+        },
+    }
+
+
+async def _generate_plan_response(collected):
+    from data_pipeline.llm_router import LLMResponse
+
+    chunk = {"id": "distribution_policy", "score": 0.9, "metadata": {
+        "article_id": "distribution_policy", "article_title": "Distribution policy",
+        "chunk_type": "business_rules", "content": "Plan servicing may need review.",
+    }}
+    parsed = {
+        "outcome": "can_proceed", "outcome_reason": "Eligible based on collected facts.",
+        "response_to_participant": {
+            "opening": "Here are the options.", "key_points": [], "steps": [{"action": "Submit the withdrawal"}], "warnings": [],
+        },
+        "questions_to_ask": [{"question": "Which provider?", "why": "routing"}],
+        "escalation": {"needed": False, "reason": None},
+        "guardrails_applied": [], "data_gaps": [], "coverage_gaps": [],
+    }
+    with patch("data_pipeline.rag_engine.PineconeUploader"):
+        engine = RAGEngine(llm_router=Mock())
+    engine._decompose_question = AsyncMock(return_value=["withdrawal request"])
+    engine._search_for_exact_response_procedure = AsyncMock(return_value=([chunk], {}))
+    engine._search_for_response_parallel_cascade = AsyncMock(return_value=([chunk], {}))
+    engine._add_response_article_bundles = AsyncMock(return_value=([chunk], {"articles_added": []}))
+    engine._build_context_with_diversity_and_tiers = Mock(return_value=("Plan rules.", [chunk], 3, {}))
+    engine._call_llm = AsyncMock(return_value=LLMResponse(
+        content=_json.dumps(parsed), usage={}, provider_used="openai", model_used="test",
+    ))
+    return await engine.generate_response(
+        "Participant requests a withdrawal. The employer plan is shown as terminated.",
+        "LT Trust",
+        "401(k)",
+        "termination_distribution_request",
+        collected,
+        5500,
+    )
 
 
 def test_question_coverage_requires_evidence_in_final_response():
@@ -176,3 +249,37 @@ def test_final_business_outcome_controls_handoff_independently_of_retrieval(outc
         assert state.value == 'succeeded'
         if expected:
             assert action.value == 'human_review'
+
+
+async def test_plain_terminated_plan_handoff_routes_to_support():
+    collected = _terminated_plan_collected()
+    result = await _generate_plan_response(collected)
+    opening = result.response["response_to_participant"]["opening"]
+    handoff = result.metadata["handoff"]
+    preflight = handoff["preflight"]
+    assert "plan is terminated" in opening.lower()
+    assert "support" in opening.lower()
+    assert result.response["response_to_participant"]["steps"] == []
+    assert result.response["questions_to_ask"] == []
+    assert result.metadata["human_review_required"] is True
+    assert result.metadata["termination_response_policy"]["support_review_required"] is True
+    assert result.metadata["termination_response_policy"]["plan_review_required"] is True
+    assert handoff["reason"] == "plan_servicing_verification"
+    assert handoff["next_action"] == _SUPPORT_PLAN_NEXT_ACTION
+    assert preflight["loans"]["outstanding_status"] == "unknown"
+    assert preflight["crypto"]["holdings"]["status"] == "unknown"
+    assert preflight["sources"]["vested_balance"]["status"] == "unknown"
+    assert collected["participant_data"]["employment_status"] == "Active"
+
+
+async def test_non_support_plan_review_keeps_existing_handoff_next_action():
+    result = await _generate_plan_response(_terminated_plan_collected(hold=True))
+    handoff = result.metadata["handoff"]
+    opening = result.response["response_to_participant"]["opening"].lower()
+    assert "hold" in opening
+    assert "plan is terminated" not in opening
+    assert result.metadata["human_review_required"] is True
+    assert result.metadata["termination_response_policy"].get("support_review_required") is not True
+    assert result.metadata["termination_response_policy"]["plan_review_required"] is True
+    assert handoff["reason"] == "plan_servicing_verification"
+    assert handoff["next_action"] == _EXISTING_PLAN_NEXT_ACTION

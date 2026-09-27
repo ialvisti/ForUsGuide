@@ -1403,7 +1403,11 @@ class RAGEngine:
                 question_metadata["human_review_required"] = True
                 question_metadata["handoff"] = {
                     "reason": "plan_servicing_verification" if termination_response_policy_info.get("plan_review_required") else "custody_verification",
-                    "next_action": "Verify the dated plan lifecycle and participant disposition record before approving execution guidance.",
+                    "next_action": (
+                        "Route this case to Support to verify current plan servicing and the individual account record before providing withdrawal instructions."
+                        if termination_response_policy_info.get("support_review_required")
+                        else "Verify the dated plan lifecycle and participant disposition record before approving execution guidance."
+                    ),
                     "plan_context": (collected_data or {}).get("internal_plan_context", {}),
                     "preflight": (collected_data or {}).get("internal_preflight_context", {}),
                 }
@@ -4908,9 +4912,16 @@ class RAGEngine:
             )
         successor = successor_fact.get("value") if same_transition else None
         current = lifecycle.get("current") or {}
-        inactive_plan = current.get("active") is False or current.get("status") in {"terminated", "deconverted", "closed"}
+        raw_status = current.get("status")
+        status_norm = raw_status.strip().casefold() if isinstance(raw_status, str) else ""
+        # Explicit recorded termination only. active:false does not imply it,
+        # and active:true contradicts an assertive terminated disclosure.
+        explicit_terminated = status_norm == "terminated"
+        plain_terminated = explicit_terminated and current.get("active") is not True
+        inactive_plan = current.get("active") is False or status_norm in {"terminated", "deconverted", "closed"}
         if hold or inactive_plan or transition in {"completed", "pending"}:
             fixed["outcome"] = "blocked_not_eligible" if hold else "blocked_missing_data"
+            support_review = False
             if hold:
                 opening = "The plan has a recorded hold on distributions. Our team needs to confirm that the hold has been released before a distribution can proceed."
             elif (
@@ -4921,15 +4932,36 @@ class RAGEngine:
                 opening = f"Plan records name {reported_successor['value']} as the successor recordkeeper. Our team needs to verify your account's current servicing details before providing transfer instructions."
             elif transition == "completed" and successor in ("Fidelity", "ADP"):
                 opening = f"Plan records show a completed transition to {successor}. Our team needs to verify your account's current servicing details before providing transfer instructions."
+            elif plain_terminated:
+                opening = (
+                    "Plan records show that the plan is terminated. "
+                    "Our Support team needs to review current plan servicing and the account record "
+                    "before withdrawal/transfer instructions can be provided."
+                )
+                support_review = True
             else:
                 opening = "The plan's status requires verification of current servicing before we can provide transfer instructions."
             if zero_balance:
                 opening = "Your account shows a zero balance. " + opening
-            fixed["outcome_reason"] = "Plan-side lifecycle evidence requires servicing review before participant execution."
+            if support_review:
+                fixed["outcome_reason"] = (
+                    "The recorded plan is terminated; transfer this case internally to Support "
+                    "to verify current plan servicing and the individual account record before participant execution."
+                )
+                fixed["escalation"] = {
+                    "needed": True,
+                    "reason": (
+                        "Transfer this case to Support to verify current plan servicing and the "
+                        "individual account record before providing withdrawal instructions."
+                    ),
+                }
+                info["support_review_required"] = True
+            else:
+                fixed["outcome_reason"] = "Plan-side lifecycle evidence requires servicing review before participant execution."
+                fixed["escalation"] = {"needed": True, "reason": "Internal plan servicing review; verify lifecycle dates, any distribution hold and the individual account record."}
             fixed["response_to_participant"] = {"opening": opening, "key_points": [], "steps": [], "warnings": []}
             fixed["questions_to_ask"] = []
             fixed["data_gaps"] = ["Verified current plan servicing and participant disposition"]
-            fixed["escalation"] = {"needed": True, "reason": "Internal plan servicing review; verify lifecycle dates, any distribution hold and the individual account record."}
             info["plan_review_required"] = True
             return fixed, info
 

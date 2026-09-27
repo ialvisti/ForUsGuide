@@ -2060,3 +2060,281 @@ def test_left_my_employer_active_conflict_profile_keeps_separation_gate():
     assert "12–24" not in blob
     assert "24 hour" not in blob
     assert "24h" not in blob
+
+
+# Plain terminated-plan servicing review. Lifecycle status is compared after
+# strip/casefold. active:false alone is not a termination, and a contradictory
+# active:true record stays on the generic servicing review.
+_GENERIC_SERVICING_OPENING = (
+    "The plan's status requires verification of current servicing before we can provide transfer instructions."
+)
+_HOLD_OPENING = (
+    "The plan has a recorded hold on distributions. Our team needs to confirm that the hold has been released before a distribution can proceed."
+)
+
+
+def _unknown_terminated_context(status="Terminated", active=False, include_active=True, balance=0):
+    """Active participant, unknown loan/crypto/vested, recorded plan lifecycle."""
+    context = facts("unknown", None, balance=balance)
+    preflight = context["internal_preflight_context"]
+    preflight["loans"]["status"] = "unknown"
+    preflight["loans"]["outstanding_status"] = "unknown"
+    preflight["crypto"]["enrollment"] = {"value": None, "status": "unknown"}
+    preflight["crypto"]["holdings"] = {"value": None, "status": "unknown"}
+    preflight["sources"]["vested_balance"] = {
+        "value": None, "status": "unknown", "source": None, "as_of": None,
+    }
+    current = {"status": status, "status_as_of": "2024-10-24"}
+    if include_active:
+        current["active"] = active
+    context["internal_plan_context"] = {"current": current, "operational_facts": []}
+    context["participant_data"] = {"employment_status": "Active"}
+    return context
+
+
+def _terminated_plan_profile(context):
+    engine = RAGEngine.__new__(RAGEngine)
+    return engine._build_retrieval_profile(
+        "Participant requests a withdrawal. The employer plan is shown as terminated.",
+        "termination_distribution_request",
+        "LT Trust",
+        "401(k)",
+        context,
+    )
+
+
+def _assert_unknowns_preserved(context, fixed):
+    preflight = context["internal_preflight_context"]
+    assert context["participant_data"]["employment_status"] == "Active"
+    assert preflight["loans"]["status"] == "unknown"
+    assert preflight["loans"]["outstanding_status"] == "unknown"
+    assert preflight["crypto"]["enrollment"]["status"] == "unknown"
+    assert preflight["crypto"]["holdings"]["status"] == "unknown"
+    assert preflight["sources"]["vested_balance"]["status"] == "unknown"
+    blob = json.dumps(fixed["response_to_participant"]).lower()
+    assert "outstanding loan is recorded" not in blob
+    assert "crypto positions are recorded" not in blob
+    assert "vested balance is" not in blob
+
+
+def _assert_internal_support_transfer(fixed):
+    for text in (fixed["outcome_reason"], fixed["escalation"]["reason"]):
+        lowered = text.lower()
+        assert "support" in lowered
+        assert "transfer" in lowered or "route" in lowered
+        assert "contact support" not in lowered
+        assert "participant to contact" not in lowered
+        assert "please contact" not in lowered
+    assert fixed["escalation"]["needed"] is True
+
+
+def _assert_plain_terminated_opening(fixed, info, *, zero_balance):
+    opening = fixed["response_to_participant"]["opening"]
+    assert "plan is terminated" in opening.lower()
+    assert "support" in opening.lower()
+    assert "contact support" not in opening.lower()
+    assert "2024-10-24" not in json.dumps(fixed["response_to_participant"])
+    for phrase in (
+        "funds were", "funds moved", "were transferred", "request was submitted",
+        "already occurred", "successor",
+    ):
+        assert phrase not in opening.lower()
+    if zero_balance:
+        assert opening.startswith("Your account shows a zero balance. ")
+    else:
+        assert not opening.lower().startswith("your account shows a zero balance")
+    assert fixed["outcome"] == "blocked_missing_data"
+    assert fixed["response_to_participant"]["steps"] == []
+    assert fixed["questions_to_ask"] == []
+    assert fixed["data_gaps"] == ["Verified current plan servicing and participant disposition"]
+    assert info["plan_review_required"] is True
+    assert info["support_review_required"] is True
+    _assert_internal_support_transfer(fixed)
+
+
+@pytest.mark.parametrize("balance", [0, 10000])
+def test_plain_terminated_plan_names_termination_and_support_ownership(balance):
+    context = _unknown_terminated_context(balance=balance)
+    built = _terminated_plan_profile(context)
+    assert built["primary_action"] == "termination_distribution"
+    assert built["signals"]["employment_state"] == "active"
+    draft = parsed()
+    draft["response_to_participant"]["steps"] = [{"action": "Submit the withdrawal"}]
+    draft["questions_to_ask"] = [{"question": "Which provider?", "why": "routing"}]
+    fixed, info = RAGEngine._apply_termination_response_policy(draft, built, context)
+    _assert_unknowns_preserved(context, fixed)
+    _assert_plain_terminated_opening(fixed, info, zero_balance=balance == 0)
+
+
+@pytest.mark.parametrize("status", ["Terminated", "TERMINATED", " terminated ", "  TeRmInAtEd"])
+def test_mixed_case_terminated_status_with_active_absent_routes_to_support(status):
+    context = _unknown_terminated_context(status=status, include_active=False, balance=10000)
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), context,
+    )
+    _assert_unknowns_preserved(context, fixed)
+    _assert_plain_terminated_opening(fixed, info, zero_balance=False)
+
+
+@pytest.mark.parametrize("status", [None, "", "unknown", "Active", "pending_termination"])
+def test_inactive_without_explicit_terminated_status_is_not_relabeled(status):
+    context = _unknown_terminated_context(status=status, active=False, balance=10000)
+    if status is None:
+        context["internal_plan_context"]["current"].pop("status", None)
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), context,
+    )
+    assert fixed["response_to_participant"]["opening"] == _GENERIC_SERVICING_OPENING
+    assert "terminated" not in fixed["response_to_participant"]["opening"].lower()
+    assert info.get("support_review_required") is not True
+    assert info["plan_review_required"] is True
+    assert fixed["outcome"] == "blocked_missing_data"
+    assert fixed["response_to_participant"]["steps"] == []
+    assert fixed["questions_to_ask"] == []
+
+
+def test_explicit_active_true_with_terminated_status_stays_generic():
+    context = _unknown_terminated_context(status="Terminated", active=True, balance=10000)
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), context,
+    )
+    opening = fixed["response_to_participant"]["opening"]
+    assert opening == _GENERIC_SERVICING_OPENING
+    assert "terminated" not in opening.lower()
+    assert info.get("support_review_required") is not True
+    assert info["plan_review_required"] is True
+    assert fixed["outcome"] == "blocked_missing_data"
+    assert fixed["response_to_participant"]["steps"] == []
+
+
+@pytest.mark.parametrize("include_active", [True, False])
+@pytest.mark.parametrize("status", ["deconverted", "Deconverted", " closed ", "Closed"])
+def test_deconverted_and_closed_are_not_called_terminated(status, include_active):
+    # Normalizing the comparison also brings a capitalized deconverted/closed
+    # record into the servicing review when the active flag is absent. That
+    # record still blocks execution guidance, and it is never called terminated.
+    context = _unknown_terminated_context(
+        status=status, active=False, include_active=include_active, balance=10000,
+    )
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), context,
+    )
+    opening = fixed["response_to_participant"]["opening"]
+    assert opening == _GENERIC_SERVICING_OPENING
+    assert "terminated" not in opening.lower()
+    assert info.get("support_review_required") is not True
+    assert info["plan_review_required"] is True
+    assert fixed["outcome"] == "blocked_missing_data"
+    assert fixed["response_to_participant"]["steps"] == []
+    assert fixed["questions_to_ask"] == []
+
+
+def test_pending_transition_with_terminated_plan_keeps_support_routing():
+    # A pending custody transition has no preserved opening of its own, so the
+    # recorded termination still owns the answer. It must not imply that a
+    # successor exists or that a move already happened.
+    context = _unknown_terminated_context(balance=10000)
+    context["internal_plan_context"]["operational_facts"] = [{
+        "kind": "custody_transition_status", "value": "pending", "source": "plan_history.notes",
+        "recorded_at": "2025-10-09", "effective_on": "2025-10-02",
+    }]
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), context,
+    )
+    opening = fixed["response_to_participant"]["opening"].lower()
+    assert "completed transition" not in opening
+    assert "pending" not in opening
+    _assert_unknowns_preserved(context, fixed)
+    _assert_plain_terminated_opening(fixed, info, zero_balance=False)
+
+
+def test_active_plan_is_not_relabeled_terminated():
+    context = facts(balance=10000)
+    context["participant_data"] = {"employment_status": "Active"}
+    context["internal_plan_context"] = {
+        "current": {"status": "Active", "active": True, "status_as_of": "2026-01-01"},
+        "operational_facts": [],
+    }
+    draft = parsed()
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        draft, profile(rollover=False), context,
+    )
+    assert info.get("support_review_required") is not True
+    assert info.get("plan_review_required") is not True
+    assert "terminated" not in fixed["response_to_participant"]["opening"].lower()
+
+
+def test_recorded_hold_keeps_precedence_over_plain_termination():
+    context = _unknown_terminated_context(balance=10000)
+    context["internal_plan_context"]["operational_facts"] = [{
+        "kind": "distribution_hold", "value": True, "source": "plan_history.notes",
+        "recorded_at": "2026-03-26", "effective_on": "2026-03-26",
+    }]
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), context,
+    )
+    assert fixed["response_to_participant"]["opening"] == _HOLD_OPENING
+    assert fixed["outcome"] == "blocked_not_eligible"
+    assert info.get("support_review_required") is not True
+    assert info["plan_review_required"] is True
+
+
+def test_reported_successor_and_completed_transition_keep_precedence():
+    successor_context = _unknown_terminated_context(balance=0)
+    successor_context["internal_plan_context"]["operational_facts"] = [{
+        "kind": "servicing_successor_reported", "value": "ADP", "recorded_at": "2026-09-10",
+        "effective_on": None, "source": "plan_history.notes",
+    }]
+    successor_fixed, successor_info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), successor_context,
+    )
+    successor_opening = successor_fixed["response_to_participant"]["opening"]
+    assert "ADP" in successor_opening
+    assert "plan is terminated" not in successor_opening.lower()
+    assert successor_info.get("support_review_required") is not True
+    assert successor_info["plan_review_required"] is True
+
+    completed_context = _unknown_terminated_context(balance=10000)
+    completed_context["internal_plan_context"]["operational_facts"] = [
+        {"kind": "custody_transition_status", "value": "completed", "source": "plan_history.notes", "recorded_at": "2025-10-09", "effective_on": "2025-10-02"},
+        {"kind": "successor_recordkeeper", "value": "Fidelity", "source": "plan_history.notes", "recorded_at": "2025-10-09", "effective_on": "2025-10-02"},
+    ]
+    completed_fixed, completed_info = RAGEngine._apply_termination_response_policy(
+        parsed(), profile(rollover=False), completed_context,
+    )
+    completed_opening = completed_fixed["response_to_participant"]["opening"]
+    assert "Fidelity" in completed_opening
+    assert "completed transition" in completed_opening.lower()
+    assert "plan is terminated" not in completed_opening.lower()
+    assert completed_info.get("support_review_required") is not True
+
+
+def test_incoming_rollover_ignores_plain_terminated_plan():
+    context = _unknown_terminated_context(balance=0)
+    draft = parsed()
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        draft, {"primary_action": "incoming_rollover", "signals": {}}, context,
+    )
+    assert fixed == draft
+    assert info["applied"] is False
+    assert info.get("support_review_required") is not True
+
+
+def test_zero_custody_without_terminated_plan_stays_custody_review():
+    engine = RAGEngine.__new__(RAGEngine)
+    context = facts(balance=0)
+    context["participant_data"] = {"employment_status": "Active"}
+    built = engine._build_retrieval_profile(
+        "Where did the funds in my account go?",
+        "account_balance",
+        "LT Trust",
+        "401(k)",
+        context,
+    )
+    fixed, info = RAGEngine._apply_termination_response_policy(parsed(), built, context)
+    assert info["custody_review_required"] is True
+    assert info.get("support_review_required") is not True
+    assert info.get("plan_review_required") is not True
+    assert "plan is terminated" not in fixed["response_to_participant"]["opening"].lower()
+    assert fixed["response_to_participant"]["steps"] == []
+    assert fixed["questions_to_ask"] == []

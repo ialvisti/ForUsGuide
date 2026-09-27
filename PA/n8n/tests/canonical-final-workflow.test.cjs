@@ -102,7 +102,9 @@ test('Final extractor exposes only independently verified facts and cannot autho
  for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
  assert.equal(out.human_review_required,true);assert.match(out.internal_notes,/Independent backend evidence/);
  parsed.canonical_evidence={evidence_status:'matched'};
- assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),/Invalid PA final draft/);
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),/PA certainty guard rejected parser output; no ticket write permitted/);
+ const mismatched={ticketId:'TKT-100002',participant_reply:'Synthetic answer',set_stage_solved:true,stage_reason:'Synthetic reason',internal_notes:null};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(mismatched)}),/Invalid PA final draft/);
 });
 test('Consumer release manifest binds generated source, prompt and immutable transport endpoints',()=>{
  const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'../canonical-final-consumer.manifest')));
@@ -149,6 +151,27 @@ test('A poll without plan metadata leaves plan provenance explicitly null',()=>{
  const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
  assert.equal(out.verified_plan_facts,null);
  assert.match(out.internal_notes,/"verified_plan_facts":null/);
+});
+test('Published data extractor source keeps the accepted live hash',()=>{
+ const hash=require('node:crypto').createHash('sha256').update(builders.extractorCode()).digest('hex');
+ assert.equal(hash,'c48ea5854cff546b2bb8803c9820bfd071c4d5f1f40f0d76495906ff56123151');
+});
+test('Extractor rejects an unsupported personal age claim in a penalty statement',()=>{
+ const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
+ const parsed={ticketId:ticket,participant_reply:'Because you are under 59½, a 10% early withdrawal penalty will apply.',
+  set_stage_solved:true,stage_reason:'Synthetic reason',internal_notes:null};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+  /PA certainty guard rejected parser output; no ticket write permitted/);
+});
+test('Extractor preserves conditional age wording and human-review gates',()=>{
+ const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
+ const reply='If you are under 59½, a 10% early withdrawal penalty may apply.';
+ const parsed={ticketId:ticket,participant_reply:reply,set_stage_solved:true,stage_reason:'Synthetic reason',internal_notes:null};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+ assert.equal(out.participant_reply,reply);
+ for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
+ assert.equal(out.human_review_required,true);
+ assert.equal(out.model_recommended_solved,true);
 });
 test('Parser system prompt grounds plan-specific fees to canonical evidence, not agent prose',()=>{
  const prompt=fs.readFileSync(path.join(__dirname,'..','candidates','canonical-final-parser-system.md'),'utf8');

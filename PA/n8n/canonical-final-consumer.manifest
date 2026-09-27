@@ -39,7 +39,7 @@
     {
       "node": "Data extractor",
       "builder": "extractorCode",
-      "sha256": "b67fd1bb8f49a319469090acd6fdfeaaf7e8b415bf88b5014000b9a3f2657f11"
+      "sha256": "c48ea5854cff546b2bb8803c9820bfd071c4d5f1f40f0d76495906ff56123151"
     },
     {
       "node": "PA Final Email Source",

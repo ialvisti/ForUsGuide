@@ -2,9 +2,11 @@
 
 import json
 import re
+from pathlib import Path
 
 import pytest
 
+from data_pipeline.gr_payload_builder import build_collected_data
 from data_pipeline.rag_engine import RAGEngine
 
 
@@ -2303,8 +2305,13 @@ def test_reported_successor_and_completed_transition_keep_precedence():
         parsed(), profile(rollover=False), completed_context,
     )
     completed_opening = completed_fixed["response_to_participant"]["opening"]
+    completed_rendered = json.dumps(completed_fixed["response_to_participant"])
     assert "Fidelity" in completed_opening
-    assert "completed transition" in completed_opening.lower()
+    assert "transferred" in completed_opening.lower()
+    assert "forusall no longer services" in completed_opening.lower()
+    assert "effective 2025-10-02" in completed_rendered
+    assert "800-835-5095" in completed_rendered
+    assert "before providing transfer instructions" not in completed_opening.lower()
     assert "plan is terminated" not in completed_opening.lower()
     assert completed_info.get("support_review_required") is not True
 
@@ -2318,6 +2325,336 @@ def test_incoming_rollover_ignores_plain_terminated_plan():
     assert fixed == draft
     assert info["applied"] is False
     assert info.get("support_review_required") is not True
+
+
+# Completed same-event successor: share the plan transfer, effective date, and
+# the approved public workplace contact. Individual disposition stays in review.
+_EXACT_DECONVERSION_NOTE = (
+    "Event: 401(k) Plan Deconversion, Fidelity is now the new recordkeeper. "
+    "Effective Date: 2025\u201310-02 Status: Completed Notes: Assets and records "
+    "were transferred; ongoing servicing is now under new recordkeeper."
+)
+_DECOY_PHONE = "999-555-0100"
+_MOVED_BALANCE = re.compile(
+    r"your (?:individual )?(?:balance|funds|assets).{0,40}(?:moved|transferred)"
+    r"|your account (?:was|has been) transferred",
+    re.I,
+)
+
+
+def _deconversion_plan_history(note, *, recorded="2025-10-09", effective=None, entries=None):
+    body = [{
+        "source": "notes",
+        "recordedAt": recorded,
+        "occurredAt": recorded,
+        "effectiveOn": effective,
+        "note": note,
+        "changes": [],
+    }]
+    if entries:
+        body.extend(entries)
+    return {"plan_history": {
+        "schemaVersion": 1,
+        "extractionStatus": "ok",
+        "current": {"status": "terminated", "active": False, "statusAsOf": "2025-10-02"},
+        "completeness": {
+            "complete": True,
+            "truncated": False,
+            "observedCount": len(body),
+            "returnedCount": len(body),
+        },
+        "entries": body,
+    }}
+
+
+def _exact_completed_collected():
+    data = build_collected_data(None, _deconversion_plan_history(_EXACT_DECONVERSION_NOTE))
+    data.setdefault("participant_data", {})["phone"] = _DECOY_PHONE
+    data.setdefault("plan_data", {})["successor_phone"] = _DECOY_PHONE
+    return data
+
+
+def _portal_draft():
+    draft = parsed()
+    draft["response_to_participant"] = {
+        "opening": "Log in to the ForUsAll portal and submit the rollover on RightSignature.",
+        "key_points": ["Use the ForUsAll portal to move your balance."],
+        "steps": [{
+            "step_number": 1,
+            "action": "Open the ForUsAll portal",
+            "detail": "Complete the form at the old recordkeeper.",
+        }],
+        "warnings": ["Portal instructions remain available."],
+    }
+    return draft
+
+
+def _rendered_participant(fixed):
+    return json.dumps(fixed["response_to_participant"])
+
+
+def _completed_successor_facts(provider="Fidelity", effective_on="2025-10-02", transition="completed"):
+    shared = {
+        "source": "plan_history.notes",
+        "recorded_at": "2025-10-09",
+        "effective_on": effective_on,
+    }
+    return [
+        {"kind": "custody_transition_status", "value": transition, **shared},
+        {"kind": "successor_recordkeeper", "value": provider, **shared},
+    ]
+
+
+def test_successor_contact_exact_note_shares_plan_transfer_and_public_phone():
+    data = _exact_completed_collected()
+    facts_by_kind = {
+        fact["kind"]: fact for fact in data["internal_plan_context"]["operational_facts"]
+    }
+    assert facts_by_kind["successor_recordkeeper"]["value"] == "Fidelity"
+    assert facts_by_kind["successor_recordkeeper"]["effective_on"] == "2025-10-02"
+    assert facts_by_kind["successor_recordkeeper"]["recorded_at"] == "2025-10-09"
+    assert facts_by_kind["custody_transition_status"]["value"] == "completed"
+    assert facts_by_kind["successor_recordkeeper"]["record_ref"] == facts_by_kind["custody_transition_status"]["record_ref"]
+
+    fixed, info = RAGEngine._apply_termination_response_policy(_portal_draft(), profile(), data)
+    rendered = _rendered_participant(fixed)
+    lowered = rendered.lower()
+    assert "Fidelity" in rendered
+    assert "effective 2025-10-02" in lowered
+    assert "2025-10-09" not in rendered
+    assert "800-835-5095" in rendered
+    assert "2026-09-27" in rendered
+    assert "forusall no longer services" in lowered
+    assert "transferred" in lowered
+    assert "workplace" in lowered
+    assert "current public workplace contact" in lowered
+    assert "does not establish individual account custody" in lowered
+    assert "historical" in lowered
+    assert _DECOY_PHONE not in rendered
+    assert "forusall portal" not in lowered
+    assert "rightsignature" not in lowered
+    assert "portal" not in lowered
+    assert "assets and records were transferred" not in lowered
+    assert _MOVED_BALANCE.search(rendered) is None
+    assert "confirms your" not in lowered
+    assert fixed["response_to_participant"]["steps"] == []
+    assert fixed["questions_to_ask"] == []
+    assert fixed["outcome"] == "blocked_missing_data"
+    assert fixed["escalation"]["needed"] is True
+    assert info["plan_review_required"] is True
+    assert info.get("support_review_required") is not True
+    review = f"{fixed['outcome_reason']} {fixed['escalation']['reason']}".lower()
+    assert "disposition" in review
+    assert "review" in review
+    assert "before providing transfer instructions" not in review
+    assert "before providing transfer instructions" not in lowered
+    gaps = fixed["data_gaps"]
+    assert gaps != ["Verified current plan servicing and participant disposition"]
+    assert any("disposition" in gap.lower() for gap in gaps)
+    assert not any("contact" in gap.lower() for gap in gaps)
+    assert "individual participant disposition" in review or any(
+        "individual" in gap.lower() and "disposition" in gap.lower() for gap in gaps
+    )
+
+
+def test_successor_contact_omits_unknown_effective_date():
+    context = facts(balance=10000)
+    context["internal_plan_context"] = {
+        "operational_facts": _completed_successor_facts(effective_on=None),
+    }
+    fixed, _ = RAGEngine._apply_termination_response_policy(parsed(), profile(), context)
+    rendered = _rendered_participant(fixed)
+    assert "Fidelity" in rendered
+    assert "forusall no longer services" in rendered.lower()
+    assert "effective" not in rendered.lower()
+    assert "2025-10-09" not in rendered
+    assert "800-835-5095" in rendered
+    assert _MOVED_BALANCE.search(rendered) is None
+
+
+def _bad_contact_registry(tmp_path: Path, shape: str) -> Path:
+    path = tmp_path / "approved_successor_contacts.json"
+    decoy = "202-555-0177"
+    record = {
+        "provider": "Fidelity",
+        "department": "NetBenefits workplace benefit plans",
+        "phone": decoy,
+        "checked_at": "2026-09-27T21:26:53.537275+00:00",
+        "authority": "Fidelity official public contact pages",
+        "sources": [{
+            "url": "https://www.fidelity.com/customer-service/contact-us",
+            "location": "Workplace accounts contact",
+        }],
+        "scope": (
+            "Current public workplace contact only. Does not establish individual "
+            "account custody or historical contact availability."
+        ),
+    }
+    if shape == "missing":
+        return path
+    if shape == "malformed":
+        path.write_text("{not json", encoding="utf-8")
+        return path
+    if shape == "wrong_provider":
+        record["provider"] = "Vanguard"
+        record["sources"][0]["url"] = "https://www.vanguard.com/contact"
+    elif shape == "missing_provenance":
+        record.pop("checked_at")
+    elif shape == "non_https_source":
+        record["sources"][0]["url"] = "http://www.fidelity.com/customer-service/contact-us"
+    elif shape == "bracketed_host_url":
+        # An unbalanced bracket makes urlparse raise; that must reject the record,
+        # not abort the whole response.
+        record["sources"][0]["url"] = "https://[www.fidelity.com/customer-service/contact-us"
+    elif shape == "scope_missing_custody_limit":
+        record["scope"] = "This phone confirms the participant account and historical custody."
+    else:
+        raise AssertionError(shape)
+    path.write_text(json.dumps({"version": 1, "dataset": "approved_successor_contacts", "records": [record]}), encoding="utf-8")
+    return path
+
+
+@pytest.mark.parametrize("shape", [
+    "missing",
+    "malformed",
+    "wrong_provider",
+    "missing_provenance",
+    "non_https_source",
+    "bracketed_host_url",
+    "scope_missing_custody_limit",
+])
+def test_successor_contact_invalid_registry_keeps_name_date_and_gap(tmp_path, monkeypatch, shape):
+    registry = _bad_contact_registry(tmp_path, shape)
+    monkeypatch.setattr(RAGEngine, "_SUCCESSOR_CONTACT_REGISTRY_PATH", str(registry), raising=False)
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        _portal_draft(), profile(), _exact_completed_collected(),
+    )
+    rendered = _rendered_participant(fixed)
+    lowered = rendered.lower()
+    assert "Fidelity" in rendered
+    assert "effective 2025-10-02" in lowered
+    assert "forusall no longer services" in lowered
+    assert "202-555-0177" not in rendered
+    assert "800-835-5095" not in rendered
+    assert not re.search(r"\d{3}-\d{3}-\d{4}", rendered)
+    assert "portal" not in lowered
+    gaps = [gap.lower() for gap in fixed["data_gaps"]]
+    assert any("disposition" in gap for gap in gaps)
+    assert any("contact" in gap for gap in gaps)
+    assert fixed["escalation"]["needed"] is True
+    assert "before providing transfer instructions" not in lowered
+
+
+def test_successor_contact_adp_has_no_approved_phone():
+    context = facts(balance=10000)
+    context["internal_plan_context"] = {
+        "operational_facts": _completed_successor_facts(provider="ADP"),
+    }
+    fixed, _ = RAGEngine._apply_termination_response_policy(parsed(), profile(), context)
+    rendered = _rendered_participant(fixed)
+    assert "ADP" in rendered
+    assert "effective 2025-10-02" in rendered.lower()
+    assert "800-835-5095" not in rendered
+    assert not re.search(r"\d{3}-\d{3}-\d{4}", rendered)
+    gaps = [gap.lower() for gap in fixed["data_gaps"]]
+    assert any("disposition" in gap for gap in gaps)
+    assert any("contact" in gap for gap in gaps)
+    assert fixed["escalation"]["needed"] is True
+
+
+def test_successor_contact_same_date_mismatch_is_not_authorized():
+    pending = {
+        "source": "notes",
+        "recordedAt": "2025-10-09",
+        "occurredAt": "2025-10-09",
+        "effectiveOn": "2025-10-02",
+        "note": "Event: Plan Deconversion. Status: Pending.",
+        "changes": [],
+    }
+    data = build_collected_data(
+        None,
+        _deconversion_plan_history(_EXACT_DECONVERSION_NOTE, entries=[pending]),
+    )
+    operational = data["internal_plan_context"]["operational_facts"]
+    completed = next(fact for fact in operational if fact["kind"] == "custody_transition_status" and fact["value"] == "completed")
+    later = next(fact for fact in operational if fact["kind"] == "custody_transition_status" and fact["value"] == "pending")
+    successor = next(fact for fact in operational if fact["kind"] == "successor_recordkeeper")
+    assert completed["record_ref"] == successor["record_ref"]
+    assert completed["record_ref"] != later["record_ref"]
+
+    fixed, info = RAGEngine._apply_termination_response_policy(parsed(), profile(), data)
+    rendered = _rendered_participant(fixed)
+    assert "800-835-5095" not in rendered
+    assert "no longer services" not in rendered.lower()
+    assert info.get("plan_review_required") is True
+    _assert_plain_terminated_opening(fixed, info, zero_balance=False)
+
+
+def test_successor_contact_mismatched_refs_do_not_authorize_phone():
+    context = facts(balance=10000)
+    context["internal_plan_context"] = {"operational_facts": [
+        {"kind": "successor_recordkeeper", "value": "Fidelity", "source": "plan_history.notes", "recorded_at": "2026-08-01", "effective_on": "2026-08-01", "record_ref": "note-b"},
+        {"kind": "custody_transition_status", "value": "completed", "source": "plan_history.notes", "recorded_at": "2026-08-01", "effective_on": "2026-08-01", "record_ref": "note-a"},
+    ]}
+    fixed, _ = RAGEngine._apply_termination_response_policy(parsed(), profile(), context)
+    rendered = _rendered_participant(fixed)
+    assert "Fidelity" not in rendered
+    assert "800-835-5095" not in rendered
+    assert "no longer services" not in rendered.lower()
+
+
+def test_successor_contact_hold_keeps_precedence():
+    context = _unknown_terminated_context(balance=10000)
+    context["internal_plan_context"]["operational_facts"] = [
+        {"kind": "distribution_hold", "value": True, "source": "plan_history.notes", "recorded_at": "2026-03-26", "effective_on": "2026-03-26"},
+        *_completed_successor_facts(),
+    ]
+    fixed, info = RAGEngine._apply_termination_response_policy(parsed(), profile(rollover=False), context)
+    assert fixed["response_to_participant"]["opening"] == _HOLD_OPENING
+    assert "800-835-5095" not in _rendered_participant(fixed)
+    assert fixed["outcome"] == "blocked_not_eligible"
+    assert info.get("support_review_required") is not True
+    assert info["plan_review_required"] is True
+
+
+@pytest.mark.parametrize("transition", ["pending", "cancelled"])
+def test_successor_contact_pending_and_cancelled_stay_unchanged(transition):
+    context = _unknown_terminated_context(balance=10000)
+    context["internal_plan_context"]["operational_facts"] = _completed_successor_facts(transition=transition)
+    fixed, info = RAGEngine._apply_termination_response_policy(parsed(), profile(rollover=False), context)
+    rendered = _rendered_participant(fixed).lower()
+    assert "800-835-5095" not in rendered
+    assert "no longer services" not in rendered
+    assert "completed transition" not in rendered
+    _assert_plain_terminated_opening(fixed, info, zero_balance=False)
+
+
+def test_successor_contact_reported_successor_stays_weaker():
+    context = _unknown_terminated_context(balance=10000)
+    context["internal_plan_context"]["operational_facts"] = [{
+        "kind": "servicing_successor_reported",
+        "value": "ADP",
+        "recorded_at": "2026-09-10",
+        "effective_on": None,
+        "source": "plan_history.notes",
+    }]
+    fixed, info = RAGEngine._apply_termination_response_policy(parsed(), profile(rollover=False), context)
+    opening = fixed["response_to_participant"]["opening"]
+    assert opening == (
+        "Plan records name ADP as the successor recordkeeper. "
+        "Our team needs to verify your account's current servicing details before providing transfer instructions."
+    )
+    assert "800-835-5095" not in _rendered_participant(fixed)
+    assert fixed["data_gaps"] == ["Verified current plan servicing and participant disposition"]
+    assert info.get("support_review_required") is not True
+    assert info["plan_review_required"] is True
+
+
+def test_successor_contact_plain_terminated_stays_unchanged():
+    context = _unknown_terminated_context(balance=10000)
+    fixed, info = RAGEngine._apply_termination_response_policy(parsed(), profile(rollover=False), context)
+    assert "800-835-5095" not in _rendered_participant(fixed)
+    _assert_plain_terminated_opening(fixed, info, zero_balance=False)
 
 
 def test_zero_custody_without_terminated_plan_stays_custody_review():

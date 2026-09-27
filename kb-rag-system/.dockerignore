@@ -51,6 +51,7 @@ docker-compose.yml
 *.json
 !package.json
 !ui/*.json
+!data_pipeline/approved_successor_contacts.json
 
 # OS
 .DS_Store

@@ -1,0 +1,24 @@
+{
+  "version": 1,
+  "dataset": "approved_successor_contacts",
+  "records": [
+    {
+      "provider": "Fidelity",
+      "department": "NetBenefits; 401(k), 403(b), 457 and workplace benefit plans",
+      "phone": "800-835-5095",
+      "checked_at": "2026-09-27T21:26:53.537275+00:00",
+      "authority": "Fidelity official public contact pages",
+      "sources": [
+        {
+          "url": "https://www.fidelity.com/customer-service/phone-numbers/overview",
+          "location": "Workplace benefit plans section, NetBenefits representative"
+        },
+        {
+          "url": "https://www.fidelity.com/customer-service/contact-us",
+          "location": "Workplace accounts contact"
+        }
+      ],
+      "scope": "Current public workplace contact only. Does not establish individual account custody or historical contact availability at original ticket time. Can support current remediated response with dated provenance."
+    }
+  ]
+}

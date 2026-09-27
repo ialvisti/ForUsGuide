@@ -21,7 +21,9 @@ import os
 import re
 import time
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, Any, List, Optional
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from cachetools import TTLCache
 
@@ -4622,6 +4624,154 @@ class RAGEngine:
                 continue
             item["answer_reference"] = updated
 
+    _SUCCESSOR_CONTACT_REGISTRY_PATH: Optional[str] = None
+    _SUCCESSOR_CONTACT_OFFICIAL_HOSTS = {"Fidelity": "fidelity.com", "ADP": "adp.com"}
+    _SUCCESSOR_CONTACT_PHONE_RE = re.compile(r"^\d{3}-\d{3}-\d{4}$")
+    _SUCCESSOR_CONTACT_SCOPE_REQUIREMENTS = (
+        "current public workplace contact",
+        "does not establish individual account custody",
+        "historical",
+    )
+
+    @classmethod
+    def _successor_contact_registry_path(cls) -> Path:
+        override = cls._SUCCESSOR_CONTACT_REGISTRY_PATH
+        if isinstance(override, str) and override:
+            return Path(override)
+        return Path(__file__).resolve().parent / "approved_successor_contacts.json"
+
+    @classmethod
+    def _validated_successor_contact(cls, record: Any) -> Optional[Dict[str, Any]]:
+        """Accept one closed-provider public contact, or nothing.
+
+        The phone number lives only in the dataset. A missing field, a
+        non-official source, or scope that does not keep the contact public
+        and non-custodial rejects the whole record.
+        """
+        if not isinstance(record, dict):
+            return None
+        provider = record.get("provider")
+        host = cls._SUCCESSOR_CONTACT_OFFICIAL_HOSTS.get(provider) if isinstance(provider, str) else None
+        if host is None:
+            return None
+        phone = record.get("phone")
+        if not isinstance(phone, str) or cls._SUCCESSOR_CONTACT_PHONE_RE.fullmatch(phone) is None:
+            return None
+        checked_at = record.get("checked_at")
+        if not isinstance(checked_at, str):
+            return None
+        try:
+            checked = datetime.fromisoformat(checked_at)
+        except ValueError:
+            return None
+        if checked.tzinfo is None or checked.utcoffset() is None:
+            return None
+        authority = record.get("authority")
+        department = record.get("department")
+        scope = record.get("scope")
+        if not all(isinstance(item, str) and item.strip() for item in (authority, department, scope)):
+            return None
+        folded_scope = scope.casefold()
+        if any(required not in folded_scope for required in cls._SUCCESSOR_CONTACT_SCOPE_REQUIREMENTS):
+            return None
+        sources = record.get("sources")
+        if not isinstance(sources, list) or not sources:
+            return None
+        cleaned_sources = []
+        for source in sources:
+            if not isinstance(source, dict):
+                return None
+            url = source.get("url")
+            location = source.get("location")
+            if not isinstance(url, str) or not isinstance(location, str) or not location.strip():
+                return None
+            try:
+                parsed = urlparse(url)
+            except ValueError:
+                # A URL this malformed rejects the record; it never aborts the response.
+                return None
+            hostname = (parsed.hostname or "").casefold().rstrip(".")
+            official = hostname == host or hostname.endswith("." + host)
+            if parsed.scheme != "https" or parsed.username or parsed.password or not official:
+                return None
+            cleaned_sources.append({"url": url, "location": location.strip()})
+        return {
+            "provider": provider,
+            "department": department.strip(),
+            "phone": phone,
+            "checked_at": checked_at,
+            "authority": authority.strip(),
+            "sources": cleaned_sources,
+            "scope": scope.strip(),
+        }
+
+    @classmethod
+    def _load_approved_successor_contacts(cls) -> List[Dict[str, Any]]:
+        path = cls._successor_contact_registry_path()
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError, TypeError, ValueError):
+            return []
+        if not isinstance(payload, dict):
+            return []
+        if payload.get("version") != 1 or payload.get("dataset") != "approved_successor_contacts":
+            return []
+        records = payload.get("records")
+        if not isinstance(records, list):
+            return []
+        grouped: Dict[str, List[Dict[str, Any]]] = {}
+        for record in records:
+            cleaned = cls._validated_successor_contact(record)
+            if cleaned is None:
+                continue
+            grouped.setdefault(cleaned["provider"], []).append(cleaned)
+        # Two acceptable rows for one provider is ambiguous, so neither is used.
+        return [items[0] for items in grouped.values() if len(items) == 1]
+
+    @classmethod
+    def _approved_public_successor_contact(cls, provider: str) -> Optional[Dict[str, Any]]:
+        if provider not in cls._SUCCESSOR_CONTACT_OFFICIAL_HOSTS:
+            return None
+        matches = [
+            record for record in cls._load_approved_successor_contacts()
+            if record.get("provider") == provider
+        ]
+        if len(matches) != 1:
+            return None
+        return matches[0]
+
+    @classmethod
+    def _completed_successor_servicing_text(
+        cls,
+        successor: str,
+        effective_on: Any,
+        contact: Optional[Dict[str, Any]],
+    ) -> tuple[str, List[str]]:
+        """Plan-level transfer wording. The phone is copied from a validated record."""
+        effective = effective_on if isinstance(effective_on, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", effective_on) else None
+        when = f" effective {effective}" if effective else ""
+        opening = (
+            f"Plan records show this plan transferred to {successor}{when}. "
+            "ForUsAll no longer services this plan."
+        )
+        points = [
+            "Your individual account disposition remains unresolved pending human review. "
+            "Sharing the plan successor and any approved public contact does not resolve that individual disposition."
+        ]
+        if not contact:
+            opening += (
+                f" No approved public workplace phone number is available for {successor}, "
+                "so this response does not include one."
+            )
+            return opening, points
+        checked = str(contact["checked_at"])[:10]
+        opening += (
+            f" Contact {successor} at their general workplace line {contact['phone']} "
+            f"({contact['department']}). That phone is a current public workplace contact checked {checked}."
+        )
+        points.insert(0, str(contact["scope"]))
+        return opening, points
+
     @classmethod
     def _apply_termination_response_policy(
         cls,
@@ -4922,6 +5072,10 @@ class RAGEngine:
         if hold or inactive_plan or transition in {"completed", "pending"}:
             fixed["outcome"] = "blocked_not_eligible" if hold else "blocked_missing_data"
             support_review = False
+            completed_successor = False
+            contact_gap = False
+            successor_effective_known = False
+            successor_points: List[str] = []
             if hold:
                 opening = "The plan has a recorded hold on distributions. Our team needs to confirm that the hold has been released before a distribution can proceed."
             elif (
@@ -4931,7 +5085,22 @@ class RAGEngine:
             ):
                 opening = f"Plan records name {reported_successor['value']} as the successor recordkeeper. Our team needs to verify your account's current servicing details before providing transfer instructions."
             elif transition == "completed" and successor in ("Fidelity", "ADP"):
-                opening = f"Plan records show a completed transition to {successor}. Our team needs to verify your account's current servicing details before providing transfer instructions."
+                # Same-event successor and effective date are already derived.
+                # Share those plan facts and any approved public workplace
+                # contact. Individual disposition stays unresolved.
+                contact = cls._approved_public_successor_contact(successor)
+                effective_on = successor_fact.get("effective_on")
+                if not (isinstance(effective_on, str) and effective_on):
+                    effective_on = transition_fact.get("effective_on")
+                successor_effective_known = bool(
+                    isinstance(effective_on, str)
+                    and re.fullmatch(r"\d{4}-\d{2}-\d{2}", effective_on)
+                )
+                opening, successor_points = cls._completed_successor_servicing_text(
+                    successor, effective_on, contact,
+                )
+                completed_successor = True
+                contact_gap = contact is None
             elif plain_terminated:
                 opening = (
                     "Plan records show that the plan is terminated. "
@@ -4956,12 +5125,39 @@ class RAGEngine:
                     ),
                 }
                 info["support_review_required"] = True
+                response_points: List[Any] = []
+                response_gaps = ["Verified current plan servicing and participant disposition"]
+            elif completed_successor:
+                if successor_effective_known:
+                    established = "The plan transfer to the successor and its effective date are already established."
+                    withheld = "the known successor and effective date"
+                else:
+                    established = "The plan transfer to the successor is already established."
+                    withheld = "the known successor"
+                fixed["outcome_reason"] = (
+                    f"{established} "
+                    "The individual participant disposition remains unresolved and needs human review. "
+                    f"That review does not withhold {withheld} or an approved public workplace contact when one is on file."
+                )
+                fixed["escalation"] = {
+                    "needed": True,
+                    "reason": (
+                        "Human review remains open for the individual participant disposition. "
+                        "The established plan successor and any approved public workplace contact may already be shared."
+                    ),
+                }
+                response_points = successor_points
+                response_gaps = ["Individual participant disposition"]
+                if contact_gap:
+                    response_gaps.append("Approved public workplace contact for the successor")
             else:
                 fixed["outcome_reason"] = "Plan-side lifecycle evidence requires servicing review before participant execution."
                 fixed["escalation"] = {"needed": True, "reason": "Internal plan servicing review; verify lifecycle dates, any distribution hold and the individual account record."}
-            fixed["response_to_participant"] = {"opening": opening, "key_points": [], "steps": [], "warnings": []}
+                response_points = []
+                response_gaps = ["Verified current plan servicing and participant disposition"]
+            fixed["response_to_participant"] = {"opening": opening, "key_points": response_points, "steps": [], "warnings": []}
             fixed["questions_to_ask"] = []
-            fixed["data_gaps"] = ["Verified current plan servicing and participant disposition"]
+            fixed["data_gaps"] = response_gaps
             info["plan_review_required"] = True
             return fixed, info
 

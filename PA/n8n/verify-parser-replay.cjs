@@ -14,7 +14,15 @@ assert.ok(typeof r.internal_notes === 'string' || r.internal_notes === null);
 assert.doesNotMatch(JSON.stringify(r), /TKT-UNTRUSTED|REDACTED|MASKED/);
 assert.match(r.participant_reply, /1\..*total balance/i);
 assert.match(r.participant_reply, /2\..*contribution sources/i);
-assert.match(r.participant_reply, /not a verified vested balance/i);
+// User authority 2026-09-28 supersedes requiring a verified account_balance
+// reply to say it is not a vested balance. Unverified captures still record
+// that a generic total was not presented as a confirmed balance.
+// Two prompt lineages produce that caveat. Historical captures under the
+// release-manifest parser say "not a verified vested balance"; captures under
+// the corrected canonical parser say "not a confirmed balance". Accepting both
+// keeps the historical fixtures asserting exactly what they always did while
+// letting a new capture satisfy the same requirement in the current wording.
+if (mode !== 'verified') assert.match(r.participant_reply, /not a verified vested balance|not a confirmed balance/i);
 assert.match(r.participant_reply, /non-Roth after-tax/i);
 assert.match(r.participant_reply, /(?:need|still|remain|confirm)/i);
 if (mode === 'verified') {

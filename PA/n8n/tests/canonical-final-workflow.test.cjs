@@ -183,3 +183,30 @@ test('Parser system prompt grounds plan-specific fees to canonical evidence, not
  assert.match(prompt,/remains a preservable generic value under the paragraph below/);
  assert.match(prompt,/stated as general rules, not as this participant's plan-specific figure/);
 });
+test('Parser prompt uses verified savings Account Balance as total vested',()=>{
+ // User authority 2026-09-28 supersedes "never stands in for a vested balance",
+ // the preserved total-versus-vested rule, and both worked-example denials.
+ const prompt=fs.readFileSync(path.join(__dirname,'..','candidates','canonical-final-parser-system.md'),'utf8');
+ assert.doesNotMatch(prompt,/never stands in for a vested balance/);
+ assert.doesNotMatch(prompt,/not a verified vested balance/);
+ assert.doesNotMatch(prompt,/total-versus-vested/);
+ assert.match(prompt,/participant\.savings_rate\.Account Balance is the participant total vested balance/);
+ assert.match(prompt,/not a contribution-source breakdown/);
+ assert.match(prompt,/not a loan account balance/);
+ assert.match(prompt,/only the employer vested portion/);
+ assert.match(prompt,/does not establish eligibility, availability for withdrawal/);
+ assert.match(prompt,/generic model-described total without this verified account_balance fact remains unverified/);
+ assert.match(prompt,/\*\*1\. What is my total balance\?\*\*/);
+ assert.match(prompt,/\*\*2\. What are my contribution sources\?\*\*/);
+ assert.match(prompt,/Non-Roth after-tax source status still needs confirmation/);
+ assert.match(prompt,/treating the missing non-Roth after-tax source as zero/);
+ assert.doesNotMatch(prompt,/^\| vested_balance \|/m);
+ // The rule paragraphs may name internal fact keys; the worked example is
+ // participant draft prose and must obey "use natural category descriptions
+ // and dates in the participant draft".
+ for(const label of ['Input: ','Correct edited text: ']){
+  const line=prompt.split('\n').find(l=>l.startsWith(label));
+  assert.ok(line,`missing worked-example line: ${label}`);
+  assert.doesNotMatch(line,/account_balance|savings_rate|canonical_evidence/,`worked example must not emit internal identifiers: ${label}`);
+ }
+});

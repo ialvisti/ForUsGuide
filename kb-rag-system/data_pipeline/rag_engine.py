@@ -4795,6 +4795,16 @@ class RAGEngine:
         points.insert(0, str(contact["scope"]))
         return opening, points
 
+    # The exact permission-hold strings the retention_options branch below
+    # emits when no approved LT Trust 401(k) profile applies. The approved
+    # branch removes ONLY these, by exact match, so authored or mixed text is
+    # never discarded by a keyword guess. Keep in sync with that branch.
+    _LT_RETENTION_OBSOLETE_STRINGS = frozenset({
+        "The informational question about a partial rollover with a retained balance needs a verified plan rule; this does not authorize a transaction.",
+        "Plan permission, balance requirements and fees for a partial rollover retaining the remainder",
+        "Verify the plan-specific partial rollover and retained-balance rules before confirming this option.",
+    })
+
     @classmethod
     def _apply_termination_response_policy(
         cls,
@@ -5242,32 +5252,124 @@ class RAGEngine:
                 questions = ((collected_data or {}).get("internal_response_context") or {}).get("requested_questions") or []
                 partial_indices = [index for index, question in enumerate(questions[:12]) if isinstance(question, str)
                                    and re.search(r"\bpartial\b|\bonly (?:a )?part\b|\ba portion\b", question, re.I)]
+                approved_lt_401k = False
                 if partial_indices:
-                    # The current payload has no verified rule for retaining
-                    # the remainder. Generic partial cash/distribution support
-                    # does not establish that separate permission.
                     points = list(response.get("key_points") or [])
-                    for index in partial_indices:
-                        answer = f"{index + 1}. Our team needs to verify whether the plan permits a partial rollover while you leave the rest invested, including any balance requirements and applicable fees. A general partial-distribution option does not confirm this."
-                        position = next((pos for pos, point in enumerate(points) if isinstance(point, str)
-                                         and re.match(rf"^\s*{index + 1}[.)]\s", point)), None)
-                        if position is None:
-                            points.append(answer)
+                    record_keeper_text = str(profile.get("record_keeper") or "").strip().casefold()
+                    plan_type_text = cls._normalize_plan_type(profile.get("plan_type"))
+                    # Profile labels scope the general LT Trust 401(k) policy.
+                    # They are not an identity or eligibility determination.
+                    approved_lt_401k = record_keeper_text == "lt trust" and plan_type_text in {"401k", "401"}
+                    if approved_lt_401k:
+                        policy = (
+                            "For an LT Trust 401(k) plan, a partial rollover may leave the remainder invested. "
+                            "If a terminated balance is below $7,000, only the sponsor may request or authorize a force-out; "
+                            "it is not automatic and the balance alone does not start it. "
+                            "The remainder does not have to be cashed out. "
+                            "Exact ongoing fees stay unverified until this plan's Participant Introduction Packet and "
+                            "Participant Fee Disclosure in the Admin vault are checked."
+                        )
+                        # A one-time withdrawal charge is not an ongoing fee and
+                        # naming it here only distracts from the unverified answer.
+                        fee_indices = {
+                            index for index, question in enumerate(questions[:12])
+                            if isinstance(question, str)
+                            and re.search(r"\bfees?\b", question, re.I)
+                        }
+                        for index in partial_indices:
+                            # A question that also asks about fees is only
+                            # partly answered: the fee half stays unverified.
+                            compound = index in fee_indices
+                            answer = f"{index + 1}. {policy}"
+                            position = next((pos for pos, point in enumerate(points) if isinstance(point, str)
+                                             and re.match(rf"^\s*{index + 1}[.)]\s", point)), None)
+                            if position is None:
+                                points.append(answer)
+                            else:
+                                points[position] = answer
+                            for item in fixed.get("question_coverage") or []:
+                                if isinstance(item, dict) and item.get("question_index") == index:
+                                    item["status"] = "needs_verification" if compound else "answered"
+                                    item["answer_reference"] = (
+                                        f"{answer} The fee part of this question is not answered."
+                                        if compound else answer
+                                    )
+                        for item in fixed.get("question_coverage") or []:
+                            if isinstance(item, dict) and item.get("question_index") in fee_indices:
+                                item["status"] = "needs_verification"
+                        response["opening"] = "We can review your options before you decide whether to move any funds."
+
+                        # Authored text is never classified by keyword. A word
+                        # filter deleted "...permits a partial rollover AND
+                        # confirm the outstanding loan payoff...", losing an
+                        # independent requirement. Only the exact strings this
+                        # module's own permission-hold branch emits are dropped;
+                        # anything else is kept verbatim and annotated.
+                        def is_obsolete_permission_only(text: Any) -> bool:
+                            return isinstance(text, str) and text.strip() in cls._LT_RETENTION_OBSOLETE_STRINGS
+
+                        settled = (
+                            "The general LT Trust 401(k) partial-retention permission is settled; "
+                            "any other requirement named here remains open."
+                        )
+                        fee_outcome_reason = "Exact ongoing fees for this LT Trust 401(k) plan are still unverified. This does not deny partial retention or authorize a transaction."
+                        # Never turns blocked into eligible; only a can_proceed is
+                        # downgraded. A mixed reason keeps its own words.
+                        current_reason = fixed.get("outcome_reason")
+                        if fixed.get("outcome") == "can_proceed":
+                            fixed["outcome"] = "blocked_missing_data"
+                            fixed["outcome_reason"] = fee_outcome_reason
+                        elif is_obsolete_permission_only(current_reason):
+                            fixed["outcome_reason"] = fee_outcome_reason
+                        elif isinstance(current_reason, str) and current_reason.strip():
+                            fixed["outcome_reason"] = f"{current_reason.strip()} {settled}"
+                        gaps = fixed.get("data_gaps")
+                        if isinstance(gaps, list):
+                            # Structured entries are opaque here, so only an exact
+                            # obsolete string is removed and every other entry,
+                            # including a dict, survives untouched.
+                            fixed["data_gaps"] = [gap for gap in gaps if not is_obsolete_permission_only(gap)]
+                        escalation = fixed.get("escalation") if isinstance(fixed.get("escalation"), dict) else {}
+                        fee_reason = "Exact ongoing fees still need this plan's Participant Introduction Packet and Participant Fee Disclosure. This does not deny the LT Trust 401(k) partial-retention policy or authorize a transaction."
+                        existing_reason = escalation.get("reason")
+                        if not escalation.get("needed") or is_obsolete_permission_only(existing_reason):
+                            merged_reason = fee_reason
+                        elif isinstance(existing_reason, str) and existing_reason.strip():
+                            merged_reason = f"{existing_reason.strip()} {settled} {fee_reason}"
                         else:
-                            points[position] = answer
+                            merged_reason = fee_reason
+                        fixed["escalation"] = {"needed": True, "reason": merged_reason}
+                        info["lt_401k_partial_retention_policy"] = True
+                    else:
+                        # No approved LT Trust 401(k) profile. Generic partial
+                        # cash support still does not prove remainder permission.
+                        for index in partial_indices:
+                            answer = f"{index + 1}. Our team needs to verify whether the plan permits a partial rollover while you leave the rest invested, including any balance requirements and applicable fees. A general partial-distribution option does not confirm this."
+                            position = next((pos for pos, point in enumerate(points) if isinstance(point, str)
+                                             and re.match(rf"^\s*{index + 1}[.)]\s", point)), None)
+                            if position is None:
+                                points.append(answer)
+                            else:
+                                points[position] = answer
+                        response["opening"] = "We can review your options before you decide whether to move any funds."
+                        fixed["outcome"] = "blocked_missing_data"
+                        fixed["outcome_reason"] = "The informational question about a partial rollover with a retained balance needs a verified plan rule; this does not authorize a transaction."
+                        fixed["data_gaps"] = list(fixed.get("data_gaps") or []) + ["Plan permission, balance requirements and fees for a partial rollover retaining the remainder"]
+                        fixed["escalation"] = {"needed": True, "reason": "Verify the plan-specific partial rollover and retained-balance rules before confirming this option."}
+                        for item in fixed.get("question_coverage") or []:
+                            if isinstance(item, dict) and item.get("question_index") in partial_indices:
+                                item["status"] = "needs_verification"
+                        info["partial_retention_verification_required"] = True
                     response["key_points"] = points
-                    response["opening"] = "We can review your options before you decide whether to move any funds."
-                    fixed["outcome"] = "blocked_missing_data"
-                    fixed["outcome_reason"] = "The informational question about a partial rollover with a retained balance needs a verified plan rule; this does not authorize a transaction."
-                    fixed["data_gaps"] = list(fixed.get("data_gaps") or []) + ["Plan permission, balance requirements and fees for a partial rollover retaining the remainder"]
-                    fixed["escalation"] = {"needed": True, "reason": "Verify the plan-specific partial rollover and retained-balance rules before confirming this option."}
-                    for item in fixed.get("question_coverage") or []:
-                        if isinstance(item, dict) and item.get("question_index") in partial_indices:
-                            item["status"] = "needs_verification"
-                    info["partial_retention_verification_required"] = True
                 points = list(response.get("key_points") or [])
                 if partial_indices and not any("which option" in cls._response_item_text(point).lower() for point in points):
-                    points.append("Which option would you like to explore: keeping your funds here, moving all of them, or a partial rollover if your plan permits it?")
+                    # Under the approved LT Trust 401(k) policy the permission is
+                    # settled, so the prompt must not re-open it as a condition.
+                    points.append(
+                        "Which option would you like to explore: keeping your funds here, moving all of them, or a partial rollover leaving the remainder invested?"
+                        if approved_lt_401k else
+                        "Which option would you like to explore: keeping your funds here, moving all of them, or a partial rollover if your plan permits it?"
+                    )
                 response["key_points"] = points
             return fixed, info
 

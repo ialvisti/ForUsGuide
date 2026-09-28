@@ -592,6 +592,270 @@ def test_retention_without_partial_question_preserves_supported_answer():
     assert fixed == draft
 
 
+_RETENTION_QUESTIONS = [
+    'Can I keep funds invested?',
+    'What ongoing fees apply?',
+    'Can I roll over only part and leave the rest invested?',
+]
+
+
+def _retention_draft():
+    draft = parsed(outcome='blocked_missing_data', outcome_reason='Need more information.')
+    draft['response_to_participant']['key_points'] = [
+        '1. You may be able to keep funds invested.',
+        '2. Ongoing fees require the plan fee documents.',
+        '3. The plan supports voluntary partial distributions.',
+    ]
+    draft['response_to_participant']['steps'] = [{'action': 'Submit a distribution'}]
+    draft['question_coverage'] = [
+        {'question_index': 0, 'status': 'answered', 'answer_reference': 'You may be able to keep funds invested.'},
+        {'question_index': 1, 'status': 'answered', 'answer_reference': 'Ongoing fees require the plan fee documents.'},
+        {'question_index': 2, 'status': 'answered', 'answer_reference': 'The plan supports voluntary partial distributions.'},
+    ]
+    draft['data_gaps'] = ['An unrelated vesting question']
+    return draft
+
+
+def _retention_context(balance=10000, status='known'):
+    context = facts(balance=balance if balance is not None else 0)
+    if balance is None:
+        context['internal_preflight_context']['sources']['account_balance'] = {
+            'status': 'unknown', 'value': None, 'source': 'savings_rate', 'as_of': None,
+        }
+    elif status != 'known':
+        context['internal_preflight_context']['sources']['account_balance']['status'] = status
+    context['internal_response_context'] = {'requested_questions': list(_RETENTION_QUESTIONS)}
+    return context
+
+
+def test_lt_401k_partial_retention_uses_the_approved_policy_without_a_permission_hold():
+    """Superseded authority: an LT Trust 401(k) may leave a partial-rollover remainder invested."""
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        _retention_draft(),
+        {'primary_action': 'retention_options', 'record_keeper': ' LT Trust ', 'plan_type': '401(k)'},
+        _retention_context(),
+    )
+    points = fixed['response_to_participant']['key_points']
+    partial = points[2]
+    rendered = json.dumps(fixed['response_to_participant'])
+    assert points[0] == '1. You may be able to keep funds invested.'
+    assert points[1] == '2. Ongoing fees require the plan fee documents.'
+    assert 'leave the remainder invested' in partial
+    assert 'below $7,000' in partial
+    assert 'sponsor' in partial.lower()
+    assert 'not automatic' in partial.lower()
+    assert 'cashed out' in partial
+    assert 'needs to verify whether the plan permits' not in partial
+    assert 'LT Trust 401(k)' in partial
+    # A one-time withdrawal charge is not an ongoing fee; naming it here only
+    # distracted from the unverified answer, so the policy no longer cites it.
+    assert '$75' not in partial
+    assert 'Participant Introduction Packet' in partial
+    assert 'Participant Fee Disclosure' in partial
+    assert fixed['outcome'] == 'blocked_missing_data'
+    assert fixed['outcome'] != 'can_proceed'
+    assert fixed['response_to_participant']['steps'] == []
+    assert 'which option' in rendered.lower()
+    # The policy settles permission, so the preference prompt must not re-open
+    # it as a condition on this profile.
+    assert 'if your plan permits it' not in rendered
+    assert 'leaving the remainder invested?' in rendered
+    assert 'An unrelated vesting question' in fixed['data_gaps']
+    assert not any('Plan permission' in str(gap) for gap in fixed['data_gaps'])
+    assert 'permit a partial rollover' not in str(fixed.get('escalation'))
+    assert info.get('partial_retention_verification_required') is not True
+    metadata = RAGEngine._validate_question_coverage(fixed, _retention_context())
+    assert metadata['question_coverage'][0]['status'] == 'answered'
+    assert metadata['question_coverage'][1]['status'] == 'needs_verification'
+    assert metadata['question_coverage'][2]['status'] == 'answered'
+    assert metadata['question_coverage'][2]['answer_reference'].casefold() in rendered.casefold()
+    assert metadata['incomplete_question_count'] >= 1
+
+
+def test_compound_partial_and_fee_question_stays_needs_verification():
+    """One question asking both halves is only half answered while fees are unverified."""
+    draft = _retention_draft()
+    context = _retention_context()
+    context['internal_response_context'] = {'requested_questions': [
+        'Can I keep funds invested?',
+        'What ongoing fees apply?',
+        'Can I roll over only part, leave the rest invested, and what fees apply to the remainder?',
+    ]}
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        context,
+    )
+    compound = next(item for item in fixed['question_coverage'] if item['question_index'] == 2)
+    assert compound['status'] == 'needs_verification'
+    assert 'fee part of this question is not answered' in compound['answer_reference']
+    assert 'leave the remainder invested' in compound['answer_reference']
+    assert fixed['response_to_participant']['steps'] == []
+
+
+_OBSOLETE_REASON = 'The informational question about a partial rollover with a retained balance needs a verified plan rule; this does not authorize a transaction.'
+_OBSOLETE_GAP = 'Plan permission, balance requirements and fees for a partial rollover retaining the remainder'
+_OBSOLETE_ESCALATION = 'Verify the plan-specific partial rollover and retained-balance rules before confirming this option.'
+_MIXED_SENTENCE = 'Verify whether the plan permits a partial rollover and confirm the outstanding loan payoff before any transaction.'
+
+
+def test_obsolete_removal_set_matches_what_the_permission_hold_branch_emits():
+    """Exact-match removal is only safe while the two stay in sync."""
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        _retention_draft(),
+        {'primary_action': 'retention_options', 'record_keeper': 'Fidelity', 'plan_type': '401(k)'},
+        _retention_context(),
+    )
+    obsolete = RAGEngine._LT_RETENTION_OBSOLETE_STRINGS
+    assert fixed['outcome_reason'] in obsolete
+    assert fixed['escalation']['reason'] in obsolete
+    assert any(gap in obsolete for gap in fixed['data_gaps'])
+
+
+def test_stale_permission_denial_is_reconciled_without_clearing_unrelated_facts():
+    """Only the exact permission-only strings are replaced or dropped."""
+    draft = _retention_draft()
+    draft['outcome_reason'] = _OBSOLETE_REASON
+    draft['data_gaps'] = ['An unrelated vesting question', _OBSOLETE_GAP]
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        _retention_context(),
+    )
+    assert 'needs a verified plan rule' not in fixed['outcome_reason']
+    assert 'does not deny partial retention' in fixed['outcome_reason']
+    assert fixed['outcome'] == 'blocked_missing_data'
+    assert 'An unrelated vesting question' in fixed['data_gaps']
+    assert _OBSOLETE_GAP not in fixed['data_gaps']
+
+
+def test_mixed_escalation_reason_keeps_its_independent_sentence():
+    """Authored text survives verbatim; the correction is appended, not swapped."""
+    draft = _retention_draft()
+    draft['escalation'] = {
+        'needed': True,
+        'reason': (
+            'Confirm the outstanding loan offset before submission. '
+            'Verify whether the plan permits a partial rollover retaining the remainder.'
+        ),
+    }
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        _retention_context(),
+    )
+    reason = fixed['escalation']['reason']
+    assert 'outstanding loan offset' in reason
+    assert 'permission is settled' in reason
+    assert 'Participant Fee Disclosure' in reason
+    assert fixed['escalation']['needed'] is True
+
+
+def test_same_sentence_mixed_requirement_is_never_discarded():
+    """Root repro: one sentence carrying permission AND an independent loan payoff.
+
+    A keyword filter deleted the whole sentence from all three containers and
+    lost the loan requirement. Authored text must now survive verbatim.
+    """
+    draft = _retention_draft()
+    draft['outcome_reason'] = _MIXED_SENTENCE
+    draft['data_gaps'] = [_MIXED_SENTENCE]
+    draft['escalation'] = {'needed': True, 'reason': _MIXED_SENTENCE}
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        _retention_context(),
+    )
+    assert 'outstanding loan payoff' in fixed['outcome_reason']
+    assert _MIXED_SENTENCE in fixed['data_gaps']
+    assert 'outstanding loan payoff' in fixed['escalation']['reason']
+    # The settled-permission correction is added without claiming the loan
+    # payoff is satisfied, and the outcome is not upgraded.
+    assert 'permission is settled' in fixed['outcome_reason']
+    assert 'permission is settled' in fixed['escalation']['reason']
+    assert fixed['outcome'] == 'blocked_missing_data'
+
+
+def test_structured_data_gap_entries_survive_the_retention_policy():
+    """A dict gap is opaque here, so it is never inspected or dropped."""
+    draft = _retention_draft()
+    structured = {'gap': 'Outstanding loan payoff', 'owner': 'PA'}
+    draft['data_gaps'] = [structured, _OBSOLETE_GAP]
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        _retention_context(),
+    )
+    assert structured in fixed['data_gaps']
+    assert _OBSOLETE_GAP not in fixed['data_gaps']
+
+
+@pytest.mark.parametrize('record_keeper,plan_type', [
+    (None, '401(k)'),
+    ('Fidelity', '401(k)'),
+    ('American Trust', '401(k)'),
+    ('LT Trust', '403(b)'),
+])
+def test_other_recordkeeper_keeps_the_partial_retention_permission_hold(record_keeper, plan_type):
+    profile = {'primary_action': 'retention_options', 'plan_type': plan_type}
+    if record_keeper is not None:
+        profile['record_keeper'] = record_keeper
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        _retention_draft(), profile, _retention_context())
+    assert 'needs to verify whether the plan permits' in fixed['response_to_participant']['key_points'][2]
+    assert info['partial_retention_verification_required'] is True
+    assert fixed['response_to_participant']['steps'] == []
+    assert fixed['outcome'] != 'can_proceed'
+
+
+@pytest.mark.parametrize('balance', [None, 6999.99, 7000, 10000])
+def test_lt_401k_retention_policy_does_not_infer_or_force_out_a_balance(balance):
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        _retention_draft(),
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401'},
+        _retention_context(balance),
+    )
+    partial = fixed['response_to_participant']['key_points'][2]
+    assert 'If a terminated balance is below $7,000' in partial
+    assert 'your balance is below' not in partial.lower()
+    assert '6999.99' not in partial
+    assert '10000' not in partial
+    assert 'will be forced out' not in partial.lower()
+    assert 'automatic force-out' not in partial.lower()
+    assert fixed['response_to_participant']['steps'] == []
+
+
+def test_zero_balance_custody_return_is_not_replaced_by_retention_policy():
+    context = _retention_context(0)
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        _retention_draft(),
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        context,
+    )
+    rendered = json.dumps(fixed['response_to_participant'])
+    assert info['custody_review_required'] is True
+    assert 'leave the remainder invested' not in rendered
+    assert 'does not prove a force-out' in fixed['escalation']['reason']
+    assert fixed['response_to_participant']['steps'] == []
+
+
+def test_plan_hold_returns_before_the_retention_policy():
+    context = _retention_context(5000)
+    context['internal_plan_context'] = {
+        'current': {'status': 'active', 'active': True},
+        'operational_facts': [{'kind': 'distribution_hold', 'value': True, 'recorded_at': '2026-09-01'}],
+    }
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        _retention_draft(),
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        context,
+    )
+    assert info['plan_review_required'] is True
+    assert 'leave the remainder invested' not in json.dumps(fixed['response_to_participant'])
+    assert fixed['outcome'] == 'blocked_not_eligible'
+    assert fixed['response_to_participant']['steps'] == []
+
+
 def test_authoritative_plan_identifier_rewrite_updates_coverage_reference():
     context = facts()
     context['internal_plan_disclosure_context'] = _plan_disclosure(rk_plan_id='SYNTHETIC-PLAN-CODE')

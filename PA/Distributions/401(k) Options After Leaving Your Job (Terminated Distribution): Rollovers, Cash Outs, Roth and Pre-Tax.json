@@ -2,7 +2,7 @@
     "metadata": {
         "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
         "title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
-        "description": "General education article for participants who have left, quit, been terminated, or separated from service and need to understand their 401(k) options. Covers three paths: leaving funds in the plan, taking a cash distribution (check or wire), or completing a rollover (direct or indirect) to an IRA or another qualified retirement plan. Explains minimum balance rules, including mandatory cash-out for balances under $1,000 and automatic IRA rollover for balances between $1,000 and $7,000. Details tax consequences, including 20% federal withholding, possible state withholding, the 10% early withdrawal penalty for participants under age 59½, 1099-R reporting, and the 60-day indirect rollover deadline. Also explains how Roth and pre-tax sources are automatically separated, so different distribution options and payment methods (check or wire) can be selected for each source. This article is not record-keeper-specific and does not include portal steps or processing timelines.",
+        "description": "General education article for participants who have left, quit, been terminated, or separated from service and need to understand their 401(k) options. Covers three paths: leaving funds in the plan, taking a cash distribution (check or wire), or completing a rollover (direct or indirect) to an IRA or another qualified retirement plan. Explains that a terminated balance below $7,000 lets the sponsor request or authorize a force-out, which is not automatic from the balance alone. For a ForUsAll plan recordkept by LT Trust, a partial rollover may leave the remainder invested, while a partial rollover plus cash remains one available choice. Do not confirm that remainder treatment or this plan-fee procedure for an unrelated recordkeeper or plan. Do not quote plan fee amounts until they are verified in this plan's Participant Introduction Packet and Participant Fee Disclosure in the Admin plan vault; once verified, the accurate amounts may be quoted. Details tax consequences, including 20% federal withholding, possible state withholding, the 10% early withdrawal penalty for participants under age 59½, 1099-R reporting, and the 60-day indirect rollover deadline. Also explains how Roth and pre-tax sources are automatically separated, so different distribution options and payment methods (check or wire) can be selected for each source. The general guidance is not record-keeper-specific apart from the ForUsAll plan recordkept by LT Trust notes above, and the article does not include portal steps or processing timelines.",
         "topic": "distribution",
         "subtopics": [
             "rollover",
@@ -60,11 +60,11 @@
                 "category": "leave_funds_in_plan",
                 "rules": [
                     "The participant may be able to leave the 401(k) account in the plan and keep it invested according to current selections.",
-                    "If the account balance is less than $7,000, the former employer has the right to remove the participant from the plan.",
-                    "If the balance is less than $1,000, the participant may receive a mandatory cash-out minus taxes and potential penalties.",
-                    "If the balance is between $1,000 and $7,000, the funds may be automatically rolled over into an IRA chosen by the plan provider.",
+                    "If a terminated participant's balance is below $7,000, the sponsor may request or authorize a force-out. The force-out is not automatic, and the balance alone does not start it. Only the sponsor can request or authorize it.",
+                    "If the sponsor requests or authorizes a force-out and the balance is below $1,000, the participant may receive a cash-out minus taxes and potential penalties already described for a cash distribution. That cash-out is not automatic from the balance alone.",
+                    "If the sponsor requests or authorizes a force-out and the balance is at least $1,000 and below $7,000, the funds may be rolled into an IRA chosen by the plan provider. That rollover is not automatic from the balance alone.",
                     "The participant can no longer make contributions to the plan after leaving the job.",
-                    "The participant must keep contact information up to date to receive future communications."
+                    "The participant must keep contact information up to date to receive future communications. For a ForUsAll plan recordkept by LT Trust, do not quote plan fee amounts until they are verified in this plan's Participant Introduction Packet and Participant Fee Disclosure, both kept in the plan vault in Admin. Once verified in those documents, the accurate amounts may be quoted. Annual fees are charged quarterly and can vary with the participant's total balance, the investment funds selected, the Crypto Window, and a Self-Directed Brokerage Account (SDBA). Do not apply another plan's fee figures to this plan, and do not confirm this fee procedure for an unrelated recordkeeper or plan."
                 ]
             },
             {
@@ -81,7 +81,7 @@
                 "category": "rollover_rules",
                 "rules": [
                     "A rollover distribution allows the participant to move 401(k) funds to an IRA or another qualified retirement plan without paying immediate taxes or penalties if done properly.",
-                    "A rollover preserves retirement savings and keeps funds growing.",
+                    "A rollover preserves retirement savings and keeps funds growing. For a ForUsAll plan recordkept by LT Trust, a partial rollover may leave the remainder invested in the plan, and a partial rollover plus cash remains one available choice. Do not confirm that remainder treatment for an unrelated recordkeeper or plan.",
                     "A rollover can be completed by check mailed to the new IRA or plan provider or by wire transfer directly to the new account.",
                     "If the rollover is not a direct transfer and the funds are paid to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties.",
                     "A 1099-R will be issued the following year for rollover reporting purposes."
@@ -123,8 +123,8 @@
                 "step_number": 4,
                 "type": "participant-facing",
                 "visibility": "both",
-                "description": "Review the minimum balance rules for leaving funds in the plan: balances under $7,000 may be removed from the plan by the former employer, balances under $1,000 may be cashed out, and balances between $1,000 and $7,000 may be automatically rolled into an IRA chosen by the plan provider.",
-                "notes": "The article describes these as possible plan outcomes the former employer has the right to apply."
+                "description": "Review the sponsor force-out rules for a terminated balance: below $7,000 the sponsor may request or authorize a force-out, which is not automatic; below $1,000 that authorized force-out may be a cash-out; at least $1,000 and below $7,000 it may be an IRA rollover chosen by the plan provider.",
+                "notes": "These outcomes apply only when the sponsor requests or authorizes a force-out. They are not automatic because of the balance alone. For a ForUsAll plan recordkept by LT Trust, do not quote plan fee amounts until they are verified in this plan's Participant Introduction Packet and Participant Fee Disclosure, both kept in the plan vault in Admin. Once verified in those documents, the accurate amounts may be quoted. Annual fees are charged quarterly and can vary with the participant's total balance, the investment funds selected, the Crypto Window, and a Self-Directed Brokerage Account (SDBA). Do not apply another plan's fee figures to this plan, and do not confirm this fee procedure for an unrelated recordkeeper or plan."
             },
             {
                 "step_number": 5,
@@ -183,7 +183,7 @@
             },
             {
                 "issue": "The participant assumes they can always leave funds in the former employer's plan.",
-                "resolution": "Explain that they may be able to leave funds in the plan, but balances under $7,000 may be removed from the plan by the former employer under the minimum balance rules described in the article."
+                "resolution": "Explain that they may be able to leave funds invested in the plan. If a terminated participant's balance is below $7,000, the sponsor may request or authorize a force-out. The force-out is not automatic, and the balance alone does not start it. Only the sponsor can request or authorize it. If the sponsor requests or authorizes a force-out and the balance is below $1,000, the participant may receive a cash-out minus taxes and potential penalties already described for a cash distribution. That cash-out is not automatic from the balance alone. If the sponsor requests or authorizes a force-out and the balance is at least $1,000 and below $7,000, the funds may be rolled into an IRA chosen by the plan provider. That rollover is not automatic from the balance alone."
             },
             {
                 "issue": "The participant has both Roth and pre-tax money and is unsure whether they must use the same option for both.",
@@ -197,7 +197,7 @@
         "examples": [
             {
                 "scenario": "A former employee wants to leave their 401(k) where it is and has a balance below $1,000.",
-                "outcome": "Explain that the article says they may receive a mandatory cash-out minus taxes and potential penalties."
+                "outcome": "Explain that a cash-out below $1,000 can occur only if the sponsor requests or authorizes a force-out, minus the cash-distribution taxes and potential penalties already stated. It is not automatic from the balance alone."
             },
             {
                 "scenario": "A former employee wants to avoid immediate taxes and keep retirement savings growing.",
@@ -213,7 +213,7 @@
             },
             {
                 "scenario": "A former employee wants to leave their 401(k) in the plan and has a balance of $5,500.",
-                "outcome": "Explain that the article says balances between $1,000 and $7,000 may be automatically rolled over into an IRA chosen by the plan provider."
+                "outcome": "Explain that an IRA rollover for a balance of at least $1,000 and below $7,000 can occur only if the sponsor requests or authorizes a force-out. It is not automatic."
             },
             {
                 "scenario": "A former employee wants to take cash from their 401(k) right away to cover immediate expenses.",
@@ -279,11 +279,11 @@
         "faq_pairs": [
             {
                 "question": "What happens to a 401(k) after leaving a job?",
-                "answer": "The participant's retirement savings remain theirs, but they need to decide whether to leave the funds in the plan, take a cash distribution, or roll over the account."
+                "answer": "The participant's retirement savings remain theirs, but they need to decide whether to leave the funds in the plan, take a cash distribution, or roll over the account. For a ForUsAll plan recordkept by LT Trust, a partial rollover may leave the remainder invested in the plan, and a partial rollover plus cash remains one available choice. Do not confirm that remainder treatment for an unrelated recordkeeper or plan."
             },
             {
                 "question": "Can a participant leave their funds in the former employer's plan?",
-                "answer": "They may be able to leave the funds in the plan and keep them invested according to current selections, but if the balance is under $7,000 the former employer has the right to remove them from the plan."
+                "answer": "They may be able to leave the funds in the plan and keep them invested according to current selections. If a terminated participant's balance is below $7,000, the sponsor may request or authorize a force-out. The force-out is not automatic, and the balance alone does not start it. Only the sponsor can request or authorize it. For a ForUsAll plan recordkept by LT Trust, a partial rollover may leave the remainder invested in the plan, and a partial rollover plus cash remains one available choice. Do not confirm that remainder treatment for an unrelated recordkeeper or plan. For a ForUsAll plan recordkept by LT Trust, do not quote plan fee amounts until they are verified in this plan's Participant Introduction Packet and Participant Fee Disclosure, both kept in the plan vault in Admin. Once verified in those documents, the accurate amounts may be quoted. Annual fees are charged quarterly and can vary with the participant's total balance, the investment funds selected, the Crypto Window, and a Self-Directed Brokerage Account (SDBA). Do not apply another plan's fee figures to this plan, and do not confirm this fee procedure for an unrelated recordkeeper or plan."
             },
             {
                 "question": "What are the tax consequences of taking a cash distribution?",
@@ -303,11 +303,11 @@
             },
             {
                 "question": "What happens if my 401(k) balance is less than $1,000 after I leave my job?",
-                "answer": "The article says that if the balance is less than $1,000, the participant may receive a mandatory cash-out minus taxes and potential penalties."
+                "answer": "If the sponsor requests or authorizes a force-out and the balance is below $1,000, the participant may receive a cash-out minus taxes and potential penalties already described for a cash distribution. That cash-out is not automatic from the balance alone."
             },
             {
-                "question": "What happens if my 401(k) balance is between $1,000 and $7,000 after I leave my job?",
-                "answer": "The article says that if the balance is between $1,000 and $7,000, the funds may be automatically rolled over into an IRA chosen by the plan provider."
+                "question": "What happens if my 401(k) balance is at least $1,000 and below $7,000 after I leave my job?",
+                "answer": "If the sponsor requests or authorizes a force-out and the balance is at least $1,000 and below $7,000, the funds may be rolled into an IRA chosen by the plan provider. That rollover is not automatic from the balance alone."
             },
             {
                 "question": "Can I still contribute to my old 401(k) after leaving my job?",
@@ -365,11 +365,11 @@
             },
             {
                 "term": "Minimum Balance Rule",
-                "definition": "The rule described in the article stating that if the account balance is less than $7,000, the former employer has the right to remove the participant from the plan."
+                "definition": "If a terminated participant's balance is below $7,000, the sponsor may request or authorize a force-out. The force-out is not automatic, and the balance alone does not start it. Only the sponsor can request or authorize it."
             },
             {
                 "term": "Mandatory cash-out",
-                "definition": "A payout the participant may receive if the account balance is less than $1,000, minus taxes and potential penalties."
+                "definition": "A cash-out below $1,000 that can occur only when the sponsor requests or authorizes a force-out, minus taxes and potential penalties already described for a cash distribution. It is not automatic from the balance alone."
             },
             {
                 "term": "IRA",
@@ -438,8 +438,8 @@
                 "Do not claim the participant can continue contributing to the former employer's plan after leaving the job.",
                 "Do not say a portal is required or available, because the article does not mention portal steps.",
                 "Do not say the participant must cash out their account unless the balance rule in the article applies.",
-                "Do not say the former employer will always remove a participant from the plan when the balance is under $7,000; the article says the employer has the right to do so.",
-                "Do not say that balances between $1,000 and $7,000 will always be automatically rolled over; the article says they may be.",
+                "Do not say a balance below $7,000 automatically forces the participant out. Only the sponsor can request or authorize a force-out.",
+                "Do not say that a balance of at least $1,000 and below $7,000 is rolled to an IRA on its own. That rollover happens only if the sponsor requests or authorizes it.",
                 "Do not describe a cash distribution as tax-free or penalty-free.",
                 "Do not tell the participant that a rollover can only be completed one way; the article lists both check and wire transfer.",
                 "Do not say a wire transfer is always available without the specific instructions the article says are required.",
@@ -548,10 +548,10 @@
                 },
                 {
                     "data_point": "Current account balance range",
-                    "meaning": "Whether the participant's balance is below $1,000, between $1,000 and $7,000, or at least $7,000.",
+                    "meaning": "Whether the terminated balance is below $1,000, at least $1,000 and below $7,000, or $7,000 or more.",
                     "example_values": [
-                        "Less than $1,000 (may receive mandatory cash-out)",
-                        "Between $1,000 and $7,000 (may be automatically rolled into an IRA chosen by the plan provider)",
+                        "Below $1,000 (cash-out only if the sponsor requests or authorizes a force-out)",
+                        "At least $1,000 and below $7,000 (IRA rollover only if the sponsor requests or authorizes a force-out)",
                         "$7,000 or more (may be able to leave funds in the plan)"
                     ],
                     "why_needed": "Helps explain the minimum balance rules that may affect whether funds can remain in the plan.",
@@ -600,7 +600,7 @@
                 }
             ],
             "disambiguation_notes": [
-                "The article uses both cash distribution and cash-out language. Cash distribution is the direct payment option, while mandatory cash-out is described as a possible outcome for balances under $1,000.",
+                "Cash distribution is the participant's direct payment option. A cash-out below $1,000 is a different sponsor-authorized force-out, not automatic from the balance alone, and it uses the cash-distribution taxes already stated.",
                 "The article uses conditional language for leaving funds in the plan, so that option should not be treated as guaranteed in every case.",
                 "Roth and pre-tax sources must be treated separately when the participant is choosing distribution options and payment methods.",
                 "The article distinguishes between leaving funds in the plan and rolling funds over to an IRA or another qualified retirement plan. These are separate options and should not be described as the same outcome.",
@@ -627,8 +627,8 @@
                 "The article applies to a participant who has recently left their job or is planning to leave and is deciding what to do with a 401(k)."
             ],
             "blocking_conditions": [
-                "A balance under $1,000 may result in a mandatory cash-out minus taxes and potential penalties if that plan outcome is already known.",
-                "A balance between $1,000 and $7,000 may result in an automatic rollover to an IRA chosen by the plan provider if that plan outcome is already known."
+                "A balance below $1,000 may result in a cash-out minus taxes and potential penalties already stated only when the sponsor has requested or authorized that force-out.",
+                "A balance of at least $1,000 and below $7,000 may result in an IRA rollover chosen by the plan provider only when the sponsor has requested or authorized that force-out."
             ],
             "missing_data_conditions": [
                 {
@@ -685,7 +685,7 @@
                     "Roth and pre-tax funds are automatically separated during the distribution request.",
                     "Each source in the account can have its own distribution option and payment method.",
                     "A 1099-R is issued for reporting purposes after a cash distribution or rollover.",
-                    "Balances under $7,000 may affect whether the funds can remain in the plan after employment ends.",
+                    "A terminated balance below $7,000 may be force-out eligible only if the sponsor requests or authorizes it. For a ForUsAll plan recordkept by LT Trust, a partial rollover may leave the remainder invested in the plan, and a partial rollover plus cash remains one available choice. Do not confirm that remainder treatment for an unrelated recordkeeper or plan.",
                     "Support is available by email, phone, or a 1-on-1 advisory session for participants who want help deciding which option is best.",
                     "If the participant wants to cash out due to an emergency or because they really need the money, explain the tax consequences and long-term impact and explain how to request a cash distribution."
                 ],
@@ -705,9 +705,9 @@
                     "Do not promise that leaving funds in the plan is guaranteed.",
                     "Do not say the participant can always keep the account in the former employer's plan.",
                     "Do not say the former employer must allow the funds to stay in the plan.",
-                    "Do not say balances under $7,000 can remain in the plan without mentioning the article's minimum balance rule.",
-                    "Do not say balances under $1,000 will stay in the plan.",
-                    "Do not say balances between $1,000 and $7,000 will stay in the plan without mentioning that they may be automatically rolled over into an IRA chosen by the plan provider.",
+                    "Do not say a terminated balance below $7,000 can remain without mentioning that the sponsor may request or authorize a force-out, which is not automatic.",
+                    "Do not say a balance below $1,000 will stay in the plan when the sponsor has requested or authorized a cash-out force-out.",
+                    "Do not say a balance of at least $1,000 and below $7,000 will stay in the plan without mentioning that an IRA rollover can occur only if the sponsor requests or authorizes it.",
                     "Do not present a cash distribution as tax-free.",
                     "Do not present a cash distribution as penalty-free.",
                     "Do not say 20% federal withholding never applies to a cash distribution.",
@@ -764,15 +764,15 @@
             },
             "blocked_not_eligible": {
                 "participant_message_components": [
-                    "This article explains that a specific outcome may apply when the plan has already determined that a mandatory cash-out or automatic IRA rollover applies under the minimum balance rules.",
-                    "The participant's funds still remain theirs, but the article describes other outcomes such as a mandatory cash-out or automatic IRA rollover for certain balance ranges."
+                    "This article explains that a cash-out or IRA rollover under a sponsor-authorized force-out may apply when that authorization is already known. It is not automatic from the balance alone.",
+                    "The participant's funds still remain theirs. A sponsor-authorized force-out may be a cash-out below $1,000 or an IRA rollover for at least $1,000 and below $7,000."
                 ],
                 "next_steps": [
-                    "Explain which specific mandatory outcome from the article is already known to apply.",
+                    "Explain the specific sponsor-authorized force-out only when that authorization is already known. Do not treat the balance alone as authorization.",
                     "Reframe the discussion around the remaining options described in the article."
                 ],
                 "warnings": [
-                    "Do not present leaving funds in the plan as available when a specific mandatory outcome is already known."
+                    "Do not present leaving funds in the plan as available when a sponsor-authorized force-out is already known. Do not invent that authorization from the balance alone."
                 ],
                 "questions_to_ask": [],
                 "what_not_to_say": [
@@ -784,7 +784,7 @@
                 "participant_message_components": [
                     "The article uses conditional language for some outcomes, especially whether funds can stay in the plan after leaving employment.",
                     "Where the article says may, the participant should not be given a guaranteed answer.",
-                    "If the balance is under $7,000, describe the possible outcomes as plan-dependent unless a specific mandatory outcome is already known."
+                    "If the terminated balance is below $7,000, describe a force-out as possible only when the sponsor requests or authorizes it. Do not describe the balance alone as authorization."
                 ],
                 "next_steps": [
                     "Explain the article's conditional language exactly as written.",

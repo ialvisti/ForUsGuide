@@ -214,9 +214,9 @@ SLUG_MAP: Dict[str, Tuple[Tuple[str, str], ...]] = {
     # --- savings_rate ---
     "account_balance": (("savings_rate", "Account Balance"),),
     "total_balance": (("savings_rate", "Account Balance"),),
-    # The portal exposes total and source balances, not a total vested field.
-    # These aliases request the available components; the consumer must retain
-    # total vested as unknown unless an authoritative value is supplied.
+    # savings_rate.Account Balance is the total vested balance. These aliases
+    # still request the component fields for context. The consumer copies
+    # Account Balance; it must not sum sources or substitute employer vested.
     "vested_balance": (("savings_rate", "Account Balance"),),
     "total_vested_balance": (("savings_rate", "Account Balance"),),
     "account_total_vested_balance": (("savings_rate", "Account Balance"),),

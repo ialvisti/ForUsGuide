@@ -1,7 +1,15 @@
-"""Sanitized eligibility regressions: account totals are not vested evidence."""
+"""Sanitized eligibility regressions for vested evidence.
+
+A bare participant number is not vested evidence. A structured savings_rate
+Account Balance source is the total vested balance under the 2026-09-28 user rule.
+"""
+
+import copy
 
 import pytest
 
+from data_pipeline.forusbots_catalog import normalize_scrape_result
+from data_pipeline.gr_payload_builder import build_collected_data
 from data_pipeline.rag_engine import RAGEngine
 
 
@@ -103,3 +111,44 @@ def test_identity_lookup_reason_does_not_invent_a_missing_eligibility_fact():
     }])
     assert actual["identity_lookup_missing"] == ["What is your full name?"]
     assert actual["core_eligibility_missing"] == []
+
+
+def _chain(account, *, diagnostics=None, ticket=None):
+    savings = {} if account == "absent" else {"Account Balance": account}
+    payload = {"data": {
+        "census": {"Eligibility Status": "Terminated", "Termination Date": "2026-07-01"},
+        "savings_rate": savings,
+    }}
+    if diagnostics is not None:
+        payload["extractionDiagnostics"] = diagnostics
+    original = copy.deepcopy(payload)
+    flat, meta = normalize_scrape_result(payload)
+    assert payload == original
+    return build_collected_data(flat, None, ticket, participant_meta=meta)
+
+
+def test_normalized_savings_account_balance_reaches_core_eligibility_as_vested():
+    collected = _chain("$12,500.00", diagnostics={"schemaVersion": 1, "modules": {"savings_rate": {
+        "dataState": "ok", "observedAt": "2026-09-12T15:04:00Z",
+        "fields": {"Account Balance": {"dataState": "ok", "sourceAsOf": "2026-08-15"}},
+    }}})
+    sources = collected["internal_preflight_context"]["sources"]
+    assert sources["vested_balance"] == sources["account_balance"]
+    assert sources["vested_balance"] is not sources["account_balance"]
+    assert sources["vested_balance"]["value"] == 12500.0
+    assert sources["vested_balance"]["observed_at"] == "2026-09-12T15:04:00Z"
+    status = RAGEngine.__new__(RAGEngine)._termination_distribution_core_eligibility_status(collected)
+    assert status["vested_balance"] == 12500.0
+    assert "vested balance" not in status["core_eligibility_missing"]
+    assert status["supported"] is False
+
+
+def test_extraction_error_does_not_let_a_bare_participant_number_satisfy_vested_eligibility():
+    collected = _chain("$12,500.00", diagnostics={"schemaVersion": 1, "modules": {"savings_rate": {
+        "dataState": "ok", "observedAt": "2026-09-12T15:04:00Z",
+        "fields": {"Account Balance": {"dataState": "parse_error"}},
+    }}}, ticket={"total_vested_balance": {"value": 12500, "evidence": "synthetic ticket claim"}})
+    assert collected["internal_preflight_context"]["sources"]["vested_balance"]["status"] == "error"
+    status = RAGEngine.__new__(RAGEngine)._termination_distribution_core_eligibility_status(collected)
+    assert status["vested_balance"] is None
+    assert "vested balance" in status["core_eligibility_missing"]

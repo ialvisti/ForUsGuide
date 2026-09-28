@@ -3243,7 +3243,8 @@ class RAGEngine:
         sources = ((collected_data or {}).get("internal_preflight_context") or {}).get("sources") or {}
         if "vested_balance" in sources:
             # An explicit failed/unknown extraction cannot be replaced with a
-            # legacy value. Account Balance is never evidence of total vested.
+            # legacy bare number. Structured vested_balance is the savings
+            # Account Balance copy; a bare participant account_balance is not.
             vested = sources["vested_balance"]
             balance_values = [vested.get("value")] if isinstance(vested, dict) and vested.get("status") == "known" else []
         else:

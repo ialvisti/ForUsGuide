@@ -567,7 +567,7 @@
             },
             {
                 "term": "Total Vested Balance",
-                "definition": "The vested amount owned by the participant, verified from an authoritative dated record. It is not the Savings Rate Account Balance total. Used internally for the existing balance-based eligibility and contingent checks. This value must not be shared with the participant."
+                "definition": "The vested amount owned by the participant, verified from an authoritative dated record. In this integration it is the Savings Rate Account Balance total. It is not the Employer Match Vested Balance, which covers only the employer vested portion, and it is never derived by summing or subtracting source rows. Used internally for the existing balance-based eligibility and contingent checks. This value must not be shared with the participant."
             },
             {
                 "term": "Maximum Number of Loans",
@@ -736,7 +736,7 @@
                 },
                 {
                     "data_point": "Total Vested Balance",
-                    "meaning": "The portion of the participant account owned through vesting. It is not the Account Balance total, which can include unvested amounts. Use only an independently verified total vested value with its source and date.",
+                    "meaning": "The total vested balance. In this integration it is savings_rate.Account Balance, used with that field's actual extraction state, source, and date. It is not a sum of source balances and it is not the employer-match vested portion.",
                     "example_values": [
                         0.0,
                         2000.0,
@@ -744,7 +744,7 @@
                         148485.04
                     ],
                     "why_needed": "Loans require an available vested balance; the article provides loan limits based on vested balance and states a $2,000 vested balance is needed to take the $1,000 minimum loan. Also used to evaluate hardship/in-service withdrawal contingent requirements when active loans exist.",
-                    "source_note": "The current ForUsBots extractor exposes savings_rate.Account Balance as the total account balance, not total vested. A dedicated total vested value is not extracted. Use a dated, authoritative participant or recordkeeper record verified internally; otherwise retain unknown. Available source balances may be collected for context but must not be summed or relabeled as total vested.",
+                    "source_note": "Use savings_rate.Account Balance as the total vested balance, with its actual extraction state, source, and date. If that field is absent or in error, retain unknown. Do not sum source balances. Do not substitute Employer Match Vested Balance, which is only the employer vested portion.",
                     "source_type": "participant_profile"
                 },
                 {
@@ -819,7 +819,7 @@
                 {
                     "missing_data_point": "Total Vested Balance",
                     "ask_participant": null,
-                    "agent_note": "Internal verification: the current extractor does not supply Total Vested Balance. Retain unknown until an authoritative dated participant or recordkeeper record is verified. Do not substitute savings_rate.Account Balance, sum asynchronously updated sources, or ask the participant to perform this internal check. Continue general education when appropriate; do not confirm personalized balance-based eligibility or an exact amount."
+                    "agent_note": "Internal verification: when savings_rate.Account Balance has a known extraction state, that value is the total vested balance and must keep its source and date. If the field is absent or in error, retain unknown. Do not sum asynchronously updated sources, do not substitute Employer Match Vested Balance, and do not ask the participant to perform this internal check. Continue general education when appropriate; do not confirm personalized balance-based eligibility or an exact amount unless that field is known."
                 },
                 {
                     "missing_data_point": "Loan History",

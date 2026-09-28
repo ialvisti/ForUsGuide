@@ -2,12 +2,14 @@
 
 Snapshots preserve source conditions, not participant identities or live balances.
 """
+import copy
 import json
 
 import pytest
 
 from data_pipeline.forusbots_catalog import map_slug, normalize_scrape_result
 from data_pipeline.gr_payload_builder import build_collected_data
+from data_pipeline.rag_engine import RAGEngine
 
 
 def history(note, *, recorded="2025-10-09", effective=None, complete=True):
@@ -83,7 +85,10 @@ def test_balances_and_crypto_preserve_zero_false_unknown_and_distinct_dates():
     assert preflight["sources"]["account_balance"]["as_of"] == "2026-09-01"
     assert preflight["sources"]["employer_match_vested_balance"]["value"] == 0
     assert preflight["sources"]["employer_match_vested_balance"]["as_of"] is None
-    assert preflight["sources"]["vested_balance"]["status"] == "unknown"
+    # User rule 2026-09-28, not an implementation failure: the previous
+    # assertion required vested unknown. Account Balance is now that total.
+    assert preflight["sources"]["vested_balance"] == preflight["sources"]["account_balance"]
+    assert preflight["sources"]["vested_balance"] is not preflight["sources"]["account_balance"]
     assert preflight["sources"]["after_tax_balance"]["status"] == "unknown"
     assert preflight["crypto"]["enrollment"]["value"] is False
     assert preflight["crypto"]["holdings"]["status"] == "unknown"
@@ -582,3 +587,156 @@ def test_plan_projection_rejects_present_invalid_date_even_when_other_date_is_va
     projected = project_verified_plan_facts(context)
 
     assert set(projected['facts']) == {'record_keeper'}
+
+
+def _savings_chain(account="absent", *, savings_extra=None, loans=None,
+                   diagnostics=None, ticket=None, include_as_of=True):
+    """Synthetic scrape through normalization and collected data. Not a runtime proof."""
+    savings = {}
+    if account != "absent":
+        savings["Account Balance"] = account
+        if include_as_of:
+            savings["Account Balance As Of"] = "2026-09-01"
+    if savings_extra:
+        savings.update(savings_extra)
+    modules = {
+        "census": {"Eligibility Status": "Terminated", "Termination Date": "2026-07-01"},
+        "savings_rate": savings,
+    }
+    if loans is not None:
+        modules["loans"] = loans
+    payload = {"data": modules}
+    if diagnostics is not None:
+        payload["extractionDiagnostics"] = diagnostics
+    original = copy.deepcopy(payload)
+    flat, meta = normalize_scrape_result(payload)
+    assert payload == original
+    return build_collected_data(flat, None, ticket, participant_meta=meta)
+
+
+def _vested_pair(collected):
+    sources = collected["internal_preflight_context"]["sources"]
+    return sources["account_balance"], sources["vested_balance"]
+
+
+def test_known_savings_account_balance_is_copied_as_total_vested():
+    """User rule: savings_rate.Account Balance is total vested, not a summed reconstruction."""
+    collected = _savings_chain("$12,500.00", diagnostics={"schemaVersion": 1, "modules": {
+        "savings_rate": {
+            "dataState": "ok", "observedAt": "2026-09-12T15:04:00Z",
+            "fields": {"Account Balance": {"dataState": "ok", "sourceAsOf": "2026-08-15"}},
+        },
+    }})
+    account, vested = _vested_pair(collected)
+    sources = collected["internal_preflight_context"]["sources"]
+    assert vested == account
+    assert vested is not account
+    assert account == {
+        "value": 12500.0, "status": "known",
+        "source": "participant.savings_rate.Account Balance",
+        "as_of": "2026-08-15", "observed_at": "2026-09-12T15:04:00Z",
+    }
+    assert sources["after_tax_balance"]["status"] == "unknown"
+    assert sources["after_tax_balance"]["value"] is None
+    status = RAGEngine.__new__(RAGEngine)._termination_distribution_core_eligibility_status(collected)
+    assert status["vested_balance"] == 12500.0
+    assert "vested balance" not in status["core_eligibility_missing"]
+    assert status["supported"] is False
+
+
+def test_zero_savings_account_balance_stays_zero_vested():
+    collected = _savings_chain("$0.00")
+    account, vested = _vested_pair(collected)
+    assert vested == account
+    assert vested["status"] == "known"
+    assert vested["value"] == 0.0
+    assert vested["observed_at"] is None
+    status = RAGEngine.__new__(RAGEngine)._termination_distribution_core_eligibility_status(collected)
+    assert status["vested_balance"] == 0.0
+    assert "vested balance" not in status["core_eligibility_missing"]
+    assert "vested balance is not positive" in status["blocking_conditions"]
+
+
+@pytest.mark.parametrize("account", ["absent", None, "", "--"])
+def test_absent_or_sentinel_account_balance_keeps_vested_unknown_without_invented_dates(account):
+    collected = _savings_chain(account, include_as_of=False)
+    account_source, vested = _vested_pair(collected)
+    assert vested == account_source
+    assert vested["status"] == "unknown"
+    assert vested["value"] is None
+    assert vested["as_of"] is None
+    assert vested["observed_at"] is None
+    status = RAGEngine.__new__(RAGEngine)._termination_distribution_core_eligibility_status(collected)
+    assert status["vested_balance"] is None
+    assert "vested balance" in status["core_eligibility_missing"]
+
+
+@pytest.mark.parametrize("raw", ["100 as of 2026-09-01", "NaN", "Infinity", "123abc"])
+def test_invalid_account_balance_money_does_not_become_known_vested(raw):
+    collected = _savings_chain(raw)
+    account, vested = _vested_pair(collected)
+    assert vested == account
+    assert vested["status"] == "unknown"
+    assert vested["value"] is None
+
+
+@pytest.mark.parametrize("diagnostics", [
+    {"schemaVersion": 1, "modules": {"savings_rate": {
+        "dataState": "parse_error", "observedAt": "2026-09-12T15:04:00Z",
+        "fields": {"Account Balance": {"dataState": "ok", "sourceAsOf": "2026-08-15"}},
+    }}},
+    {"schemaVersion": 1, "modules": {"savings_rate": {
+        "dataState": "ok", "observedAt": "2026-09-12T15:04:00Z",
+        "fields": {"Account Balance": {"dataState": "parse_error", "sourceAsOf": "2026-08-15"}},
+    }}},
+])
+def test_account_balance_extraction_error_copies_error_and_does_not_use_the_raw_number(diagnostics):
+    collected = _savings_chain("$12,500.00", diagnostics=diagnostics, ticket={
+        "total_vested_balance": {"value": 99999, "evidence": "synthetic ticket claim"},
+    })
+    account, vested = _vested_pair(collected)
+    assert vested == account
+    assert vested is not account
+    assert vested["status"] == "error"
+    assert vested["value"] is None
+    assert vested["observed_at"] == "2026-09-12T15:04:00Z"
+    assert vested["as_of"] == "2026-08-15"
+    status = RAGEngine.__new__(RAGEngine)._termination_distribution_core_eligibility_status(collected)
+    assert status["vested_balance"] is None
+    assert "vested balance" in status["core_eligibility_missing"]
+
+
+def test_loan_account_balance_does_not_replace_savings_vested_balance():
+    collected = _savings_chain("$12,500.00", loans={"Account Balance": "$400.00"})
+    account, vested = _vested_pair(collected)
+    assert vested == account
+    assert vested["value"] == 12500.0
+    assert vested["source"] == "participant.savings_rate.Account Balance"
+    assert collected["participant_data"]["loan_account_balance"] == "$400.00"
+
+
+def test_employer_match_vested_amount_is_not_substituted_for_total_vested():
+    collected = _savings_chain("absent", include_as_of=False, savings_extra={
+        "Employer Match Vested Balance": "$800.00",
+    })
+    account, vested = _vested_pair(collected)
+    sources = collected["internal_preflight_context"]["sources"]
+    assert vested == account
+    assert vested["status"] == "unknown"
+    assert vested["value"] is None
+    assert sources["employer_match_vested_balance"]["status"] == "known"
+    assert sources["employer_match_vested_balance"]["value"] == 800.0
+
+
+def test_ticket_extracted_balance_only_does_not_become_structured_vested():
+    collected = _savings_chain("absent", include_as_of=False, ticket={
+        "account_balance": {"value": 1000, "evidence": "synthetic ticket claim"},
+        "vested_balance": {"value": 1000, "evidence": "synthetic ticket claim"},
+    })
+    account, vested = _vested_pair(collected)
+    assert vested == account
+    assert vested["status"] == "unknown"
+    assert vested["value"] is None
+    status = RAGEngine.__new__(RAGEngine)._termination_distribution_core_eligibility_status(collected)
+    assert status["vested_balance"] is None
+    assert "vested balance" in status["core_eligibility_missing"]

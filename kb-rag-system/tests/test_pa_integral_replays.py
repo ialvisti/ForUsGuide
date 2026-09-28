@@ -58,7 +58,11 @@ def test_replay_preserves_case_conditions_and_independent_human_expectations(cas
         sources = collected['internal_preflight_context']['sources']
         assert sources['employer_match_balance']['value'] > 0
         assert sources['employer_match_vested_balance']['value'] == 0
-        assert sources['vested_balance']['status'] == 'unknown'
+        # User rule 2026-09-28, not an implementation failure: vested unknown
+        # was the superseded field meaning. Total vested is Account Balance.
+        assert sources['vested_balance'] == sources['account_balance']
+        assert sources['vested_balance']['value'] == 20000
+        assert sources['vested_balance'] is not sources['account_balance']
     if case['ticket_id'] == 'TKT-911758':
         assert profile['signals']['employment_state'] == 'terminated'
         assert engine.IN_SERVICE_ARTICLE_ID in profile['excluded_articles']

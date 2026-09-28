@@ -3,7 +3,8 @@
 No participant module published by ForUsBots carries a non-Roth after-tax balance.
 The `savings_rate` module enumerates Account / Employee Deferral / Roth Deferral /
 Rollover / Employer Match / Employer Match Vested / Loan balances and nothing else,
-so `after_tax_balance` (like `vested_balance`) is deliberately reported unknown.
+so `after_tax_balance` is deliberately reported unknown. `vested_balance` is the
+savings Account Balance copy and is not minted by an unmapped vested label.
 
 These regressions pin the three ways that "unknown" has been observed to erode:
 subtraction from the account total, an unmapped upstream label minting an
@@ -52,7 +53,7 @@ def test_roth_balance_never_settles_the_non_roth_after_tax_question(roth):
     assert entry["roth_deferral_balance"]["status"] in {"known", "unknown"}
 
 
-@pytest.mark.parametrize("label", ["After-Tax Balance", "After Tax Balance", "Vested Balance"])
+@pytest.mark.parametrize("label", ["After-Tax Balance", "After Tax Balance"])
 def test_unmapped_upstream_label_cannot_mint_a_preflight_governed_balance(label):
     """snake_case() on an undeclared label collides with the reserved keys.
 
@@ -64,6 +65,17 @@ def test_unmapped_upstream_label_cannot_mint_a_preflight_governed_balance(label)
     key = label.lower().replace(" ", "_").replace("-", "_")
     assert key not in data["participant_data"]
     assert data["internal_preflight_context"]["sources"][key]["status"] == "unknown"
+    rendered = _format_collected_data(data)
+    assert "2,500" not in rendered and "2500" not in rendered
+
+
+def test_unmapped_vested_label_cannot_override_the_account_balance_copy():
+    """User rule: an unmapped Vested Balance label must not replace Account Balance."""
+    data = build_collected_data({"savings_rate": {**FULL_COMPLEMENT, "Vested Balance": "$2,500.00"}}, None)
+    sources = data["internal_preflight_context"]["sources"]
+    assert "vested_balance" not in data["participant_data"]
+    assert sources["vested_balance"] == sources["account_balance"]
+    assert sources["vested_balance"]["value"] == 10000
     rendered = _format_collected_data(data)
     assert "2,500" not in rendered and "2500" not in rendered
 

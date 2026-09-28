@@ -16,6 +16,7 @@ Fuentes de collected_data, en orden de precedencia:
 
 from __future__ import annotations
 
+import copy
 import re
 import hashlib
 from math import isfinite
@@ -72,10 +73,9 @@ SAVINGS_MAP: Dict[str, str] = {
     "Auto escalation timing": "auto_escalation_timing",
 }
 
-# Claves que el preflight declara desconocidas a propósito porque ningún módulo
-# del scrape las publica. Un label inesperado de savings_rate no mapeado puede
-# colisionar con ellas vía snake_case ("After-Tax Balance" → after_tax_balance) y
-# acabar impreso en Participant Data sin procedencia, contradiciendo al preflight.
+# Reserved so an unmapped savings label cannot mint participant data. After-tax
+# has no published field. vested_balance is the savings Account Balance copy
+# and must not be overwritten by an unmapped "Vested Balance" label.
 SAVINGS_RESERVED_KEYS = frozenset({"after_tax_balance", "vested_balance"})
 
 # Campos de savings_rate que son de PLAN, no de participante:
@@ -872,10 +872,11 @@ def _build_preflight_context(participant: Mapping[str, Any],
             participant.get(key), module="savings_rate", label=label, meta=meta,
             as_of=participant.get("account_balance_as_of") if key == "account_balance" else None,
         )
-    # Neither absent after-tax nor total vested can be reconstructed by subtracting
-    # asynchronously updated source balances from the account total.
+    # After-tax has no published field and must not be reconstructed by subtraction.
+    # Total vested is the savings_rate Account Balance source itself, copied so
+    # callers cannot alias the two records. It is not a sum of source rows.
     sources["after_tax_balance"] = _unknown_source()
-    sources["vested_balance"] = _unknown_source()
+    sources["vested_balance"] = copy.deepcopy(sources["account_balance"])
 
     history = participant.get("loan_history")
     loan_evidence = _source_diagnostic(meta, "loans", "Loan History")

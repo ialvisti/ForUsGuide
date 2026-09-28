@@ -1718,9 +1718,6 @@ class RAGEngine:
     KQ_OPERATIONAL_TOP_K_PER_ARTICLE = 15
     KQ_OPERATIONAL_MAX_CHUNKS_PER_ARTICLE = 15
     KQ_OPERATIONAL_CHUNK_TYPES = ("business_rules", "eligibility", "steps")
-    KQ_NONOPERATIONAL_CHUNK_TYPES = frozenset({
-        "definitions", "faqs", "response_frames", "references", "decision_guide",
-    })
     KQ_INCOMING_ROLLOVER_CATEGORY = "incoming_rollover_from_prior_employer"
     KQ_SOURCE_MIN_SCORE = 0.20
     KQ_PRIORITIZED_TYPES = [
@@ -7854,11 +7851,10 @@ class RAGEngine:
             current = best_by_article.get(article_id)
             if current is None or chunk.get("score", 0) > current.get("score", 0):
                 best_by_article[article_id] = chunk
-        candidates = []
-        for article_id, chunk in best_by_article.items():
-            kind = (chunk.get("metadata") or {}).get("chunk_type")
-            if kind in self.KQ_NONOPERATIONAL_CHUNK_TYPES:
-                candidates.append((chunk.get("score", 0), article_id))
+        candidates = [
+            (chunk.get("score", 0), article_id)
+            for article_id, chunk in best_by_article.items()
+        ]
         candidates.sort(key=lambda item: (-item[0], item[1]))
         article_ids = [article_id for _score, article_id in candidates[:2]]
         collected: List[Dict[str, Any]] = []

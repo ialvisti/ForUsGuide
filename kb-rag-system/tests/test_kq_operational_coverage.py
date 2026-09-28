@@ -129,6 +129,141 @@ async def test_live_top15_keeps_pre_submission_portal_steps_and_loan():
     assert max(per_article.values()) <= 15
 
 
+DISTRACTOR_ARTICLE = "access_manage_401k_statements_beneficiaries"
+
+
+def _rescore(chunk, score):
+    copy = json.loads(json.dumps(chunk))
+    copy["score"] = score
+    return copy
+
+
+def _operational_best_stage1(best_type):
+    """Captured ranking: an operational LT chunk outscores a general definition.
+
+    The LT and general texts are the existing fixture chunks. The distractor is
+    the fixture's real statements definition, scored below general. It is not a
+    new production capture.
+    """
+    if best_type == "steps":
+        lt_chunk = next(chunk for chunk in LT_HITS if chunk["id"].endswith("_chunk_27"))
+    elif best_type == "business_rules":
+        lt_chunk = next(chunk for chunk in LT_HITS if chunk["id"].endswith("_chunk_22"))
+    else:
+        lt_chunk = next(
+            chunk for chunk in LT_HITS
+            if chunk["metadata"]["chunk_type"] == "eligibility"
+        )
+    general = next(chunk for chunk in STAGE1 if chunk["id"].endswith("_chunk_41"))
+    distractor = next(
+        chunk for chunk in STAGE1
+        if chunk["metadata"]["article_id"] == DISTRACTOR_ARTICLE
+    )
+    return [
+        _rescore(lt_chunk, 0.5797),
+        _rescore(general, 0.5564),
+        _rescore(distractor, 0.3961),
+    ]
+
+
+def _filtered_live_hits(filter_dict, top_k):
+    article = filter_dict["article_id"]["$eq"]
+    allowed = set(filter_dict["chunk_type"]["$in"])
+    pool = {
+        LT_ARTICLE: LT_HITS,
+        GENERAL_ARTICLE: GENERAL_HITS,
+    }.get(article, [])
+    matched = [
+        chunk for chunk in pool
+        if (chunk.get("metadata") or {}).get("article_id") == article
+        and (chunk.get("metadata") or {}).get("chunk_type") in allowed
+    ]
+    return [dict(chunk) for chunk in matched[:top_k]]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("best_type", ["steps", "business_rules", "eligibility"])
+async def test_operational_best_article_still_receives_the_second_query(best_type):
+    stage1 = _operational_best_stage1(best_type)
+    calls = []
+
+    def query_chunks(query_text, top_k=15, filter_dict=None, rerank=None):
+        calls.append({"q": query_text, "k": top_k, "f": filter_dict})
+        if not filter_dict:
+            return [dict(chunk) for chunk in stage1]
+        return _filtered_live_hits(filter_dict, top_k)
+
+    engine = _engine()
+    _install(engine, query_chunks)
+    result = await engine.ask_knowledge_question(ORIGINAL)
+    filtered = [call for call in calls if call["f"]]
+    articles = {call["f"]["article_id"]["$eq"] for call in filtered}
+    assert articles == {LT_ARTICLE, GENERAL_ARTICLE}
+    assert DISTRACTOR_ARTICLE not in articles
+    assert len(filtered) == 2
+    assert all(call["k"] == 15 for call in filtered)
+    ids = {chunk["chunk_id"] for chunk in result.used_chunks}
+    assert REQUIRED_IDS <= ids
+    assert INCOMING_ID not in ids
+    kept = next(chunk for chunk in result.used_chunks if chunk["chunk_id"] == stage1[0]["id"])
+    assert kept["score"] == pytest.approx(0.5797, abs=0.0001)
+    assert result.metadata["context_tokens"] <= 6000
+
+
+@pytest.mark.asyncio
+async def test_adjacent_article_outscoring_general_still_never_takes_a_slot():
+    """Captured proof2 ordering: the split article sits BETWEEN LT and general.
+
+    Ranking every article by its best score makes the existing profile
+    exclusions the only guard on the second slot. With split at 0.5678 above
+    general at 0.5564, a lapse in those exclusions would silently hand slot two
+    to split and drop general. Texts are existing fixture chunks, rescored to
+    the captured order; this is not a new production capture.
+    """
+    lt_chunk = next(chunk for chunk in LT_HITS if chunk["id"].endswith("_chunk_27"))
+    split = next(
+        chunk for chunk in STAGE1
+        if chunk["metadata"]["article_id"] == SPLIT_ARTICLE
+    )
+    general = next(chunk for chunk in STAGE1 if chunk["id"].endswith("_chunk_41"))
+    missed = next(
+        chunk for chunk in STAGE1
+        if chunk["metadata"]["article_id"] == MISSED_ARTICLE
+    )
+    distractor = next(
+        chunk for chunk in STAGE1
+        if chunk["metadata"]["article_id"] == DISTRACTOR_ARTICLE
+    )
+    stage1 = [
+        _rescore(lt_chunk, 0.5797),
+        _rescore(split, 0.5678),
+        _rescore(general, 0.5564),
+        _rescore(missed, 0.5325),
+        _rescore(distractor, 0.3961),
+    ]
+    calls = []
+
+    def query_chunks(query_text, top_k=15, filter_dict=None, rerank=None):
+        calls.append({"q": query_text, "k": top_k, "f": filter_dict})
+        if not filter_dict:
+            return [dict(chunk) for chunk in stage1]
+        return _filtered_live_hits(filter_dict, top_k)
+
+    engine = _engine()
+    _install(engine, query_chunks)
+    result = await engine.ask_knowledge_question(ORIGINAL)
+    filtered = [call for call in calls if call["f"]]
+    articles = {call["f"]["article_id"]["$eq"] for call in filtered}
+    assert len(filtered) == 2
+    assert articles == {LT_ARTICLE, GENERAL_ARTICLE}
+    assert SPLIT_ARTICLE not in articles
+    assert MISSED_ARTICLE not in articles
+    assert DISTRACTOR_ARTICLE not in articles
+    ids = {chunk["chunk_id"] for chunk in result.used_chunks}
+    assert REQUIRED_IDS <= ids
+    assert INCOMING_ID not in ids
+
+
 def test_fixture_provenance_is_the_sanitized_query_without_identity():
     note = FIXTURE["provenance"]
     assert note["query"] == "401(k) forms plan sponsor"

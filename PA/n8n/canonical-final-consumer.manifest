@@ -395,5 +395,20 @@
     "download_credentials": false,
     "download_redirects": false
   },
-  "required_backend_contract": "durable_plan_id_and_server_verified_plan_facts_v1"
+  "required_backend_contract": "durable_plan_id_and_server_verified_plan_facts_v1",
+  "language_model": {
+    "node": "OpenAI Chat Model",
+    "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+    "typeVersion": 1.3,
+    "parameters": {
+      "model": {
+        "__rl": true,
+        "value": "gpt-5.5",
+        "mode": "list",
+        "cachedResultName": "gpt-5.5"
+      },
+      "builtInTools": {},
+      "options": {}
+    }
+  }
 }

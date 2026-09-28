@@ -1712,8 +1712,16 @@ class RAGEngine:
 
     # Knowledge Question settings
     KQ_CONTEXT_BUDGET = 4000
+    KQ_OPERATIONAL_CONTEXT_BUDGET = 6000
     KQ_TOP_K_PER_QUERY = 15
     KQ_MAX_CHUNKS_PER_ARTICLE = 6
+    KQ_OPERATIONAL_TOP_K_PER_ARTICLE = 15
+    KQ_OPERATIONAL_MAX_CHUNKS_PER_ARTICLE = 15
+    KQ_OPERATIONAL_CHUNK_TYPES = ("business_rules", "eligibility", "steps")
+    KQ_NONOPERATIONAL_CHUNK_TYPES = frozenset({
+        "definitions", "faqs", "response_frames", "references", "decision_guide",
+    })
+    KQ_INCOMING_ROLLOVER_CATEGORY = "incoming_rollover_from_prior_employer"
     KQ_SOURCE_MIN_SCORE = 0.20
     KQ_PRIORITIZED_TYPES = [
         'business_rules', 'eligibility', 'steps', 'faqs',
@@ -1918,6 +1926,18 @@ class RAGEngine:
 
             # 3. Merge, deduplicate, rank by score
             chunks = self._merge_and_rank_chunks(*results)
+            budget = self.KQ_CONTEXT_BUDGET
+            per_article = self.KQ_MAX_CHUNKS_PER_ARTICLE
+            reserved_chunks = None
+            context_note = ""
+            if chunks and self._kq_procedural_outgoing_rollover(question):
+                chunks, reserved_chunks = await self._augment_kq_operational_chunks(
+                    chunks, question,
+                )
+                if reserved_chunks:
+                    budget = self.KQ_OPERATIONAL_CONTEXT_BUDGET
+                    per_article = self.KQ_OPERATIONAL_MAX_CHUNKS_PER_ARTICLE
+                    context_note = self._kq_operational_context_note()
 
             if not chunks:
                 logger.warning("No chunks found for knowledge question")
@@ -1937,9 +1957,10 @@ class RAGEngine:
             # 4. Build context with article diversity
             context, selected_chunks, tokens_used = self._build_context_with_diversity(
                 chunks=chunks,
-                budget=self.KQ_CONTEXT_BUDGET,
+                budget=budget,
                 prioritize_types=self.KQ_PRIORITIZED_TYPES,
-                max_per_article=self.KQ_MAX_CHUNKS_PER_ARTICLE
+                max_per_article=per_article,
+                reserved_chunks=reserved_chunks,
             )
 
             logger.info(f"Context built: {len(selected_chunks)} chunks, {tokens_used} tokens")
@@ -1947,7 +1968,8 @@ class RAGEngine:
             # 5. Build prompts and call LLM
             system_prompt, user_prompt = build_knowledge_question_prompt(
                 context=context,
-                question=question
+                question=question,
+                context_note=context_note,
             )
 
             llm_usage = None
@@ -7679,6 +7701,200 @@ class RAGEngine:
             )
         return "\n".join(context_parts), selected, tokens_used
 
+    def _kq_procedural_outgoing_rollover(self, question: str) -> bool:
+        """Procedural outgoing rollover questions only; not every KQ."""
+        lowered = (question or "").lower()
+        if re.search(r"\broll(?:ing)?\s+into\b", lowered):
+            return False
+        if _infer_incoming_rollover_signal(lowered, None):
+            return False
+        # The shared incoming predicate needs BOTH an external source and one of
+        # its destination phrases, so "roll my 401k over from Fidelity into
+        # ForUsAll" and "roll my 401k over to ForUsAll" both slip through it.
+        # Naming this plan as the destination is incoming regardless of source.
+        if re.search(
+            r"\b(?:in)?to\s+(?:my\s+|our\s+|the\s+|this\s+|their\s+)?(?:new\s+)?"
+            r"(?:forusall|this\s+plan|current\s+(?:plan|account|401\s*\(?k\)?))\b",
+            lowered,
+        ):
+            return False
+        has_rollover = re.search(
+            r"\brollovers?\b|\broll[\s-]?overs?\b|\broll\b(?:\s+\w+){1,4}\s+over\b",
+            lowered,
+        )
+        has_process = re.search(
+            r"\bnot sure how this works\b"
+            r"|\bhow (?:do|can|to|does)\b"
+            r"|\b(?:steps|instructions|process|procedure|submit|initiate)\b"
+            r"|\bforms?\b",
+            lowered,
+        )
+        # A bare "401(k)" token would make "How do 401k rollovers work?" look
+        # like a practical request and assert a direction in the context note.
+        # Require an owned account, a named destination, or a first-person
+        # request; generic process education stays on the baseline path.
+        has_practical = re.search(
+            r"\b(?:my|our|their|his|her)\b[^.?!]{0,40}"
+            r"\b(?:401\s*\(?k\)?|account|balance|plan|funds|money)\b"
+            r"|\b(?:new|another|receiving|destination|different)\b[^.?!]{0,30}"
+            r"\b(?:provider|plan|account|employer|institution|custodian"
+            r"|401\s*\(?k\)?)\b"
+            r"|\bi(?:'m| am)?\s+(?:have|had|received|want|need|looking)\b"
+            r"|\b(?:this|the)\s+account\b",
+            lowered,
+        )
+        if not (has_rollover and has_process and has_practical):
+            return False
+        profile = self._build_retrieval_profile(
+            question,
+            topic="rollover",
+            record_keeper=None,
+            plan_type="",
+            collected_data=None,
+        )
+        signals = profile.get("signals") or {}
+        blocked = (
+            "incoming_rollover",
+            "split_rollover",
+            "indirect_rollover_60_day",
+            "force_out",
+            "rmd",
+        )
+        return not any(signals.get(name) for name in blocked)
+
+    @staticmethod
+    def _kq_operational_context_note() -> str:
+        return (
+            "These retrieved procedures are conditional knowledge. "
+            "An article title or provider does not verify the current "
+            "recordkeeper, account custody, or personal eligibility. "
+            "Do not say that personal records or an attachment were checked. "
+            "State rules, fees, and forms only when the retrieved content "
+            "states them. The question is about moving an existing account "
+            "to another provider."
+        )
+
+    def _order_operational_reservation(
+        self,
+        chunks: List[Dict[str, Any]],
+        article_ids: List[str],
+    ) -> List[Dict[str, Any]]:
+        grouped: Dict[str, List[Dict[str, Any]]] = {
+            article_id: [] for article_id in article_ids
+        }
+        for chunk in chunks:
+            article_id = (chunk.get("metadata") or {}).get("article_id")
+            if article_id in grouped:
+                grouped[article_id].append(chunk)
+        for article_id in article_ids:
+            grouped[article_id].sort(
+                key=lambda chunk: chunk.get("score", 0),
+                reverse=True,
+            )
+        reserved: List[Dict[str, Any]] = []
+        used: set = set()
+
+        def take(chunk: Dict[str, Any]) -> None:
+            chunk_id = chunk.get("id")
+            if chunk_id in used:
+                return
+            article_id = (chunk.get("metadata") or {}).get("article_id")
+            already = sum(
+                1 for item in reserved
+                if (item.get("metadata") or {}).get("article_id") == article_id
+            )
+            if already >= self.KQ_OPERATIONAL_MAX_CHUNKS_PER_ARTICLE:
+                return
+            used.add(chunk_id)
+            reserved.append(chunk)
+
+        for chunk_type in self.KQ_OPERATIONAL_CHUNK_TYPES:
+            for article_id in article_ids:
+                for chunk in grouped[article_id]:
+                    kind = (chunk.get("metadata") or {}).get("chunk_type")
+                    if kind == chunk_type and chunk.get("id") not in used:
+                        take(chunk)
+                        break
+        progressed = True
+        while progressed:
+            progressed = False
+            for article_id in article_ids:
+                already = sum(
+                    1 for item in reserved
+                    if (item.get("metadata") or {}).get("article_id") == article_id
+                )
+                if already >= self.KQ_OPERATIONAL_MAX_CHUNKS_PER_ARTICLE:
+                    continue
+                for chunk in grouped[article_id]:
+                    if chunk.get("id") not in used:
+                        take(chunk)
+                        progressed = True
+                        break
+        return reserved
+
+    async def _augment_kq_operational_chunks(
+        self,
+        base_chunks: List[Dict[str, Any]],
+        question: str,
+    ) -> tuple:
+        profile = self._build_retrieval_profile(
+            question,
+            topic="rollover",
+            record_keeper=None,
+            plan_type="",
+            collected_data=None,
+        )
+        excluded = set(profile.get("excluded_articles") or [])
+        best_by_article: Dict[str, Dict[str, Any]] = {}
+        for chunk in base_chunks:
+            meta = chunk.get("metadata") or {}
+            article_id = meta.get("article_id")
+            if not article_id or article_id in excluded:
+                continue
+            current = best_by_article.get(article_id)
+            if current is None or chunk.get("score", 0) > current.get("score", 0):
+                best_by_article[article_id] = chunk
+        candidates = []
+        for article_id, chunk in best_by_article.items():
+            kind = (chunk.get("metadata") or {}).get("chunk_type")
+            if kind in self.KQ_NONOPERATIONAL_CHUNK_TYPES:
+                candidates.append((chunk.get("score", 0), article_id))
+        candidates.sort(key=lambda item: (-item[0], item[1]))
+        article_ids = [article_id for _score, article_id in candidates[:2]]
+        collected: List[Dict[str, Any]] = []
+        operational = set(self.KQ_OPERATIONAL_CHUNK_TYPES)
+        for article_id in article_ids:
+            hits = await self._cached_query(
+                query_text=question,
+                top_k=self.KQ_OPERATIONAL_TOP_K_PER_ARTICLE,
+                filter_dict={
+                    "article_id": {"$eq": article_id},
+                    "chunk_type": {"$in": list(self.KQ_OPERATIONAL_CHUNK_TYPES)},
+                },
+            )
+            for hit in hits or []:
+                meta = hit.get("metadata") or {}
+                if meta.get("article_id") != article_id:
+                    continue
+                if meta.get("chunk_type") not in operational:
+                    continue
+                if meta.get("chunk_category") == self.KQ_INCOMING_ROLLOVER_CATEGORY:
+                    continue
+                collected.append(hit)
+        if not collected:
+            return base_chunks, []
+        merged = self._merge_and_rank_chunks(base_chunks, collected)
+        # The merge keeps the FIRST copy of a duplicate id, so a stage-2 hit can
+        # never overwrite an existing stage-1 score. The reservation must point
+        # at those canonical chunks: reserving the stage-2 copy of a duplicate
+        # would carry its higher score into the selected context and report an
+        # inflated evidence score for a chunk stage 1 had already ranked lower.
+        collected_ids = {chunk.get("id") for chunk in collected}
+        canonical = [
+            chunk for chunk in merged if chunk.get("id") in collected_ids
+        ]
+        return merged, self._order_operational_reservation(canonical, article_ids)
+
     def _build_context_with_diversity(
         self,
         chunks: List[Dict[str, Any]],
@@ -7686,6 +7902,7 @@ class RAGEngine:
         prioritize_types: Optional[List[str]] = None,
         max_per_article: int = 6,
         enforce_type_order: bool = False,
+        reserved_chunks: Optional[List[Dict[str, Any]]] = None,
     ) -> tuple:
         """
         Build context ensuring representation from multiple articles.
@@ -7746,18 +7963,41 @@ class RAGEngine:
         tokens_used = 0
         article_counts: Dict[str, int] = defaultdict(int)
 
+        for chunk in reserved_chunks or []:
+            cid = chunk.get("id")
+            if cid in selected_ids:
+                continue
+            aid = chunk["metadata"].get("article_id", "unknown")
+            if article_counts[aid] >= max_per_article:
+                continue
+            content = chunk["metadata"].get("content", "")
+            chunk_tokens = self.token_manager.count_tokens(content)
+            if tokens_used + chunk_tokens <= budget:
+                selected.append(chunk)
+                selected_ids.add(cid)
+                tokens_used += chunk_tokens
+                article_counts[aid] += 1
+
         for _aid, chunk in sorted(
             article_best.items(),
             key=lambda x: x[1].get('score', 0),
             reverse=True
         ):
+            if chunk.get("id") in selected_ids:
+                continue
+            aid = chunk['metadata'].get('article_id', 'unknown')
+            # A reserved article can already hold max_per_article chunks. Its
+            # best stage-1 chunk is a different id, so an id-only skip would
+            # admit a cap+1 chunk here. Without a reservation every article
+            # count is still 0 at this point, so the default path is unchanged.
+            if article_counts[aid] >= max_per_article:
+                continue
             content = chunk['metadata'].get('content', '')
             chunk_tokens = self.token_manager.count_tokens(content)
             if tokens_used + chunk_tokens <= budget:
                 selected.append(chunk)
                 selected_ids.add(chunk.get('id'))
                 tokens_used += chunk_tokens
-                aid = chunk['metadata'].get('article_id', 'unknown')
                 article_counts[aid] += 1
 
         logger.debug(

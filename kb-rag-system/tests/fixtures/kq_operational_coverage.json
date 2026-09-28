@@ -1,0 +1,390 @@
+{
+  "provenance": {
+    "query": "401(k) forms plan sponsor",
+    "top_k": 15,
+    "note": "Operational hits for the sanitized retrieval of a procedural question about moving an existing 401(k) to a new provider and completing the form. Public article text only; no participant identity."
+  },
+  "stage1_used": [
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_41",
+      "score": 0.594,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "definitions",
+        "chunk_tier": "low",
+        "content": "# Definitions and Terms\n\n## Cash distribution\nA payment of 401(k) funds directly to the participant, typically by check or wire.\n\n## Rollover distribution\nA movement of 401(k) funds to an IRA or another qualified retirement plan that can avoid immediate taxes and penalties if done properly.\n\n## Pre-tax funds\n401(k) contributions made before income taxes are applied. These funds grow tax-deferred, meaning taxes are owed when the money is eventually withdrawn. The article describes rolling pre-tax funds to a Traditional IRA as an example.\n\n## Roth funds\n401(k) contributions made with after-tax dollars. These funds have tax-free growth potential and qualified withdrawals are generally tax-free. The article describes rolling Roth funds to a Roth IRA as an example.\n\n## 1099-R\nThe tax form issued for reporting a distribution or rollover.\n\n## Minimum Balance Rule\nThe rule described in the article stating that if the account balance is less than $7,000, the former employer has the right to remove the participant from the plan.\n\n## Mandatory cash-out\nA payout the participant may receive if the account balance is less than $1,000, minus taxes and potential penalties.\n\n## IRA\nAn Individual Retirement Account that may receive rolled over 401(k) funds, including an IRA chosen by the plan provider or a new IRA selected for a rollover.\n\n## Qualified plan\nAre Qualified 401(k) plans, 403(b) plan (tax-sheltered annuity), Governmental 457(b) plan, 403(a) annuity plan, SIMPLE IRA, Traditional IRA, Roth IRA and SEP IRA.\n\n## Wire transfer\nA payment or rollover method where funds are sent directly to the new account.\n\n## Check\nA payment or rollover method where funds are mailed to the participant or to the new IRA or plan provider, depending on the distribution type.\n\n## Federal tax withholding\nThe federal tax amount that may apply to a cash distribution, which the article states is 20%.\n\n## State taxes\nTaxes that may also be withheld from a cash distribution if the participant's state mandates it.\n\n## 10% early withdrawal penalty\nAn additional penalty that may apply when a participant under age 59½ takes a cash distribution, unless an exception applies.\n\n## 60 days rule\nThe time period the article says generally applies to complete a rollover when the funds are paid to the participant first, in order to avoid taxes and penalties.\n\n## Traditional IRA\nThe IRA type used in the article's example for rolling over pre-tax 401(k) funds.\n\n## Roth IRA\nThe IRA type used in the article's example for rolling over Roth 401(k) funds.\n\n## Distribution request\nThe request submitted for a 401(k) distribution, during which Roth and pre-tax funds are automatically separated according to the article.\n\n## Distribution option\nThe option selected for each source in the account, such as rollover or cash distribution.\n\n## Payment method\nThe method selected for each source in the account, such as check or wire.\n\n## Current selections\nThe participant's existing investment selections that continue to apply if the 401(k) account remains in the plan.\n"
+      }
+    },
+    {
+      "id": "missed_60_day_rollover_window_chunk_14",
+      "score": 0.5672,
+      "metadata": {
+        "article_id": "missed_60_day_rollover_window",
+        "article_title": "Missed 60-Day Indirect Rollover Deadline: Tax Consequences, IRS Exceptions, and When to Refer to a Tax Professional",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "content": "# Step-by-Step Procedure\n\n## Step 1: Confirm whether the transaction was an indirect rollover situation (a distribution intended to be rolled into a 401(k) or IRA by the participant).\n**Note:** The article gives the example of a check made payable to the participant.\n\n## Step 2: Confirm whether the rollover was completed within 60 days of the participant receiving the funds.\n**Note:** The 60-day window is based on receiving the funds.\n\n## Step 3: If the rollover was not completed within 60 days, explain that the distribution is generally treated as taxable income (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence) and is reported on IRS Form 1099-R as a distribution.\n**Note:** If the participant is under age 59½, they may owe a 10% early withdrawal penalty.\n"
+      }
+    },
+    {
+      "id": "can_i_split_my_401_k_rollover_between_multiple_providers_chunk_59",
+      "score": 0.5614,
+      "metadata": {
+        "article_id": "can_i_split_my_401_k_rollover_between_multiple_providers",
+        "article_title": "LT: Can I Split My 401(k) Rollover Between Multiple Providers?",
+        "chunk_type": "definitions",
+        "chunk_tier": "low",
+        "content": "# Definitions and Terms\n\n## Split rollover\nA rollover request in which one source from a participant's account is divided across more than one retirement account or provider.\n\n## RightSignature\nThe secure method used to deliver the Separation of Service: Rollover Request Form to the participant for the manual process.\n\n## Delivery method\nThe way a rollover portion is sent to its destination, such as by check or wire transfer.\n\n## 401(k) rollover\nA movement of retirement funds from the participant's 401(k) account to another eligible retirement account or provider.\n\n## Multiple providers\nMore than one receiving financial institution, retirement account provider, or qualified plan selected to receive portions of the rollover.\n\n## Pre-tax balance\nThe portion of the participant's retirement account that holds pre-tax contributions and related balances.\n\n## Roth balance\nThe portion of the participant's retirement account that holds Roth contributions and related balances.\n\n## Percentage-based split\nA split rollover instruction that divides the rollover using percentages for each destination.\n\n## Amount-based split\nA split rollover instruction that divides the rollover using fixed dollar amounts for each destination.\n\n## Remaining balance\nThe portion of the account balance left after a stated dollar amount or other portion has already been assigned to a destination.\n\n## Receiving institution\nThe financial institution or plan that will receive all or part of the rollover.\n\n## Qualified plan\nAn eligible employer-sponsored retirement plan that can receive rollover funds.\n\n## IRA\nAn individual retirement account that can receive rollover funds when permitted by the process being used.\n\n## New employer's 401(k)\nA new employer-sponsored 401(k) plan selected to receive rollover funds from the participant's existing account.\n\n## Manual review\nA support-handled review process required when the rollover request is too complex to be completed through the standard online workflow.\n\n## Manual processing\nA non-portal handling process used to complete rollover requests that involve one source being routed to multiple destinations or other added complexity.\n\n## Online dashboard\nThe participant's web-based account interface where standard account actions may be completed, including the online workflow for separate Roth and pre-tax rollover destinations when the participant has full access, but where one-source split rollover requests cannot be submitted.\n\n## Participant portal\nThe ForUsAll online account access point where participants can review and submit certain retirement account requests.\n\n## Termination distribution\nA distribution request made after a participant has terminated employment, subject to the rules and validations in the process being used.\n\n## Terminated status\nA participant status in the system indicating that the participant is no longer actively employed.\n\n## Termination date\nThe date recorded in the system showing when the participant's employment ended.\n\n## Rehire date\nThe date recorded in the system showing when a participant returned to employment after a prior termination.\n\n## Vested balance\nThe portion of the participant's account balance that is available for distribution based on vesting status.\n\n## MFA\nMulti-factor authentication used as an added account security requirement.\n\n## Separation of Service\nA distribution reason indicating that the participant's employment has ended.\n\n## Wire transfer\nAn electronic delivery method used to send a rollover or distribution amount directly to the receiving institution or account.\n\n## Wire instructions\nThe routing and account details required to send funds by wire transfer.\n\n## Distribution fee\nThe base fee charged for processing a distribution request.\n\n## Wire fee\nAn additional fee charged when a wire transfer delivery method is selected.\n\n## OverNight Check\nAn expedited check delivery option that carries an additional fee.\n\n## Regular Mail Check\nA standard mailed check delivery option.\n\n## Returned wire\nA wire transfer that is rejected or sent back, which may then be converted to a mailed check under the process being used.\n\n## Participant Dashboard\nThe account landing area where the participant accesses tools such as Loans and Distributions.\n\n## Record keeper\nThe organization responsible for recordkeeping administration for the retirement plan.\n\n## LT Trust\nThe record keeper identified in the article metadata for this process.\n\n## RightSignature electronic form\nThe Separation of Service: Rollover Request Form delivered through a secure RightSignature link for the participant to review and complete the request.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_48",
+      "score": 0.5457,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "faqs",
+        "chunk_tier": "low",
+        "content": "# Frequently Asked Questions\n\n## Q: How do I roll over my old employer's 401(k) into my ForUsAll plan?\n**A:** This is an INCOMING rollover (the opposite of the outgoing flow this article mostly describes). The participant initiates it by contacting the prior recordkeeper (the institution holding the old 401(k)) and requesting a rollover distribution payable to the ForUsAll plan FBO (for the benefit of) the participant. A direct rollover — funds sent straight from the prior recordkeeper to ForUsAll — is recommended to avoid the 60-day indirect-rollover risk. The participant should also notify ForUsAll Support with the expected amount, source institution, and tax character (Roth vs pre-tax) so the incoming funds can be matched to the account once they arrive.\n\n## Q: What information does the prior recordkeeper need to send funds to ForUsAll?\n**A:** The prior recordkeeper needs the ForUsAll plan name, FBO designation (for benefit of [participant name]), and ForUsAll's mailing address for rollover checks (or wire instructions if the prior recordkeeper supports outgoing wires). Contact ForUsAll Support to obtain the current receiving instructions; they may include a specific mailing PO box, plan ID, and the participant's account number or SSN as required.\n\n## Q: What should a participant do if they are still employed but want to roll over eligible funds?\n**A:** Contact ForUsAll Support to confirm eligibility.\n"
+      }
+    },
+    {
+      "id": "access_manage_401k_statements_beneficiaries_chunk_75",
+      "score": 0.4171,
+      "metadata": {
+        "article_id": "access_manage_401k_statements_beneficiaries",
+        "article_title": "LT: How to Access and Manage Your ForUsAll 401(k) Statements and Beneficiaries",
+        "chunk_type": "definitions",
+        "chunk_tier": "low",
+        "content": "# Definitions and Terms\n\n## ForUsAll Dashboard\nThe participant-facing online dashboard accessed at forusall.com/login where participants can view account information and access options such as Statements and Beneficiaries from the three-dot menu.\n\n## 401(k) Statement\nA quarterly document showing how the participant's retirement account changed over the past three months.\n\n## Quarterly Statement\nA 401(k) statement generated each quarter for the participant's account. Q1 covers January 1 through March 31, Q2 covers April 1 through June 30, Q3 covers July 1 through September 30, and Q4 covers October 1 through December 31.\n\n## Statements Section\nThe dashboard section participants access from the three-dot menu to view or download available quarterly statement PDFs and manage delivery preferences.\n\n## Delivery Settings\nThe option in the Statements section where participants can change their statement delivery preference.\n\n## Electronic or Paperless\nA statement delivery option for accessing statements online through the ForUsAll dashboard.\n\n## Paper Mail\nA statement delivery option for receiving quarterly statements through USPS.\n\n## Account Summary\nA statement section that gives a high-level view of account activity, such as beginning balance, contributions, transfers, withdrawals and forfeitures if applicable, plan fees, investment gains or losses, and ending balance.\n\n## Beginning Balance\nThe total balance at the start of the quarter.\n\n## Ending Balance\nThe total balance at the end of the quarter.\n\n## Contributions\nEmployee deferrals made during the quarter.\n\n## Transfers\nFunds moved into the plan.\n\n## Withdrawals and Forfeitures\nAmounts removed or forfeited, if applicable.\n\n## Plan Fees\nFees deducted for recordkeeping or plan services as shown on the statement, if applicable. The article does not provide fee amounts.\n\n## Investment Gains or Losses\nThe statement item that reflects the performance of the participant's investments.\n\n## Account Balance by Fund and Asset Class\nA statement section showing how the participant's investments are allocated, including fund details, asset class breakdown, and performance by investment.\n\n## Fund Details\nStatement information showing each fund the participant is invested in, with corresponding expense ratio and current value.\n\n## Asset Class Breakdown\nStatement information showing percentages across asset classes.\n\n## Performance by Investment\nStatement information showing how each fund performed during the quarter, including contributions, gains or losses, and fees.\n\n## Account Activity by Source\nA statement section tracking where funds came from, such as Roth deferrals or traditional pre-tax contributions, and showing how each source performed over the quarter.\n\n## Roth Deferrals\nA source of funds that may appear in the Account Activity by Source section of the statement.\n\n## Traditional Pre-Tax Contributions\nA source of funds that may appear in the Account Activity by Source section of the statement.\n\n## Lifetime Income Estimate\nA monthly retirement income estimate based on the participant's current 401(k) balance. It is used for planning and is not a guaranteed income amount.\n\n## Single Life\nA Lifetime Income Estimate for the participant only.\n\n## Joint & Survivor\nA Lifetime Income Estimate for the participant and the participant's spouse.\n\n## Investment Performance Summary\nA statement section that may show how available plan options performed across various time periods, such as current quarter, year-to-date, one-year, and five-year performance.\n\n## Additional Details and Disclosures\nThe final page of the statement, which may include diversification education and planning reminders, footnotes explaining forfeitures, fees, and expense ratios, and Department of Labor resources for smart investing.\n\n## On-Demand Statement\nA recent statement that Participant Support may help generate if a participant needs documentation for a loan or mortgage and the statement has not yet posted.\n\n## Archived Statement\nAn older statement, including statements from several years ago, for which participants should contact support for assistance.\n\n## Custom Date Account Summary\nA custom date account summary that participants should contact support for assistance with.\n\n## Beneficiary\nA person designated to receive the participant's 401(k) savings according to the participant's wishes if the participant passes away.\n\n## Beneficiaries Section\nThe dashboard section participants access from the three-dot menu to add or update beneficiary information once the first contribution has posted to the 401(k) account.\n\n## Primary Beneficiary\nThe person or people who will receive the participant's 401(k) funds upon the participant's death.\n\n## Contingent Beneficiary\nA secondary beneficiary who will inherit the account only if all primary beneficiaries are deceased.\n\n## Secondary Beneficiary\nAnother name for a contingent beneficiary.\n\n## Beneficiary Allocation\nThe percentage assigned to each beneficiary. If naming more than one beneficiary, the combined allocations must equal 100%, and percentages must be whole percentages.\n\n## Spousal Consent\nConsent that a plan may require if a married participant names someone other than their spouse as primary beneficiary.\n\n## Participant Support Team\nThe ForUsAll support team participants can contact for help accessing the dashboard, viewing statements, changing delivery preferences, understanding a statement, requesting older or on-demand statements, or managing beneficiaries.\n"
+      }
+    },
+    {
+      "id": "eaca_refunds_after_401k_auto_enrollment_chunk_34",
+      "score": 0.4101,
+      "metadata": {
+        "article_id": "eaca_refunds_after_401k_auto_enrollment",
+        "article_title": "EACA Refunds After 401(k) Auto-Enrollment: 90-Day Deadline, Eligibility, Fees, and Tax Reporting",
+        "chunk_type": "definitions",
+        "chunk_tier": "low",
+        "content": "# Definitions and Terms\n\n## EACA (Eligible Automatic Contribution Arrangement)\nA type of 401(k) plan arrangement that meets specific IRS requirements for automatic enrollment, including providing a permissible withdrawal (EACA refund) option within 90 days of the first automatic contribution. Not all auto-enrollment plans qualify as EACA plans.\n\n## EACA refund\nA one-time refund option in EACA-qualified 401(k) plans allowing an employee to opt out shortly after automatic enrollment and have the automatic contributions returned if a written request is received within 90 calendar days of the first automatic contribution deposit.\n\n## Auto-enrollment\nA plan feature that automatically enrolls eligible employees in the 401(k) plan at a default contribution rate unless the employee actively opts out or changes the rate.\n\n## Automatic deferral or contribution\nThe paycheck deduction that is deposited into the 401(k) plan due to automatic enrollment, without the employee having actively elected to contribute.\n\n## Employer matching contributions\nContributions made by the employer to the participant's 401(k) account, typically calculated as a percentage of the employee's own contributions. These are forfeited when an EACA refund is processed.\n\n## Forfeiture\nThe loss of a right to employer contributions (such as matching contributions) that occurs when an EACA refund is processed. Forfeited amounts are returned to the plan, not to the participant.\n\n## Form 1099-R\nAn IRS tax form used to report distributions from retirement plans, including EACA refunds. It is issued for the tax year in which the distribution or refund occurs and is used by the participant when filing taxes.\n\n## Ordinary income\nIncome taxed at the individual's regular income tax rate. EACA refunds are typically treated as taxable ordinary income for the year the refund is issued.\n\n## Early withdrawal penalty\nA 10% additional tax imposed by the IRS on certain retirement plan distributions taken before age 59½. EACA refunds are generally not treated as early retirement distributions, so this penalty typically does not apply.\n\n## Written request\nThe formal request from the participant to opt out of auto-enrollment and receive an EACA refund, submitted by completing and electronically signing the secure EACA refund form via RightSignature.\n\n## Processing fee\nA $50 fee deducted from the EACA refund amount before the check is issued. The fee may still be included in the taxable amount reported on the Form 1099-R.\n\n## RightSignature\nAn electronic signature service used to deliver, complete, and submit the secure EACA refund form. The participant receives the form electronically and signs it digitally.\n"
+      }
+    },
+    {
+      "id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance_chunk_37",
+      "score": 0.4034,
+      "metadata": {
+        "article_id": "401k_force_out_process_involuntary_distribution_balance_thresholds_safe_harbor_ira_rollovers_fee_outs_compliance",
+        "article_title": "401(k) Force-Out Process (Involuntary Distribution): Balance Thresholds, Safe Harbor IRA Rollovers, Fee-Outs, and Compliance",
+        "chunk_type": "definitions",
+        "chunk_tier": "low",
+        "content": "# Definitions and Terms\n\n## Force-out\nAn involuntary distribution of a former employee's vested 401(k) balance under $7,000 initiated by the employer without the participant's direct request.\n\n## Involuntary distribution\nA distribution from a retirement plan that is initiated by the plan sponsor rather than the participant, typically when the participant's vested balance falls below the plan's force-out threshold after employment ends. Synonymous with force-out.\n\n## Fee-out\nA force-out scenario in which the participant's vested balance is $80 or less and is fully absorbed by the industry-standard $80 administrative fee, resulting in account closure with no funds transferred to the participant.\n\n## Vested balance\nThe portion of a participant's 401(k) account balance that they are entitled to keep upon leaving employment, based on the plan's vesting schedule. Force-out eligibility and distribution method are determined by the vested balance, not the total account balance.\n\n## Safe harbor IRA\nAn IRA used for automatic rollovers of force-out balances between $1,000 and $7,000 when the participant does not make an election.\n\n## 3(16) administrator\nA fiduciary role responsible for plan administration, including communications, execution, and compliance with applicable regulations.\n\n## ERISA\nThe Employee Retirement Income Security Act of 1974, a federal law that sets minimum standards for retirement and health plans in private industry, including fiduciary responsibilities, participant rights, and plan administration requirements.\n\n## DOL Safe Harbor Rules\nDepartment of Labor regulations that provide a safe harbor for plan fiduciaries who automatically roll force-out balances into IRAs, provided they select a prudent IRA provider, ensure low fees, and invest in capital preservation products.\n\n## IRS Regulation § 401(a)(31)(B)\nThe Internal Revenue Code provision that permits plans to automatically distribute (force out) a former employee's vested balance without consent when the balance is below the statutory threshold (currently $7,000).\n\n## Form 1099-R\nAn IRS tax form used to report distributions from retirement plans, including force-outs. Issued to the participant and the IRS for the tax year in which the distribution occurs.\n\n## Mandatory 20% federal withholding\nA required 20% federal income tax withholding applied to eligible rollover distributions that are paid directly to the participant as cash rather than rolled over to another qualified plan or IRA.\n"
+      }
+    }
+  ],
+  "general_operational_hits": [
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_13",
+      "score": 0.3617325723171234,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "rollover_rules",
+        "content": "# Business Rules: Rollover_Rules\n\n## Rollover Rules:\n- A rollover distribution allows the participant to move 401(k) funds to an IRA or another qualified retirement plan without paying immediate taxes or penalties if done properly.\n- A rollover preserves retirement savings and keeps funds growing.\n- A rollover can be completed by check mailed to the new IRA or plan provider or by wire transfer directly to the new account.\n- If the rollover is not a direct transfer and the funds are paid to the participant first, the rollover generally must be completed within 60 days to avoid taxes and penalties.\n- A 1099-R will be issued the following year for rollover reporting purposes.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_15",
+      "score": 0.3544139564037323,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "chunk_category": "steps_1_to_3",
+        "content": "# Step-by-Step Procedure\n\n## Step 1: Confirm that the participant has recently left their job or is planning to leave and needs guidance on what to do with their 401(k).\n**Note:** The article is specifically about 401(k) savings after leaving a job.\n\n## Step 2: Explain the three available paths described in the article: leave the funds in the plan, take a cash distribution, or complete a rollover.\n**Note:** Do not present these as equally available in every case without noting the minimum balance rules tied to leaving funds in the plan.\n\n## Step 3: If the participant wants to leave funds in the plan, explain that this may be allowed and that the account can remain invested according to current selections.\n**Note:** Also explain that no further contributions can be made and that contact information must be kept up to date.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_11",
+      "score": 0.35258179903030396,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "leave_funds_in_plan",
+        "content": "# Business Rules: Leave_Funds_In_Plan\n\n## Leave Funds In Plan:\n- The participant may be able to leave the 401(k) account in the plan and keep it invested according to current selections.\n- If the account balance is less than $7,000, the former employer has the right to remove the participant from the plan.\n- If the balance is less than $1,000, the participant may receive a mandatory cash-out minus taxes and potential penalties.\n- If the balance is between $1,000 and $7,000, the funds may be automatically rolled over into an IRA chosen by the plan provider.\n- The participant can no longer make contributions to the plan after leaving the job.\n- The participant must keep contact information up to date to receive future communications.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_16",
+      "score": 0.3352070152759552,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "chunk_category": "steps_4_to_6",
+        "content": "# Step-by-Step Procedure\n\n## Step 4: Review the minimum balance rules for leaving funds in the plan: balances under $7,000 may be removed from the plan by the former employer, balances under $1,000 may be cashed out, and balances between $1,000 and $7,000 may be automatically rolled into an IRA chosen by the plan provider.\n**Note:** The article describes these as possible plan outcomes the former employer has the right to apply.\n\n## Step 5: If the participant is considering a cash distribution, explain that funds are paid directly to them, typically by check or wire.\n**Note:** This option gives immediate access to cash but can reduce long-term retirement savings.\n\n## Step 6: Explain the tax consequences of a cash distribution, including typical 20% federal withholding, possible state withholding, and the possible 10% early withdrawal penalty for participants under age 59½ unless an exception applies.\n**Note:** Also state that a 1099-R will be issued for tax reporting.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_12",
+      "score": 0.3197275400161743,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "cash_distribution_taxes",
+        "content": "# Business Rules: Cash_Distribution_Taxes\n\n## Cash Distribution Taxes:\n- A cash distribution means the funds are paid directly to the participant, typically by check or wire.\n- A cash distribution typically involves 20% federal tax withholding.\n- State taxes may also be withheld if the participant's state mandates it.\n- If the participant is under age 59½, an additional 10% early withdrawal penalty may apply when filing taxes unless an exception applies.\n- A 1099-R will be issued reflecting the distribution and taxes withheld and must be reported on the participant's next tax return.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_14",
+      "score": 0.31533899903297424,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "roth_and_pre_tax_handling",
+        "content": "# Business Rules: Roth_And_Pre_Tax_Handling\n\n## Roth And Pre Tax Handling:\n- When a 401(k) distribution request is submitted, Roth and pre-tax funds are automatically separated.\n- The participant can choose a specific distribution option and payment method individually for each source.\n- An example provided is rolling pre-tax 401(k) funds to a Traditional IRA and Roth 401(k) funds to a Roth IRA.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_9",
+      "score": 0.3114936053752899,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "post_employment_options",
+        "content": "# Business Rules: Post_Employment_Options\n\n## Post Employment Options:\n- After leaving a job, the participant's 401(k) savings remain theirs, but they must decide what to do with them.\n- The article describes three options after leaving a job: leave funds in the plan, take a cash distribution, or roll over the 401(k).\n- Retiring counts as leaving a job: a participant who retires has separated from service and is eligible for the same termination-distribution options (leave funds in plan, cash distribution, or rollover) as any other terminated participant.\n- Voluntary distributions after retirement are NOT the same as Required Minimum Distributions (RMDs); RMD rules force a participant to start taking distributions at a specific age, while voluntary distributions can be requested by any separated participant at any time using the termination-distribution flow.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_17",
+      "score": 0.28566116094589233,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "chunk_category": "steps_7_to_9",
+        "content": "# Step-by-Step Procedure\n\n## Step 7: If the participant is considering a rollover, explain that funds can be moved to an IRA or another qualified retirement plan without immediate taxes or penalties if done properly.\n**Note:** This preserves retirement savings and continued tax-advantaged growth.\n\n## Step 8: Explain the two rollover payment methods described in the article: a check mailed to the new IRA or plan provider, or a wire transfer sent directly to the new account.\n**Note:** The article notes that wire transfers are faster but require specific instructions.\n\n## Step 9: If the rollover will not be a direct transfer and funds will be paid to the participant first, explain the 60-day timing rule described in the article.\n**Note:** The article states that the rollover generally must be completed within 60 days to avoid taxes and penalties.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_18",
+      "score": 0.2744344472885132,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "chunk_category": "steps_10_to_11",
+        "content": "# Step-by-Step Procedure\n\n## Step 10: If the participant has both Roth and pre-tax sources, explain that the system automatically separates those sources and allows a distribution option and payment method to be selected for each source individually.\n**Note:** Use the article's example of pre-tax funds going to a Traditional IRA and Roth funds going to a Roth IRA when helpful.\n\n## Step 11: If the participant is unsure which option is best or needs help understanding tax implications, provide the support contact options listed in the article.\n**Note:** Contact methods in the article are email, phone, and a 1-on-1 advisory scheduling link, along with support hours.\n"
+      }
+    },
+    {
+      "id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax_chunk_10",
+      "score": 0.21934343874454498,
+      "metadata": {
+        "article_id": "401k_savings_after_leaving_your_job_rollovers_cash_outs_roth_pre_tax",
+        "article_title": "401(k) Options After Leaving Your Job (Terminated Distribution): Rollovers, Cash Outs, Roth and Pre-Tax",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "voluntary_post_retirement_distributions",
+        "content": "# Business Rules: Voluntary_Post_Retirement_Distributions\n\n## Voluntary Post Retirement Distributions:\n- A participant who has retired is treated as separated from service and can request voluntary distributions (cash, rollover, or partial) at any time, regardless of whether they have started Required Minimum Distributions.\n- Age 59½ matters for the 10% early-withdrawal penalty exception, not for eligibility to request a voluntary distribution; a retired participant of any age can request a voluntary distribution but may owe the 10% penalty if under 59½ and no other exception applies.\n- The standard termination-distribution rules in this article (tax withholding, rollover handling, Roth and pre-tax separation) apply identically to retired participants.\n- RMDs and voluntary distributions are independent: a retired participant may have already taken voluntary distributions and still be subject to RMD rules once they reach RMD age.\n"
+      }
+    }
+  ],
+  "lt_operational_hits": [
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_27",
+      "score": 0.3682534694671631,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "chunk_category": "steps_4_to_6",
+        "content": "# Step-by-Step Procedure\n\n## Step 4: The participant must enter email confirmation information.\n**Note:** The participant must expand Email Confirmation Information and enter at least one valid email address for updates or inquiries.\n\n## Step 5: The participant must choose the distribution type and how funds will be delivered.\n**Note:** The participant must choose from the following options: lump sum cash distribution, a direct rollover of my vested balance to an IRA or a Qualified Retirement Plan, or partial direct rollover to an IRA or qualified plan with the remaining balance as a cash distribution.\n\n## Step 6: The participant must provide delivery details for the chosen option.\n**Note:** For cash requests, the participant may choose check, ACH, or wire and must provide the matching delivery details; cash-only withholding applies. For rollover checks, the participant must provide the receiving institution, mailing address, rollover destination type (IRA, Qualified Plan, Roth IRA, or Roth Qualified Plan), and the IRA or sub-account number if selecting IRA or Roth IRA. For rollover wires, the participant must provide the bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider. ACH must never be offered for a direct rollover. Important: many financial institutions have different instructions for wires versus ACH — the participant must use wire-specific details. Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork. Some fields have system-imposed character limits; participants may need to abbreviate names or addresses. OverNight Check is not offered in the portal. A participant who needs an overnight check must submit the request on the RightSignature electronic form instead, where an additional $50 OverNight Check fee applies.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_24",
+      "score": 0.3600081205368042,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "incoming_rollover_from_prior_employer",
+        "content": "# Business Rules: Incoming_Rollover_From_Prior_Employer\n\n## Incoming Rollover From Prior Employer:\n- This article primarily covers OUTGOING rollovers (moving funds out of the ForUsAll plan). The flow for INCOMING rollovers (bringing funds from a previous employer's 401(k) or another qualified plan INTO the ForUsAll plan) is the inverse and is initiated by the participant on the SENDING institution's side, not in the ForUsAll portal.\n- To roll over a 401(k) from a prior employer into the ForUsAll plan, the participant must contact the prior recordkeeper (the one currently holding the old 401(k)) and request an outgoing rollover/distribution from THAT recordkeeper, payable to the ForUsAll plan FBO (for the benefit of) the participant.\n- The participant should provide the prior recordkeeper with the ForUsAll receiving instructions: plan name, ForUsAll's mailing address for rollover checks (or wire instructions if supported), the participant's name, and the participant's ForUsAll account/SSN as required.\n- Once the funds arrive at ForUsAll, the participant should notify ForUsAll Support so the incoming rollover can be matched to their account and invested per their election.\n- Incoming rollovers from a Roth 401(k) or Roth IRA must be kept in Roth source; pre-tax rollovers go to the pre-tax source. Mixing sources is not allowed.\n- The 60-day indirect rollover rule applies if the prior recordkeeper sends the funds to the participant first rather than directly to ForUsAll: the participant has 60 days from receipt to deposit the funds into the ForUsAll plan, or the distribution is taxable.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_22",
+      "score": 0.3499324321746826,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "rollover_pre_submission_checks",
+        "content": "# Business Rules: Rollover_Pre_Submission_Checks\n\n## Rollover Pre Submission Checks:\n- Before a rollover, confirm with the receiving provider that it accepts the source type and whether it requires check or wire delivery.\n- Use the participant portal path: log in, select Loans & Distributions, select Separation of Service (or Default if that is the displayed equivalent), and start Termination Distribution.\n- Always include the RightSignature form as a secondary fallback after the portal path when eligibility is confirmed; use it only for website/login problems.\n- ForUsAll reviews the request within about two business days; after approval, wires typically complete in 1–2 weeks and standard checks in 2–3 weeks.\n- The participant receives Form 1099-R by January 31 of the following year for a rollover or cash distribution.\n- If an outstanding loan exists, direct the participant to Support to review repayment and possible tax consequences before submission.\n- Wait at least 7 business days after final payroll before submitting so pending contributions are included.\n- If Crypto Enrollment is active or the participant mentions crypto-window holdings, do not assume or promise how those holdings will transfer or be liquidated; contact ForUsAll Support before submission because this article does not define that operational treatment.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_26",
+      "score": 0.3468610346317291,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "chunk_category": "steps_1_to_3",
+        "content": "# Step-by-Step Procedure\n\n## Step 1: The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.\n**Note:** Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). Always share the RightSignature electronic form link together with these portal steps (after confirming eligibility), telling the participant to use it only if they run into problems on the website or cannot log in, for example because MFA is not enrolled: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723\n\n## Step 2: The participant must select a distribution reason for the request.\n**Note:** The participant must choose Separation of Service. If Separation of Service is unavailable or the portal shows 'Default' instead due to a website issue, the participant must choose Default and continue because it is the same option.\n\n## Step 3: The participant must review account sources and vesting before continuing.\n**Note:** The portal shows Traditional and any Roth sources and vesting percentages. Only vested balances are eligible. If vesting looks incorrect, the participant must contact ForUsAll Support before submitting.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_18",
+      "score": 0.31622302532196045,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "check_rollover_instructions",
+        "content": "# Business Rules: Check_Rollover_Instructions\n\n## Check Rollover Instructions:\n- For check rollovers, participants must provide the receiving institution and a mailing address (either the receiving institution address or the participant address if they want the check mailed to them directly).\n- If the participant selects IRA or Roth IRA as the rollover destination, they must include the account number for that IRA.\n- Rollover destination options include IRA, Qualified Plan, Roth IRA, and Roth Qualified Plan.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_28",
+      "score": 0.3001561164855957,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "steps",
+        "chunk_tier": "high",
+        "chunk_category": "steps_7_to_8",
+        "content": "# Step-by-Step Procedure\n\n## Step 7: The participant must review elections and submit the request in the portal.\n**Note:** The participant must confirm the elections that apply to the selected transaction and then submit. For cash or a cash portion, review tax withholding and delivery. For a direct rollover, review the receiving account type and check/wire instructions; do not add cash withholding. Traditional funds can go into a Traditional type account or a Roth type account (Roth conversion may have tax implications), and Roth funds must go into a Roth type account.\n\n## Step 8: The participant must track review, processing, and delivery timelines after submission.\n**Note:** ForUsAll reviews within about two business days. Standard checks typically arrive in about 2–3 weeks after approval via USPS. Wires typically complete in about 1–2 weeks after approval depending on the receiving institution. Overnight checks (available only on the RightSignature electronic form) typically complete in about 1–2 weeks after approval.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_16",
+      "score": 0.29424533247947693,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "rollover_payment_method",
+        "content": "# Business Rules: Rollover_Payment_Method\n\n## Rollover Payment Method:\n- The participant must select a payment method for rollovers: check or wire.\n- ACH is not a rollover delivery method; do not include ACH in a pure direct-rollover response.\n- The participant should confirm with their receiving provider how they prefer to receive rollovers (check or wire) before submitting.\n- Rollover destination options include IRA, Qualified Plan, Roth IRA, and Roth Qualified Plan.\n- Traditional funds can be rolled over into a Traditional type account or a Roth type account (Roth conversion may have tax implications), and Roth funds must be rolled over into a Roth type account.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_5",
+      "score": 0.28627005219459534,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "eligibility",
+        "chunk_tier": "critical",
+        "chunk_category": "requirements",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- The participant must have a Terminated status & Termination date in the system.\n- Only vested balances are eligible for distribution.\n- If there is a Rehire date in the system, the Termination date must be after or higher than the Rehire date.\n- Not mentioned from the Plan Data, that the plan is in a Blackout period.\n- The Participant must have MFA enrolled for participant portal access.\n- Select Separation of Service if the participant has already left their employer. If the portal shows 'Default' instead of Separation of Service due to a website issue, the participant should select Default and continue because it is the same option.\n- If the participant is still employed and wants to roll over eligible funds (such as rollover source balances), they must contact ForUsAll Support first to confirm eligibility.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_10",
+      "score": 0.28627005219459534,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "chunk_category": "eligibility",
+        "content": "# Business Rules: Eligibility\n\n## Eligibility:\n- The participant must have a Terminated status & Termination date in the system.\n- Only vested balances are eligible for distribution.\n- If there is a Rehire date in the system, the Termination date must be after or higher than the Rehire date.\n- Not mentioned from the Plan Data, that the plan is in a Blackout period.\n- The Participant must have MFA enrolled for participant portal access.\n- Select Separation of Service if the participant has already left their employer. If the portal shows 'Default' instead of Separation of Service due to a website issue, the participant should select Default and continue because it is the same option.\n- If the participant is still employed and wants to roll over eligible funds (such as rollover source balances), they must contact ForUsAll Support first to confirm eligibility.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_23",
+      "score": 0.27938953042030334,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "outstanding_loans",
+        "content": "# Business Rules: Outstanding_Loans\n\n## Outstanding Loans:\n- If a participant has an outstanding 401(k) loan at the time of the termination distribution, they may repay the loan in full to avoid taxes and penalties on the loan balance.\n- If the outstanding loan is not repaid, the remaining loan balance will be treated as a taxable distribution (subject to federal income tax, and state income taxes may also apply depending on the participant's state of residence) and may also incur an additional 10% IRS early withdrawal penalty if the participant is under 59 1/2.\n- Participants should contact ForUsAll Support to discuss loan repayment options before initiating the distribution request.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_19",
+      "score": 0.27058327198028564,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "data_entry_best_practices",
+        "content": "# Business Rules: Data_Entry_Best_Practices\n\n## Data Entry Best Practices:\n- Some fields (such as financial institution name or address) have system-imposed character limits; participants may need abbreviated names or addresses to avoid rejections or manual corrections.\n- Do not include 'FBO [Your Name]' in the Financial Institution field; it will automatically appear in the paperwork.\n- If the provider accepts rollovers via wire, confirm the participant is using the provider's wire-specific routing and account numbers.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_13",
+      "score": 0.2701011598110199,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "submission_method",
+        "content": "# Business Rules: Submission_Method\n\n## Submission Method:\n- Submitting through the participant portal is the preferred and fastest route.\n- Always include the RightSignature electronic form link in the response alongside the portal steps, and state clearly that the form should be used only if the participant is having problems with the website or cannot log in (for example, MFA is not enrolled). Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. Share this link only after termination distribution eligibility is confirmed (Terminated status and termination date on file). Do not ask the participant to contact Support just to obtain the form.\n- The RightSignature electronic form is a slower secondary option and must never be presented as the default or preferred route while the participant can use the portal.\n- OverNight Check delivery can only be requested on the RightSignature electronic form; it cannot be selected in the participant portal.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_21",
+      "score": 0.2697167992591858,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "termination_date_followup",
+        "content": "# Business Rules: Termination_Date_Followup\n\n## Termination Date Followup:\n- When a participant asks to cash out after leaving employment but no termination date is on file, ask only for their termination date (last day of employment); do not ask for payment details while eligibility is still blocked.\n- After Terminated status and the termination date are confirmed, present two submission paths: the participant portal under Loans & Distributions as the primary path, plus the secure RightSignature form as a fallback only for website/login problems: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_17",
+      "score": 0.25079116225242615,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "high",
+        "chunk_category": "wire_instructions",
+        "content": "# Business Rules: Wire_Instructions\n\n## Wire Instructions:\n- Many financial institutions have different instructions for wires versus ACH; participants must use wire-specific details when selecting a wire transfer.\n- Incorrect wire instructions may cause funds to be rejected and reissued by check, adding delays.\n- Participants should verify wire details directly with the receiving institution before submitting.\n- Each wire transaction is subject to an extra $35 non-refundable fee charged by American Trust. If pre-tax and Roth sources require separate wire transactions, disclose the $35 fee for each separate wire/source.\n- For wire rollovers, the participant must provide: Bank account name, ABA routing number, bank account number, subaccount number (such as the IRA or Roth IRA account number), and the financial institution that receives the wire on behalf of the provider.\n"
+      }
+    },
+    {
+      "id": "lt_request_401k_termination_withdrawal_or_rollover_chunk_11",
+      "score": 0.24364100396633148,
+      "metadata": {
+        "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
+        "article_title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
+        "chunk_type": "business_rules",
+        "chunk_tier": "critical",
+        "chunk_category": "fees",
+        "content": "# Business Rules: Fees\n\n## Fees:\n- A $75 distribution fee applies to all requests.\n- For a cash distribution, no additional delivery charge applies for ACH or Regular Mail Check. ACH is cash-only and must not be presented as a rollover delivery method.\n- An additional $35 wire fee applies if a wire is chosen.\n- An additional $50 OverNight Check fee applies if an OverNight Check is chosen. OverNight Check can only be requested on the RightSignature electronic form, so this fee only applies to form requests. Do not mention the OverNight Check option or the $50 OverNight Check fee when explaining the participant portal (website) process.\n- Wire transfer and OverNight Check fees are non-refundable.\n"
+      }
+    }
+  ]
+}

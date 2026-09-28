@@ -912,7 +912,7 @@ IMPORTANT: Output "answer", "key_points", and "coverage_gaps". Source articles a
 USER_PROMPT_KNOWLEDGE_QUESTION_TEMPLATE = """KNOWLEDGE BASE CONTEXT:
 {context}
 
-QUESTION:
+{context_note}QUESTION:
 {question}
 
 Answer the question using ONLY the knowledge base context above. Provide a thorough, educational response.
@@ -922,7 +922,8 @@ Return ONLY the JSON object, no additional text."""
 
 def build_knowledge_question_prompt(
     context: str,
-    question: str
+    question: str,
+    context_note: str = "",
 ) -> tuple:
     """
     Construye los prompts para el endpoint knowledge_question.
@@ -930,9 +931,11 @@ def build_knowledge_question_prompt(
     Returns:
         (system_prompt, user_prompt)
     """
+    note = (context_note or "").strip()
     user_prompt = USER_PROMPT_KNOWLEDGE_QUESTION_TEMPLATE.format(
         context=context,
-        question=question
+        question=question,
+        context_note=f"{note}\n\n" if note else "",
     )
     
     return SYSTEM_PROMPT_KNOWLEDGE_QUESTION, user_prompt

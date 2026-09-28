@@ -2685,6 +2685,9 @@ class RAGEngine:
                 collected_data
             ),
             "inquiry_intent": self._infer_inquiry_intent(profile_text),
+            "form_explicitly_requested": inquiry_semantics.requests_distribution_form(
+                inquiry
+            ),
         }
 
     def _build_retrieval_profile(
@@ -5778,8 +5781,10 @@ class RAGEngine:
             key_points.extend(optional_points[: max(0, 6 - len(key_points))])
 
         # Preserve a concise portal-first path. The fallback form is always
-        # supplied after eligibility for outgoing termination requests.  Both
-        # reviewed steps are reserved before applying the six-step cap.
+        # supplied after eligibility for outgoing termination requests. An
+        # explicit request for that form reverses the order and keeps the
+        # portal as the alternative. Both reviewed steps are reserved before
+        # applying the six-step cap.
         if fixed.get("outcome") == "can_proceed":
             canonical_markers = (
                 "loans & distributions", "termination distribution",
@@ -5834,7 +5839,29 @@ class RAGEngine:
                 ),
                 "detail": cls._TERMINATION_FORM_URL,
             }
-            steps = [portal_step, *other_steps[:4], fallback_step]
+            if signals.get("form_explicitly_requested"):
+                requested_form_step = {
+                    "step_number": 1,
+                    "action": (
+                        "Use the secure electronic form you requested. "
+                        "For access help, call ForUsAll Participant Support at "
+                        "844-401-2253, Monday-Friday, 7:00 AM-5:00 PM PT."
+                    ),
+                    "detail": cls._TERMINATION_FORM_URL,
+                }
+                portal_step = {
+                    "step_number": 2,
+                    "action": (
+                        "Alternatively, log in to the participant portal, "
+                        "select Loans & Distributions, then Separation of "
+                        "Service (or Default if shown) and start Termination "
+                        "Distribution."
+                    ),
+                    "detail": None,
+                }
+                steps = [requested_form_step, *other_steps[:4], portal_step]
+            else:
+                steps = [portal_step, *other_steps[:4], fallback_step]
         for index, step in enumerate(steps, start=1):
             if isinstance(step, dict):
                 step["step_number"] = index

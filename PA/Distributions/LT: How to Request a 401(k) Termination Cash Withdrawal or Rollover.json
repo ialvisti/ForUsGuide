@@ -2,7 +2,7 @@
   "metadata": {
     "article_id": "lt_request_401k_termination_withdrawal_or_rollover",
     "title": "LT: How to Request a 401(k) Termination Cash Withdrawal or Rollover",
-    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or the RightSignature electronic form. The form link is always shared together with the portal steps as a secondary option, clearly labeled to be used only if the participant has problems with the website or cannot log in (for example, MFA is not enrolled). Covers delivery methods and fees, including OverNight Check delivery, which can only be requested on the RightSignature electronic form and is not available in the participant portal. Includes intent-scoped rollover best practices such as correct wire vs. check details, data-entry tips, and common errors to avoid. This article is specific to the recordkeeper LT Trust.",
+    "description": "Guide a former employee through requesting a termination distribution from a ForUsAll-administered 401(k), including cash withdrawal, rollover, or a split transaction, using the participant portal or the RightSignature electronic form. The form link is always shared together with the portal steps as a secondary option, clearly labeled to be used only if the participant has problems with the website or cannot log in (for example, MFA is not enrolled), unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal. Covers delivery methods and fees, including OverNight Check delivery, which can only be requested on the RightSignature electronic form and is not available in the participant portal. Includes intent-scoped rollover best practices such as correct wire vs. check details, data-entry tips, and common errors to avoid. This article is specific to the recordkeeper LT Trust.",
     "audience": "Internal AI Support Agent",
     "record_keeper": "LT Trust",
     "plan_type": "401(k)",
@@ -76,9 +76,9 @@
       {
         "category": "submission_method",
         "rules": [
-          "Submitting through the participant portal is the preferred and fastest route.",
-          "Always include the RightSignature electronic form link in the response alongside the portal steps, and state clearly that the form should be used only if the participant is having problems with the website or cannot log in (for example, MFA is not enrolled). Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. Share this link only after termination distribution eligibility is confirmed (Terminated status and termination date on file). Do not ask the participant to contact Support just to obtain the form.",
-          "The RightSignature electronic form is a slower secondary option and must never be presented as the default or preferred route while the participant can use the portal.",
+          "Submitting through the participant portal is the fastest route, and it is the preferred route unless the participant explicitly requests the outgoing distribution form.",
+          "Always include the RightSignature electronic form link in the response alongside the portal steps, and state clearly that the form should be used only if the participant is having problems with the website or cannot log in (for example, MFA is not enrolled), unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal. Form link: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. Share this link only after termination distribution eligibility is confirmed (Terminated status and termination date on file). Do not ask the participant to contact Support just to obtain the form.",
+          "The RightSignature electronic form is a slower secondary option and must not be presented as the default or preferred route while the participant can use the portal, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal.",
           "OverNight Check delivery can only be requested on the RightSignature electronic form; it cannot be selected in the participant portal."
         ]
       },
@@ -148,7 +148,7 @@
         "category": "termination_date_followup",
         "rules": [
           "When a participant asks to cash out after leaving employment but no termination date is on file, ask only for their termination date (last day of employment); do not ask for payment details while eligibility is still blocked.",
-          "After Terminated status and the termination date are confirmed, present two submission paths: the participant portal under Loans & Distributions as the primary path, plus the secure RightSignature form as a fallback only for website/login problems: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723."
+          "After Terminated status and the termination date are confirmed, present two submission paths: the participant portal under Loans & Distributions as the primary path, plus the secure RightSignature form as a fallback only for website/login problems, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723."
         ]
       },
       {
@@ -156,7 +156,7 @@
         "rules": [
           "Before a rollover, confirm with the receiving provider that it accepts the source type and whether it requires check or wire delivery.",
           "Use the participant portal path: log in, select Loans & Distributions, select Separation of Service (or Default if that is the displayed equivalent), and start Termination Distribution.",
-          "Always include the RightSignature form as a secondary fallback after the portal path when eligibility is confirmed; use it only for website/login problems.",
+          "Always include the RightSignature form as a secondary fallback after the portal path when eligibility is confirmed; use it only for website/login problems, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal.",
           "ForUsAll reviews the request within about two business days; after approval, wires typically complete in 1–2 weeks and standard checks in 2–3 weeks.",
           "The participant receives Form 1099-R by January 31 of the following year for a rollover or cash distribution.",
           "If an outstanding loan exists, direct the participant to Support to review repayment and possible tax consequences before submission.",
@@ -215,7 +215,7 @@
         "type": "participant-facing",
         "visibility": "both",
         "description": "The participant must log in to the ForUsAll 401(k) participant portal and open the 'Loans & Distributions' area from the dashboard.",
-        "notes": "Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). Always share the RightSignature electronic form link together with these portal steps (after confirming eligibility), telling the participant to use it only if they run into problems on the website or cannot log in, for example because MFA is not enrolled: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
+        "notes": "Portal submission is the fastest route. The participant must log in at https://account.forusall.com/login. Best practices: use a computer or laptop (not mobile) and use an up-to-date browser (Chrome or Edge recommended). Always share the RightSignature electronic form link together with these portal steps (after confirming eligibility), telling the participant to use it only if they run into problems on the website or cannot log in, for example because MFA is not enrolled, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
       },
       {
         "step_number": 2,
@@ -554,7 +554,7 @@
       },
       {
         "question": "Can a participant request help submitting a distribution request without doing it online?",
-        "answer": "Yes. The RightSignature electronic form link is shared in the response together with the portal steps, with a clear note that it should be used only if the participant has problems with the website or cannot log in (for example, MFA is not enrolled): https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. For security reasons, participants must complete the form themselves, and Support cannot initiate the request for them."
+        "answer": "Yes. The RightSignature electronic form link is shared in the response together with the portal steps, with a clear note that it should be used only if the participant has problems with the website or cannot log in (for example, MFA is not enrolled), unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723. For security reasons, participants must complete the form themselves, and Support cannot initiate the request for them."
       },
       {
         "question": "How can a participant get additional assistance if they need help with a distribution request?",
@@ -681,7 +681,7 @@
         "Do not promise exact delivery dates; use the stated approximate timelines only.",
         "Do not guarantee whether state withholding will apply or specify state withholding amounts.",
         "Do not claim the wire fee can be refunded; the wire fee is non-refundable.",
-        "Do not claim where or how to access any document other than the portal URL, the RightSignature electronic form link, and contact methods explicitly provided in this article. The RightSignature electronic form link is shared directly with the participant once eligibility is confirmed, always with the note that it is only for participants who have problems with the website or cannot log in.",
+        "Do not claim where or how to access any document other than the portal URL, the RightSignature electronic form link, and contact methods explicitly provided in this article. The RightSignature electronic form link is shared directly with the participant once eligibility is confirmed, always with the note that it is only for participants who have problems with the website or cannot log in, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal.",
         "Do not claim that ForUsAll will help complete all required fields on this form.",
         "Do not disclose account balances or vesting percentages, or any other sensitive information.",
         "Do not claim that wire and check instructions are the same; many financial institutions have different details for wires versus ACH.",
@@ -695,13 +695,13 @@
         "Do not offer hardship withdrawal, 401(k) loan, or in-service distribution when the participant explicitly states they have separated from employment (resigned, fired, no longer works there), even if the system Eligibility Status shows 'Active'. Escalate to verify the termination instead.",
         "Do not offer, mention, or price OverNight Check delivery when describing the participant portal (website) process; overnight delivery cannot be requested there.",
         "Do not quote $35 as the overnight check fee. The OverNight Check fee is $50; the $35 fee is the wire fee.",
-        "Do not present the RightSignature electronic form as the default, faster, or preferred submission route; it is shared only as a fallback for website or login problems.",
+        "Do not present the RightSignature electronic form as faster than the portal. Do not present it as the default or preferred route unless the participant explicitly requests the outgoing distribution form; otherwise it is shared only as a fallback for website or login problems. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative.",
         "Do not include ACH, 20% cash withholding, or cash-only penalty language in a pure direct-rollover response.",
         "Do not promise how crypto-window holdings will transfer or be liquidated; this article does not define that treatment."
       ],
       "must_do_if_unsure": [
         "Advise the participant to contact ForUsAll Support if vesting percentages or account sources appear incorrect.",
-        "Once eligibility is confirmed, always include the RightSignature electronic form link in the response with a clear note that it is only for participants who have problems with the website or cannot log in (for example, MFA is not enrolled), rather than routing them to Support to obtain it.",
+        "Once eligibility is confirmed, always include the RightSignature electronic form link in the response with a clear note that it is only for participants who have problems with the website or cannot log in (for example, MFA is not enrolled), rather than routing them to Support to obtain it, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal.",
         "Advise the participant to contact ForUsAll Support if employment separation status appears uncertain or not reflected in the portal options.",
         "Advise the participant to contact ForUsAll Support if they are unsure about the information needed to complete the form.",
         "Direct the participant to contact ForUsAll Support at help@forusall.com or 844-401-2253 if they are unsure which distribution type to select.",
@@ -966,7 +966,7 @@
         "If the participant states the system shows a $0 balance, ask them to contact ForUsAll Support.",
         "Normal distribution process refers to the participant-initiated online request flow in the ForUsAll portal (Loans & Distributions) using the Separation of Service section and selecting Termination Distribution (or Default) as the distribution reason.",
         "Termination Distribution and Separation of Service are used in the context of requesting a distribution in the ForUsAll online portal after employment ends; they are not used for active employees.",
-        "MFA status enrolled is mandatory for the online portal path; the RightSignature form remains the fallback after eligibility is confirmed.",
+        "MFA status enrolled is mandatory for the online portal path; the RightSignature form remains the fallback after eligibility is confirmed, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal.",
         "When the destination is described only as a brokerage account, clarify whether it is a retirement account or a taxable brokerage account before selecting the rollover or cash path.",
         "If Crypto Enrollment is active, do not assume how crypto holdings are handled; contact Support before submission."
       ]
@@ -983,7 +983,7 @@
         "Participant must have a termination date on file.",
         "Participant must have a current Total Vested Balance amount that can be verified.",
         "If MFA is enrolled and the participant can log in, they may submit the distribution request online in the ForUsAll portal.",
-        "After eligibility is confirmed, include the RightSignature electronic form link alongside the portal steps and identify it as the fallback if the participant has problems with the website or cannot log in. It is never requested from Support.",
+        "After eligibility is confirmed, include the RightSignature electronic form link alongside the portal steps and identify it as the fallback if the participant has problems with the website or cannot log in, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal. It is never requested from Support.",
         "If Rehire date is not null, it must be before the termination date.",
         "Only vested balances are eligible for distribution."
       ],
@@ -1042,6 +1042,7 @@
       "allowed_conclusions": [
         "If the participant is terminated, has a termination date on file, has MFA enrolled, and can access the account, they can submit the distribution request online in the ForUsAll portal.",
         "If the participant is terminated and has a termination date on file, include the RightSignature electronic form link with the portal steps and state that it is the fallback if they have problems with the website or cannot log in.",
+        "If the participant explicitly requests the outgoing distribution form and termination eligibility is confirmed, present that form first and the participant portal as the alternative. Do not describe the form as faster than the portal.",
         "If a rehire date is present and it's after the termination date, the participant is not eligible for a distribution.",
         "If the participant is eligible for a distribution, they can request a rollover or a cash distribution or a partial rollover or partial cash withdrawal.",
         "The participant can complete the rollover online by following the steps in this article.",
@@ -1078,7 +1079,7 @@
           "If the participant mentions the type of distribution they want to request, be specific about the steps they need to follow.",
           "For rollovers, under Termination Distribution, select Separation of Service and click Get Started.",
           "Before submitting a rollover, advise the participant to confirm with their receiving provider all of the information provided, including wire-specific details if applicable.",
-          "Include the RightSignature electronic form link in the response with a clear note that it is only for use if the participant has problems with the website or cannot log in: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
+          "Include the RightSignature electronic form link in the response with a clear note that it is only for use if the participant has problems with the website or cannot log in, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative. Do not describe the form as faster than the portal: https://secure.rightsignature.com/templates/105723c3-eaf1-4a44-aaed-09ad5c253ec8/template-signer-link/a9d83fbb137e5315fbd641bb522b9723"
         ],
         "warnings": [
           "A $75 processing fee applies to all distribution requests.",
@@ -1100,14 +1101,14 @@
           "Do not provide information to fill in required fields; the participant must enter this information themselves.",
           "Do not promise a specific completion date beyond the stated typical timelines.",
           "Do not mention overnight check delivery as an option available on the website.",
-          "Do not present the electronic form as the faster or preferred way to submit the request.",
+          "Do not present the electronic form as faster than the portal. Do not present it as the preferred way to submit the request unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested and eligibility is confirmed, present it first and the portal as the alternative.",
           "Do not include ACH, withholding, or early-withdrawal warnings in a pure rollover response."
         ]
       },
       "blocked_missing_data": {
         "participant_message_components": [
           "Ask only the single unresolved question that blocks the next accurate instruction.",
-          "After the blocker is resolved and eligibility is confirmed, provide the portal path under Loans & Distributions plus the secure electronic form fallback."
+          "After the blocker is resolved and eligibility is confirmed, provide the portal path under Loans & Distributions plus the secure electronic form fallback, unless the participant explicitly requests the outgoing distribution form. When that form is explicitly requested, present it first and the portal as the alternative. Do not describe the form as faster than the portal."
         ],
         "next_steps": [
           "Collect only the missing detail needed for the participant's selected option.",

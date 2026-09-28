@@ -24,6 +24,7 @@ __all__ = [
     "requests_transaction_action",
     "mentions_transaction",
     "is_background_statement",
+    "requests_distribution_form",
 ]
 
 _SENTENCE_SPLIT_RE = re.compile(r"(?<=[.?!])\s+|\n+")
@@ -257,3 +258,74 @@ def is_background_statement(text: Optional[str]) -> bool:
         r"would you|tell me|let me know|send me|confirm|provide)\b",
         value, re.IGNORECASE,
     )
+
+
+# Participant wording that asks for the outgoing distribution form itself.
+# "withdrawl" is the attested typo. Account-identifier patterns do not apply.
+_DISTRIBUTION_FORM_REQUEST_RE = re.compile(
+    r"\b(?:please|kindly)\s+(?:send|provide|give|issue|share|email)\b"
+    r"[^.?!]{0,50}\bforms?\b"
+    r"|\b(?:send|provide|give|issue|email)\s+me\b[^.?!]{0,40}\bforms?\b"
+    r"|\b(?:request(?:s|ed|ing)?|need(?:s|ed)?|want(?:s|ed)?|asking\s+for|"
+    r"would\s+(?:like\s+)?to\s+request|would\s+to\s+request)\b"
+    r"[^.?!]{0,50}\b(?:a|the|an)\s+(?:\w+\s+){0,3}?forms?\b"
+    r"|\bhow\s+(?:do|can|should)\b[^.?!]{0,40}\bforms?\b",
+    re.IGNORECASE,
+)
+_DISTRIBUTION_FORM_EXCLUSION_RE = re.compile(
+    r"\b(?:loan|tax|hardship|beneficiary|beneficiaries)\b[^.?!]{0,24}\bforms?\b"
+    r"|\bforms?\b[^.?!]{0,24}\b(?:loan|tax|hardship|beneficiary|beneficiaries)\b"
+    r"|\b(?:do\s+not|don't|dont|never|cannot|can't)\b[^.?!]{0,40}"
+    r"\b(?:request|send|need|want|asking|provide|give|email|share)\b"
+    r"|\bnot\s+(?:to\s+)?(?:request|send|need|want|asking|provide|give)\b"
+    r"|\b(?:what\s+if|suppose|supposing|hypothetical(?:ly)?|whether)\b"
+    r"[^.?!]{0,50}\bforms?\b"
+    r"|\bif\s+(?:i|we|you|they|he|she)\s+(?:were\s+to\s+|had\s+)?"
+    r"(?:request(?:ed)?|ask(?:ed)?|need(?:ed)?|want(?:ed)?)\b"
+    r"[^.?!]{0,40}\bforms?\b"
+    r"|\b(?:received|attached|attachment|enclosed)\b"
+    r"[^.?!]{0,40}\b(?:forms?|instructions)\b"
+    r"|\bforms?\b[^.?!]{0,24}\b(?:attached|enclosed)\b"
+    r"|\b(?:provider|receiving)\b[^.?!]{0,24}\bforms?\b"
+    # Ownership stated after the noun: "the form from Schwab", "the form
+    # provided by my new provider". ForUsAll's own form stays requestable.
+    r"|\bforms?\b[^.?!]{0,16}\b(?:from|provided\s+by|sent\s+by|issued\s+by)"
+    r"\s+(?!forusall\b)\w",
+    re.IGNORECASE,
+)
+_OUTGOING_DISTRIBUTION_CONTEXT_RE = re.compile(
+    r"\b(?:withdrawl|withdraw(?:al|als|ing)?|cash(?:ing)?\s*-?\s*out|"
+    r"distribut(?:e|ion|ions)|payout|pay\s+out|"
+    r"clos(?:e|ing)\s+(?:the|my|our)\s+account|"
+    r"roll(?:\s*over|over|ing\s+over)|rollover)\b",
+    re.IGNORECASE,
+)
+_INCOMING_ROLLOVER_FORM_RE = re.compile(
+    r"\b(?:roll(?:ing)?|rollover)\b[^.?!]{0,40}\b(?:into|in\s+to)\b",
+    re.IGNORECASE,
+)
+
+
+def requests_distribution_form(text: Optional[str]) -> bool:
+    """True when the participant explicitly asks for an outgoing distribution form.
+
+    Reads the inquiry text only, using ``sentences`` so a request and its
+    cashout context may sit in adjacent sentences. A received or attached
+    provider form, a bare mention, a negated or hypothetical request, and a
+    loan, tax, hardship, or beneficiary form do not qualify.
+    """
+    parts = sentences(text)
+    for index, sentence in enumerate(parts):
+        if _DISTRIBUTION_FORM_EXCLUSION_RE.search(sentence):
+            continue
+        if not _DISTRIBUTION_FORM_REQUEST_RE.search(sentence):
+            continue
+        window = " ".join(parts[max(0, index - 1):index + 2])
+        # The incoming check reads the same window as the outgoing context.
+        # Reading only the request sentence let "Please send me the form. I
+        # want to roll my old 401(k) over into ForUsAll." promote.
+        if _INCOMING_ROLLOVER_FORM_RE.search(window):
+            continue
+        if _OUTGOING_DISTRIBUTION_CONTEXT_RE.search(window):
+            return True
+    return False

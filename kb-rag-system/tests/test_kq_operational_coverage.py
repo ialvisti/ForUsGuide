@@ -659,3 +659,90 @@ async def test_identity_fallback_still_replaces_the_answer():
     assert result.answer.startswith("Our team needs to verify the account")
     assert result.metadata["human_review_required"] is True
     assert "synthetic" not in result.answer
+
+
+SYNTHETIC_CONDITION = (
+    "Synthetic grounded check: if this pre-submission condition applies, "
+    "contact Support before submission."
+)
+
+
+def test_operational_note_keeps_guards_and_does_not_invent_treatment():
+    """The scoped note must carry the preservation rules and no case facts."""
+    note = RAGEngine._kq_operational_context_note()
+    assert "does not verify" in note
+    assert "personal records or an attachment were checked" in note
+    assert "pre-submission conditional check" in note
+    assert "explicit 'if' condition" in note
+    assert "do not infer holdings, loans, eligibility" in note
+    assert "receiving-provider form" in note
+    assert "Do not claim to have read the form" in note
+    assert "do not add a warning that does not apply" in note
+    assert "do not drop a supported one" in note
+    lowered = note.lower()
+    assert "liquidat" not in lowered
+    assert "http" not in lowered
+    assert "7 business" not in lowered
+    assert "$" not in note
+    for token in ("schwab", "fidelity", "go-retire", "lt trust", "910596", "tkt"):
+        assert token not in lowered
+    # The warning rule stays general and source-backed. Naming a specific
+    # numbered rule, or an adjacent procedure the outgoing route excludes,
+    # would anchor the answer on another article instead of this one.
+    for token in ("60-day", "60 day", "force-out", "split rollover",
+                  "required minimum"):
+        assert token not in lowered
+
+
+@pytest.mark.asyncio
+async def test_augmented_call_receives_the_note_with_selected_condition():
+    """The prompt receives the note plus selected condition text.
+
+    The mock answer is not evidence that a condition was conveyed.
+    """
+    synthetic = {
+        "id": "synthetic_pre_submission_condition_chunk",
+        "score": 0.99,
+        "metadata": {
+            "article_id": LT_ARTICLE,
+            "article_title": "Synthetic procedure",
+            "chunk_type": "business_rules",
+            "chunk_category": "synthetic_pre_submission_condition",
+            "content": SYNTHETIC_CONDITION,
+        },
+    }
+
+    def extra(filter_dict, top_k):
+        hits = _live_hits(filter_dict, top_k)
+        if filter_dict["article_id"]["$eq"] == LT_ARTICLE:
+            return [synthetic, *hits]
+        return hits
+
+    _calls, query_chunks = _stage1_then(extra)
+    engine = _engine()
+    _install(engine, query_chunks)
+    result = await engine.ask_knowledge_question(ORIGINAL)
+    user_prompt = engine._call_llm.await_args.kwargs["user_prompt"]
+    assert "pre-submission conditional check" in user_prompt
+    assert "explicit 'if' condition" in user_prompt
+    assert "receiving-provider form" in user_prompt
+    assert "do not add a warning that does not apply" in user_prompt
+    assert "does not verify" in user_prompt
+    assert SYNTHETIC_CONDITION in user_prompt
+    assert "synthetic grounded check" not in result.answer.lower()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("question", [
+    "How do 401k rollovers work?",
+    "How do I roll my 401k over from Fidelity into ForUsAll?",
+])
+async def test_excluded_questions_do_not_receive_the_operational_note(question):
+    calls, query_chunks = _stage1_then(lambda _f, _k: [dict(chunk) for chunk in LT_HITS])
+    engine = _engine()
+    _install(engine, query_chunks)
+    await engine.ask_knowledge_question(question)
+    assert not any(call["f"] for call in calls)
+    user_prompt = engine._call_llm.await_args.kwargs["user_prompt"]
+    assert "pre-submission conditional check" not in user_prompt
+    assert "receiving-provider form" not in user_prompt

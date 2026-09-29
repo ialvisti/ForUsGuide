@@ -3039,3 +3039,231 @@ def test_zero_custody_without_terminated_plan_stays_custody_review():
     assert "plan is terminated" not in fixed["response_to_participant"]["opening"].lower()
     assert fixed["response_to_participant"]["steps"] == []
     assert fixed["questions_to_ask"] == []
+
+
+_CASH_FEE_INQUIRY = "I left my employer and would like a cash distribution. What is the base fee?"
+_LAST_DAY_QUESTION = "What was your last day of employment?"
+_VESTED_SENTENCE = "Only vested balances are eligible for distribution."
+
+
+def _cash_separation_case(record_keeper="LT Trust", plan_type="401(k)", inquiry=None, topic="termination_distribution_request"):
+    inquiry = _CASH_FEE_INQUIRY if inquiry is None else inquiry
+    context = {"participant_data": {"employment_status": "Active", "termination_date": None}}
+    profile = RAGEngine.__new__(RAGEngine)._build_retrieval_profile(
+        inquiry, topic, record_keeper, plan_type, context,
+    )
+    draft = parsed(
+        outcome="blocked_missing_data",
+        outcome_reason="The employment record still shows Active and has no termination date.",
+    )
+    draft["response_to_participant"]["key_points"] = [
+        "1. Base fee: The base distribution processing fee is $75 for distribution requests. "
+        f"{_LAST_DAY_QUESTION} {_VESTED_SENTENCE}"
+    ]
+    draft["response_to_participant"]["steps"] = [
+        {"step_number": 1, "action": "Submit the cash distribution in the portal."},
+    ]
+    draft["questions_to_ask"] = [{"question": _LAST_DAY_QUESTION, "why": "Reconcile the reported separation."}]
+    draft["escalation"] = {
+        "needed": True,
+        "reason": "The participant reports separation while the record shows Active and no termination date.",
+    }
+    collected = {
+        "participant_data": context["participant_data"],
+        "internal_response_context": {"requested_questions": [inquiry]},
+    }
+    return draft, profile, collected
+
+
+def test_blocked_lt_cash_fee_keeps_last_day_and_states_routes():
+    draft, profile, collected = _cash_separation_case()
+    assert profile["primary_action"] == "termination_distribution"
+    assert profile["signals"]["cash_component"] is True
+    assert profile["signals"]["pure_rollover"] is False
+    assert profile["signals"]["delivery_or_fee_request"] is True
+    assert profile["signals"]["separation_conflicts_active"] is True
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    body = fixed["response_to_participant"]
+    text = json.dumps(body, ensure_ascii=False)
+    assert fixed["outcome"] == "blocked_missing_data"
+    assert body["steps"] == []
+    assert fixed["questions_to_ask"] == draft["questions_to_ask"]
+    assert fixed["escalation"] == draft["escalation"]
+    assert _LAST_DAY_QUESTION in text
+    assert _VESTED_SENTENCE in text
+    assert "The $75 distribution request fee applies to every delivery method." in text
+    assert "A wire adds a $35 non-refundable additional fee." in text
+    assert "ACH and regular mail check have no additional delivery charge." in text
+    assert "not a guaranteed SLA" in text
+    assert "one week" in text and "payroll cycle" in text
+    assert "FUA Admin" in text and "American Trust" in text
+    assert "24–48 business hours" in text
+    assert "request availability only, not receipt of funds" in text
+    assert "plan OPS" in text and "ISSUE" in text and "RM or Sponsor" in text
+    # The route is only actionable if it says what OPS contacts them for.
+    assert "RM or Sponsor to confirm the termination date" in text
+    lowered = text.lower()
+    assert "has been updated" not in lowered
+    assert "already updated" not in lowered
+    assert "payout" not in lowered
+    assert "distribution is currently available" not in lowered
+    again, _info = RAGEngine._apply_termination_response_policy(fixed, profile, collected)
+    assert again["response_to_participant"]["key_points"] == body["key_points"]
+
+
+def test_cash_fee_does_not_replace_the_can_proceed_tax_point():
+    draft, profile, collected = _cash_separation_case()
+    draft["outcome"] = "can_proceed"
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    text = json.dumps(fixed["response_to_participant"])
+    assert "20% federal" in text
+    assert "The $75 distribution request fee applies to every delivery method." in text
+
+
+@pytest.mark.parametrize("record_keeper,plan_type", [
+    ("", "401(k)"),
+    ("Fidelity", "401(k)"),
+    ("LT Trust", "403(b)"),
+])
+def test_cash_fee_routes_stay_off_without_the_lt_401k_profile(record_keeper, plan_type):
+    draft, profile, collected = _cash_separation_case(record_keeper, plan_type)
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    text = json.dumps(fixed["response_to_participant"])
+    assert "every delivery method" not in text
+    assert "American Trust" not in text
+    assert "plan OPS" not in text
+    assert _LAST_DAY_QUESTION in text
+
+
+def test_active_account_without_a_separation_claim_does_not_gain_routes():
+    draft, profile, collected = _cash_separation_case(
+        inquiry="What is the base fee for a cash distribution?",
+        topic="termination_distribution_request",
+    )
+    assert profile["signals"]["separation_conflicts_active"] is not True
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    text = json.dumps(fixed["response_to_participant"])
+    assert "American Trust" not in text
+    assert "plan OPS" not in text
+
+
+def test_incoming_rollover_does_not_gain_cash_fee_routes():
+    draft, profile, collected = _cash_separation_case(
+        inquiry="I want to roll my old 401(k) into my current ForUsAll plan.",
+        topic="rollover",
+    )
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    text = json.dumps(fixed)
+    assert "every delivery method" not in text
+    assert "American Trust" not in text
+
+
+def test_pure_rollover_fee_point_stays_the_separate_wire_sentence():
+    draft = parsed()
+    query = profile(True)
+    query["record_keeper"] = "LT Trust"
+    query["plan_type"] = "401(k)"
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, query, facts())
+    text = json.dumps(fixed["response_to_participant"])
+    assert "A $35 non-refundable fee applies to each separate wire transaction" in text
+    assert "regular mail check have no additional delivery charge" not in text
+
+
+def test_fua_admin_compound_point_keeps_independent_answer_and_last_day():
+    draft, profile, collected = _cash_separation_case()
+    mixed = (
+        "1. Verification: Our team needs to check FUA Admin. "
+        f"{_VESTED_SENTENCE} {_LAST_DAY_QUESTION}"
+    )
+    draft["response_to_participant"]["key_points"] = [mixed]
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    points = fixed["response_to_participant"]["key_points"]
+    assert points[0] == mixed
+    assert _VESTED_SENTENCE in points[0]
+    assert _LAST_DAY_QUESTION in points[0]
+    assert fixed["questions_to_ask"] == draft["questions_to_ask"]
+    joined = "\n".join(point for point in points if isinstance(point, str))
+    assert "The $75 distribution request fee applies to every delivery method." in joined
+    assert "not a guaranteed SLA" in joined
+    assert "plan OPS" in joined
+
+
+def test_canonical_substring_keeps_the_independent_answer():
+    draft, profile, collected = _cash_separation_case()
+    fee_mixed = (
+        "The $75 distribution request fee applies to every delivery method. "
+        f"{_VESTED_SENTENCE}"
+    )
+    ops_mixed = (
+        "The team must contact plan OPS before payroll is confirmed. "
+        f"{_LAST_DAY_QUESTION}"
+    )
+    route_mixed = (
+        "If ForUsAll has sponsor payroll access and a termination date is already there, "
+        "the team can update both FUA Admin and American Trust. "
+        "After both updates, a termination-distribution request may become available in the next 24–48 business hours. "
+        "That timing is request availability only, not receipt of funds. "
+        f"{_VESTED_SENTENCE}"
+    )
+    draft["response_to_participant"]["key_points"] = [fee_mixed, ops_mixed, route_mixed]
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    points = fixed["response_to_participant"]["key_points"]
+    assert points[:3] == [fee_mixed, ops_mixed, route_mixed]
+    fee = (
+        "The $75 distribution request fee applies to every delivery method. "
+        "A wire adds a $35 non-refundable additional fee. "
+        "ACH and regular mail check have no additional delivery charge."
+    )
+    assert points.count(fee) == 1
+    again, _info = RAGEngine._apply_termination_response_policy(fixed, profile, collected)
+    assert again["response_to_participant"]["key_points"] == points
+
+
+def test_six_original_points_without_requested_questions_keep_new_facts():
+    draft, profile, collected = _cash_separation_case()
+    collected = {
+        "participant_data": collected["participant_data"],
+        "internal_response_context": {},
+    }
+    originals = [f"{index}. Independent answer {index} about the account." for index in range(1, 7)]
+    draft["response_to_participant"]["key_points"] = list(originals)
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    points = fixed["response_to_participant"]["key_points"]
+    assert points[:6] == originals
+    assert len(points) == 10
+    again, _info = RAGEngine._apply_termination_response_policy(fixed, profile, collected)
+    assert again["response_to_participant"]["key_points"] == points
+
+
+def test_ops_route_states_the_purpose_of_the_rm_or_sponsor_contact():
+    """Route 3 must clearly imply obtaining a confirmed termination date.
+
+    The approved article wording ends 'so OPS can contact the RM or Sponsor to
+    confirm the termination date'. Without the purpose clause the route names an
+    action with no stated objective.
+    """
+    draft, profile, collected = _cash_separation_case()
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    joined = "\n".join(
+        point for point in fixed["response_to_participant"]["key_points"]
+        if isinstance(point, str)
+    )
+    assert (
+        "the team must contact plan OPS and create an ISSUE so OPS can contact "
+        "the RM or Sponsor to confirm the termination date." in joined
+    )
+
+
+def test_twelve_requested_points_stay_intact_at_capacity():
+    draft, profile, collected = _cash_separation_case()
+    originals = [f"{index}. Independent answer {index} about the account." for index in range(1, 12)]
+    originals.append(
+        "12. Verification: Our team needs to check FUA Admin. " + _VESTED_SENTENCE
+    )
+    draft["response_to_participant"]["key_points"] = list(originals)
+    fixed, _info = RAGEngine._apply_termination_response_policy(draft, profile, collected)
+    points = fixed["response_to_participant"]["key_points"]
+    assert points[:12] == originals
+    assert len(points) == 16
+    again, _info = RAGEngine._apply_termination_response_policy(fixed, profile, collected)
+    assert again["response_to_participant"]["key_points"] == points

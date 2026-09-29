@@ -5763,6 +5763,51 @@ class RAGEngine:
                 cash_tax_point,
             ))
 
+        # Informational cash-fee and separation-route facts. These are not an
+        # elif of the can_proceed tax point, and they do not authorize submission.
+        # They are appended after required-point replacement so a shared
+        # substring cannot delete an independent answer in the same point.
+        informational_points: List[str] = []
+        record_keeper_text = str(profile.get("record_keeper") or "").strip().casefold()
+        plan_type_text = cls._normalize_plan_type(profile.get("plan_type"))
+        approved_lt_401k = record_keeper_text == "lt trust" and plan_type_text in {"401k", "401"}
+        if (
+            approved_lt_401k
+            and action == "termination_distribution"
+            and signals.get("cash_component") is True
+            and signals.get("delivery_or_fee_request") is True
+            and signals.get("pure_rollover") is not True
+        ):
+            informational_points.append(
+                "The $75 distribution request fee applies to every delivery method. "
+                "A wire adds a $35 non-refundable additional fee. "
+                "ACH and regular mail check have no additional delivery charge."
+            )
+        # A reported separation against an Active record, not every Active account.
+        if (
+            approved_lt_401k
+            and action == "termination_distribution"
+            and signals.get("separation_conflicts_active") is True
+        ):
+            informational_points.extend([
+                (
+                    "The employer can update payroll to TERMINATED and add a termination date. "
+                    "That usually takes about one week after employment ends and sometimes up to one payroll cycle. "
+                    "That timing is an estimate, not a guaranteed SLA."
+                ),
+                (
+                    "If ForUsAll has sponsor payroll access and a termination date is already there, "
+                    "the team can update both FUA Admin and American Trust. "
+                    "After both updates, a termination-distribution request may become available in the next 24–48 business hours. "
+                    "That timing is request availability only, not receipt of funds."
+                ),
+                (
+                    "If neither path applies and the termination date is still unconfirmed, "
+                    "the team must contact plan OPS and create an ISSUE so OPS can contact "
+                    "the RM or Sponsor to confirm the termination date."
+                ),
+            ])
+
         preflight_applicable = fixed.get("outcome") == "can_proceed" or (
             fixed.get("outcome") == "blocked_missing_data"
             and action in {"termination_distribution", "termination_rollover"}
@@ -5988,6 +6033,17 @@ class RAGEngine:
         for index, step in enumerate(steps, start=1):
             if isinstance(step, dict):
                 step["step_number"] = index
+
+        # Keep the reviewed 6-point and 12-point caps for existing points, then
+        # reserve one slot per new fee or route fact. Exact text dedup avoids a
+        # second copy without matching a substring of a mixed model point.
+        if informational_points:
+            existing_limit = max(key_point_limit, 12) if preserve_question_order else key_point_limit
+            bounded = key_points[:existing_limit]
+            present = {item.strip() for item in bounded if isinstance(item, str)}
+            additions = [fact for fact in informational_points if fact not in present]
+            key_points = [*bounded, *additions]
+            key_point_limit = existing_limit + len(informational_points)
 
         response["key_points"] = key_points[:key_point_limit]
         response["warnings"] = warnings[:4]

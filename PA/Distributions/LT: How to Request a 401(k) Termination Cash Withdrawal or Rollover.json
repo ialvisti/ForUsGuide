@@ -891,6 +891,18 @@
           "source_note": "Internal check only. Catalog field: census.Birth Date. Do not ask the participant for this; derive age from it internally.",
           "source_type": "participant_profile",
           "blocking_intent": "personalization_only"
+        },
+        {
+          "data_point": "Blackout dates",
+          "meaning": "The plan onboarding blackout window, onboarding.blackout_begins_date and onboarding.blackout_ends_date, kept with their extraction status and completeness. A missing or default-empty read stays unknown and is not false.",
+          "example_values": [
+            "2026-09-01 to 2026-10-01",
+            null
+          ],
+          "why_needed": "To verify whether the plan is in a blackout period before individual distribution eligibility. Does not block general guidance.",
+          "source_note": "Catalog fields: onboarding.blackout_begins_date and onboarding.blackout_ends_date. Retain the extraction status and completeness. A missing, incomplete, or default-empty read stays unknown and is not false.",
+          "source_type": "plan_profile",
+          "blocking_intent": "eligibility_confirmation"
         }
       ],
       "nice_to_have": [
@@ -957,6 +969,11 @@
           "missing_data_point": "Rollover destination type",
           "ask_participant": "What kind of account are you rolling into: an IRA, a Qualified Plan, a Roth IRA, or a Roth Qualified Plan?",
           "agent_note": "Only required to actually submit a rollover. Without it, still explain that traditional and Roth funds must roll into matching account types."
+        },
+        {
+          "missing_data_point": "Blackout dates",
+          "ask_participant": null,
+          "agent_note": "Internal verification only: check plan onboarding blackout_begins_date and blackout_ends_date with their extraction status and completeness. A missing or default-empty read is unknown, not false, and is not a reason to ask the participant."
         }
       ],
       "disambiguation_notes": [

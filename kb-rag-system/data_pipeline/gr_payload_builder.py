@@ -862,6 +862,113 @@ def _build_disclosure_context(participant: Mapping[str, Any], preflight: Mapping
     return project_verified_participant_facts({**identity, "facts": facts})
 
 
+_FAILED_ONBOARDING_STATUSES = frozenset({
+    "error", "failed", "canceled", "unknown", "partial", "skipped",
+})
+
+
+def _blank_onboarding_value(value: Any) -> bool:
+    return value is None or (isinstance(value, str) and not value.strip())
+
+
+def _blackout_evidence_record(
+    *, status: str, evaluation: date, begins: Optional[str] = None,
+    ends: Optional[str] = None, complete: Optional[bool] = None,
+    review_required: bool = False, observed_at: Any = None,
+) -> Dict[str, Any]:
+    record: Dict[str, Any] = {
+        "status": status,
+        "begins": begins,
+        "ends": ends,
+        "source": "plan.onboarding.blackout_begins_date",
+        "evaluation_date": evaluation.isoformat(),
+        "complete": complete,
+        "review_required": review_required,
+    }
+    if observed_at:
+        record["observed_at"] = observed_at
+    return record
+
+
+def _build_blackout_evidence(
+    plan_modules: Optional[Mapping[str, Any]],
+    plan_meta: Optional[Mapping[str, Any]],
+    evaluation_date: Optional[date] = None,
+) -> Dict[str, Any]:
+    """Closed onboarding read only. Blank templates and failed reads stay unknown.
+
+    Plan-history completeness is not an onboarding read. A date window is
+    evaluated only when both bounds parse; an inverted or one-sided window
+    is review, not a guessed blackout.
+    """
+    evaluation = evaluation_date if isinstance(evaluation_date, date) else date.today()
+    meta = plan_meta if isinstance(plan_meta, Mapping) else {}
+    module_status = meta.get("module_status") if isinstance(meta.get("module_status"), Mapping) else {}
+    begins_evidence = _source_diagnostic(meta, "onboarding", "blackout_begins_date")
+    ends_evidence = _source_diagnostic(meta, "onboarding", "blackout_ends_date")
+    complete = begins_evidence.get("complete")
+    if not isinstance(complete, bool):
+        complete = ends_evidence.get("complete") if isinstance(ends_evidence.get("complete"), bool) else None
+    observed_at = begins_evidence.get("observed_at") or ends_evidence.get("observed_at")
+    module = (plan_modules or {}).get("onboarding") if isinstance(plan_modules, Mapping) else None
+    module = module if isinstance(module, Mapping) else None
+
+    def unknown() -> Dict[str, Any]:
+        return _blackout_evidence_record(
+            status="unknown", evaluation=evaluation, complete=complete,
+            review_required=True, observed_at=observed_at,
+        )
+
+    if module_status.get("onboarding") in _FAILED_ONBOARDING_STATUSES:
+        return unknown()
+    states = {begins_evidence.get("data_state"), ends_evidence.get("data_state")}
+    states.discard(None)
+    if states & (_ERROR_DATA_STATES | _UNAVAILABLE_DATA_STATES):
+        return unknown()
+    if module is None and not begins_evidence and not ends_evidence and "onboarding" not in module_status:
+        return _blackout_evidence_record(status="absent", evaluation=evaluation)
+    if complete is False:
+        return unknown()
+
+    raw_begins = None if module is None else module.get("blackout_begins_date")
+    raw_ends = None if module is None else module.get("blackout_ends_date")
+    begins_blank = _blank_onboarding_value(raw_begins)
+    ends_blank = _blank_onboarding_value(raw_ends)
+    if (
+        (begins_evidence.get("data_state") == "empty" and not begins_blank)
+        or (ends_evidence.get("data_state") == "empty" and not ends_blank)
+    ):
+        return unknown()
+    if begins_blank and ends_blank:
+        if (
+            complete is True
+            and begins_evidence.get("data_state") == "empty"
+            and ends_evidence.get("data_state") == "empty"
+        ):
+            return _blackout_evidence_record(
+                status="no_window", evaluation=evaluation, complete=True,
+                observed_at=observed_at,
+            )
+        return unknown()
+
+    begins = None if begins_blank else _normalize_lifecycle_date(raw_begins)
+    ends = None if ends_blank else _normalize_lifecycle_date(raw_ends)
+    if begins is None or ends is None:
+        return unknown()
+    begins_day = date.fromisoformat(begins)
+    ends_day = date.fromisoformat(ends)
+    if ends_day < begins_day:
+        return _blackout_evidence_record(
+            status="unknown", evaluation=evaluation, begins=begins, ends=ends,
+            complete=complete, review_required=True, observed_at=observed_at,
+        )
+    status = "active" if begins_day <= evaluation <= ends_day else "inactive"
+    return _blackout_evidence_record(
+        status=status, evaluation=evaluation, begins=begins, ends=ends,
+        complete=complete, observed_at=observed_at,
+    )
+
+
 def _build_preflight_context(participant: Mapping[str, Any],
                              meta: Optional[Mapping[str, Any]]) -> Dict[str, Any]:
     sources: Dict[str, Any] = {}
@@ -936,6 +1043,7 @@ def build_collected_data(
     plan_meta: Optional[Mapping[str, Any]] = None,
     identity_context: Optional[Mapping[str, Any]] = None,
     selected_plan_id: Optional[str] = None,
+    blackout_evaluation_date: Optional[date] = None,
 ) -> Dict[str, Any]:
     """collected_data determinístico: {participant_data, plan_data}.
 
@@ -985,6 +1093,9 @@ def build_collected_data(
     # Only scraped data can establish preflight facts. Ticket assertions remain
     # participant-reported values and cannot silently satisfy source checks.
     internal_preflight_context = _build_preflight_context(participant, participant_meta)
+    internal_preflight_context["blackout"] = _build_blackout_evidence(
+        plan_modules, plan_meta, blackout_evaluation_date,
+    )
     internal_disclosure_context = _build_disclosure_context(participant, internal_preflight_context, participant_meta, identity_context)
 
     # Conceptos derivados en código (nunca por el LLM):

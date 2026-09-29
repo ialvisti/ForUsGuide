@@ -3266,7 +3266,16 @@ class RAGEngine:
         elif balance <= 0:
             blockers.append("vested balance is not positive")
 
-        if "blackout_period" not in plan_data and "blackout" not in plan_data:
+        blackout = ((collected_data or {}).get("internal_preflight_context") or {}).get("blackout")
+        blackout_status = blackout.get("status") if isinstance(blackout, dict) else None
+        if blackout_status not in {None, "absent"}:
+            # A structured onboarding read overrides a legacy boolean, including
+            # a failed or incomplete read. Only an evaluated window can block.
+            if blackout_status == "active":
+                blockers.append("blackout period is active")
+            elif blackout_status not in {"inactive", "no_window"}:
+                missing.append("blackout status")
+        elif "blackout_period" not in plan_data and "blackout" not in plan_data:
             missing.append("blackout status")
         elif self._is_truthy_metadata_value(
             plan_data.get("blackout_period", plan_data.get("blackout"))
@@ -5281,6 +5290,17 @@ class RAGEngine:
                             # partly answered: the fee half stays unverified.
                             compound = index in fee_indices
                             answer = f"{index + 1}. {policy}"
+                            question = questions[index]
+                            # The question text is the request, not model prose.
+                            # Only an explicit Traditional IRA request adds the
+                            # pre-tax destination; a Roth mention is not ownership.
+                            if isinstance(question, str) and re.search(r"traditional\s+ira", question, re.I):
+                                answer += (
+                                    " A partial rollover of eligible pre-tax funds to a Traditional IRA may be an option; "
+                                    "the applicable source and distribution eligibility must be confirmed before submission."
+                                )
+                                if re.search(r"\broth\b", question, re.I):
+                                    answer += " This does not confirm that Roth funds can go to a Traditional IRA."
                             position = next((pos for pos, point in enumerate(points) if isinstance(point, str)
                                              and re.match(rf"^\s*{index + 1}[.)]\s", point)), None)
                             if position is None:

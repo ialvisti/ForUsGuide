@@ -672,6 +672,106 @@ def test_lt_401k_partial_retention_uses_the_approved_policy_without_a_permission
     assert metadata['incomplete_question_count'] >= 1
 
 
+_TRADITIONAL_IRA_SENTENCE = (
+    "A partial rollover of eligible pre-tax funds to a Traditional IRA may be an option; "
+    "the applicable source and distribution eligibility must be confirmed before submission."
+)
+_ACTUAL_TRADITIONAL_IRA_QUESTION = "Can I roll over only part to a Traditional IRA?"
+
+
+def _traditional_ira_case(question):
+    draft = _retention_draft()
+    draft['response_to_participant']['key_points'][2] = (
+        "3. Eligible pre-tax funds may be partially rolled over to a Traditional IRA, "
+        "subject to confirmed distribution eligibility."
+    )
+    context = _retention_context()
+    context['internal_response_context'] = {'requested_questions': [
+        'Can I keep my funds invested here?',
+        'What fees apply if I stay?',
+        question,
+    ]}
+    return draft, context
+
+
+def test_explicit_traditional_ira_partial_keeps_the_pre_tax_destination():
+    """The LT retention replacement must not erase a requested Traditional IRA destination."""
+    draft, context = _traditional_ira_case(_ACTUAL_TRADITIONAL_IRA_QUESTION)
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        context,
+    )
+    points = fixed['response_to_participant']['key_points']
+    partial = points[2]
+    assert points[0] == '1. You may be able to keep funds invested.'
+    assert points[1] == '2. Ongoing fees require the plan fee documents.'
+    assert 'leave the remainder invested' in partial
+    assert 'below $7,000' in partial
+    assert 'Participant Fee Disclosure' in partial
+    assert _TRADITIONAL_IRA_SENTENCE in partial
+    assert 'you are eligible' not in partial.lower()
+    assert 'tax-free' not in partial.lower()
+    assert fixed['outcome'] == 'blocked_missing_data'
+    assert fixed['response_to_participant']['steps'] == []
+    assert 'which option' in json.dumps(fixed['response_to_participant']).lower()
+    metadata = RAGEngine._validate_question_coverage(fixed, context)
+    assert metadata['question_coverage'][2]['status'] == 'answered'
+    assert metadata['question_coverage'][2]['answer_reference'].casefold() in json.dumps(fixed['response_to_participant']).casefold()
+
+
+def test_traditional_ira_case_variant_is_the_same_destination():
+    draft, context = _traditional_ira_case("Can I roll over only part to a traditional ira?")
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        context,
+    )
+    assert _TRADITIONAL_IRA_SENTENCE in fixed['response_to_participant']['key_points'][2]
+
+
+def test_unspecified_partial_does_not_invent_a_traditional_ira():
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        _retention_draft(),
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        _retention_context(),
+    )
+    assert 'Traditional IRA' not in fixed['response_to_participant']['key_points'][2]
+
+
+def test_roth_question_does_not_affirm_a_roth_to_traditional_transfer():
+    draft, context = _traditional_ira_case(
+        "Can I do a partial rollover of my Roth funds to a Traditional IRA?"
+    )
+    draft['response_to_participant']['key_points'][2] = (
+        "3. Your Roth funds can be rolled to a Traditional IRA."
+    )
+    fixed, _ = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'LT Trust', 'plan_type': '401(k)'},
+        context,
+    )
+    partial = fixed['response_to_participant']['key_points'][2]
+    assert _TRADITIONAL_IRA_SENTENCE in partial
+    assert "Roth funds can be rolled to a Traditional IRA" not in partial
+    assert "does not confirm that Roth funds can go to a Traditional IRA" in partial
+    assert fixed['response_to_participant']['steps'] == []
+
+
+def test_non_lt_profile_does_not_gain_the_traditional_ira_destination():
+    draft, context = _traditional_ira_case(_ACTUAL_TRADITIONAL_IRA_QUESTION)
+    fixed, info = RAGEngine._apply_termination_response_policy(
+        draft,
+        {'primary_action': 'retention_options', 'record_keeper': 'Fidelity', 'plan_type': '401(k)'},
+        context,
+    )
+    partial = fixed['response_to_participant']['key_points'][2]
+    assert 'needs to verify whether the plan permits' in partial
+    assert _TRADITIONAL_IRA_SENTENCE not in partial
+    assert info['partial_retention_verification_required'] is True
+    assert fixed['response_to_participant']['steps'] == []
+
+
 def test_compound_partial_and_fee_question_stays_needs_verification():
     """One question asking both halves is only half answered while fees are unverified."""
     draft = _retention_draft()

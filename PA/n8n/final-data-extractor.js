@@ -358,11 +358,16 @@ function qualifySourceMatchedEmploymentNotes(notes, agentResponse) {
   const sourceText = typeof agentResponse === 'string' ? agentResponse :
     agentResponse && typeof agentResponse === 'object' && !Array.isArray(agentResponse) ? JSON.stringify(agentResponse) : '';
   if (!sourceText) return notes;
+  // The parser may omit the source's literal field label while copying the
+  // same status claim. Permit only that narrow wording change; the entire
+  // remaining sentence must still appear in the generated response.
+  const sourceWithoutFieldLabel = sourceText.replace(
+    new RegExp(`\\bemployment_status\\s+(?=(?:${EMPLOYMENT_STATUS_WORD})\\b)`, 'gi'), '');
   let qualified = notes;
   for (const sentence of sentences(notes)) {
     if (!notesTreatStatusAsAuthority(sentence) ||
         /\b(?:eligib\w*|verified|confirm\w*|establish\w*)\b/i.test(sentence) ||
-        !sourceText.includes(sentence)) continue;
+        (!sourceText.includes(sentence) && !sourceWithoutFieldLabel.includes(sentence))) continue;
     qualified = qualified.replace(sentence,
       'Unverified claim from supplied generated response, not canonical evidence: ' + sentence);
   }

@@ -298,6 +298,36 @@ test('A sourced note does not license a separate status or eligibility authority
    /Unsupported employment-status claim/,extra);
  }
 });
+test('Final internal note retains source procedural handoff names without treating them as participant facts',()=>{
+ const source=missingJobEvidence();
+ source.agentResponse={internal_notes:[
+  GENERATED_STATUS_NOTE,
+  '2. ForUsAll has sponsor payroll access AND termination date is already in that record → team updates FUA Admin and American Trust → request availability in 24–48 business hours.',
+  '3. Neither path applies and termination date still unconfirmed → team must contact plan OPS and create an ISSUE for OPS to contact RM or Sponsor.',
+ ].join('\n')};
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',
+  internal_notes:PARAPHRASED_STATUS_NOTE+'\nThree employer-verification branches supplied. Internal team names retained here.'};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+ assert.match(out.internal_notes,/Generated source procedural detail for PA verification/);
+ for(const term of ['FUA Admin','American Trust','plan OPS','ISSUE','RM or Sponsor'])assert.ok(out.internal_notes.includes(term),term);
+ assert.equal(out.verified_participant_facts,null);
+ assert.equal(out.participant_reply,SUPPORTED);
+ for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
+});
+test('Generated procedural text with eligibility or an account amount is not copied into internal notes',()=>{
+ const source=missingJobEvidence();
+ source.agentResponse={internal_notes:[
+  '2. ForUsAll has sponsor payroll access AND termination date is already in that record → team updates FUA Admin and American Trust → participant is eligible now.',
+  '3. Neither path applies and termination date still unconfirmed → team must contact plan OPS and create an ISSUE for OPS to contact RM or Sponsor; account balance $20,000.',
+ ].join('\n')};
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',internal_notes:'Three conditional routes were supplied.'};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+ assert.doesNotMatch(out.internal_notes,/FUA Admin|plan OPS|\$20,000/);
+ assert.equal(out.verified_participant_facts,null);
+ assert.equal(out.participant_reply_safe,false);
+});
 test('Extractor preserves conditional age wording and human-review gates',()=>{
  const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
  const reply='If you are under 59½, a 10% early withdrawal penalty may apply.';
@@ -352,13 +382,15 @@ test('Final 4.1 release history and current pins carry no GPT-5.5 publish plan',
  const release=JSON.parse(fs.readFileSync(path.join(dir,'release.json'),'utf8'));
  const notes=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-notes-provenance','release.json'),'utf8'));
  const current=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-notes-paraphrase','release.json'),'utf8'));
+ const ops=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-ops-handoff','release.json'),'utf8'));
  // Historical receipts remain immutable; each new baseline is the previous
  // published candidate, while the latest candidate binds the current source.
  assert.equal(release.candidate_parser_sha256,digest(path.join(dir,'parser-system.md')));
  assert.equal(notes.baseline_extractor_sha256,release.candidate_extractor_sha256);
  assert.equal(current.baseline_extractor_sha256,notes.candidate_extractor_sha256);
- assert.equal(current.candidate_extractor_sha256,digest(path.join(__dirname,'..','final-data-extractor.js')));
- for(const plan of [release,notes,current]){
+ assert.equal(ops.baseline_extractor_sha256,current.candidate_extractor_sha256);
+ assert.equal(ops.candidate_extractor_sha256,digest(path.join(__dirname,'..','final-data-extractor.js')));
+ for(const plan of [release,notes,current,ops]){
   assert.equal(plan.candidate_parser_sha256,digest(path.join(dir,'parser-system.md')));
   assert.equal(plan.model,'gpt-4.1');
   assert.equal(plan.auto_publication,false);

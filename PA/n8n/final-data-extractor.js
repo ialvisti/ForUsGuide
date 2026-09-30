@@ -374,6 +374,28 @@ function qualifySourceMatchedEmploymentNotes(notes, agentResponse) {
   return qualified;
 }
 
+function retainGeneratedProcedure(notes, agentResponse) {
+  let generated = agentResponse;
+  if (typeof generated === 'string') {
+    try { generated = JSON.parse(generated); } catch { return notes; }
+  }
+  if (!generated || typeof generated !== 'object' || Array.isArray(generated) ||
+      typeof generated.internal_notes !== 'string') return notes;
+  const lines = generated.internal_notes.split(/\r?\n/).map(line => line.trim());
+  const bounded = (line, pattern) => line && line.length <= 500 &&
+    pattern.test(line) && !/\beligib\w*\b|\$\s*\d/i.test(line) &&
+    !notesTreatStatusAsAuthority(line);
+  const manual = lines.find(line => bounded(line, /^2\. .*sponsor payroll access.*termination date.*FUA Admin and American Trust/i));
+  const escalation = lines.find(line => bounded(line, /^3\. .*termination date.*plan OPS.*ISSUE.*RM or Sponsor/i));
+  const details = [];
+  if (manual && !(notes.includes('FUA Admin') && notes.includes('American Trust'))) details.push(manual);
+  if (escalation && !(notes.includes('plan OPS') && notes.includes('ISSUE') && notes.includes('RM or Sponsor'))) details.push(escalation);
+  if (!details.length) return notes;
+  return [notes,
+    'Generated source procedural detail for PA verification (not independent participant evidence):\n' + details.join('\n')
+  ].filter(Boolean).join('\n\n');
+}
+
 function acceptGuardedParserOutput(raw) {
   const original = String(raw ?? '');
   const guarded = guardParserOutput(original);
@@ -402,7 +424,8 @@ if(!parsed || typeof parsed!=='object' || Array.isArray(parsed) ||
 const evidence=source.canonical_evidence;
 if(!evidence || evidence.publication_authorized!==false || evidence.human_review_required!==true)
  throw new Error('Missing independent canonical evidence decision');
-const qualifiedNotes=qualifySourceMatchedEmploymentNotes(parsed.internal_notes,source.agentResponse);
+const qualifiedNotes=retainGeneratedProcedure(
+  qualifySourceMatchedEmploymentNotes(parsed.internal_notes,source.agentResponse),source.agentResponse);
 if(exactCurrentEmploymentClaim(parsed.participant_reply)||exactCurrentEmploymentClaim(parsed.stage_reason)||notesTreatStatusAsAuthority(qualifiedNotes))
  throw new Error(EMPLOYMENT_REJECT);
 const displayPlanFacts=(facts=>{

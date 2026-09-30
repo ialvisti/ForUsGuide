@@ -100,12 +100,26 @@ variable "producer_core_env" {
         for value in values(var.producer_core_env) : trimspace(value) != ""
       ]) &&
       try(
-        jsondecode(var.producer_core_env["TICKET_LLM_PRICING_JSON"]).pricing_as_of == "2026-07-21" &&
-        jsondecode(var.producer_core_env["TICKET_LLM_PRICING_JSON"]).source == "openai-google-official-public-pricing",
+        jsondecode(var.producer_core_env["TICKET_LLM_PRICING_JSON"]).pricing_as_of == (
+          contains([
+            for key, model in var.producer_core_env : model
+            if startswith(key, "LLM_ROUTE_")
+          ], "gpt-6-sol") ? "2026-09-30" : "2026-07-21"
+        ) &&
+        jsondecode(var.producer_core_env["TICKET_LLM_PRICING_JSON"]).source == "openai-google-official-public-pricing" &&
+        (
+          contains([
+            for key, model in var.producer_core_env : model
+            if startswith(key, "LLM_ROUTE_")
+          ], "gpt-6-sol") ? (
+            jsondecode(var.producer_core_env["TICKET_LLM_PRICING_JSON"]).models["openai:gpt-6-sol"].input_usd_per_million == 2 &&
+            jsondecode(var.producer_core_env["TICKET_LLM_PRICING_JSON"]).models["openai:gpt-6-sol"].output_usd_per_million == 10
+          ) : true
+        ),
         false,
       )
     )
-    error_message = "producer_core_env debe coincidir exactamente con el inventario observado, sin extras/vacíos y con pricing 2026-07-21 revisado."
+    error_message = "producer_core_env debe coincidir exactamente con el inventario observado, sin extras/vacíos y con pricing oficial revisado para las rutas."
   }
 }
 

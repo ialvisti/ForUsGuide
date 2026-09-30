@@ -69,7 +69,7 @@ class ModelConfig:
     provider: LLMProvider
     model: str
     temperature: float = 0.1
-    reasoning_effort: Optional[str] = None  # OpenAI GPT-5 only
+    reasoning_effort: Optional[str] = None  # GPT-5 family and exact gpt-6-sol
     thinking_budget: Optional[int] = None   # Gemini thinking models only
     max_completion_floor: int = 0           # optional min max_completion_tokens
 
@@ -297,8 +297,11 @@ class LLMRouter:
 
     # GPT-5 with reasoning needs generous completion-token headroom. These
     # constants used to live in rag_engine.py and are consolidated here now.
+    # Exact gpt-6-sol keeps that allowance and also uses the documented
+    # 25000 starting floor. The higher floor is not applied to GPT-5.
     GPT5_REASONING_MULTIPLIER = 10
     GPT5_MIN_COMPLETION_TOKENS = 16000
+    GPT6_SOL_MIN_COMPLETION_TOKENS = 25000
 
     # Retry once on empty content before raising. OpenAI GPT-5 occasionally
     # returns content=None when reasoning tokens fully consume the budget.
@@ -479,7 +482,7 @@ class LLMRouter:
         if not self._openai_client:
             raise RuntimeError("OpenAI client not configured")
 
-        is_gpt5 = "gpt-5" in config.model.lower()
+        uses_reasoning_request = _is_gpt5_or_exact_gpt6_sol(config.model)
 
         params: Dict[str, Any] = {
             "model": config.model,
@@ -490,17 +493,13 @@ class LLMRouter:
             "response_format": {"type": "json_object"},
         }
 
-        if is_gpt5:
-            scaled = max(
-                max_tokens * self.GPT5_REASONING_MULTIPLIER,
-                self.GPT5_MIN_COMPLETION_TOKENS,
-                config.max_completion_floor,
-            )
+        if uses_reasoning_request:
+            scaled = self._reasoning_completion_allowance(config, max_tokens)
             params["max_completion_tokens"] = scaled
             if config.reasoning_effort:
                 params["reasoning_effort"] = config.reasoning_effort
             logger.debug(
-                f"OpenAI GPT-5 call: model={config.model}, scaled_tokens={scaled}, "
+                f"OpenAI reasoning call: model={config.model}, scaled_tokens={scaled}, "
                 f"reasoning_effort={config.reasoning_effort}"
             )
         else:
@@ -545,6 +544,23 @@ class LLMRouter:
             provider_used=LLMProvider.OPENAI.value,
             model_used=config.model,
         )
+
+    def _reasoning_completion_allowance(
+        self, config: ModelConfig, max_tokens: int,
+    ) -> int:
+        """Completion budget for GPT-5 and exact gpt-6-sol.
+
+        Never below max(10x requested, 16000, config floor). Exact
+        gpt-6-sol also applies the documented 25000 starting floor.
+        """
+        floors = [
+            max_tokens * self.GPT5_REASONING_MULTIPLIER,
+            self.GPT5_MIN_COMPLETION_TOKENS,
+            config.max_completion_floor,
+        ]
+        if _is_exact_gpt6_sol(config.model):
+            floors.append(self.GPT6_SOL_MIN_COMPLETION_TOKENS)
+        return max(floors)
 
     # ------------------------------------------------------------------
     # Gemini
@@ -638,6 +654,22 @@ _DEFAULT_FALLBACK_BY_PROVIDER: Dict[LLMProvider, ModelConfig] = {
 }
 
 
+_EXACT_GPT6_SOL_MODEL_ID = "gpt-6-sol"
+
+
+def _is_exact_gpt6_sol(model: str) -> bool:
+    """True only for the exact gpt-6-sol model id."""
+    return model.lower().strip() == _EXACT_GPT6_SOL_MODEL_ID
+
+
+def _is_gpt5_or_exact_gpt6_sol(model: str) -> bool:
+    """Reasoning Chat Completions path: GPT-5 family or exact gpt-6-sol.
+
+    Other GPT-6 ids stay on the legacy temperature and max_tokens request.
+    """
+    return "gpt-5" in model.lower() or _is_exact_gpt6_sol(model)
+
+
 def _model_config_from_name(model_name: str) -> ModelConfig:
     """Infer provider, thinking budget, reasoning effort from the model name."""
     name = model_name.strip().lower()
@@ -645,7 +677,9 @@ def _model_config_from_name(model_name: str) -> ModelConfig:
         return ModelConfig(
             provider=LLMProvider.OPENAI,
             model=model_name,
-            reasoning_effort="medium" if "gpt-5" in name else None,
+            reasoning_effort=(
+                "medium" if _is_gpt5_or_exact_gpt6_sol(name) else None
+            ),
         )
     if name.startswith("gemini-"):
         # Decompose is a simple task; other Gemini tasks get a modest thinking budget.

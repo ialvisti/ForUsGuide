@@ -27,6 +27,7 @@ from scripts.release_controller import (
     _runtime_secret_contract,
     _validate_environment_plan,
     _validate_platform_plan,
+    _validate_reviewed_llm_pricing,
     build_parser,
     validate_terraform_tree,
 )
@@ -103,6 +104,76 @@ CORE_ENV.update({
 })
 for _route_key in tuple(key for key in CORE_ENV if key.startswith("LLM_ROUTE_")):
     CORE_ENV[_route_key] = "gpt-5.5"
+
+
+def _sol_pricing_manifest() -> dict:
+    return {
+        "pricing_as_of": "2026-09-30",
+        "source": "openai-google-official-public-pricing",
+        "models": {
+            "openai:gpt-6-sol": {
+                "input_usd_per_million": 2.0,
+                "output_usd_per_million": 10.0,
+            },
+            "gemini:gemini-2.5-pro": {
+                "input_usd_per_million": 1.25,
+                "output_usd_per_million": 10.0,
+            },
+        },
+    }
+
+
+def test_release_accepts_exact_sol_pricing_and_historical_gpt55_rollback():
+    _validate_reviewed_llm_pricing(
+        json.dumps(_sol_pricing_manifest()), ["gpt-6-sol"] * 11
+    )
+    _validate_reviewed_llm_pricing(
+        CORE_ENV["TICKET_LLM_PRICING_JSON"], ["gpt-5.5"] * 11
+    )
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda manifest: manifest.update(pricing_as_of="2026-07-21"),
+        lambda manifest: manifest.update(source="unreviewed"),
+        lambda manifest: manifest["models"]["openai:gpt-6-sol"].update(
+            input_usd_per_million=2.01
+        ),
+        lambda manifest: manifest["models"]["openai:gpt-6-sol"].update(
+            output_usd_per_million=9.99
+        ),
+        lambda manifest: manifest["models"]["gemini:gemini-2.5-pro"].update(
+            input_usd_per_million=0.0,
+            output_usd_per_million=0.0,
+        ),
+        lambda manifest: manifest["models"].pop("gemini:gemini-2.5-pro"),
+        lambda manifest: manifest["models"].update({
+            "openai:gpt-5.5": {
+                "input_usd_per_million": 5.0,
+                "output_usd_per_million": 30.0,
+            }
+        }),
+    ],
+)
+def test_release_rejects_unreviewed_sol_pricing(mutation):
+    manifest = _sol_pricing_manifest()
+    mutation(manifest)
+
+    with pytest.raises(ControllerRejected, match="pricing"):
+        _validate_reviewed_llm_pricing(
+            json.dumps(manifest), ["gpt-6-sol"] * 11
+        )
+
+
+def test_release_rejects_unreviewed_gemini_rate_on_gpt55_rollback():
+    manifest = json.loads(CORE_ENV["TICKET_LLM_PRICING_JSON"])
+    manifest["models"]["gemini:gemini-2.5-pro"]["output_usd_per_million"] = 0.0
+
+    with pytest.raises(ControllerRejected, match="pricing"):
+        _validate_reviewed_llm_pricing(
+            json.dumps(manifest), ["gpt-5.5"] * 11
+        )
 
 
 class FakeToolchain(Toolchain):

@@ -202,6 +202,130 @@ run "production_rejects_an_incomplete_core_inventory" {
   expect_failures = [google_cloud_run_v2_service.producer]
 }
 
+run "runtime_accepts_exact_sol_routes_and_gemini_fallback_pricing" {
+  command = plan
+
+  variables {
+    producer_core_env = merge(
+      var.producer_core_env,
+      { for key, value in var.producer_core_env : key => "gpt-6-sol" if startswith(key, "LLM_ROUTE_") },
+      {
+        TICKET_LLM_PRICING_JSON = jsonencode({
+          pricing_as_of = "2026-09-30"
+          source        = "openai-google-official-public-pricing"
+          models = {
+            "openai:gpt-6-sol" = {
+              input_usd_per_million  = 2.0
+              output_usd_per_million = 10.0
+            }
+            "gemini:gemini-2.5-pro" = {
+              input_usd_per_million  = 1.25
+              output_usd_per_million = 10.0
+            }
+          }
+        })
+      },
+    )
+  }
+
+  assert {
+    condition = (
+      local.pricing_manifest_is_reviewed &&
+      local.expected_pricing_model_keys == toset([
+        "openai:gpt-6-sol", "gemini:gemini-2.5-pro",
+      ])
+    )
+    error_message = "Las once rutas SOL 6 requieren tarifas exactas y sólo su fallback Gemini."
+  }
+}
+
+run "runtime_rejects_sol_pricing_with_stale_review_date" {
+  command = plan
+
+  variables {
+    producer_core_env = merge(
+      var.producer_core_env,
+      { for key, value in var.producer_core_env : key => "gpt-6-sol" if startswith(key, "LLM_ROUTE_") },
+      {
+        TICKET_LLM_PRICING_JSON = jsonencode({
+          pricing_as_of = "2026-07-21"
+          source        = "openai-google-official-public-pricing"
+          models = {
+            "openai:gpt-6-sol" = {
+              input_usd_per_million  = 2.0
+              output_usd_per_million = 10.0
+            }
+            "gemini:gemini-2.5-pro" = {
+              input_usd_per_million  = 1.25
+              output_usd_per_million = 10.0
+            }
+          }
+        })
+      },
+    )
+  }
+
+  expect_failures = [google_cloud_run_v2_service.producer]
+}
+
+run "runtime_rejects_sol_pricing_with_wrong_rate" {
+  command = plan
+
+  variables {
+    producer_core_env = merge(
+      var.producer_core_env,
+      { for key, value in var.producer_core_env : key => "gpt-6-sol" if startswith(key, "LLM_ROUTE_") },
+      {
+        TICKET_LLM_PRICING_JSON = jsonencode({
+          pricing_as_of = "2026-09-30"
+          source        = "openai-google-official-public-pricing"
+          models = {
+            "openai:gpt-6-sol" = {
+              input_usd_per_million  = 2.01
+              output_usd_per_million = 10.0
+            }
+            "gemini:gemini-2.5-pro" = {
+              input_usd_per_million  = 1.25
+              output_usd_per_million = 10.0
+            }
+          }
+        })
+      },
+    )
+  }
+
+  expect_failures = [google_cloud_run_v2_service.producer]
+}
+
+run "runtime_rejects_sol_pricing_with_wrong_gemini_fallback_rate" {
+  command = plan
+
+  variables {
+    producer_core_env = merge(
+      var.producer_core_env,
+      { for key, value in var.producer_core_env : key => "gpt-6-sol" if startswith(key, "LLM_ROUTE_") },
+      {
+        TICKET_LLM_PRICING_JSON = jsonencode({
+          pricing_as_of = "2026-09-30"
+          source        = "openai-google-official-public-pricing"
+          models = {
+            "openai:gpt-6-sol" = {
+              input_usd_per_million  = 2.0
+              output_usd_per_million = 10.0
+            }
+            "gemini:gemini-2.5-pro" = {
+              input_usd_per_million  = 0.0
+              output_usd_per_million = 0.0
+            }
+          }
+        })
+      },
+    )
+  }
+
+  expect_failures = [google_cloud_run_v2_service.producer]
+}
+
 run "runtime_rejects_pricing_with_missing_rate_field" {
   command = plan
 

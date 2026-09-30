@@ -4,11 +4,45 @@ These tests exercise the real FastAPI lifespan instead of inferring startup
 behaviour from readiness state or configuration validation.
 """
 
+import json
 from contextlib import ExitStack, asynccontextmanager
+from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from fastapi import FastAPI
+
+
+PA_ROUTE_KEYS = (
+    "LLM_ROUTE_CLASSIFY",
+    "LLM_ROUTE_DECOMPOSE",
+    "LLM_ROUTE_GR_OUTCOME",
+    "LLM_ROUTE_GR_RESPONSE",
+    "LLM_ROUTE_KNOWLEDGE",
+    "LLM_ROUTE_REQUIRED_DATA",
+    "LLM_ROUTE_EXTRACT_INQUIRIES",
+    "LLM_ROUTE_KB_QUESTION_SYNTHESIS",
+    "LLM_ROUTE_FORUSBOTS_FIELD_MAP",
+    "LLM_ROUTE_GR_BODY_BUILD",
+    "LLM_ROUTE_TICKET_FIELD_EXTRACT",
+)
+
+
+def _sol_pricing_manifest() -> dict:
+    return {
+        "pricing_as_of": "2026-09-30",
+        "source": "openai-google-official-public-pricing",
+        "models": {
+            "openai:gpt-6-sol": {
+                "input_usd_per_million": 2.0,
+                "output_usd_per_million": 10.0,
+            },
+            "gemini:gemini-2.5-pro": {
+                "input_usd_per_million": 1.25,
+                "output_usd_per_million": 10.0,
+            },
+        },
+    }
 
 
 class _StartupSpies:
@@ -298,7 +332,6 @@ def _pin_deployed_role_settings(monkeypatch, **overrides) -> None:
         "OPENAI_API_KEY": "openai-test-key",
         "GEMINI_API_KEY": "",
         "USE_VERTEX_AI": False,
-        "LLM_ROUTE_CLASSIFY": "gpt-5.5",
         "TICKET_LLM_PRICING_JSON": (
             '{"pricing_as_of":"2026-07-21",'
             '"source":"openai-google-official-public-pricing","models":{'
@@ -329,6 +362,7 @@ def _pin_deployed_role_settings(monkeypatch, **overrides) -> None:
         ),
         "TICKET_WORKER_REQUIRE_OIDC": True,
     }
+    values.update({key: "gpt-5.5" for key in PA_ROUTE_KEYS})
     values.update(overrides)
     for name, value in values.items():
         monkeypatch.setattr(settings, name, value)
@@ -338,6 +372,67 @@ def test_deployed_worker_requires_reviewed_exact_llm_pricing(monkeypatch):
     from api.config import validate_settings
 
     _pin_deployed_role_settings(monkeypatch, TICKET_LLM_PRICING_JSON="")
+
+    with pytest.raises(ValueError, match="TICKET_LLM_PRICING_JSON"):
+        validate_settings()
+
+
+def test_default_pa_routes_use_exact_sol_with_gemini_pro_fallback():
+    from api.config import Settings
+    from data_pipeline.llm_router import build_routes_from_settings
+
+    defaults = {key: Settings.model_fields[key].default for key in PA_ROUTE_KEYS}
+    routes = build_routes_from_settings(SimpleNamespace(**defaults))
+
+    assert len(routes) == len(PA_ROUTE_KEYS) == 11
+    assert {route.primary.model for route in routes.values()} == {"gpt-6-sol"}
+    assert {route.primary.reasoning_effort for route in routes.values()} == {
+        "medium"
+    }
+    assert {route.fallback.model for route in routes.values()} == {
+        "gemini-2.5-pro"
+    }
+
+
+def test_deployed_worker_accepts_exact_sol_pricing(monkeypatch):
+    from api.config import validate_settings
+
+    _pin_deployed_role_settings(
+        monkeypatch,
+        **{key: "gpt-6-sol" for key in PA_ROUTE_KEYS},
+        TICKET_LLM_PRICING_JSON=json.dumps(_sol_pricing_manifest()),
+    )
+
+    assert validate_settings() is True
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [
+        lambda manifest: manifest["models"]["openai:gpt-6-sol"].update(
+            input_usd_per_million=2.01
+        ),
+        lambda manifest: manifest["models"]["openai:gpt-6-sol"].update(
+            output_usd_per_million=9.99
+        ),
+        lambda manifest: manifest["models"]["gemini:gemini-2.5-pro"].update(
+            input_usd_per_million=0.0,
+            output_usd_per_million=0.0,
+        ),
+        lambda manifest: manifest.update(pricing_as_of="2026-07-21"),
+        lambda manifest: manifest["models"].pop("gemini:gemini-2.5-pro"),
+    ],
+)
+def test_deployed_worker_rejects_unreviewed_sol_pricing(monkeypatch, mutation):
+    from api.config import validate_settings
+
+    manifest = _sol_pricing_manifest()
+    mutation(manifest)
+    _pin_deployed_role_settings(
+        monkeypatch,
+        **{key: "gpt-6-sol" for key in PA_ROUTE_KEYS},
+        TICKET_LLM_PRICING_JSON=json.dumps(manifest),
+    )
 
     with pytest.raises(ValueError, match="TICKET_LLM_PRICING_JSON"):
         validate_settings()

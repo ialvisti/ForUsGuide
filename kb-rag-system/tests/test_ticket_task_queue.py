@@ -354,6 +354,19 @@ class TestProductionFailClosedConfig:
                 '"output_usd_per_million":10.0}}}'
             ),
         }
+        # This test exercises the historical GPT-5.5 runtime contract.
+        overrides.update({key: "gpt-5.5" for key in (
+            "LLM_ROUTE_DECOMPOSE",
+            "LLM_ROUTE_REQUIRED_DATA",
+            "LLM_ROUTE_GR_OUTCOME",
+            "LLM_ROUTE_GR_RESPONSE",
+            "LLM_ROUTE_KNOWLEDGE",
+            "LLM_ROUTE_EXTRACT_INQUIRIES",
+            "LLM_ROUTE_KB_QUESTION_SYNTHESIS",
+            "LLM_ROUTE_FORUSBOTS_FIELD_MAP",
+            "LLM_ROUTE_GR_BODY_BUILD",
+            "LLM_ROUTE_TICKET_FIELD_EXTRACT",
+        )})
         for name, value in overrides.items():
             monkeypatch.setattr(config_module.settings, name, value)
 

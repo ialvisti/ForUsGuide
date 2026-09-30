@@ -258,6 +258,41 @@ test('Notes that turn a supplied status into eligibility are rejected',()=>{
  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
   /Unsupported employment-status claim/);
 });
+const GENERATED_STATUS_NOTE='Employment-status conflict: participant reports separation; system record shows employment_status Active with no termination date on file.';
+test('A copied generated employment claim is retained only as an unverified internal note',()=>{
+ const generated={participant_reply:STATUS_CLAIM,internal_notes:GENERATED_STATUS_NOTE};
+ for(const agentResponse of [generated,JSON.stringify(generated)]){
+  const source=missingJobEvidence();source.agentResponse=agentResponse;
+  const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:true,
+   stage_reason:'Employer verification is still required.',internal_notes:GENERATED_STATUS_NOTE};
+  const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+  assert.equal(out.participant_reply,SUPPORTED);
+  assert.equal(out.stage_reason,'Advisor review is required. Employer verification is still required.');
+  assert.match(out.internal_notes,/^Unverified claim from supplied generated response, not canonical evidence:/);
+  assert.ok(out.internal_notes.includes(GENERATED_STATUS_NOTE));
+  assert.equal(out.verified_participant_facts,null);
+  for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
+  assert.equal(out.human_review_required,true);
+ }
+});
+test('A note cannot gain generated-response provenance without the same source claim',()=>{
+ const source=missingJobEvidence();
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',internal_notes:GENERATED_STATUS_NOTE};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+  /Unsupported employment-status claim/);
+});
+test('A sourced note does not license a separate status or eligibility authority claim',()=>{
+ const source=missingJobEvidence();
+ source.agentResponse={participant_reply:STATUS_CLAIM,internal_notes:GENERATED_STATUS_NOTE};
+ for(const extra of ['Our records show employment status Terminated.',
+  'The system confirms employment status as active, so the participant is eligible.']){
+  const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+   stage_reason:'Employer verification is still required.',internal_notes:GENERATED_STATUS_NOTE+'\n'+extra};
+  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+   /Unsupported employment-status claim/,extra);
+ }
+});
 test('Extractor preserves conditional age wording and human-review gates',()=>{
  const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
  const reply='If you are under 59½, a 10% early withdrawal penalty may apply.';

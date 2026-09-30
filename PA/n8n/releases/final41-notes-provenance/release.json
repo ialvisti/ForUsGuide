@@ -1,0 +1,11 @@
+{
+  "scope": "Final 4.1 Data extractor internal-note provenance only; parser prompt and model remain published exact versions.",
+  "model": "gpt-4.1",
+  "workflow_id": "CziwYCQlGgliAuhi",
+  "served_workflow_version": "cda0297d-c667-4a21-b65d-c4ebffc78bd2",
+  "baseline_parser_sha256": "216e53c05f97ced91f9d3e4a6b49e0b3c014b46ce0945f5ec822a7cc2c1b05c0",
+  "baseline_extractor_sha256": "e8450fd781126d26a96d0075358c77536fa33d37c5f177f4b4293cd8a3a889f4",
+  "candidate_parser_sha256": "216e53c05f97ced91f9d3e4a6b49e0b3c014b46ce0945f5ec822a7cc2c1b05c0",
+  "candidate_extractor_sha256": "b1505f9c0f834edd6ef1e64add5b0ab138ffe6b339270210085dc7e5dfc003b4",
+  "auto_publication": false
+}

@@ -353,6 +353,22 @@ function notesTreatStatusAsAuthority(notes) {
   });
 }
 
+function qualifySourceMatchedEmploymentNotes(notes, agentResponse) {
+  if (typeof notes !== 'string' || !notes) return notes;
+  const sourceText = typeof agentResponse === 'string' ? agentResponse :
+    agentResponse && typeof agentResponse === 'object' && !Array.isArray(agentResponse) ? JSON.stringify(agentResponse) : '';
+  if (!sourceText) return notes;
+  let qualified = notes;
+  for (const sentence of sentences(notes)) {
+    if (!notesTreatStatusAsAuthority(sentence) ||
+        /\b(?:eligib\w*|verified|confirm\w*|establish\w*)\b/i.test(sentence) ||
+        !sourceText.includes(sentence)) continue;
+    qualified = qualified.replace(sentence,
+      'Unverified claim from supplied generated response, not canonical evidence: ' + sentence);
+  }
+  return qualified;
+}
+
 function acceptGuardedParserOutput(raw) {
   const original = String(raw ?? '');
   const guarded = guardParserOutput(original);
@@ -381,7 +397,8 @@ if(!parsed || typeof parsed!=='object' || Array.isArray(parsed) ||
 const evidence=source.canonical_evidence;
 if(!evidence || evidence.publication_authorized!==false || evidence.human_review_required!==true)
  throw new Error('Missing independent canonical evidence decision');
-if(exactCurrentEmploymentClaim(parsed.participant_reply)||exactCurrentEmploymentClaim(parsed.stage_reason)||notesTreatStatusAsAuthority(parsed.internal_notes))
+const qualifiedNotes=qualifySourceMatchedEmploymentNotes(parsed.internal_notes,source.agentResponse);
+if(exactCurrentEmploymentClaim(parsed.participant_reply)||exactCurrentEmploymentClaim(parsed.stage_reason)||notesTreatStatusAsAuthority(qualifiedNotes))
  throw new Error(EMPLOYMENT_REJECT);
 const displayPlanFacts=(facts=>{
  if(facts==null) return null;
@@ -396,7 +413,7 @@ const displayPlanFacts=(facts=>{
 const provenance=JSON.stringify({evidence_status:evidence.evidence_status,reason_codes:evidence.reason_codes,
  execution_reference:evidence.execution_reference??null,verified_participant_facts:evidence.verified_participant_facts,
  verified_plan_facts:displayPlanFacts});
-const internal=[parsed.internal_notes,'Independent backend evidence: '+provenance].filter(Boolean).join('\n\n');
+const internal=[qualifiedNotes,'Independent backend evidence: '+provenance].filter(Boolean).join('\n\n');
 const doubleBreaks=str=>str.replace(/\n/g,'\n\u3164\n\n');
 return [{json:{ticketId:source.ticketId,participant_reply:doubleBreaks(parsed.participant_reply),
  set_stage_solved:false,stage_reason:'Advisor review is required. '+parsed.stage_reason,

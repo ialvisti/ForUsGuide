@@ -152,9 +152,12 @@ test('A poll without plan metadata leaves plan provenance explicitly null',()=>{
  assert.equal(out.verified_plan_facts,null);
  assert.match(out.internal_notes,/"verified_plan_facts":null/);
 });
-test('Published data extractor source keeps the accepted live hash',()=>{
+test('Data extractor source matches the release manifest and is not the served node',()=>{
+ const manifest=JSON.parse(fs.readFileSync(path.join(__dirname,'../canonical-final-consumer.manifest')));
  const hash=require('node:crypto').createHash('sha256').update(builders.extractorCode()).digest('hex');
- assert.equal(hash,'c48ea5854cff546b2bb8803c9820bfd071c4d5f1f40f0d76495906ff56123151');
+ const pin=manifest.generated_sources.find(node=>node.node==='Data extractor').sha256;
+ assert.equal(hash,pin);
+ assert.notEqual(pin,'c48ea5854cff546b2bb8803c9820bfd071c4d5f1f40f0d76495906ff56123151');
 });
 test('Extractor rejects an unsupported personal age claim in a penalty statement',()=>{
  const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
@@ -162,6 +165,98 @@ test('Extractor rejects an unsupported personal age claim in a penalty statement
   set_stage_solved:true,stage_reason:'Synthetic reason',internal_notes:null};
  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
   /PA certainty guard rejected parser output; no ticket write permitted/);
+});
+function missingJobEvidence(){
+ return {ticketId:ticket,agentResponse:'Synthetic',canonical_evidence:{
+  evidence_status:'unavailable',reason_codes:['missing_independent_job_reference'],
+  verified_participant_facts:null,publication_authorized:false,participant_reply_safe:false,
+  set_stage_solved:false,human_review_required:true}};
+}
+const ROUTE_1='**If your employer updates their payroll record** to show a terminated status and adds your termination date, that update typically takes about one week after employment ends, and sometimes up to one payroll cycle.';
+const ROUTE_2="**If our team already has access to your employer's payroll record and that record already has a termination date on file,** we can update the necessary systems on our end. After both updates are made, the ability to submit a termination distribution request may become available within the next 24–48 business hours. That is the availability of the request, not receipt of funds.";
+const ROUTE_3='**If neither of the above applies** and the termination date remains unconfirmed, we will need to reach out through our internal process to confirm your termination date with the plan sponsor before distribution eligibility can be verified.';
+const FEE_TEXT='The $75 base fee applies to every delivery method. A wire transfer adds a $35 non-refundable fee. ACH and regular mail check have no additional delivery charge.';
+const TIMING='That timing is an estimate, not a guaranteed SLA.';
+const LAST_DAY='To help us reconcile the employment record, could you share your last day of employment?';
+const HOLD='The current employment record still needs employer verification before a termination cash distribution can move forward.';
+const SUPPORTED=[HOLD,ROUTE_1,TIMING,ROUTE_2,ROUTE_3,FEE_TEXT,LAST_DAY].join(' ');
+const STATUS_CLAIM='However, our records currently show your employment status as active with no termination date on file.';
+test('Null employment evidence cannot publish an exact current status',()=>{
+ const source=missingJobEvidence();
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED+' '+STATUS_CLAIM,
+  set_stage_solved:false,stage_reason:'The record shows Active.',
+  internal_notes:'System status is active.'};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+  /Unsupported employment-status claim; no ticket write permitted/);
+});
+test('Account facts do not authorize an exact employment status or date',()=>{
+ const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
+ assert.ok(source.canonical_evidence.verified_participant_facts);
+ for(const claim of ['Our employment record is Active.','Status: Active.','Our payroll shows you remain employed.',
+  'Your termination date is July 15, 2026.','Your termination date is 7/15/2026.','Your termination date is 07-15-2026.','Your termination date is 2026-07-15.']){
+  const parsed={ticketId:ticket,participant_reply:SUPPORTED+' '+claim,
+   set_stage_solved:false,stage_reason:'Employer verification is still required.',internal_notes:null};
+  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+   /Unsupported employment-status claim/);
+ }
+});
+test('Exact conditional routes survive when only the current status claim is generalized',()=>{
+ const source=missingJobEvidence();
+ const notes='Supplied employment status active is unverified and does not establish eligibility.';
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:true,
+  stage_reason:'Employer verification is still required.',internal_notes:notes};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+ for(const phrase of [ROUTE_1,ROUTE_2,ROUTE_3,FEE_TEXT,TIMING,LAST_DAY,'$75','$35','24–48']){
+  assert.ok(out.participant_reply.includes(phrase),phrase);
+ }
+ assert.equal(out.participant_reply.includes(STATUS_CLAIM),false);
+ assert.doesNotMatch(out.participant_reply,/we are investigating|we have escalated|investigation has already/i);
+ assert.equal(out.stage_reason,'Advisor review is required. Employer verification is still required.');
+ assert.match(out.internal_notes,/unverified/);
+ assert.match(out.internal_notes,/does not establish eligibility/);
+ for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
+ assert.equal(out.human_review_required,true);
+ assert.equal(out.verified_participant_facts,null);
+});
+test('A route condition survives but a leading if does not license a main-clause assertion',()=>{
+ const source=missingJobEvidence();
+ // The served draft varies its route wording between samples. A status term inside
+ // the condition itself is a procedure, not this participant's current fact.
+ const routeVariant='**If the record shows your status as terminated** and a termination date is added, that update typically takes about one week after employment ends.';
+ const ok={ticketId:ticket,participant_reply:[HOLD,routeVariant,FEE_TEXT,LAST_DAY].join(' '),
+  set_stage_solved:false,stage_reason:'Employer verification is still required.',internal_notes:null};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(ok)})[0].json;
+ assert.ok(out.participant_reply.includes(routeVariant));
+ // An assertion after the condition resolves is still an assertion: no blanket if exemption.
+ for(const claim of ['If you ask, our records show Active.',
+  'If you are wondering, your employment status is active.',
+  'If it helps, our payroll shows you remain employed.']){
+  const bad={ticketId:ticket,participant_reply:[HOLD,claim].join(' '),
+   set_stage_solved:false,stage_reason:'Employer verification is still required.',internal_notes:null};
+  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(bad)}),
+   /Unsupported employment-status claim/,claim);
+ }
+});
+test('Unsegmented conditional, list-verb and last-day date forms are rejected',()=>{
+ const source=missingJobEvidence();
+ // (1) no comma, so there is no apodosis boundary to trust; (2) "list ... as";
+ // (3) the date arrives under "last day of employment" rather than a date label.
+ for(const claim of ['If you ask we can confirm our records show Active.',
+  'Our records list your status as Active.',
+  'Your last day of employment was 7/15/2026.']){
+  const bad={ticketId:ticket,participant_reply:[HOLD,claim].join(' '),
+   set_stage_solved:false,stage_reason:'Employer verification is still required.',internal_notes:null};
+  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(bad)}),
+   /Unsupported employment-status claim/,claim);
+ }
+});
+test('Notes that turn a supplied status into eligibility are rejected',()=>{
+ const source=missingJobEvidence();
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',
+  internal_notes:'The system confirms employment status as active, so the participant is eligible.'};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+  /Unsupported employment-status claim/);
 });
 test('Extractor preserves conditional age wording and human-review gates',()=>{
  const s=state(),source=run(builders.evidenceCode(),s.nodes,response(s.poll))[0].json;
@@ -209,4 +304,21 @@ test('Parser prompt uses verified savings Account Balance as total vested',()=>{
   assert.ok(line,`missing worked-example line: ${label}`);
   assert.doesNotMatch(line,/account_balance|savings_rate|canonical_evidence/,`worked example must not emit internal identifiers: ${label}`);
  }
+});
+test('Final 4.1 release pins match their files and carry no GPT-5.5 publish plan',()=>{
+ const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+ const dir=path.join(__dirname,'..','releases','final41-employment-proof');
+ const digest=(f)=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
+ const release=JSON.parse(fs.readFileSync(path.join(dir,'release.json'),'utf8'));
+ // Nothing else binds these pins, so a stale one would ship silently.
+ assert.equal(release.candidate_parser_sha256,digest(path.join(dir,'parser-system.md')));
+ assert.equal(release.candidate_extractor_sha256,digest(path.join(__dirname,'..','final-data-extractor.js')));
+ assert.equal(release.model,'gpt-4.1');
+ assert.equal(release.auto_publication,false);
+ const prompt=fs.readFileSync(path.join(dir,'parser-system.md'),'utf8');
+ assert.doesNotMatch(prompt,/gpt-5\.5/i);
+ // "Generalize" alone left 219355 free to restate the status; the replacement must stay actionable.
+ assert.match(prompt,/Generated prose is not independent evidence of that status/);
+ assert.match(prompt,/still needs employer verification before a termination cash distribution can move forward/);
+ assert.match(prompt,/every conditional employer-verification route/);
 });

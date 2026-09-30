@@ -289,6 +289,69 @@ function guardParserOutput(raw) {
 
 
 const PUBLIC_REJECT = 'PA certainty guard rejected parser output; no ticket write permitted';
+const EMPLOYMENT_REJECT = 'Unsupported employment-status claim; no ticket write permitted';
+// The canonical fact allowlist has no employment-status source, so no current
+// evidence object authorizes an exact current status or employment date.
+// Conditional employer actions ("to show a terminated status", "already has a
+// termination date on file") are procedures, not this participant's current fact.
+const EMPLOYMENT_STATUS_WORD = 'active|terminated|retired|rehired|deceased|on leave';
+const EMPLOYMENT_DATE_TEXT = '\\d{4}-\\d{2}-\\d{2}|\\d{1,2}[/-]\\d{1,2}[/-]\\d{2,4}|(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\\s+\\d{1,2},?\\s+\\d{4}';
+
+// A status term inside the condition itself is a procedure, so the protasis is
+// dropped before the status rules run. Text after the condition resolves stays
+// an assertion ("If you ask, our records show Active"), so this is not a blanket
+// "if" exemption. The date rules keep the whole sentence and their own step test.
+function assertedPortion(text) {
+  const lead = text.replace(/^[\s*_>-]+/, '');
+  if (!/^if\b/i.test(lead)) return text;
+  const comma = lead.indexOf(',');
+  // Without a comma there is no apodosis boundary to trust, so the whole
+  // sentence stays under test: "If you ask we can confirm our records show
+  // Active." is an assertion, not a condition.
+  return comma === -1 ? text : lead.slice(comma + 1);
+}
+
+function currentPersonalEmploymentClaim(sentence) {
+  const text = String(sentence || '');
+  const asserted = assertedPortion(text);
+  const status = `(?:${EMPLOYMENT_STATUS_WORD})`;
+  if (new RegExp(`\\bemployment status\\b[^.]{0,40}\\b(?:as|is|of|:)?\\s*${status}\\b`, 'i').test(asserted)) return true;
+  if (new RegExp(`\\bemployment record\\s+is\\s+${status}\\b`, 'i').test(asserted)) return true;
+  if (new RegExp(`(?:^|[\\s.;])status\\s*:\\s*${status}\\b`, 'i').test(asserted)) return true;
+  if (new RegExp(`\\byour\\s+status\\s+(?:is|as)\\s+${status}\\b`, 'i').test(asserted)) return true;
+  if (/\b(?:you|your)\b[^.]{0,40}\bremain(?:s)? employed\b/i.test(asserted)) return true;
+  if (new RegExp(`\\b(?:records?|payroll|system)\\b[^.]{0,50}\\b(?:show|shows)\\b[^.]{0,40}\\b(?:you|your)\\b[^.]{0,30}\\b(?:employed|${EMPLOYMENT_STATUS_WORD})\\b`, 'i').test(asserted)) return true;
+  // A record can report a status with verbs other than "show". "has" stays out:
+  // the accepted route says the record "already has a termination date on file".
+  if (new RegExp(`\\brecords?\\b(?!\\s*(?:\\*\\*)?\\s*to\\s+show\\b)[^.]{0,40}\\b(?:show|shows|list|lists|reflect|reflects|indicate|indicates|is)\\b[^.]{0,24}\\b${status}\\b`, 'i').test(asserted)) return true;
+  const statesMissingDate = /\b(?:no|without(?:\s+a)?|missing|does not have|do not have)\b[^.]{0,24}\btermination date\b/i.test(text);
+  const conditionalDateStep = /\bif\b[^.]{0,160}\b(?:already has|adds|add)\b[^.]{0,40}\btermination date\b/i.test(text);
+  if (statesMissingDate && !conditionalDateStep) return true;
+  if (new RegExp(`\\b(?:employment|termination|separation) date\\b[^.]{0,24}(?:\\b(?:is|was|of)\\b|[:,])\\s*(?:${EMPLOYMENT_DATE_TEXT})\\b`, 'i').test(asserted)) return true;
+  // The same date can arrive as a last day rather than under a date label. The
+  // standing last-day question carries no date, so it is not caught here.
+  if (new RegExp(`\\blast day\\b(?:\\s+(?:of\\s+employment|worked|you\\s+worked))?[^.]{0,24}(?:\\b(?:is|was|of)\\b|[:,])\\s*(?:${EMPLOYMENT_DATE_TEXT})\\b`, 'i').test(asserted)) return true;
+  return false;
+}
+
+function exactCurrentEmploymentClaim(text) {
+  return sentences(text).some(currentPersonalEmploymentClaim);
+}
+
+function notesTreatStatusAsAuthority(notes) {
+  if (typeof notes !== 'string' || !notes) return false;
+  return sentences(notes).some((sentence) => {
+    const statesStatus = exactCurrentEmploymentClaim(sentence) || /\bsystem status\b/i.test(sentence);
+    if (!statesStatus) return false;
+    if (/\beligib/i.test(sentence) && !/\b(?:not eligibility|does not establish eligibility|not eligible)\b/i.test(sentence)) {
+      return true;
+    }
+    if (/\bverif(?:ied|ies|y)\b/i.test(sentence) && !/\b(?:unverified|not verified)\b/i.test(sentence)) {
+      return true;
+    }
+    return !/\b(?:unverified|not verified|supplied|non-authoritative)\b/i.test(sentence);
+  });
+}
 
 function acceptGuardedParserOutput(raw) {
   const original = String(raw ?? '');
@@ -318,6 +381,8 @@ if(!parsed || typeof parsed!=='object' || Array.isArray(parsed) ||
 const evidence=source.canonical_evidence;
 if(!evidence || evidence.publication_authorized!==false || evidence.human_review_required!==true)
  throw new Error('Missing independent canonical evidence decision');
+if(exactCurrentEmploymentClaim(parsed.participant_reply)||exactCurrentEmploymentClaim(parsed.stage_reason)||notesTreatStatusAsAuthority(parsed.internal_notes))
+ throw new Error(EMPLOYMENT_REJECT);
 const displayPlanFacts=(facts=>{
  if(facts==null) return null;
  if(typeof facts!=='object'||Array.isArray(facts)) return facts;

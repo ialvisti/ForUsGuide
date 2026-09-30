@@ -259,28 +259,33 @@ test('Notes that turn a supplied status into eligibility are rejected',()=>{
   /Unsupported employment-status claim/);
 });
 const GENERATED_STATUS_NOTE='Employment-status conflict: participant reports separation; system record shows employment_status Active with no termination date on file.';
+const PARAPHRASED_STATUS_NOTE='Employment-status conflict: participant reports separation; system record shows Active with no termination date on file.';
 test('A copied generated employment claim is retained only as an unverified internal note',()=>{
  const generated={participant_reply:STATUS_CLAIM,internal_notes:GENERATED_STATUS_NOTE};
  for(const agentResponse of [generated,JSON.stringify(generated)]){
-  const source=missingJobEvidence();source.agentResponse=agentResponse;
-  const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:true,
-   stage_reason:'Employer verification is still required.',internal_notes:GENERATED_STATUS_NOTE};
-  const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
-  assert.equal(out.participant_reply,SUPPORTED);
-  assert.equal(out.stage_reason,'Advisor review is required. Employer verification is still required.');
-  assert.match(out.internal_notes,/^Unverified claim from supplied generated response, not canonical evidence:/);
-  assert.ok(out.internal_notes.includes(GENERATED_STATUS_NOTE));
-  assert.equal(out.verified_participant_facts,null);
-  for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
-  assert.equal(out.human_review_required,true);
+  for(const note of [GENERATED_STATUS_NOTE,PARAPHRASED_STATUS_NOTE]){
+   const source=missingJobEvidence();source.agentResponse=agentResponse;
+   const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:true,
+    stage_reason:'Employer verification is still required.',internal_notes:note};
+   const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+   assert.equal(out.participant_reply,SUPPORTED);
+   assert.equal(out.stage_reason,'Advisor review is required. Employer verification is still required.');
+   assert.match(out.internal_notes,/^Unverified claim from supplied generated response, not canonical evidence:/);
+   assert.ok(out.internal_notes.includes(note));
+   assert.equal(out.verified_participant_facts,null);
+   for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
+   assert.equal(out.human_review_required,true);
+  }
  }
 });
 test('A note cannot gain generated-response provenance without the same source claim',()=>{
  const source=missingJobEvidence();
- const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
-  stage_reason:'Employer verification is still required.',internal_notes:GENERATED_STATUS_NOTE};
- assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
-  /Unsupported employment-status claim/);
+ for(const note of [GENERATED_STATUS_NOTE,PARAPHRASED_STATUS_NOTE]){
+  const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+   stage_reason:'Employer verification is still required.',internal_notes:note};
+  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+   /Unsupported employment-status claim/);
+ }
 });
 test('A sourced note does not license a separate status or eligibility authority claim',()=>{
  const source=missingJobEvidence();
@@ -340,16 +345,24 @@ test('Parser prompt uses verified savings Account Balance as total vested',()=>{
   assert.doesNotMatch(line,/account_balance|savings_rate|canonical_evidence/,`worked example must not emit internal identifiers: ${label}`);
  }
 });
-test('Final 4.1 release pins match their files and carry no GPT-5.5 publish plan',()=>{
+test('Final 4.1 release history and current pins carry no GPT-5.5 publish plan',()=>{
  const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
  const dir=path.join(__dirname,'..','releases','final41-employment-proof');
  const digest=(f)=>crypto.createHash('sha256').update(fs.readFileSync(f)).digest('hex');
  const release=JSON.parse(fs.readFileSync(path.join(dir,'release.json'),'utf8'));
- // Nothing else binds these pins, so a stale one would ship silently.
+ const notes=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-notes-provenance','release.json'),'utf8'));
+ const current=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-notes-paraphrase','release.json'),'utf8'));
+ // Historical receipts remain immutable; each new baseline is the previous
+ // published candidate, while the latest candidate binds the current source.
  assert.equal(release.candidate_parser_sha256,digest(path.join(dir,'parser-system.md')));
- assert.equal(release.candidate_extractor_sha256,digest(path.join(__dirname,'..','final-data-extractor.js')));
- assert.equal(release.model,'gpt-4.1');
- assert.equal(release.auto_publication,false);
+ assert.equal(notes.baseline_extractor_sha256,release.candidate_extractor_sha256);
+ assert.equal(current.baseline_extractor_sha256,notes.candidate_extractor_sha256);
+ assert.equal(current.candidate_extractor_sha256,digest(path.join(__dirname,'..','final-data-extractor.js')));
+ for(const plan of [release,notes,current]){
+  assert.equal(plan.candidate_parser_sha256,digest(path.join(dir,'parser-system.md')));
+  assert.equal(plan.model,'gpt-4.1');
+  assert.equal(plan.auto_publication,false);
+ }
  const prompt=fs.readFileSync(path.join(dir,'parser-system.md'),'utf8');
  assert.doesNotMatch(prompt,/gpt-5\.5/i);
  // "Generalize" alone left 219355 free to restate the status; the replacement must stay actionable.

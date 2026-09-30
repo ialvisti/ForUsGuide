@@ -1,0 +1,11 @@
+{
+  "scope": "Final 4.1 Data extractor only: source-field-label paraphrase remains explicitly unverified; model and parser unchanged.",
+  "model": "gpt-4.1",
+  "workflow_id": "CziwYCQlGgliAuhi",
+  "served_workflow_version": "8a384072-7fe8-448f-95e9-4a67043513df",
+  "baseline_parser_sha256": "216e53c05f97ced91f9d3e4a6b49e0b3c014b46ce0945f5ec822a7cc2c1b05c0",
+  "baseline_extractor_sha256": "b1505f9c0f834edd6ef1e64add5b0ab138ffe6b339270210085dc7e5dfc003b4",
+  "candidate_parser_sha256": "216e53c05f97ced91f9d3e4a6b49e0b3c014b46ce0945f5ec822a7cc2c1b05c0",
+  "candidate_extractor_sha256": "60e89c11ab6438cf1a7b327ccf8a1ae3a13fe2f4b3f2fc321e9197a3b4622282",
+  "auto_publication": false
+}

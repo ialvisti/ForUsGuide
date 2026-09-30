@@ -246,6 +246,191 @@ class TestOpenAIDispatch:
         assert mock_create.await_count == 2
 
 
+def _all_route_settings(**overrides: str) -> SimpleNamespace:
+    settings = {
+        "LLM_ROUTE_DECOMPOSE": "gpt-5.5",
+        "LLM_ROUTE_REQUIRED_DATA": "gpt-5.5",
+        "LLM_ROUTE_GR_OUTCOME": "gpt-5.5",
+        "LLM_ROUTE_GR_RESPONSE": "gpt-5.5",
+        "LLM_ROUTE_KNOWLEDGE": "gpt-5.5",
+        "LLM_ROUTE_CLASSIFY": "gpt-5.5-mini",
+        "LLM_ROUTE_EXTRACT_INQUIRIES": "gpt-5.5",
+        "LLM_ROUTE_KB_QUESTION_SYNTHESIS": "gpt-5.5",
+        "LLM_ROUTE_FORUSBOTS_FIELD_MAP": "gpt-5.5",
+        "LLM_ROUTE_GR_BODY_BUILD": "gpt-5.5",
+        "LLM_ROUTE_TICKET_FIELD_EXTRACT": "gpt-5.5",
+    }
+    settings.update(overrides)
+    return SimpleNamespace(**settings)
+
+
+class TestGpt6SolRequestShape:
+    """Exact gpt-6-sol uses the reasoning Chat Completions shape.
+
+    These tests lock the observable request, not a private recognizer.
+    """
+
+    @pytest.mark.asyncio
+    async def test_exact_gpt6_sol_omits_legacy_sampling_params(
+        self, router_with_openai,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"answer":"ok"}')
+        router.configure_routes(
+            build_routes_from_settings(
+                _all_route_settings(LLM_ROUTE_KNOWLEDGE="gpt-6-sol")
+            )
+        )
+
+        resp = await router.call(
+            "knowledge_question", "system", "user question", max_tokens=800,
+        )
+
+        assert resp.content == '{"answer":"ok"}'
+        assert resp.provider_used == "openai"
+        assert resp.model_used == "gpt-6-sol"
+        assert resp.usage == {
+            "prompt_tokens": 10,
+            "completion_tokens": 20,
+            "total_tokens": 30,
+        }
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs["model"] == "gpt-6-sol"
+        assert kwargs["messages"] == [
+            {"role": "system", "content": "system"},
+            {"role": "user", "content": "user question"},
+        ]
+        assert kwargs["response_format"] == {"type": "json_object"}
+        assert kwargs["reasoning_effort"] == "medium"
+        # 800 * 10 = 8000, which is below the documented GPT-6 Sol start.
+        assert kwargs["max_completion_tokens"] == 25_000
+        assert "temperature" not in kwargs
+        assert "max_tokens" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_gpt6_sol_allowance_keeps_ten_x_request_and_config_floor(
+        self, router_with_openai,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"ok": true}')
+
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI,
+                model="gpt-6-sol",
+                temperature=0.1,
+                reasoning_effort="medium",
+            )),
+        })
+        await router.call("gr_outcome", "sys", "usr", max_tokens=3_000)
+        # 3000 * 10 = 30000, above the 25000 GPT-6 Sol start.
+        assert mock_create.call_args.kwargs["max_completion_tokens"] == 30_000
+        assert "temperature" not in mock_create.call_args.kwargs
+
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI,
+                model="gpt-6-sol",
+                reasoning_effort="high",
+                max_completion_floor=40_000,
+            )),
+        })
+        await router.call("gr_outcome", "sys", "usr", max_tokens=100)
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs["max_completion_tokens"] == 40_000
+        assert kwargs["reasoning_effort"] == "high"
+        assert kwargs["response_format"] == {"type": "json_object"}
+        assert "temperature" not in kwargs
+        assert "max_tokens" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_gpt6_sol_empty_retry_parses_content_and_sums_usage(
+        self, router_with_openai,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.side_effect = [
+            _make_openai_response(None, finish_reason="length"),
+            _make_openai_response('{"answer":1}'),
+        ]
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI,
+                model="gpt-6-sol",
+                reasoning_effort="medium",
+            )),
+        })
+
+        resp = await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        assert resp.content == '{"answer":1}'
+        assert resp.usage == {
+            "prompt_tokens": 20,
+            "completion_tokens": 40,
+            "total_tokens": 60,
+        }
+        assert mock_create.await_count == LLMRouter.EMPTY_RESPONSE_RETRIES + 1
+        assert len(mock_create.await_args_list) == 2
+        for call in mock_create.await_args_list:
+            kwargs = call.kwargs
+            assert kwargs["model"] == "gpt-6-sol"
+            assert kwargs["response_format"] == {"type": "json_object"}
+            assert kwargs["reasoning_effort"] == "medium"
+            assert kwargs["max_completion_tokens"] == 25_000
+            assert "temperature" not in kwargs
+            assert "max_tokens" not in kwargs
+
+    @pytest.mark.asyncio
+    async def test_gpt5_allowance_stays_on_existing_floor(
+        self, router_with_openai,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"ok": true}')
+        router.configure_routes({
+            "gr_outcome": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI,
+                model="gpt-5.5",
+                reasoning_effort="medium",
+            )),
+        })
+
+        await router.call("gr_outcome", "sys", "usr", max_tokens=800)
+
+        kwargs = mock_create.call_args.kwargs
+        # 800 * 10 = 8000, so the existing GPT-5 floor of 16000 still wins.
+        assert kwargs["max_completion_tokens"] == 16_000
+        assert kwargs["reasoning_effort"] == "medium"
+        assert "temperature" not in kwargs
+        assert "max_tokens" not in kwargs
+
+        await router.call("gr_outcome", "sys", "usr", max_tokens=2_000)
+        assert mock_create.call_args.kwargs["max_completion_tokens"] == 20_000
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize("model_name", ["gpt-6", "gpt-6-sol-preview", "gpt-4o-mini"])
+    async def test_non_exact_openai_ids_keep_temperature_and_max_tokens(
+        self, router_with_openai, model_name,
+    ):
+        router, mock_create = router_with_openai
+        mock_create.return_value = _make_openai_response('{"ok": true}')
+        router.configure_routes({
+            "decompose": TaskRoute(primary=ModelConfig(
+                provider=LLMProvider.OPENAI,
+                model=model_name,
+                temperature=0.2,
+            )),
+        })
+
+        await router.call("decompose", "sys", "usr", max_tokens=150)
+
+        kwargs = mock_create.call_args.kwargs
+        assert kwargs["model"] == model_name
+        assert kwargs["max_tokens"] == 150
+        assert kwargs["temperature"] == 0.2
+        assert kwargs["response_format"] == {"type": "json_object"}
+        assert "max_completion_tokens" not in kwargs
+        assert "reasoning_effort" not in kwargs
+
+
 # ---------------------------------------------------------------------------
 # Fallback logic
 # ---------------------------------------------------------------------------
@@ -633,6 +818,35 @@ class TestRoutingTable:
         cfg = _model_config_from_name("gpt-4o-mini")
         assert cfg.provider == LLMProvider.OPENAI
         assert cfg.reasoning_effort is None
+
+    def test_model_config_from_name_exact_gpt6_sol_uses_medium_effort(self):
+        cfg = _model_config_from_name("gpt-6-sol")
+        assert cfg.provider == LLMProvider.OPENAI
+        assert cfg.model == "gpt-6-sol"
+        assert cfg.reasoning_effort == "medium"
+        assert cfg.temperature == 0.1
+
+    def test_model_config_from_name_non_exact_gpt6_has_no_effort(self):
+        for model_name in ("gpt-6", "gpt-6-sol-preview", "GPT-6-SOL-mini"):
+            cfg = _model_config_from_name(model_name)
+            assert cfg.model == model_name
+            assert cfg.reasoning_effort is None
+
+    def test_gpt6_sol_primary_keeps_cross_provider_fallback(self):
+        routes = build_routes_from_settings(
+            _all_route_settings(LLM_ROUTE_GR_OUTCOME="gpt-6-sol")
+        )
+        primary = routes["gr_outcome"].primary
+        fallback = routes["gr_outcome"].fallback
+        assert primary.provider == LLMProvider.OPENAI
+        assert primary.model == "gpt-6-sol"
+        assert primary.reasoning_effort == "medium"
+        assert fallback.provider == LLMProvider.GEMINI
+        assert fallback.model == "gemini-2.5-pro"
+        assert routes["decompose"].primary.model == "gpt-5.5"
+        assert routes["decompose"].primary.reasoning_effort == "medium"
+        assert routes["classify_inquiry"].primary.model == "gpt-5.5-mini"
+        assert routes["classify_inquiry"].primary.reasoning_effort == "medium"
 
     def test_model_config_from_name_gemini_flash(self):
         cfg = _model_config_from_name("gemini-2.5-flash")

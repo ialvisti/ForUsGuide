@@ -607,7 +607,9 @@ def test_every_deployed_service_requires_complete_startup_configuration() -> Non
     assert "local.forusbots_origin_is_canonical" in cloud_run
     assert "toset(keys(var.producer_core_env)) == local.required_producer_core_env" in cloud_run
     assert "local.pricing_manifest_is_reviewed" in cloud_run
-    assert 'pricing_as_of == "2026-07-21"' in cloud_run
+    assert 'local.has_sol_primary ? "2026-09-30" : "2026-07-21"' in cloud_run
+    assert "local.pricing_sol_rate_exact" in cloud_run
+    assert "local.pricing_gemini_rate_exact" in cloud_run
     assert "local.expected_pricing_model_keys" in cloud_run
     for route in (
         "LLM_ROUTE_EXTRACT_INQUIRIES",

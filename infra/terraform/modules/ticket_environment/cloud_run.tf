@@ -121,13 +121,30 @@ locals {
     "input_usd_per_million",
     "output_usd_per_million",
   ])
+  has_sol_primary = contains(
+    local.configured_route_pricing_keys, "openai:gpt-6-sol",
+  )
+  pricing_sol_rate_exact = try(
+    local.pricing_manifest.models["openai:gpt-6-sol"].input_usd_per_million == 2 &&
+    local.pricing_manifest.models["openai:gpt-6-sol"].output_usd_per_million == 10,
+    false,
+  )
+  pricing_gemini_rate_exact = try(
+    local.pricing_manifest.models["gemini:gemini-2.5-pro"].input_usd_per_million == 1.25 &&
+    local.pricing_manifest.models["gemini:gemini-2.5-pro"].output_usd_per_million == 10,
+    false,
+  )
   pricing_manifest_is_reviewed = try(
     toset(keys(local.pricing_manifest)) == toset([
       "pricing_as_of", "source", "models",
     ]) &&
-    local.pricing_manifest.pricing_as_of == "2026-07-21" &&
+    local.pricing_manifest.pricing_as_of == (
+      local.has_sol_primary ? "2026-09-30" : "2026-07-21"
+    ) &&
     local.pricing_manifest.source == "openai-google-official-public-pricing" &&
     toset(keys(local.pricing_manifest.models)) == local.expected_pricing_model_keys &&
+    (!local.has_sol_primary || local.pricing_sol_rate_exact) &&
+    (!contains(local.expected_pricing_model_keys, "gemini:gemini-2.5-pro") || local.pricing_gemini_rate_exact) &&
     alltrue([
       for model in values(local.pricing_manifest.models) :
       toset(keys(model)) == local.pricing_rate_fields && alltrue([

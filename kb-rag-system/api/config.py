@@ -5,6 +5,7 @@ Maneja variables de entorno y settings de la aplicación.
 Pydantic BaseSettings reads env vars automatically — no os.getenv needed.
 """
 
+import json
 import logging
 import math
 import re
@@ -17,6 +18,7 @@ from data_pipeline.forusbots_client import (
     validate_forusbots_base_url,
 )
 from data_pipeline.llm_router import (
+    LLMPricing,
     build_routes_from_settings,
     parse_llm_pricing_json,
     required_pricing_keys,
@@ -95,20 +97,20 @@ class Settings(BaseSettings):
     GCP_LOCATION: str = "us-central1"
 
     # LLM Routing (model name per task; provider is inferred from prefix).
-    LLM_ROUTE_DECOMPOSE: str = "gpt-5.5"
-    LLM_ROUTE_REQUIRED_DATA: str = "gpt-5.5"
-    LLM_ROUTE_GR_OUTCOME: str = "gpt-5.5"
-    LLM_ROUTE_GR_RESPONSE: str = "gpt-5.5"
-    LLM_ROUTE_KNOWLEDGE: str = "gpt-5.5"
-    LLM_ROUTE_CLASSIFY: str = "gemini-2.5-flash"
+    LLM_ROUTE_DECOMPOSE: str = "gpt-6-sol"
+    LLM_ROUTE_REQUIRED_DATA: str = "gpt-6-sol"
+    LLM_ROUTE_GR_OUTCOME: str = "gpt-6-sol"
+    LLM_ROUTE_GR_RESPONSE: str = "gpt-6-sol"
+    LLM_ROUTE_KNOWLEDGE: str = "gpt-6-sol"
+    LLM_ROUTE_CLASSIFY: str = "gpt-6-sol"
 
     # LLM Routing for the end-to-end ticket handler (LLM-first: the 4 n8n agents
     # become 4 internal LLM calls). See ticket-handler-planning/stage-3-*.md.
-    LLM_ROUTE_EXTRACT_INQUIRIES: str = "gpt-5.5"
-    LLM_ROUTE_KB_QUESTION_SYNTHESIS: str = "gpt-5.5"
-    LLM_ROUTE_FORUSBOTS_FIELD_MAP: str = "gpt-5.5"
-    LLM_ROUTE_GR_BODY_BUILD: str = "gpt-5.5"
-    LLM_ROUTE_TICKET_FIELD_EXTRACT: str = "gpt-5.5"
+    LLM_ROUTE_EXTRACT_INQUIRIES: str = "gpt-6-sol"
+    LLM_ROUTE_KB_QUESTION_SYNTHESIS: str = "gpt-6-sol"
+    LLM_ROUTE_FORUSBOTS_FIELD_MAP: str = "gpt-6-sol"
+    LLM_ROUTE_GR_BODY_BUILD: str = "gpt-6-sol"
+    LLM_ROUTE_TICKET_FIELD_EXTRACT: str = "gpt-6-sol"
     # Reviewed USD-per-1M-token estimates for durable ticket telemetry. The
     # JSON contains pricing_as_of/source metadata plus exact provider:model
     # entries. Producer/core traffic never depends on this ticket-only gate.
@@ -553,7 +555,29 @@ def validate_settings() -> bool:
                 errors.append(
                     "TICKET_LLM_PRICING_JSON debe contener modelos revisados"
                 )
-            elif worker_runtime:
+            elif ("openai", "gpt-6-sol") in llm_pricing:
+                pricing_document = json.loads(settings.TICKET_LLM_PRICING_JSON)
+                if (
+                    llm_pricing[("openai", "gpt-6-sol")] != LLMPricing(2.0, 10.0)
+                    or pricing_document["pricing_as_of"] != "2026-09-30"
+                    or pricing_document["source"]
+                    != "openai-google-official-public-pricing"
+                ):
+                    errors.append(
+                        "TICKET_LLM_PRICING_JSON debe usar pricing SOL 6 "
+                        "oficial exacto del 2026-09-30"
+                    )
+            gemini_fallback_pricing = llm_pricing.get(
+                ("gemini", "gemini-2.5-pro")
+            )
+            if gemini_fallback_pricing is not None and (
+                gemini_fallback_pricing != LLMPricing(1.25, 10.0)
+            ):
+                errors.append(
+                    "TICKET_LLM_PRICING_JSON debe usar pricing Gemini Pro "
+                    "oficial exacto para el fallback"
+                )
+            if llm_pricing and worker_runtime:
                 try:
                     expected_pricing = required_pricing_keys(
                         build_routes_from_settings(settings)

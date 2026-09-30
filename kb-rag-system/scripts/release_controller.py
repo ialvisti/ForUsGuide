@@ -758,18 +758,23 @@ def _validate_reviewed_llm_pricing(raw: str, route_models: Iterable[str]) -> Non
         raise ControllerRejected("LLM pricing JSON is invalid") from exc
     if not isinstance(pricing, dict) or set(pricing) != {
         "pricing_as_of", "source", "models",
-    } or pricing["pricing_as_of"] != "2026-07-21" \
-            or pricing["source"] != "openai-google-official-public-pricing":
+    } or pricing["source"] != "openai-google-official-public-pricing":
         raise ControllerRejected("LLM pricing manifest is outside the reviewed contract")
 
-    expected_keys = {
+    primary_keys = {
         f"{'openai' if model.startswith('gpt-') else 'gemini'}:{model}"
         for model in route_models
     }
-    if any(key.startswith("openai:") for key in expected_keys):
+    expected_keys = set(primary_keys)
+    if any(key.startswith("openai:") for key in primary_keys):
         expected_keys.add("gemini:gemini-2.5-pro")
-    if any(key.startswith("gemini:") for key in expected_keys):
+    if any(key.startswith("gemini:") for key in primary_keys):
         expected_keys.add("openai:gpt-5.5")
+    expected_date = (
+        "2026-09-30" if "openai:gpt-6-sol" in expected_keys else "2026-07-21"
+    )
+    if pricing["pricing_as_of"] != expected_date:
+        raise ControllerRejected("LLM pricing manifest is outside the reviewed contract")
     models = pricing["models"]
     if not isinstance(models, dict) or set(models) != expected_keys:
         raise ControllerRejected("LLM pricing model coverage is not exact")
@@ -781,6 +786,18 @@ def _validate_reviewed_llm_pricing(raw: str, route_models: Iterable[str]) -> Non
             if isinstance(rate, bool) or not isinstance(rate, (int, float)) \
                     or not math.isfinite(float(rate)) or not 0 <= rate <= 500:
                 raise ControllerRejected("LLM pricing rate is outside reviewed bounds")
+    if "openai:gpt-6-sol" in expected_keys and (
+        models["openai:gpt-6-sol"]["input_usd_per_million"] != 2.0
+        or models["openai:gpt-6-sol"]["output_usd_per_million"] != 10.0
+    ):
+        raise ControllerRejected("LLM pricing SOL 6 rates differ from reviewed rates")
+    if "gemini:gemini-2.5-pro" in expected_keys and (
+        models["gemini:gemini-2.5-pro"]["input_usd_per_million"] != 1.25
+        or models["gemini:gemini-2.5-pro"]["output_usd_per_million"] != 10.0
+    ):
+        raise ControllerRejected(
+            "LLM pricing Gemini Pro rates differ from reviewed rates"
+        )
 
 
 def _run_resource_list(value: str, *, environment: str) -> list[str]:

@@ -1,0 +1,10 @@
+{
+  "scope": "Patch to the served Final 4.1 nodes only. This is not the unpublished GPT-5.5 candidate manifest and it does not authorize publication.",
+  "model": "gpt-4.1",
+  "served_workflow_version": "fe1f747d-6163-488c-ac68-a8a72c3cb276",
+  "baseline_parser_sha256": "a5c935dc79ad8cece52341ff32d6e9561ae1a296c75c05ffd783c9189fbaa91e",
+  "baseline_extractor_sha256": "c48ea5854cff546b2bb8803c9820bfd071c4d5f1f40f0d76495906ff56123151",
+  "candidate_parser_sha256": "216e53c05f97ced91f9d3e4a6b49e0b3c014b46ce0945f5ec822a7cc2c1b05c0",
+  "candidate_extractor_sha256": "e8450fd781126d26a96d0075358c77536fa33d37c5f177f4b4293cd8a3a889f4",
+  "auto_publication": false
+}

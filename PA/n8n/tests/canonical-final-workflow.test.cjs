@@ -260,6 +260,61 @@ test('Notes that turn a supplied status into eligibility are rejected',()=>{
 });
 const GENERATED_STATUS_NOTE='Employment-status conflict: participant reports separation; system record shows employment_status Active with no termination date on file.';
 const PARAPHRASED_STATUS_NOTE='Employment-status conflict: participant reports separation; system record shows Active with no termination date on file.';
+const NEGATED_EVIDENCE_NOTE='Employment-status conflict: participant reports separation, but no verified independent evidence is available; system record shows active status with no termination date.';
+test('A negated evidence phrase does not publish a paraphrased employment claim in internal notes',()=>{
+ const source=missingJobEvidence();
+ source.agentResponse={participant_reply:STATUS_CLAIM,internal_notes:[
+  GENERATED_STATUS_NOTE,
+  '2. ForUsAll has sponsor payroll access AND termination date is already in that record → team updates FUA Admin and American Trust → request availability in 24–48 business hours.',
+  '3. Neither path applies and termination date still unconfirmed → team must contact plan OPS and create an ISSUE for OPS to contact RM or Sponsor.',
+ ].join('\n')};
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',internal_notes:[
+   NEGATED_EVIDENCE_NOTE,
+   'Three employer-verification branches supplied. Internal team names retained here.',
+  ].join('\n')};
+ const out=run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)})[0].json;
+ assert.equal(out.participant_reply,SUPPORTED);
+ assert.equal(out.stage_reason,'Advisor review is required. Employer verification is still required.');
+ assert.match(out.internal_notes,/Generated response included an unverified current employment-status claim; canonical evidence does not verify it\./);
+ assert.doesNotMatch(out.internal_notes,/system record shows active status with no termination date/i);
+ assert.ok(out.internal_notes.includes('Three employer-verification branches supplied.'));
+ for(const term of ['FUA Admin','American Trust','plan OPS','ISSUE','RM or Sponsor'])assert.ok(out.internal_notes.includes(term),term);
+ for(const key of ['publication_authorized','participant_reply_safe','set_stage_solved'])assert.equal(out[key],false);
+ assert.equal(out.human_review_required,true);
+});
+test('A positive verification claim in the same note remains a hard rejection',()=>{
+ const source=missingJobEvidence();source.agentResponse={internal_notes:GENERATED_STATUS_NOTE};
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',
+  internal_notes:NEGATED_EVIDENCE_NOTE.replace('is available;',
+   'is available and the employer verified the current status;')};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+  /Unsupported employment-status claim/);
+});
+test('Eligibility and unrelated source status claims cannot be quarantined',()=>{
+ const source=missingJobEvidence();source.agentResponse={internal_notes:GENERATED_STATUS_NOTE};
+ const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',internal_notes:NEGATED_EVIDENCE_NOTE};
+ const eligibility={...parsed,internal_notes:NEGATED_EVIDENCE_NOTE.replace('is available;',
+  'is available and the participant is eligible;')};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(eligibility)}),
+  /Unsupported employment-status claim/);
+ const unrelated=missingJobEvidence();
+ unrelated.agentResponse={internal_notes:GENERATED_STATUS_NOTE.replace('Active','Terminated')};
+ assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':unrelated},{output:JSON.stringify(parsed)}),
+  /Unsupported employment-status claim/);
+});
+test('Quarantining a note never permits an unsupported public claim',()=>{
+ const source=missingJobEvidence();source.agentResponse={internal_notes:GENERATED_STATUS_NOTE};
+ const base={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',internal_notes:NEGATED_EVIDENCE_NOTE};
+ for(const parsed of [{...base,participant_reply:SUPPORTED+' '+STATUS_CLAIM},
+  {...base,stage_reason:'Our employment record is Active.'}]){
+  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
+   /Unsupported employment-status claim/);
+ }
+});
 test('A copied generated employment claim is retained only as an unverified internal note',()=>{
  const generated={participant_reply:STATUS_CLAIM,internal_notes:GENERATED_STATUS_NOTE};
  for(const agentResponse of [generated,JSON.stringify(generated)]){
@@ -383,14 +438,17 @@ test('Final 4.1 release history and current pins carry no GPT-5.5 publish plan',
  const notes=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-notes-provenance','release.json'),'utf8'));
  const current=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-notes-paraphrase','release.json'),'utf8'));
  const ops=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-ops-handoff','release.json'),'utf8'));
+ const quarantine=JSON.parse(fs.readFileSync(path.join(__dirname,'..','releases','final41-note-quarantine','release.json'),'utf8'));
  // Historical receipts remain immutable; each new baseline is the previous
  // published candidate, while the latest candidate binds the current source.
  assert.equal(release.candidate_parser_sha256,digest(path.join(dir,'parser-system.md')));
  assert.equal(notes.baseline_extractor_sha256,release.candidate_extractor_sha256);
  assert.equal(current.baseline_extractor_sha256,notes.candidate_extractor_sha256);
  assert.equal(ops.baseline_extractor_sha256,current.candidate_extractor_sha256);
- assert.equal(ops.candidate_extractor_sha256,digest(path.join(__dirname,'..','final-data-extractor.js')));
- for(const plan of [release,notes,current,ops]){
+ assert.equal(quarantine.baseline_extractor_sha256,ops.candidate_extractor_sha256);
+ assert.equal(quarantine.served_workflow_version,'c6361d4d-d53a-4f5d-b797-31b224b544a4');
+ assert.equal(quarantine.candidate_extractor_sha256,digest(path.join(__dirname,'..','final-data-extractor.js')));
+ for(const plan of [release,notes,current,ops,quarantine]){
   assert.equal(plan.candidate_parser_sha256,digest(path.join(dir,'parser-system.md')));
   assert.equal(plan.model,'gpt-4.1');
   assert.equal(plan.auto_publication,false);

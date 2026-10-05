@@ -374,6 +374,41 @@ function qualifySourceMatchedEmploymentNotes(notes, agentResponse) {
   return qualified;
 }
 
+const QUARANTINED_EMPLOYMENT_NOTE =
+  'Generated response included an unverified current employment-status claim; canonical evidence does not verify it.';
+
+function quarantineGeneratedEmploymentNote(notes, agentResponse) {
+  if (typeof notes !== 'string' || !notes) return notes;
+  let generated = agentResponse;
+  if (typeof generated === 'string') {
+    try { generated = JSON.parse(generated); } catch { return notes; }
+  }
+  if (!generated || typeof generated !== 'object' || Array.isArray(generated) ||
+      typeof generated.internal_notes !== 'string') return notes;
+
+  // This is a bounded source-to-note match, not an authority for the status.
+  // The status value is removed even when the generated source uses the same one.
+  const sourceClaim = new RegExp(
+    `^employment-status conflict:\\s*participant reports separation;\\s*system record shows\\s+(?:employment[_ -]?status\\s+)?(${EMPLOYMENT_STATUS_WORD})(?:\\s+status)?\\s+with no termination date(?: on file)?\\.?$`, 'i');
+  const paraphrase = new RegExp(
+    `^employment-status conflict:\\s*participant reports separation,\\s*but no verified independent evidence[^;]{0,80};\\s*system record shows\\s+(${EMPLOYMENT_STATUS_WORD})\\s+status\\s+with no termination date(?: on file)?\\.?$`, 'i');
+  const sourceStatuses = new Set(sentences(generated.internal_notes)
+    .map(sentence => sourceClaim.exec(sentence)?.[1]?.toLowerCase()).filter(Boolean));
+  if (!sourceStatuses.size) return notes;
+
+  let quarantined = notes;
+  for (const sentence of sentences(notes)) {
+    const match = paraphrase.exec(sentence);
+    if (!match || !sourceStatuses.has(match[1].toLowerCase()) ||
+        !currentPersonalEmploymentClaim(sentence) ||
+        /\beligib\w*\b/i.test(sentence)) continue;
+    const withoutNegatedEvidence = sentence.replace(/\bno verified independent evidence\b/i, '');
+    if (/\b(?:verified|confirms?|confirmed|establishes?|established)\b/i.test(withoutNegatedEvidence)) continue;
+    quarantined = quarantined.replace(sentence, QUARANTINED_EMPLOYMENT_NOTE);
+  }
+  return quarantined;
+}
+
 function retainGeneratedProcedure(notes, agentResponse) {
   let generated = agentResponse;
   if (typeof generated === 'string') {
@@ -424,8 +459,8 @@ if(!parsed || typeof parsed!=='object' || Array.isArray(parsed) ||
 const evidence=source.canonical_evidence;
 if(!evidence || evidence.publication_authorized!==false || evidence.human_review_required!==true)
  throw new Error('Missing independent canonical evidence decision');
-const qualifiedNotes=retainGeneratedProcedure(
-  qualifySourceMatchedEmploymentNotes(parsed.internal_notes,source.agentResponse),source.agentResponse);
+const qualifiedNotes=retainGeneratedProcedure(quarantineGeneratedEmploymentNote(
+  qualifySourceMatchedEmploymentNotes(parsed.internal_notes,source.agentResponse),source.agentResponse),source.agentResponse);
 if(exactCurrentEmploymentClaim(parsed.participant_reply)||exactCurrentEmploymentClaim(parsed.stage_reason)||notesTreatStatusAsAuthority(qualifiedNotes))
  throw new Error(EMPLOYMENT_REJECT);
 const displayPlanFacts=(facts=>{

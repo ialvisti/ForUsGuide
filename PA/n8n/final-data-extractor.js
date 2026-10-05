@@ -402,6 +402,10 @@ function quarantineGeneratedEmploymentNote(notes, agentResponse) {
     if (!match || !sourceStatuses.has(match[1].toLowerCase()) ||
         !currentPersonalEmploymentClaim(sentence) ||
         /\beligib\w*\b/i.test(sentence)) continue;
+    // Do not remove the status sentence while leaving a separate assertion
+    // that the employer has completed verification in the ticket note.
+    if (/\b(?:employer|employment|termination(?: date)?|separation|status)\s+verification\s+(?:is|was|has been)\s+(?:complete|completed|confirmed|approved)\b/i.test(notes))
+      throw new Error(EMPLOYMENT_REJECT);
     const withoutNegatedEvidence = sentence.replace(/\bno verified independent evidence\b/i, '');
     if (/\b(?:verified|confirms?|confirmed|establishes?|established)\b/i.test(withoutNegatedEvidence)) continue;
     quarantined = quarantined.replace(sentence, QUARANTINED_EMPLOYMENT_NOTE);

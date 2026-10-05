@@ -292,6 +292,19 @@ test('A positive verification claim in the same note remains a hard rejection',(
  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},{output:JSON.stringify(parsed)}),
   /Unsupported employment-status claim/);
 });
+test('A completed employer verification claim cannot be laundered through note quarantine',()=>{
+ const source=missingJobEvidence();source.agentResponse={internal_notes:GENERATED_STATUS_NOTE};
+ const base={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,
+  stage_reason:'Employer verification is still required.',internal_notes:NEGATED_EVIDENCE_NOTE};
+ for(const internal_notes of [
+  NEGATED_EVIDENCE_NOTE+' Employer verification is complete.',
+  NEGATED_EVIDENCE_NOTE.replace('is available;',
+   'is available and employer verification is complete;'),
+ ]){
+  assert.throws(()=>run(builders.extractorCode(),{'PA Final Evidence':source},
+   {output:JSON.stringify({...base,internal_notes})}),/Unsupported employment-status claim/);
+ }
+});
 test('Eligibility and unrelated source status claims cannot be quarantined',()=>{
  const source=missingJobEvidence();source.agentResponse={internal_notes:GENERATED_STATUS_NOTE};
  const parsed={ticketId:ticket,participant_reply:SUPPORTED,set_stage_solved:false,

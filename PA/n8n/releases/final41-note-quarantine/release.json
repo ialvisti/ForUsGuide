@@ -1,0 +1,11 @@
+{
+  "scope": "Final 4.1 Data extractor only: quarantine one source-matched unsupported employment-status sentence from generated internal notes; preserve human review and all participant-facing guards.",
+  "model": "gpt-4.1",
+  "workflow_id": "CziwYCQlGgliAuhi",
+  "served_workflow_version": "c6361d4d-d53a-4f5d-b797-31b224b544a4",
+  "baseline_parser_sha256": "216e53c05f97ced91f9d3e4a6b49e0b3c014b46ce0945f5ec822a7cc2c1b05c0",
+  "baseline_extractor_sha256": "9776f33ca86fba52165702aa9605a772433e5c040275d92608e2116b0c5460b8",
+  "candidate_parser_sha256": "216e53c05f97ced91f9d3e4a6b49e0b3c014b46ce0945f5ec822a7cc2c1b05c0",
+  "candidate_extractor_sha256": "6337a1ef60ab3206c2d3400009193db3d4cf700a19a12c0ea7d9ba987b87a5bf",
+  "auto_publication": false
+}
